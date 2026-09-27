@@ -1,9 +1,9 @@
-# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.2
+# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.3
 
-> **状态**：草案 v0.1.2（2026-09-27）
-> **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订
+> **状态**：草案 v0.1.3（2026-09-27）
+> **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订；v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》（下称"TD-09"）§9.2 与 M0 确认（`docs/m0-confirm.md`）修订
 > **下游**：全部模块的代码；TD-03（伤害公式，已据其定稿乘区清单）、TD-04（仿真内核，已据其定稿运行时字段）、TD-07 定 BuffDef 语义、TD-09 定排轴语义、TD-10 定事件与汇总字段
-> **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-03 的 23 个、TD-04 的 35 个用例也全部通过）；TD-01 原型在 20260707 全量数据上产出的生成文件（含 v0.1.2 新增的 `birthFrame`），逐一用本文的 schema 校验通过（9.2）
+> **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-01 的 14 个、TD-03 的 20 个、TD-04 的 35 个、TD-09 的 33 个用例也全部通过）；构建脚本在 20260707 全量数据上产出的生成文件，逐一用本文的 schema 校验通过（9.2）
 
 ---
 
@@ -63,6 +63,7 @@ export function parseOrThrow<S extends z.ZodType>(schema: S, data: unknown, wher
 | `src/engine/types.ts` | ResolvedScenario、SimState、SimEvent、Summary、钩子 | ③ |
 | `src/engine/formula.ts` | 伤害公式与 buff 收集（代码在 TD-03 §8） | ③ |
 | `src/engine/kernel.ts` | 仿真内核：时钟与膨胀、动作、判定、动作层合法性（代码在 TD-04 §9） | ③ |
+| `src/engine/scheduler.ts` | 排轴的编译与调度器（代码在 TD-09 §6） | ③ |
 | `data/curated/**/*.ts` | 手写数据（示例：散华） | ② 的输入 |
 
 ```mermaid
@@ -84,6 +85,8 @@ flowchart LR
     gd -.->|仅类型| formula
     eng -.->|仅类型| kernel["engine/kernel.ts"]
     gd -.->|仅类型| kernel
+    kernel --> sched["engine/scheduler.ts"]
+    scen --> sched
 ```
 
 箭头从被引用方指向引用方（A → B 表示 B 引用 A）。`gamedata.ts` 与 `engine/types.ts` 互相引用对方的类型（`CharacterDef.hooks` 用到钩子类型，钩子又要看 SimState），全部用 `import type`，编译后不存在，不构成运行时循环依赖。
@@ -698,8 +701,12 @@ export interface JudgmentDef {
   hitstop: DilationDef | null                       // 每次命中时登记的膨胀（anchor = 'hit'；膨胀发生为空的各侧，任何类型）
   formula?: { type: number; rate: number }          // dmg FormulaType ≠ 0：rate = FormulaParam5（已 × 0.0001），钩子据此算 Formula1
   cureBase?: number                                 // 治疗 / 护盾的固定值 CureBaseValue（calc = 'heal'）
+  chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
   flags: string[]
 }
+
+/** 共鸣链数范围，两端都含：C0 / C3 / C5 三个版本 → [0, 2]、[3, 4]、[5, 6] */
+export interface ChainRange { min: number; max: number }
 
 // ---------------------------------------------------------------------------
 // 武器、声骸、套装
@@ -824,6 +831,8 @@ export const DEFAULT_RULES: Rules = {
 - `coreOncePerAction` 来自核心回收的合并单元格（TD-01 §1.5）：同一个动作实例里，该槽只在第一次结算时发放。
 - `relatedAttr` 的 `energyRegen` 对应 RelatedProperty 11（布兰特的治疗）；`formula`、`cureBase` 只在 dmg 有对应参数时出现，用法见 TD-03 §3.2、§7。
 - `abnormalBaseByLevel`、`TuneBreakTable.baseByLevel` 的下标 = 等级 − 1；`costFactor` 按敌人 COST 取（TD-03 §5、§6）。
+- `JudgmentDef.chainRange`（v0.1.3）：这个判定只在哪些共鸣链数下存在，两端都含。装配时由行名的 `C\d` 推出（TD-01 §13.2：椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]）；场景装配按队员的链数用 `forChain` 挑掉不在范围里的判定（总设计 §3.3 第 4 步）。动作的时间字段不按链数变。
+- `ActionDef.cooldown`：声骸技能来自 xlsx；角色技能的冷却 xlsx 没有，由角色模块覆盖（v0.1.3）。计时在内核（TD-04 §6.5），判断在调度器（TD-09 §3.2）。
 
 ### 4.2 Rules 默认值
 
@@ -949,20 +958,24 @@ import type { BuffDefInput } from './buff.schema'
 import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
 import type { CharacterHooks } from '../engine/types'
 
-/** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据 */
+/** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据。
+ *  覆盖了带 flag 的字段，该 flag 即视为已处理（如改 priority 消掉 priorityChangeGuess）；名字写错直接报错，不做模糊匹配。 */
 export interface ActionOverride {
+  dropRows?: string[]                       // 装配前去掉的行（行名）：互斥的"情形"版本只留一个，如维里奈 A3 只留"目标3m内"
   kind?: ActionKind
-  endFrame?: Frame
+  endFrame?: Frame                          // 不会重算派生窗口；需要时一并覆盖 cancelWindows
   priority?: PriorityStep[]
   cancelWindows?: Omit<CancelWindow, 'row'>[]
   outroTriggerFrame?: Frame
   switchLockUntil?: Frame
-  judgments?: Record<string, JudgmentOverride>
-  accept?: string[]                         // 明确接受、不再提示的 flag
+  comboFrom?: ActionId[]                    // 连段前置（TD-04 §6.2）：自动推断之外的，如 E1 → E2
+  cooldown?: Frame                          // 技能冷却（帧）：xlsx 只有声骸的，角色技能的冷却写在这里（TD-09 §3.2）
+  judgments?: Record<string, JudgmentOverride>   // 键是判定名（组内重名带 #n）
+  accept?: string[]                         // 明确接受、不再提示的 flag（动作级与该动作的判定级都算）
 }
 
 export type JudgmentOverride = Partial<Pick<JudgmentDef,
-  'spawnFrame' | 'lifeFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target'>>
+  'spawnFrame' | 'lifeFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target' | 'chainRange'>>
 
 export interface CharacterModule {
   weaponType: WeaponType                    // xlsx 没有，必填（TD-01 Q18）
@@ -1001,6 +1014,13 @@ export type DmgJoinMap = Record<string, Record<string, string | null>>
 
 `define*` 只做类型约束、原样返回；真正的校验（buff 用 zod、`actionOverrides` 的键必须是存在的动作）在注册层装载时做，报错指到模块文件与字段。
 
+`ActionOverride`（v0.1.3 补全，TD-01 §13.4）：
+
+- `dropRows` 在装配**之前**去掉行，用于互斥的"情形"版本只留一个（维里奈 A3 只留"目标3m内"）；其余字段在装配之后覆盖结果。
+- `comboFrom` 补自动推断之外的连段前置（TD-04 Q8）；`cooldown` 写角色技能冷却（帧）。
+- 覆盖了带 flag 的字段，该 flag 视为已处理（改 `priority` 消掉 `priorityChangeGuess` 等）；`accept` 列出明确接受的 flag。
+- 写了不存在的动作、行或判定，装配时直接报错，不做模糊匹配。
+
 ### 5.3 示例：散华
 
 ```ts
@@ -1034,6 +1054,8 @@ export default defineCharacter('散华', {
   ],
   actionOverrides: {
     谐度破坏: { accept: ['multiEnd'] },     // 两个结束帧是谐度破坏的两段，取第一个即可
+    // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
+    QTE: { priority: [{ fromFrame: 0, value: 11 }, { fromFrame: 42, value: 8 }] },
   },
 })
 ```
@@ -1095,7 +1117,7 @@ export const ScenarioSchema = z.strictObject({
     concerto: z.union([z.number().min(0).max(100), Trio]).default(0),
     onField: z.number().int().min(0).max(2).default(0),
   }).default({ energy: 'full', concerto: 0, onField: 0 }),
-  rotation: z.array(z.string().min(1)).min(1),
+  rotation: z.array(z.string().nullable().transform(v => v ?? '')).min(1),   // 空行、YAML 里只有注释的项（null）不产生指令（TD-09 §2.3）
   options: z.strictObject({
     repeat: z.number().int().min(1).default(1),
     maxFrames: z.number().int().min(1).default(3600),
@@ -1108,50 +1130,90 @@ export const ScenarioSchema = z.strictObject({
   names.forEach((n, i) => {
     if (names.indexOf(n) !== i) ctx.addIssue({ code: 'custom', path: ['team', i, 'char'], message: `角色重复：${n}` })
   })
+  let items = 0
   s.rotation.forEach((line, i) => {
     const p = parseRotationLine(line)
-    if ('error' in p) ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.error}` })
-    else if (p.kind !== 'wait' && !names.includes(p.char))
-      ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.char} 不在队伍里` })
+    if ('error' in p) { ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.error}` }); return }
+    items += p.length
+    for (const it of p) {
+      if (it.kind !== 'wait' && !names.includes(it.char))
+        ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${it.char} 不在队伍里` })
+    }
   })
+  if (items === 0) ctx.addIssue({ code: 'custom', path: ['rotation'], message: '排轴里没有指令（只有空行或注释）' })
 })
 
 export type Scenario = z.output<typeof ScenarioSchema>
 export type ScenarioInput = z.input<typeof ScenarioSchema>
 
 // ---------------------------------------------------------------------------
-// 排轴行语法（完整语义见 TD-09）：
-//   <角色> <动作或别名> [+N]   在最早合法帧之后再等 N 帧出招
-//   switch <角色>               切人
-//   wait <N>                   前台空等 N 帧
+// 排轴行语法（TD-09 §2）：
+//   <角色> <动作>[!] [+N] [<动作>[!] [+N] …]   依次出招；! = 强制（不等"取消不丢东西"）；+N = 最早合法之后再等 N 帧（战斗帧）
+//   switch <角色>   或  切人 <角色>          切人
+//   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
+//   空格后的 # 起是注释；全角的 ！＋＃、全角数字和全角空格按半角处理
 
-export type RotationLine =
-  | { kind: 'act'; char: string; action: string; delay: number }
+export type RotationItem =
+  | { kind: 'act'; char: string; action: string; delay: number; force: boolean }
   | { kind: 'switch'; char: string }
   | { kind: 'wait'; frames: number }
 
-export function parseRotationLine(text: string): RotationLine | { error: string } {
-  const s = text.trim()
-  let m = /^switch\s+(\S+)$/.exec(s)
-  if (m) return { kind: 'switch', char: m[1]! }
-  m = /^wait\s+(\d+)$/.exec(s)
-  if (m) return { kind: 'wait', frames: Number(m[1]) }
-  if (/^(switch|wait)(\s|$)/.test(s)) return { error: `"${s}" 格式不对：应为 switch <角色> 或 wait <帧数>` }
-  m = /^(\S+)\s+(\S+)(?:\s+\+(\d+))?$/.exec(s)
-  if (m) return { kind: 'act', char: m[1]!, action: m[2]!, delay: m[3] ? Number(m[3]) : 0 }
-  return { error: `无法识别"${s}"：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
+/** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
+export function parseRotationLine(text: string): RotationItem[] | { error: string } {
+  const s = text
+    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/＋/g, '+').replace(/＃/g, '#')
+    .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/(^|\s)#.*$/, '').trim()
+  if (s === '') return []
+  const tok = s.split(/\s+/)
+  const head = tok[0]!
+  if (head === 'switch' || head === '切人') {
+    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色>` }
+    return [{ kind: 'switch', char: tok[1]! }]
+  }
+  if (head === 'wait' || head === '等待') {
+    if (tok.length !== 2 || !/^\d+$/.test(tok[1]!)) return { error: `"${s}" 格式不对：应为 ${head} <帧数>` }
+    return [{ kind: 'wait', frames: Number(tok[1]) }]
+  }
+  if (tok.length === 1) return { error: `"${s}" 只有角色名：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
+  const out: RotationItem[] = []
+  let delayed = false                                    // 当前这个动作是否已经写过 +N（+0 也算）
+  for (const t of tok.slice(1)) {
+    const prev = out.at(-1) as Extract<RotationItem, { kind: 'act' }> | undefined
+    let m = /^\+(\d+)$/.exec(t)
+    if (m) {
+      if (!prev) return { error: `"${t}" 前面要有动作` }
+      if (delayed) return { error: `${prev.action} 写了两个延迟` }
+      prev.delay = Number(m[1])
+      delayed = true
+      continue
+    }
+    if (t === '!') {
+      if (!prev) return { error: '"!" 前面要有动作' }
+      prev.force = true
+      continue
+    }
+    m = /^([^!+]+)(!?)(?:\+(\d+))?$/.exec(t)
+    if (!m) return { error: `无法识别"${t}"：动作写成 <动作>、<动作>! 或 <动作> +N` }
+    if (/^\d+$/.test(m[1]!) && prev) return { error: `"${t}" 像是延迟，延迟要写成 +${m[1]}` }
+    out.push({ kind: 'act', char: head, action: m[1]!, delay: m[3] ? Number(m[3]) : 0, force: m[2] === '!' })
+    delayed = m[3] !== undefined
+  }
+  return out
 }
 
-/** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（resolve 阶段，总设计 §3.3 第 7 步） */
+/** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（TD-09 §4，总设计 §3.3 第 7 步）。line 从 1 起，item 是行内第几个（从 1 起） */
 export type Command =
-  | { kind: 'act'; line: number; slot: Slot; action: ActionId; delay: Frame }
-  | { kind: 'switch'; line: number; to: Slot }
-  | { kind: 'wait'; line: number; frames: Frame }
+  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean }
+  | { kind: 'switch'; line: number; item: number; to: Slot }
+  | { kind: 'wait'; line: number; item: number; frames: Frame }
+  | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来
 ```
 
 - CLI 先用 `yaml` 包把文本解析成对象，再交给 `ScenarioSchema`；网页编辑器直接交对象，两边同一套校验（总设计第 8 节）。
 - **声骸主属性写全**：4C 的"攻击 150"、3C 的"攻击 100"这类固定副主属性也写进 `main`，装配不自动补（等 M5 有了 `echo-stats.json` 再考虑）。每件还要写 `set`：同一个声骸可能属于多个套装。
-- **排轴行在 schema 阶段就检查语法和角色名**，报错指到第几条；动作名要等装配时对照 GameData 才能检查。
+- **排轴行在 schema 阶段就检查语法和角色名**，报错指到第几条；动作名要等装配时对照 GameData 才能检查。语法（v0.1.3）见 TD-09 §2：一行可以写同一角色的多个动作，`!` 强制，`+N` 延后，`切人` / `等待` 与 `switch` / `wait` 同义，空格后的 `#` 起是注释；`parseRotationLine` 因此返回数组。空行与 YAML 里只有注释的项（读出来是 null）当空行，不产生指令。
+- `Command` 是编译后的指令（TD-09 §4）：`line` 是第几条、`item` 是行内第几个；`at` 只给测试台用，排轴语法写不出来。
 - `initial.onField` 是新增字段：开局前台角色的槽位。
 
 与总设计第 8 节示例对应的最小场景（名称仅作格式演示）：
@@ -1257,10 +1319,34 @@ export interface SimState {
   buffs: BuffRuntime[]
   enemy: EnemyRuntime
   dilations: DilationRuntime[]
-  queue: { commands: Command[]; next: number; waitingSince: number | null; loop: number }
+  queue: QueueState
   log: SimEvent[]
   nextId: number                            // 判定 / buff / 动作实例的递增编号
 }
+
+/** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
+export interface QueueState {
+  commands: Command[]
+  repeat: number                            // 整条轴执行几轮（options.repeat）
+  next: number                              // 队首指令的下标
+  loop: number                              // 当前第几轮（从 1 起）
+  loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
+  waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
+  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
+  until: number | null                      // wait N：到这个战斗帧结束
+  seg: WaitSegment | null                   // 正在累计的等待段（原因不变就合成一段）
+}
+export interface WaitSegment { code: WaitCode; reason: string; from: number; battleFrom: number }
+
+/** 等待原因（TD-09 §3.3）。delay、wait、at 是写轴的人要求的等待，不计入 maxWait */
+export type WaitCode =
+  | 'started' | 'combo' | 'inputLock' | 'priority' | 'derive'   // gate（TD-04 §6.5）
+  | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
+  | 'switchCd' | 'switchLock'                                    // 切人
+  | 'delay' | 'wait' | 'at'
+
+/** 指令在事件里的出处 */
+export interface CommandRef { line: number; item: number; loop: number }
 
 export interface CharRuntime {
   slot: Slot
@@ -1382,12 +1468,12 @@ export interface HitFactors {
 }
 
 export type SimEvent =
-  | (EventBase & { type: 'actionStart'; char: CharName; action: ActionId; instance: number; line?: number; dropped?: string[] })
+  | (EventBase & { type: 'actionStart'; char: CharName; action: ActionId; instance: number; cmd?: CommandRef; dropped?: string[] })
   | (EventBase & { type: 'actionEnd'; char: CharName; action: ActionId; instance: number })
   | (EventBase & { type: 'actionCancel'; char: CharName; action: ActionId; instance: number; by: ActionId; dropped: string[] })
   | (EventBase & { type: 'judgmentSpawn'; char: CharName; action: ActionId; judgment: string; id: number })
   | HitEvent
-  | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean })
+  | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean; cmd?: CommandRef })
   | (EventBase & { type: 'intro'; char: CharName; action: ActionId })
   | (EventBase & { type: 'outro'; char: CharName })
   | (EventBase & { type: 'buffApply'; buff: string; target: CharName | 'enemy'; stacks: number; remaining: number | 'inf' })
@@ -1395,7 +1481,8 @@ export type SimEvent =
   | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string })
   | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
-  | (EventBase & { type: 'wait'; line: number; frames: number; reason: string })
+  | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
+  | (EventBase & { type: 'loop'; loop: number })
   | (EventBase & { type: 'warning'; code: string; message: string; line?: number })
 
 export type SimEventType = SimEvent['type']
@@ -1409,7 +1496,7 @@ export interface Summary {
   byAction: { char: CharName; action: ActionId; damage: number; hits: number; share: number }[]
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
-  waits: { line: number; frames: number; reason: string }[]
+  waits: { line: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   warnings: { code: string; message: string; line?: number }[]
   perLoop?: { loop: number; dps: number; energyDelta: [number, number, number]; concertoDelta: [number, number, number] }[]
 }
@@ -1476,12 +1563,15 @@ export interface ZoneAccumulator {
 - `JudgmentRuntime.age` 是判定时钟上的年龄，结算次数与寿命都按它算（TD-04 §5.2）；持续帧 -1 的判定在所属动作结束或被取消时移除。
 - `DilationRuntime` 登记时已按侧展开到具体单位（`target`），`hitstop` 标记是否按攻击顿帧处理（TD-04 §3.2）。
 - `CharRuntime.flags` 只由钩子读写，引擎本身不看。
+- `SimState.queue` 是调度器的状态（v0.1.3，TD-09 §5）：指令表与轮数、队首下标、当前轮次、累计的不合法等待、`+N` 的起算点、`wait` 的结束点、正在累计的等待段。放在 `SimState` 里，随状态一起 `structuredClone`。
+- `CharRuntime.cooldowns` 的键是动作 ID，声骸技能共用 `echo`（TD-04 `cooldownKey`）。
 
 ### 7.3 事件与汇总
 
 - 事件是可辨识联合，按 `type` 收窄（9.1 的 T02-6 在编译期保证每种都处理到）。
 - 非伤害判定（治疗、友方、倍率为 0）也发 `hit` 事件，`dmg: null`——触发类 buff 与资源发放统一挂在这一个事件上。
 - `hit.buffs` 记"id×层数"；`factors` 是非暴击分支的各项系数，键名按 TD-03 §8，默认写不写由 TD-10 定。
+- `wait`（v0.1.3）按原因分段：`code` 是原因代码（`WaitCode`），`from` 是开始帧，`frames` / `battleFrames` 分别是世界帧数与战斗帧数，`cmd` 指出第几轮第几条第几个（TD-09 §3.3）。`loop` 标出每轮的开始（TD-09 §3.7）。`actionStart`、`switch` 由指令触发时带 `cmd`。
 
 ### 7.4 钩子
 
@@ -1587,12 +1677,12 @@ describe('T02-2 场景：错误要指出位置', () => {
   })
 })
 
-describe('T02-3 排轴行解析', () => {
+describe('T02-3 排轴行解析（语法见 TD-09 §2）', () => {
   test('三种指令', () => {
-    expect(parseRotationLine('散华 A2 +3')).toEqual({ kind: 'act', char: '散华', action: 'A2', delay: 3 })
-    expect(parseRotationLine('  雷主·女 大招 ')).toEqual({ kind: 'act', char: '雷主·女', action: '大招', delay: 0 })
-    expect(parseRotationLine('switch 长离')).toEqual({ kind: 'switch', char: '长离' })
-    expect(parseRotationLine('wait 20')).toEqual({ kind: 'wait', frames: 20 })
+    expect(parseRotationLine('散华 A2 +3')).toEqual([{ kind: 'act', char: '散华', action: 'A2', delay: 3, force: false }])
+    expect(parseRotationLine('  雷主·女 大招 ')).toEqual([{ kind: 'act', char: '雷主·女', action: '大招', delay: 0, force: false }])
+    expect(parseRotationLine('switch 长离')).toEqual([{ kind: 'switch', char: '长离' }])
+    expect(parseRotationLine('wait 20')).toEqual([{ kind: 'wait', frames: 20 }])
   })
   test('错误', () => {
     expect('error' in parseRotationLine('散华')).toBe(true)
@@ -1695,11 +1785,14 @@ describe('T02-6 编译期约束（tsc 通过即成立）', () => {
         case 'enemyState': return ev.change
         case 'effectTick': return ev.effect
         case 'wait': return `等待 ${ev.frames}`
+        case 'loop': return `第 ${ev.loop} 轮`
         case 'warning': return ev.message
         default: { const never: never = ev; return never }
       }
     }
-    expect(label({ f: 1, t: 0, type: 'wait', line: 3, frames: 12, reason: '能量' })).toBe('等待 12')
+    expect(label({
+      f: 13, t: 0.2, type: 'wait', cmd: { line: 3, item: 1, loop: 1 }, code: 'resource', reason: '能量 97 / 125', from: 1, frames: 12, battleFrames: 12,
+    })).toBe('等待 12')
   })
 })
 
@@ -1719,7 +1812,7 @@ describe('T02-7 报错格式', () => {
 ### 9.2 结果与全量数据校验
 
 - `tsc --strict`（TypeScript 6.0）编译通过，包括 T02-6 的两处 `@ts-expect-error`——它们要求"拼错的武器类型、乘区 ID 必须是类型错误"，若哪天类型放宽了，编译反而会失败。
-- 22 个用例全部通过（本地用 tsx 运行，`vitest` 以只含 `describe` / `test` / `expect` 子集的替身代替）。v0.1.1 把 T02-5 的"加深类缺 ampClass"换成"加深类别写在乘区名里"；v0.1.2 给 T02 的散华 E 行夹具补 `birthFrame: null`。
+- 22 个用例全部通过（本地用 tsx 运行，`vitest` 以只含 `describe` / `test` / `expect` 子集的替身代替；仓库的 CI 用真 vitest）。v0.1.1 把 T02-5 的"加深类缺 ampClass"换成"加深类别写在乘区名里"；v0.1.2 给 T02 的散华 E 行夹具补 `birthFrame: null`；v0.1.3 按新语法改写 T02-3（`parseRotationLine` 返回数组），T02-6 的事件穷举加上 `loop`、`wait` 改用新字段。
 - **全量数据**：按 TD-01 规则在 20260707 版上产出的生成文件，逐一用本文 schema 校验：
 
 | 文件 | 记录数 | 结果 |
@@ -1749,7 +1842,7 @@ describe('T02-7 报错格式', () => {
 8. **Scenario**：声骸件必须写 `set`，`main` 写全固定副主属性；新增 `initial.onField`、`options.endAt`、`options.rules`。
 9. **GameData**：新增 `meta`、`commonActions`。
 
-v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccumulator` / `modifyHit`、`JudgmentDef`、`Rules` 等）、v0.1.2 按 TD-04 做的修订（运行时字段、`comboFrom` / `inputLocks` / `birthFrame`、`Rules.dilation`）都不涉及总设计第 4 节，逐条见 TD-03 §12.1、TD-04 §12.2 与本文附录。
+v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccumulator` / `modifyHit`、`JudgmentDef`、`Rules` 等）、v0.1.2 按 TD-04 做的修订（运行时字段、`comboFrom` / `inputLocks` / `birthFrame`、`Rules.dilation`）、v0.1.3 按 TD-09 与 M0 确认做的修订（排轴语法、`Command`、`QueueState`、等待事件、`chainRange`、`ActionOverride`）都不涉及总设计第 4 节，逐条见 TD-03 §12.1、TD-04 §12.2、TD-09 §9.2 与本文附录。
 
 ---
 
@@ -1772,3 +1865,4 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1（2026-09-26）**：初版。确立"边界用 zod、内部用 interface、类型由 schema 推导"；给出 `common.ts`、生成数据 schema、BuffDef schema、GameData、curated 模块、场景 schema 与排轴行语法、引擎运行时 / 事件 / 汇总 / 钩子类型的完整代码；Rules 默认值；22 个测试用例；用全量数据校验了生成文件 schema；列出对总设计 §5 的 9 处细化与 7 个待定问题。
 - **v0.1.1（2026-09-26）**：按 TD-03 §12.1 修订。乘区清单定稿（删 `ClassDamageAmplifyOnHit` / `DamageAmplifyOnHit` / `DamageAmplifyOnBeHit` / `AmpClass`，`TargetDefFlat` 改为 `TargetDefRate`，新增 `DamageAmplify0–9`、`DamageAmplify1002`、`FinalDamage0–7`、`FinalDamage1001`、`TargetHealedChange` 与分组常量）；BuffDef 去掉 `ampClass`、过滤条件新增 `effects`；`HitDraft` 可改元素与标签并可直接补乘区值，`ZoneAccumulator` 改为 `{ zones, critOnly }`，`modifyHit` 改在收集之前调用；`JudgmentDef` 新增 `energyRegen` 属性与 `formula` / `cureBase`；`GameData.abnormalBaseByLevel`、`TuneBreakTable.costFactor`、`Rules.charLevel`；生成 schema 新增 `formulaRate` / `cureBase` / `costFactors` 与 `GoldenZoneSchema`；新文件 `engine/formula.ts`。待定问题 Q1、Q2、Q6 关闭。
 - **v0.1.2（2026-09-27）**：按 TD-04 §12.2 修订。生成 schema 的行新增 `birthFrame`；`ActionDef` 新增 `comboFrom`、`inputLocks`（新类型 `InputLock`），`JudgmentDef` 新增 `birthFrame`，`hitstop` 不再限定攻击顿帧类；`Rules.dilation` 改为 `DilationRule`（`stopsBattleClock`、`hitstopSides`、`clearSelfOnCancel`）；运行时 `SimState.tails`、`CharRuntime.last` / `startedThisTick`、`ActionRuntime` 改为时间线游标（`def`、`cursor`、`ended`）、新增 `TimelineEvent` / `TailRuntime`、`JudgmentRuntime` 改用 `spawnedAt` / `age`、`DilationRuntime` 展开到 `target` 并带 `hitstop` / `instance`；`actionStart` 事件新增可选 `dropped`；新文件 `engine/kernel.ts`（代码在 TD-04 §9）。待定问题 Q3 关闭。
+- **v0.1.3（2026-09-27）**：按 TD-09 §9.2 与 M0 确认修订。排轴行语法（一行多个动作、`!`、`+N`、中文关键词、注释与全角），`parseRotationLine` 返回 `RotationItem[]`，场景的 `rotation` 接受空行与 null；`Command` 加 `item`、`force` 与测试专用的 `at`；`SimState.queue` 定型为 `QueueState`，新增 `WaitSegment`、`WaitCode`、`CommandRef`；`wait` 事件改为分段记录（`cmd`、`code`、`from`、`frames`、`battleFrames`），新增 `loop` 事件，`actionStart` / `switch` 带 `cmd`，`Summary.waits` 带轮次与原因代码。`JudgmentDef.chainRange` 与 `ChainRange`；`ActionOverride` 新增 `dropRows`、`comboFrom`、`cooldown`，`JudgmentOverride` 可改 `chainRange`。新文件 `engine/scheduler.ts`（代码在 TD-09 §6）。

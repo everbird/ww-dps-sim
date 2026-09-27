@@ -71,10 +71,34 @@ export interface SimState {
   buffs: BuffRuntime[]
   enemy: EnemyRuntime
   dilations: DilationRuntime[]
-  queue: { commands: Command[]; next: number; waitingSince: number | null; loop: number }
+  queue: QueueState
   log: SimEvent[]
   nextId: number                            // 判定 / buff / 动作实例的递增编号
 }
+
+/** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
+export interface QueueState {
+  commands: Command[]
+  repeat: number                            // 整条轴执行几轮（options.repeat）
+  next: number                              // 队首指令的下标
+  loop: number                              // 当前第几轮（从 1 起）
+  loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
+  waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
+  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
+  until: number | null                      // wait N：到这个战斗帧结束
+  seg: WaitSegment | null                   // 正在累计的等待段（原因不变就合成一段）
+}
+export interface WaitSegment { code: WaitCode; reason: string; from: number; battleFrom: number }
+
+/** 等待原因（TD-09 §3.3）。delay、wait、at 是写轴的人要求的等待，不计入 maxWait */
+export type WaitCode =
+  | 'started' | 'combo' | 'inputLock' | 'priority' | 'derive'   // gate（TD-04 §6.5）
+  | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
+  | 'switchCd' | 'switchLock'                                    // 切人
+  | 'delay' | 'wait' | 'at'
+
+/** 指令在事件里的出处 */
+export interface CommandRef { line: number; item: number; loop: number }
 
 export interface CharRuntime {
   slot: Slot
@@ -196,12 +220,12 @@ export interface HitFactors {
 }
 
 export type SimEvent =
-  | (EventBase & { type: 'actionStart'; char: CharName; action: ActionId; instance: number; line?: number; dropped?: string[] })
+  | (EventBase & { type: 'actionStart'; char: CharName; action: ActionId; instance: number; cmd?: CommandRef; dropped?: string[] })
   | (EventBase & { type: 'actionEnd'; char: CharName; action: ActionId; instance: number })
   | (EventBase & { type: 'actionCancel'; char: CharName; action: ActionId; instance: number; by: ActionId; dropped: string[] })
   | (EventBase & { type: 'judgmentSpawn'; char: CharName; action: ActionId; judgment: string; id: number })
   | HitEvent
-  | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean })
+  | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean; cmd?: CommandRef })
   | (EventBase & { type: 'intro'; char: CharName; action: ActionId })
   | (EventBase & { type: 'outro'; char: CharName })
   | (EventBase & { type: 'buffApply'; buff: string; target: CharName | 'enemy'; stacks: number; remaining: number | 'inf' })
@@ -209,7 +233,8 @@ export type SimEvent =
   | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string })
   | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
-  | (EventBase & { type: 'wait'; line: number; frames: number; reason: string })
+  | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
+  | (EventBase & { type: 'loop'; loop: number })
   | (EventBase & { type: 'warning'; code: string; message: string; line?: number })
 
 export type SimEventType = SimEvent['type']
@@ -223,7 +248,7 @@ export interface Summary {
   byAction: { char: CharName; action: ActionId; damage: number; hits: number; share: number }[]
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
-  waits: { line: number; frames: number; reason: string }[]
+  waits: { line: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   warnings: { code: string; message: string; line?: number }[]
   perLoop?: { loop: number; dps: number; energyDelta: [number, number, number]; concertoDelta: [number, number, number] }[]
 }

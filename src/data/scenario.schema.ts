@@ -50,7 +50,7 @@ export const ScenarioSchema = z.strictObject({
     concerto: z.union([z.number().min(0).max(100), Trio]).default(0),
     onField: z.number().int().min(0).max(2).default(0),
   }).default({ energy: 'full', concerto: 0, onField: 0 }),
-  rotation: z.array(z.string().min(1)).min(1),
+  rotation: z.array(z.string().nullable().transform(v => v ?? '')).min(1),   // 空行、YAML 里只有注释的项（null）不产生指令（TD-09 §2.3）
   options: z.strictObject({
     repeat: z.number().int().min(1).default(1),
     maxFrames: z.number().int().min(1).default(3600),
@@ -63,42 +63,81 @@ export const ScenarioSchema = z.strictObject({
   names.forEach((n, i) => {
     if (names.indexOf(n) !== i) ctx.addIssue({ code: 'custom', path: ['team', i, 'char'], message: `角色重复：${n}` })
   })
+  let items = 0
   s.rotation.forEach((line, i) => {
     const p = parseRotationLine(line)
-    if ('error' in p) ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.error}` })
-    else if (p.kind !== 'wait' && !names.includes(p.char))
-      ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.char} 不在队伍里` })
+    if ('error' in p) { ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.error}` }); return }
+    items += p.length
+    for (const it of p) {
+      if (it.kind !== 'wait' && !names.includes(it.char))
+        ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${it.char} 不在队伍里` })
+    }
   })
+  if (items === 0) ctx.addIssue({ code: 'custom', path: ['rotation'], message: '排轴里没有指令（只有空行或注释）' })
 })
 
 export type Scenario = z.output<typeof ScenarioSchema>
 export type ScenarioInput = z.input<typeof ScenarioSchema>
 
 // ---------------------------------------------------------------------------
-// 排轴行语法（完整语义见 TD-09）：
-//   <角色> <动作或别名> [+N]   在最早合法帧之后再等 N 帧出招
-//   switch <角色>               切人
-//   wait <N>                   前台空等 N 帧
+// 排轴行语法（TD-09 §2）：
+//   <角色> <动作>[!] [+N] [<动作>[!] [+N] …]   依次出招；! = 强制（不等"取消不丢东西"）；+N = 最早合法之后再等 N 帧（战斗帧）
+//   switch <角色>   或  切人 <角色>          切人
+//   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
+//   空格后的 # 起是注释；全角的 ！＋＃、全角数字和全角空格按半角处理
 
-export type RotationLine =
-  | { kind: 'act'; char: string; action: string; delay: number }
+export type RotationItem =
+  | { kind: 'act'; char: string; action: string; delay: number; force: boolean }
   | { kind: 'switch'; char: string }
   | { kind: 'wait'; frames: number }
 
-export function parseRotationLine(text: string): RotationLine | { error: string } {
-  const s = text.trim()
-  let m = /^switch\s+(\S+)$/.exec(s)
-  if (m) return { kind: 'switch', char: m[1]! }
-  m = /^wait\s+(\d+)$/.exec(s)
-  if (m) return { kind: 'wait', frames: Number(m[1]) }
-  if (/^(switch|wait)(\s|$)/.test(s)) return { error: `"${s}" 格式不对：应为 switch <角色> 或 wait <帧数>` }
-  m = /^(\S+)\s+(\S+)(?:\s+\+(\d+))?$/.exec(s)
-  if (m) return { kind: 'act', char: m[1]!, action: m[2]!, delay: m[3] ? Number(m[3]) : 0 }
-  return { error: `无法识别"${s}"：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
+/** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
+export function parseRotationLine(text: string): RotationItem[] | { error: string } {
+  const s = text
+    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/＋/g, '+').replace(/＃/g, '#')
+    .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/(^|\s)#.*$/, '').trim()
+  if (s === '') return []
+  const tok = s.split(/\s+/)
+  const head = tok[0]!
+  if (head === 'switch' || head === '切人') {
+    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色>` }
+    return [{ kind: 'switch', char: tok[1]! }]
+  }
+  if (head === 'wait' || head === '等待') {
+    if (tok.length !== 2 || !/^\d+$/.test(tok[1]!)) return { error: `"${s}" 格式不对：应为 ${head} <帧数>` }
+    return [{ kind: 'wait', frames: Number(tok[1]) }]
+  }
+  if (tok.length === 1) return { error: `"${s}" 只有角色名：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
+  const out: RotationItem[] = []
+  let delayed = false                                    // 当前这个动作是否已经写过 +N（+0 也算）
+  for (const t of tok.slice(1)) {
+    const prev = out.at(-1) as Extract<RotationItem, { kind: 'act' }> | undefined
+    let m = /^\+(\d+)$/.exec(t)
+    if (m) {
+      if (!prev) return { error: `"${t}" 前面要有动作` }
+      if (delayed) return { error: `${prev.action} 写了两个延迟` }
+      prev.delay = Number(m[1])
+      delayed = true
+      continue
+    }
+    if (t === '!') {
+      if (!prev) return { error: '"!" 前面要有动作' }
+      prev.force = true
+      continue
+    }
+    m = /^([^!+]+)(!?)(?:\+(\d+))?$/.exec(t)
+    if (!m) return { error: `无法识别"${t}"：动作写成 <动作>、<动作>! 或 <动作> +N` }
+    if (/^\d+$/.test(m[1]!) && prev) return { error: `"${t}" 像是延迟，延迟要写成 +${m[1]}` }
+    out.push({ kind: 'act', char: head, action: m[1]!, delay: m[3] ? Number(m[3]) : 0, force: m[2] === '!' })
+    delayed = m[3] !== undefined
+  }
+  return out
 }
 
-/** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（resolve 阶段，总设计 §3.3 第 7 步） */
+/** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（TD-09 §4，总设计 §3.3 第 7 步）。line 从 1 起，item 是行内第几个（从 1 起） */
 export type Command =
-  | { kind: 'act'; line: number; slot: Slot; action: ActionId; delay: Frame }
-  | { kind: 'switch'; line: number; to: Slot }
-  | { kind: 'wait'; line: number; frames: Frame }
+  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean }
+  | { kind: 'switch'; line: number; item: number; to: Slot }
+  | { kind: 'wait'; line: number; item: number; frames: Frame }
+  | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来

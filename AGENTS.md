@@ -8,13 +8,14 @@
 
 | 文档 | 管什么 |
 |---|---|
-| `wuwa-dps-engine-tech-design-v0.1.3.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、里程碑 |
-| `wuwa-dps-td01-data-dictionary-v0.1.2.md` | xlsx 每一列的含义与抽取规则、装配默认映射 |
-| `wuwa-dps-td02-types-schema-v0.1.2.md` | 全部类型与 zod schema |
+| `wuwa-dps-engine-tech-design-v0.1.4.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、里程碑 |
+| `wuwa-dps-td01-data-dictionary-v0.1.3.md` | xlsx 每一列的含义与抽取规则、装配默认映射、角色模块的覆盖字段 |
+| `wuwa-dps-td02-types-schema-v0.1.3.md` | 全部类型与 zod schema |
 | `wuwa-dps-td03-damage-formula-v0.1.md` | 伤害公式与乘区 |
-| `wuwa-dps-td04-sim-kernel-v0.1.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定 |
+| `wuwa-dps-td04-sim-kernel-v0.1.1.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定 |
+| `wuwa-dps-td09-rotation-scheduler-v0.1.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、循环 |
 | `wuwa-dps-design-v0.2.9.md`（机制设计） | 游戏机制；与总设计冲突时以总设计附录 A 为准 |
-| `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）待确认的数据问题 |
+| `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）的数据确认结果与待办 |
 
 确需推翻某个取舍时：先改总设计并记入附录 C，再改代码。
 
@@ -56,8 +57,4 @@ pnpm test:py                                 # 构建脚本的 Python 单元测�
 
 ## 与设计文档的差异（实现时的决定，下次改文档时并回）
 
-1. **构建脚本用 Python + openpyxl**（总设计 T12 预留的退路）：写代码的云端环境装不了 npm 包，没法验证 TS 读表；边界仍是 JSON，其余不受影响。TD-01 §0.2 的模块名对应 `tools/build/parse.py`、`actions.py`、`dmg.py`、`characters.py`、`report.py`、`build_data.py`。
-2. **dmgJoin 写在 `data/curated/dmg-join.json`**（原定 `aliases.ts`），这样 Python 和 TS 都能读。
-3. **`noDmg` 在构建时就打**（原定装配时）：严格检查要用它。
-4. **资源列的查表公式**：`INDEX(dmg!…)` 查的是 dmg 里同一判定的回收值，按普通数字处理；查表外还有常数项（`INDEX(…)*0.01+10`，58 格）时按 TD-01 §3.7 拆成逐段 + 进入动作即得。
-5. **`positionChange`**（状态转换时间）已抽取；原型漏了这一列。
+目前没有。M0 时记下的 5 处（构建脚本用 Python、`dmg-join.json`、构建时打 `noDmg`、资源列的查表公式、`positionChange`）已并回 TD-01 v0.1.3 与总设计 v0.1.4。以后实现时再有偏离设计文档的决定，先记在这里。

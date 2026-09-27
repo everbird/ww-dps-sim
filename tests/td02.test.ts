@@ -71,12 +71,12 @@ describe('T02-2 场景：错误要指出位置', () => {
   })
 })
 
-describe('T02-3 排轴行解析', () => {
+describe('T02-3 排轴行解析（语法见 TD-09 §2）', () => {
   test('三种指令', () => {
-    expect(parseRotationLine('散华 A2 +3')).toEqual({ kind: 'act', char: '散华', action: 'A2', delay: 3 })
-    expect(parseRotationLine('  雷主·女 大招 ')).toEqual({ kind: 'act', char: '雷主·女', action: '大招', delay: 0 })
-    expect(parseRotationLine('switch 长离')).toEqual({ kind: 'switch', char: '长离' })
-    expect(parseRotationLine('wait 20')).toEqual({ kind: 'wait', frames: 20 })
+    expect(parseRotationLine('散华 A2 +3')).toEqual([{ kind: 'act', char: '散华', action: 'A2', delay: 3, force: false }])
+    expect(parseRotationLine('  雷主·女 大招 ')).toEqual([{ kind: 'act', char: '雷主·女', action: '大招', delay: 0, force: false }])
+    expect(parseRotationLine('switch 长离')).toEqual([{ kind: 'switch', char: '长离' }])
+    expect(parseRotationLine('wait 20')).toEqual([{ kind: 'wait', frames: 20 }])
   })
   test('错误', () => {
     expect('error' in parseRotationLine('散华')).toBe(true)
@@ -179,11 +179,14 @@ describe('T02-6 编译期约束（tsc 通过即成立）', () => {
         case 'enemyState': return ev.change
         case 'effectTick': return ev.effect
         case 'wait': return `等待 ${ev.frames}`
+        case 'loop': return `第 ${ev.loop} 轮`
         case 'warning': return ev.message
         default: { const never: never = ev; return never }
       }
     }
-    expect(label({ f: 1, t: 0, type: 'wait', line: 3, frames: 12, reason: '能量' })).toBe('等待 12')
+    expect(label({
+      f: 13, t: 0.2, type: 'wait', cmd: { line: 3, item: 1, loop: 1 }, code: 'resource', reason: '能量 97 / 125', from: 1, frames: 12, battleFrames: 12,
+    })).toBe('等待 12')
   })
 })
 

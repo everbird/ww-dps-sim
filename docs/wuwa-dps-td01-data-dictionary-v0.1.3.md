@@ -1,9 +1,9 @@
-# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.2
+# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.3
 
-> **状态**：草案 v0.1.2（2026-09-27；v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订）
+> **状态**：草案 v0.1.3（2026-09-27；v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§3.1–3.2、§5.1、§7、§11、§12（M0）、§13、附录 A-7；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、4C、4D、5.1、6、7；xlsx 自带的 `附页1`（数据作者写的列说明，下称"作者说明"）
 > **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测
-> **下游**：构建脚本 `src/build/`（总设计第 10 节）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
+> **下游**：构建脚本 `tools/build/`（Python，v0.1.3，见 0.2）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
 > **不讲**：字段在仿真里怎么用（公式 → TD-03，时钟 / 取消 / 判定生命周期 → TD-04，资源与敌人量表 → TD-06，buff → TD-07）。本文只保证"表里写了什么、怎么原样可靠地搬出来、哪些要人工补"
 
 ---
@@ -37,17 +37,17 @@
 每个抽取函数都是"原始行数组 → 结构化记录"的纯函数，测试不需要 xlsx 文件（第 15 节的用例都这样写）。
 
 ```text
-src/build/
-  index.ts        CLI：读 xlsx → 调各 extractor → 连接 → 校验 → 写 generated/ 与报告
-  xlsx.ts         统一读表接口：每格给出 { v: 缓存值, f?: 公式, mergeTop?: 合并区首行 }
-  parse.ts        parseNum / parseList / parseFlag / parseGain / extractHints / nameTags / secToFrames / extractBirthFrame
-  actions.ts      splitBlocks / groupRows / nameGroups / classifyRow
-  dmg.ts          indexDmg / joinDmg / crossCheck
-  characters.ts  weapons.ts  echoes.ts  enemies.ts  effects.ts  buffs.ts  golden.ts  formulaRef.ts
-  report.ts       构建报告
+tools/build/
+  build_data.py   CLI：读 xlsx → 调各抽取函数 → 连接 → 校验 → 写 data/generated/ 与报告
+  parse.py        parse_num / parse_list / parse_flag / parse_gain / extract_hints / name_tags / sec_to_frames / extract_birth_frame
+  actions.py      块切分、分组、组名、行分类（parse_action_sheet）
+  dmg.py          index_dmg / join_block / cross_check
+  characters.py   角色主表、体型、90 级三维
+  report.py       构建报告
+  test_parse.py   单元格级用例（T01-1、T01-2、T01-11、T01-12）
 ```
 
-xlsx 读取用 exceljs（能同时拿到缓存值、公式和合并区）；若受阻，按总设计 T12 换 Python/openpyxl，本文规则不变（本文的全部统计就是用 openpyxl 原型跑出来的）。
+**v0.1.3**：构建脚本按总设计 T12 预留的退路改用 **Python + openpyxl**（能同时拿到缓存值、公式和合并区）。写代码的云端环境装不了 npm 包，没法验证 TS 读表；本文的全部统计本来就是用 openpyxl 原型跑出来的。边界仍是 JSON，产出文件由 TD-02 的 zod schema 校验（`pnpm check:data`），其余部分不受影响。函数名按 Python 习惯写成下划线形式，与本文的驼峰名一一对应。M0 只产出动作、角色与 `formula-ref.json`；武器、声骸、敌人、buff 库、golden 的抽取随用到它们的里程碑补上。
 
 ---
 
@@ -259,6 +259,8 @@ function secToFrames(sec: number, fps = 60): number {
 | 引用其他行 | `=$T$102`（白芷 优昙A3-2，R103） | `{ total: 0.2, ref: 'T102' }`（按普通数字用） |
 | 其他复杂公式 | `=-base!$ER$80/base!$ER$80*100`（奥古斯塔） | `{ total: -100, formula, complex: true }` + flag |
 | 算术字符串（非公式） | `"0+25"`（渊武 R330） | 按多项公式处理 + warn |
+| 查表公式（v0.1.3） | `=INDEX(dmg!$BK$459:$BK$495,MATCH(…),1)*0.01`（数组公式，约 6700 格） | `{ total }`：查的是 dmg 里同一判定的回收值，按普通数字用 |
+| 查表外还有常数项（v0.1.3） | `=INDEX(…)*0.01+10`（58 格） | 按上面的约定拆：查表项是 `perHit`，常数项是 `onAction` |
 
 - 多项拆分只认**顶层**的 `+` / `-`：括号内整体算一项；最后一项是 `onAction`，前面各项依次是 `perHit`。拆完校验 `sum == total`（误差 1e-6），不符 → error。
 - 现状：资源单元格里多项公式 434 格、引用 86 格、复杂公式 8 格（全是奥古斯塔核心回收，引用 `base` 主表）、合并共享（1.5）25 格。
@@ -288,7 +290,7 @@ function secToFrames(sec: number, fps = 60): number {
 
 ### 3.9 行名里的变体标记 `nameTags`
 
-只作为 curation 的线索写进 `nameTags`，构建不据此做任何取舍：
+只作为 curation 的线索写进 `nameTags`，构建不据此做任何取舍；装配按 `chain` 标记推出判定存在于哪些链数（13.2，v0.1.3）：
 
 | 标记 | 规则 | 含义 | 例 |
 |---|---|---|---|
@@ -380,9 +382,9 @@ dmg 是游戏技能伤害配置的导出：第 1–2 行表头（第 2 行是 `_
 ### 4.4 与动作行连接 `joinDmg`
 
 1. 对每个判定行，键 = (`charaId`, 行名)：角色块的 `charaId` = 块的 A 列原名（漂泊者不带性别），通用块 = `通用`。
-2. 先查 curated 别名 `data/curated/aliases.ts` 的 `dmgJoin`（13.4）；有条目就用条目，`null` 表示"明确无伤害"。
+2. 先查 curated 别名 `data/curated/dmg-join.json`（13.4；v0.1.3 起用 JSON，Python 构建脚本与 TS 都能读）；有条目就用条目，`null` 表示"明确无伤害"。
 3. 再精确匹配 dmg。dmg 内部重复的键（10 个）取第一行，报告。匹配到的 dmg 行若 `Damage.*` 全空（dmg 里有 26 行只有 `Skill.*`，如通用块的"闪避-前/后"），视为明确无伤害：不挂 `dmg`，行上记 flag `dmgNoConfig`（现有 28 个判定行），装配时与 `dmgJoin` 为 `null` 同样处理。
-4. 连上 → 行上挂 `dmg` 对象，`via: 'alias' | 'direct'`；连不上 → 不挂，打 flag `noDmg`，报告里给出候选建议（去掉末段 `-后缀`、去掉 `D`、去掉召唤物前缀后能唯一命中的 dmg 名），**建议只写进报告，不自动采用**——自动模糊连接曾把"A3-1-聚怪"这类功能行连到 A3-1 的倍率上，会凭空多算伤害。
+4. 连上 → 行上挂 `dmg` 对象，`via: 'alias' | 'direct'`；连不上 → 不挂，打 flag `noDmg`（v0.1.3：构建时就打在行上，`--strict` 靠它判断名单内的角色是否全部连上），报告里给出候选建议（去掉末段 `-后缀`、去掉 `D`、去掉召唤物前缀后能唯一命中的 dmg 名），**建议只写进报告，不自动采用**——自动模糊连接曾把"A3-1-聚怪"这类功能行连到 A3-1 的倍率上，会凭空多算伤害。
 5. **交叉校验**（连上且两边都有值时）：`大招回收 × 100 ≈ Energy`、`削韧值 × 100 ≈ ToughLv`、`偏谐值 × 100 ≈ WeaknessLvl`（容差 1）。不符进报告，不改数据。
 
 **现状**：3666 个判定行中直接连上 2434 行（66%）。连不上的主要是：召唤物命名差异（白芷"优昙A1"在 dmg 叫"A1"）、同一 dmg 行被多段判定共用（"暴风雨-1…5" ↔ "暴风雨"）、功能性判定（聚怪、牵引、停滞、顿帧、判断，本就无伤害）、角色的"谐度破坏"行（伤害在 `通用` 的谐度破坏表里，按武器类型取）、非敌方目标 42 行。交叉校验：削韧 2349 / 2349、偏谐 2349 / 2349 全部吻合；能量 2345 / 2349，4 行不符（白芷 QTE 18 vs 800、灯灯"黄-强化E-1" 6.6 vs 160、卡卡罗"仁慈-1" 6 vs 0、"死告-1" 5 vs 0，Q12）。
@@ -722,20 +724,21 @@ xlsx：鸣潮动作数据汇总-20260707.xlsx（sha256 前 12 位）· 资源版
 
 | 字段 | 默认规则 | 猜测时的 flag |
 |---|---|---|
-| （行筛选） | 组内同时有 `-前` / `-后` 方向变体行时只取 `-前` 行（二选一的变体，TD-04 §7 ⑤） | `dirVariant`（47 组） |
+| （行筛选） | 先去掉角色模块 `dropRows` 列出的行（13.4，v0.1.3）；组内同时有 `-前` / `-后` 方向变体行时只取 `-前` 行（二选一的变体，TD-04 §7 ⑤） | `dirVariant`（47 组） |
 | `id` | 组名（3.5） | |
-| `kind` | 取组内第一个连上 dmg 的判定的 Damage.Type：普攻 → `normal`，重击 → `heavy`，共鸣技能 → `skill`，共鸣解放 → `liberation`，变奏 → `intro`，延奏 → `outro`，声骸 → `echo`；都没有则按组名前缀（`A`/`普攻` → normal，`重击` → heavy，`E` → skill，`大招` → liberation，`QTE` → intro，含"闪避" → dodge），再没有 → `other` | `kindGuess` |
-| `endFrame` | 组内第一个有动作结束帧的行；多行时取第一个，全部候选记入 `endFrameCandidates` | `multiEnd`（188 组） |
+| `kind` | 取组内第一个连上 dmg 的判定的 Damage.Type：普攻 → `normal`，重击 → `heavy`，共鸣技能 → `skill`，共鸣解放 → `liberation`，变奏 → `intro`，延奏 → `outro`，声骸 → `echo`；都没有则按组名前缀（`A`/`普攻` → normal，`重击` → heavy，`E` → skill，`大招` → liberation，`QTE` → intro，`延奏` → outro，含"闪避" → dodge），再没有 → `other` | `kindGuess` |
+| `endFrame` | 组内第一个有动作结束帧的行；多行时取第一个，全部候选记入 `endFrameCandidates` | 几行的结束帧取值不同时 `multiEnd`（v0.1.3：156 组；取值都相同的 32 组不再标，如椿大招三行都是 264） |
 | （无结束帧时） | max(各判定行 发生帧 + 持续帧，派生帧) | `noEnd`（167 组） |
 | `cancelWindows` | 每个有派生帧的行给一个窗口：`from = 派生帧`，`until = 派生帧 + 派生持续帧`；派生持续帧为空或 -1 → `until = endFrame`。窗口左闭右开，可以超过 `endFrame`（散华 A1：派生 21 + 29 = 50 > 结束 41），表示回到空闲后仍可接连段（TD-04 §6.1–§6.2） | `deriveMinus1` |
 | `priority` | 取组内中断优先级值最多的一行（并列取第一行）；变化帧依次取：该行的"优先级改变"列 → 组内备注的 `priorityChangeFrames` → （仅两段时）`noDodgeBefore` / `noInputBefore` → 该行派生帧。变化帧凑不齐时截断成已知的前几段；组内没有优先级时给 `[{ fromFrame: 0, value: 0 }]` | 用到后两者之一时 `priorityChangeGuess`（238 组）；截断时 `priorityChangeMissing`（97 组）；没有优先级 `noPriority`（61 组） |
-| `comboFrom` | 组名形如 `前缀A{n}`（n ≥ 2）且块内有 `前缀A{n−1}` → `[前缀A{n−1}]`；`闪避反击` → `['极限闪避']`（TD-04 §6.2） | |
+| `comboFrom` | 组名形如 `前缀A{n}`（n ≥ 2）且块内有 `前缀A{n−1}` → `[前缀A{n−1}]`；`闪避反击` → `['极限闪避']`（TD-04 §6.2）。前置动作一个派生窗口都没有时连段永远接不上，不设（v0.1.3，TD-09 §8） | 不设时 `comboNoWindow`（7 组） |
 | `inputLocks` | 组内备注 `noInputBefore` 的最大值 → `{ until, kinds: 'all' }`；`noDodgeBefore` 的最大值 → `{ until, kinds: ['dodge'] }`（TD-04 §6.3） | |
 | `dilations` | 组内每个有时间膨胀类型的行，逐侧（自 / 敌 / 友）处理：膨胀发生有值 → 按动作局部帧该值登记（`anchor: 'action'`，同一行同一起点的各侧合成一条）；为空且该行是判定行 → 不进这里，进该判定的 `hitstop`（13.2）；为空且不是判定行 → 局部帧 1。系数或持续为空的侧跳过（TD-04 §3.2） | 局部帧 1 时 `dilationStartGuess`（61 组、94 个窗口）；跳过时 `dilationIncomplete`（11 组、20 个窗口） |
 | `castGains` | 组内 `gain` 行的资源 `total` 之和，加上判定行资源公式的 `onAction` 项；默认 `atFrame = 0`（进入动作即得：动作开始的那个 tick） | |
 | `outroTriggerFrame` | 组内任一行 `hints.outroTriggerFrame` | QTE 组缺失时 `noOutroFrame` |
 | `switchLockUntil` | 组内 `hints.noSwitchBefore` 的最大值 | |
 | （组级检查） | 有持续帧 -1 的判定在结束帧或之后才生成——动作停了它不可能存在，TD-04 不生成它；多为把"下落""落地"写进同一组的空中攻击，curated 拆组 | `minusOneAfterEnd`（22 组） |
+| （组级检查，v0.1.3） | 带 `C\d` 标记的非判定行（膨胀 / 资源 / 标记）暂不按链数筛（13.2 只筛判定），交给 TD-06 / TD-08 | `chainNonHit`（7 组 9 行） |
 
 ### 13.2 JudgmentDef（一个 `hit` 行 → 一个判定）
 
@@ -756,6 +759,7 @@ xlsx：鸣潮动作数据汇总-20260707.xlsx（sha256 前 12 位）· 资源版
 | `gains.energy` / `concerto` / `core[k]` | `GainCell`：普通数字 → `total`；多项公式 → `perHit` 只有一项时取它，多项时取平均（报告列出）；`sharedRows` → 该值每个动作实例只发一次（由 TD-06 实现"只发一次"） | 多项取平均时 `gainTermsMulti` |
 | `gauges` | 削韧值、偏谐值；空 → 0 | |
 | `hitstop` | 该行膨胀里"膨胀发生"为空的各侧（不限类型），`anchor: 'hit'`、`start: 0`：该判定每次命中时登记（TD-04 §3.2） | |
+| `chainRange`（v0.1.3） | 共鸣链版本：组内判定行的行名去掉 `C\d` 后相同的，是同一判定在不同链数下的版本（无标记算 0）；各版本的范围 = [本版标记, 下一个标记 − 1]，最后一个到 6。链数 c 时只留范围包含 c 的版本（场景装配的 `forChain`，总设计 §3.3 第 4 步）。例：椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]；E3-一日花 / E3-C2一日花 → [0, 1]、[2, 6]。只有一种标记 n > 0、没有别的版本 → [n, 6]，从 n 链起额外出现。同一版本重复多行（夏空 A4-C6伤害 × 3）是多段，范围相同。只有 C0 一种标记的不设（= 任何链数）。现状：两个以上版本的 41 组 | 额外出现的 `chainAdditive`（84 行）：要人确认它不是替换别的判定（如椿 E3-C6永生花） |
 
 ### 13.3 声骸动作
 
@@ -763,18 +767,33 @@ xlsx：鸣潮动作数据汇总-20260707.xlsx（sha256 前 12 位）· 资源版
 
 ### 13.4 curated 覆盖点
 
-```ts
-// data/curated/aliases.ts —— 只放"表里的名字对不上"这一类
-export const dmgJoin: Record<string, Record<string, string | null>> = {
-  //  块的 dmg 角色名 → { 动作表行名: dmg 行名 | '角色::行名'（跨角色）| null（明确无伤害）}
-  散华: { '大招-伤害': '大招', 'A2-地面出场技': 'A2', '谐度破坏-1': '通用::谐度破坏-迅刀1' },
-  白芷: { '优昙A3-1': 'A3-1' },
-  长离: { 'A1-挖矿用': null },
+名字对不上的判定写在 `data/curated/dmg-join.json`（v0.1.3：原定 `aliases.ts`，改成 JSON，Python 构建脚本与 TS 都能读；以 `$` 开头的键是说明，读取时跳过）：
+
+```jsonc
+{
+  //  块的 dmg 角色名 → { 动作表行名: dmg 行名 | "角色::行名"（跨角色）| null（明确无伤害）}
+  "散华": { "大招-伤害": "大招", "A2-地面出场技": "A2", "谐度破坏-1": "通用::谐度破坏-迅刀1" },
+  "椿": { "盛绽·A3循环聚怪": null, "大招-C5伤害": "大招-C3伤害" }
 }
 ```
 
-- 动作级的覆盖（改结束帧、补优先级变化帧、合并变体、指定 `kind` …）写在角色模块 `data/curated/characters/<角色>.ts` 的 `actionOverrides` 里（格式见 TD-02 / TD-08）。
-- 覆盖只改装配结果，不回写生成数据；覆盖了一个带 flag 的字段，该 flag 即视为已处理。
+动作级的覆盖写在角色模块 `data/curated/characters/<角色>.ts` 的 `actionOverrides` 里（类型见 TD-02 §5.2），v0.1.3 定为：
+
+| 字段 | 作用 | 视为已处理的 flag |
+|---|---|---|
+| `dropRows` | 装配**之前**去掉行：互斥的"情形"版本只留一个（维里奈 A3 只留"目标3m内"，否则三行会算三次伤害） | 随之消失的（如 `multiEnd`） |
+| `kind` | 动作类别 | `kindGuess` |
+| `endFrame` | 结束帧（不重算派生窗口；需要时一并覆盖 `cancelWindows`） | `multiEnd`、`noEnd` |
+| `priority` | 优先级与变化帧（散华 QTE：第 42 帧起由 11 降为 8） | `priorityChangeGuess`、`priorityChangeMissing`、`noPriority` |
+| `cancelWindows` | 派生窗口 | `deriveMinus1` |
+| `outroTriggerFrame`、`switchLockUntil` | 延奏触发帧、切人锁 | `noOutroFrame` |
+| `comboFrom` | 连段前置（自动推断之外的，如 E1 → E2） | 手写的照用，不再打 `comboNoWindow` |
+| `cooldown` | 技能冷却（帧）：xlsx 只有声骸的 | —— |
+| `judgments` | 按判定名（组内重名带 `#n`）改 `spawnFrame`、`lifeFrames`、`ticks`、`tickInterval`、`persistsOnCancel`、`multiplier`、`tags`、`target`、`chainRange` | `noLife`、`ticksGuess`、`ticksCapped`、`persistsGuess`、`noDmg`、`chainAdditive` |
+| `accept` | 明确接受、不再提示的 flag（动作级与该动作的判定级都算） | 列出的 |
+
+- 覆盖只改装配结果，不回写生成数据；除 `dropRows` 外都在装配之后应用。
+- 写了块里不存在的动作、行或判定，装配时直接报错，不做模糊匹配（T01-14）。
 
 ---
 
@@ -784,7 +803,7 @@ export const dmgJoin: Record<string, Record<string, string | null>> = {
 |---|---|---|
 | 构建 | 设置区、zod 校验、`--strict` 名单的连接 | 阻断 |
 | 构建 | 其余解析 / 连接 / 交叉校验问题 | 报告 |
-| 装配（`pnpm check:data`） | 启用角色的所有 flag 已被 curated 处理或明确接受 | 列出未处理项；M0–M3 期间只提示，不阻断 |
+| 装配（`pnpm check:data -- --flags <角色…>`，v0.1.3） | 启用角色的所有 flag 已被 curated 处理或明确接受 | 列出未处理项；M0–M3 期间只提示，不阻断 |
 | 场景装配（`resolve`） | 场景用到的动作存在；用到的判定没有 `noDmg` | 报错并指出场景行（总设计 §3.3） |
 
 ---
@@ -903,6 +922,34 @@ export const dmgJoin: Record<string, Record<string, string | null>> = {
 | 珂莱塔 QTE（R3774） | "第71F前不能切人、不响应输入\n第30F获得3点晶质\n第59～65F触发上一角色延奏，…" | `{ noSwitchBefore: 71, noInputBefore: 71 }`（延奏写成区间，不产出 `outroTriggerFrame`，由 TD-05 处理） |
 | 折枝 E2-前置（R1700） | "地面E，第21F前不能闪避、跳跃\n第12F重新索敌，…" | `{ noDodgeBefore: 21 }`（"跳跃"不产出） |
 
+### T01-13 共鸣链版本（v0.1.3，`tests/td01.test.ts`，人造数据）
+
+| 输入（组内判定行） | 期望 |
+|---|---|
+| 大招-C0伤害、大招-C3伤害、大招-C5伤害 | `chainRange` 依次 [0, 2]、[3, 4]、[5, 6]；链数 0 / 2 / 3 / 5 / 6 分别留 C0 / C0 / C3 / C5 / C5 |
+| E3-一日花、E3-C2一日花、E3-C6永生花 | [0, 1]、[2, 6]、[6, 6]；永生花带 `chainAdditive`；6 链时留一日花（C2 版）与永生花 |
+| 重击-1、重击-C6额外伤害（结束帧 120、派生帧 100 只写在 C6 行上） | 0 链时判定只剩重击-1，但结束帧、派生窗口照样取 120 / 100 |
+
+### T01-14 角色模块覆盖（v0.1.3，人造数据）
+
+| 输入 | 期望 |
+|---|---|
+| A3 两行（结束帧 64 / 61），不覆盖 | 两个判定；结束帧取第一个 64，`multiEnd` |
+| `A3: { dropRows: ['A3-无目标/3m外'] }` | 只剩"目标3m内"；派生窗口 [30, 60)、结束帧 61；flag 清空 |
+| QTE `priority: [11 → 42 帧起 8]`、`judgments.QTE.persistsOnCancel = false` | 优先级按覆盖；`priorityChangeGuess` 消失；判定改为不可脱手 |
+| `accept: ['multiEnd']` | 不再提示 |
+| 覆盖写了不存在的动作 A4 / 行"A3-目标3米内" / 判定 QTE-1 | 分别报错"不存在的动作"A4""等 |
+
+### T01-15 M0 队伍的确认结果（v0.1.3，有生成数据时）
+
+| 检查 | 期望 |
+|---|---|
+| 维里奈（3 链）A3 | 一个判定"A3-目标3m内"（第 16 帧、2 次），派生窗口 [30, 60)，无 `multiEnd` |
+| 维里奈 C6 组 | 3 链时没有判定；6 链时有协同减速、协同伤害 |
+| 椿（0 链） | 大招、QTE、E3、延奏都只留 C0 版本 |
+| 散华（6 链） | C6-引爆触发器 在；QTE 优先级 [11, 第 42 帧起 8]，无 `priorityChangeGuess` |
+| 散华 QTE 接大招 | 默认第 56 帧开大（等 QTE 第 55 帧的伤害）；强制第 42 帧、QTE 伤害作废；覆盖之前默认第 61 帧 |
+
 ### T01-10 集成（有 xlsx 时）
 
 对 20260707 版全量构建，断言：块 70、组 1598、数据行 4769、判定行 3666、忽略行 375、直接连上 2434、`dmgNoConfig` 28、能量交叉校验不符 4、削韧与偏谐不符 0、角色 61、武器 121、buff 库 1549 条、golden 1643 条（带 `dmgKey` 1182）、敌人 1402 条；并且全部生成文件通过 TD-02 的 zod schema。换新版 xlsx 时这组数字会变——更新断言前先看构建报告里的差异是否合理。
@@ -918,7 +965,7 @@ export const dmgJoin: Record<string, Record<string, string | null>> = {
 | Q1 | `女-中小`、`女-特殊` 对应声骸表哪种体型行；`女-特殊` 用哪个通用块 | 中小 → 少女（暂定）；特殊 → 报告，不自动选 | TD-08 / 实测 |
 | Q2 | `机兵爱弥斯`、`芙露德莉斯` 两个块没有主表行：是爱弥斯的形态？ | 生成动作文件，不进 `characters.json`；由角色模块决定并入谁 | TD-08 |
 | Q3 | `rawId` 后缀（`#`、`*`、`.n`、字母）的准确语义 | 只记录，不参与逻辑 | — |
-| Q4 | 226 个组有多个结束帧（多为链 / 固有 / 方向 / 有无目标变体，也有顺序子阶段） | 方向变体先只取 -前 行（`dirVariant`，47 组）；其余取第一个 + `multiEnd`（188 组） | 逐角色 curated |
+| Q4 | 226 个组有多个结束帧（多为链 / 固有 / 方向 / 有无目标变体，也有顺序子阶段） | 方向变体先只取 -前 行（`dirVariant`，47 组）；其余取第一个，取值不同时标 `multiEnd`（v0.1.3：156 组）；情形变体用 `dropRows` 挑（维里奈 A3 已处理） | 逐角色 curated |
 | Q5 | 多段优先级缺变化帧（K 列常空） | **部分关闭**：回退链不变；凑不齐的截断成已知的前几段 + `priorityChangeMissing`（97 组），转 TD-04 Q7 | 逐角色 curated |
 | Q6 | 派生持续帧 = -1（63 格）：到动作结束，还是不限时？ | **已关闭**：到动作结束帧（TD-04 §6.1） | TD-04 |
 | Q7 | 资源公式"末项 = 进入动作即得"的约定是否对 434 格都成立 | 按作者说明执行 | 半程切人实测（总设计 §13 协奏项一起做） |
@@ -932,11 +979,13 @@ export const dmgJoin: Record<string, Record<string, string | null>> = {
 | Q15 | 声骸倍率：dmg 只覆盖 27 个判定行，其余靠技能说明手录；个别不一致（梦魇·哀声鸷 dmg `RateLv_5` 273.6% vs 技能说明 412.80%） | 有 dmg 用 dmg，没有用 curated；不一致进报告 | TD-07 / 逐个核对 |
 | Q16 | 白条（Rage）由什么削减、破盾回能何时触发；削韧值只作用于韧性 | 两套量表分开存 | TD-06 |
 | Q17 | `BreakWeaknessRatio`、`WeaknessMastery` 是否就是偏谐效率、谐破增幅的基础值 | 按推定存 | TD-06 |
-| Q18 | 角色武器类型不在 xlsx | curated 手填 | M0 选队时补齐 |
+| Q18 | 角色武器类型不在 xlsx | curated 手填：M0 队伍已补（椿、散华 迅刀，维里奈 音感仪） | 其余角色启用时补 |
 | Q19 | golden 全部用"当前配置"的一套面板计算——确认各角色块确实没有用各自面板 | **已关闭**：确认（TD-03 §1.2，3190 格按 R3 这一套面板与目标全部复算吻合） | TD-03 |
 | Q20 | 武器被动 `CalculationPolicy` 0 / 1 的含义（推定 1 = 按基础值百分比，0 = 直接加值；平值单位待核） | 原样存 | TD-07 |
 | Q21 | dmg `FormulaType ≠ 0` 的 148 行（`Formula1` 等附加项） | **已关闭**：见 4.1 与 TD-03 §3.2（剩余 11 条特殊伤害行转为 TD-03 Q13） | TD-03 |
 | Q22 | 核心资源上限的单位：部分角色（雷主、琳奈、莫宁…）主表上限是动作表回收量的 100 倍 | 原样存 + 报告提示；curated 在角色模块里写确认后的上限 | 逐角色 curated |
+| Q23 | 只在高链出现的判定（`chainAdditive`，84 行）是"额外加一段"还是"替换某一段"（如椿 E3-C6永生花：6 链多出的一次一日花？） | 按额外加一段 | 逐角色 curated（v0.1.3） |
+| Q24 | 角色技能的冷却不在 xlsx | 角色模块 `actionOverrides.cooldown` 手填；没写就不限 | M2 前为 M0 队伍补（TD-09 Q9） |
 
 ---
 
@@ -945,3 +994,4 @@ export const dmgJoin: Record<string, Record<string, string | null>> = {
 - **v0.1（2026-09-26）**：初版。基于 20260707 版 xlsx 全量原型验证：块 / 组 / 行切分规则（含导航标签、模板行、数字行名）、行分类、资源列的公式项拆分与合并区语义、备注提示正则、dmg 连接与三项交叉校验、倍率列选择（角色 `_10` / 声骸 `_5` / 谐度破坏 `_1` / 异常 `_k`）、角色主表与 90 级三维、武器 / 声骸 / 敌人 / buff 库 / golden 的抽取规格、产出文件清单与构建报告格式、装配默认映射、10 组测试用例、22 个待定问题。同时发现并提交总设计勘误：机制块其实是导航标签、白条与韧性是两套量表、散华 E 的伤害类型码应为 4、声骸表只有鸣钟之龟按体型分行、buff 库范围与计数（见总设计 v0.1.1 附录 C）。
 - **v0.1.1（2026-09-26）**：按 TD-03 §12.2 修订。4.1 补 dmg 的 `FormulaType` 分类、`formulaRate`（FormulaParam5）、`cureBase` 取值与 Percent0；4.2 与 13.2 定 RelatedProperty 11 = 共鸣效率；5.4 补按等级数组的下标约定与谐度破坏的 COST 系数（`costFactors`）；5.5 指向 TD-03 的分区映射；10.3 与 12.1：`golden-zones.json` 改为从数组公式拆乘区（TD-03 §10），分区网格不再单独抽取；11.3 补 `costFactors`；待定问题 Q13、Q19、Q21 关闭，Q14 部分关闭。
 - **v0.1.2（2026-09-27）**：按 TD-04 §12.1 修订。新增 3.11 出生帧 `extractBirthFrame`（发生帧公式 P + f(Q) 的 P，445 行）与 `GenRow.birthFrame`；3.8 备注提示的并列写法拆开逐项匹配（补回 23 个切人、5 个输入限制）；13.1 新增方向变体行筛选、`comboFrom`、`inputLocks`、组级检查 `minusOneAfterEnd`，`dilations` 改为逐侧按锚点拆分，`priority` 凑不齐时截断，`castGains` 默认帧改为 0；13.2 新增 `birthFrame`，`hitstop` 改为"膨胀发生为空的各侧、不限类型"，新 flag `ticksCapped`；新增用例 T01-11、T01-12。待定问题 Q6、Q10、Q11 关闭，Q5 部分关闭，Q4 补方向变体处理。
+- **v0.1.3（2026-09-27）**：按 TD-09 §9.3 与 M0 确认修订，并并回 M0 实现时的 5 处决定。0.2 构建脚本改用 Python + openpyxl（`tools/build/`）；3.7 查表公式 `INDEX(dmg!…)` 按普通数字、带常数项的拆成逐段 + 进入动作即得；4.4 别名文件改为 `data/curated/dmg-join.json`，`noDmg` 在构建时打；13.1 `multiEnd` 只在取值不同时标（188 → 156 组）、`comboNoWindow`（7 组）、`kind` 回退加"延奏 → outro"、`dropRows` 先于方向变体筛选、`chainNonHit`；13.2 新增 `chainRange`（共鸣链版本，41 组多版本、84 行 `chainAdditive`）；13.4 定下 `actionOverrides` 的字段与"覆盖即处理"；14 `pnpm check:data -- --flags`；新增用例 T01-13 至 T01-15；Q4、Q18 更新，新增 Q23、Q24。（`positionChange` 列早已在 3.1 列字典里，M0 的实现现已抽取。）

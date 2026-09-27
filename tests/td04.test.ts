@@ -69,7 +69,7 @@ dataDescribe('T04-4 派生窗口越过结束帧、连段中断', () => {
   test('第 55 帧窗口已关：报错"连段中断"，不等待', () => {
     let msg = ''
     try { run(TEAM, [{ act: 0, action: 'A1' }, { at: 55 }, { act: 0, action: 'A2' }]) } catch (e) { msg = (e as Error).message }
-    expect(msg).toBe('A1 的派生窗口已过，连段中断')
+    expect(msg).toContain('A1 的派生窗口已过，连段中断')
   })
 })
 

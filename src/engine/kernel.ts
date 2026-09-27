@@ -4,7 +4,7 @@
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedata'
 import type {
-  ActionRuntime, CharRuntime, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent,
+  ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent, WaitCode,
 } from './types'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
@@ -93,8 +93,9 @@ const survives = (j: JudgmentDef): boolean => j.persistsOnCancel && j.lifeFrames
 /** 局部帧 t 时（tick 开头）判定是否已经出现：出现帧 < t 的事件都已发生 */
 const bornBy = (j: JudgmentDef, t: number): boolean => (j.birthFrame ?? j.spawnFrame!) < t
 
-/** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的） */
-export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef): ActionRuntime {
+/** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的）。
+ *  cmd = 由哪条指令开始（TD-09），写进日志；有冷却的动作从这一刻起算冷却 */
+export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, cmd?: CommandRef): ActionRuntime {
   const c = s.chars[slot]
   if (c.action) cancelAction(s, k, slot, def.id)
   const dropped: string[] = []
@@ -119,7 +120,8 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef):
   c.action = a
   c.last = a
   c.startedThisTick = true
-  log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(dropped.length ? { dropped } : {}) })
+  if (def.cooldown) c.cooldowns[cooldownKey(def)] = def.cooldown
+  log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
   return a
 }
 
@@ -273,18 +275,25 @@ const inWindow = (def: ActionDef, t: number): boolean => def.cancelWindows.some(
 
 export type GateResult =
   | { ok: true; via: 'idle' | 'priority' | 'derive' }
-  | { ok: false; wait: boolean; reason: string }     // wait = false：等不来（连段已断）
+  | { ok: false; wait: true; code: WaitCode; reason: string }
+  | { ok: false; wait: false; code: 'comboBroken'; reason: string }   // 等不来：连段已断
 
+/** 动作层面能不能开始（§6.5）。原因按"连段 → 输入锁 → 优先级 / 派生"的顺序报第一个；
+ *  "本 tick 已开始过动作"放在最后：只有其余都满足时才报它，等待记录里就不会冒出一帧一帧的它（TD-09 §3.2） */
 export function gate(c: CharRuntime, def: ActionDef): GateResult {
-  if (c.startedThisTick) return { ok: false, wait: true, reason: '本 tick 已开始过动作' }
+  const r = gateRules(c, def)
+  return r.ok && c.startedThisTick ? { ok: false, wait: true, code: 'started', reason: '同一角色一个 tick 只能开始一个动作' } : r
+}
+
+function gateRules(c: CharRuntime, def: ActionDef): GateResult {
   if (def.comboFrom?.length) {
     const last = c.last
     if (!last || !def.comboFrom.includes(last.id))
-      return { ok: false, wait: false, reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
+      return { ok: false, wait: false, code: 'comboBroken', reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
     if (!inWindow(last.def, last.localFrame)) {
       return last.def.cancelWindows.some(w => last.localFrame < w.from)
-        ? { ok: false, wait: true, reason: `等 ${last.id} 的派生窗口` }
-        : { ok: false, wait: false, reason: `${last.id} 的派生窗口已过，连段中断` }
+        ? { ok: false, wait: true, code: 'combo', reason: `等 ${last.id} 的派生窗口` }
+        : { ok: false, wait: false, code: 'comboBroken', reason: `${last.id} 的派生窗口已过，连段中断` }
     }
   }
   const a = c.action
@@ -292,14 +301,19 @@ export function gate(c: CharRuntime, def: ActionDef): GateResult {
   const t = a.localFrame
   for (const l of a.def.inputLocks) {
     if (t < l.until && (l.kinds === 'all' || l.kinds.includes(def.kind)))
-      return { ok: false, wait: true, reason: `${a.id} 第 ${l.until} 帧前不响应${l.kinds === 'all' ? '输入' : ` ${l.kinds.join(' / ')}`}` }
+      return { ok: false, wait: true, code: 'inputLock', reason: `${a.id} 第 ${l.until} 帧前不响应${l.kinds === 'all' ? '输入' : ` ${l.kinds.join(' / ')}`}` }
   }
   const p = priorityAt(a.def, t)
   const P = priorityAt(def, 0)
   if (P > p) return { ok: true, via: 'priority' }
   if (P === p && inWindow(a.def, t)) return { ok: true, via: 'derive' }
-  return { ok: false, wait: true, reason: P < p ? `优先级 ${P} 低于 ${a.id} 当前的 ${p}` : `等 ${a.id} 的派生窗口` }
+  return P < p
+    ? { ok: false, wait: true, code: 'priority', reason: `优先级 ${P} 低于 ${a.id} 当前的 ${p}` }
+    : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
 }
+
+/** 冷却按什么记：声骸技能共用一个冷却（'echo'），其余按动作 ID */
+export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.id)
 
 /** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
  *  角色空闲时恒为就绪：此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2），默认调度不为它等待 */
@@ -330,7 +344,8 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   advanceActions(s, k, rates)                                   // P3
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
-  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器（buff、技能 CD 同样按战斗速率，TD-06 / TD-07）
+  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却按战斗速率（buff 在 TD-07）
+  for (const c of s.chars) for (const key of Object.keys(c.cooldowns)) c.cooldowns[key] = Math.max(0, c.cooldowns[key]! - rates.battle)
   s.battleFrames += rates.battle                                // P7
   s.frame += 1
   return true

@@ -19,6 +19,15 @@ export function assembleBlock(file: GenActionFile, overrides: Record<ActionId, A
     const def = assembleGroup(file, g, ids, ov?.dropRows)
     out[g.id] = ov ? applyOverride(def, ov) : def
   }
+  // 前置动作一个派生窗口都没有时，连段永远接不上：不设连段前置，打 flag 交给 curated（TD-09 §8 全量检查发现 7 组）
+  for (const def of Object.values(out)) {
+    if (overrides[def.id]?.comboFrom) continue                        // 手写的连段前置照用
+    const pre = def.comboFrom?.map(id => out[id]).filter(d => d !== undefined) ?? []
+    if (pre.length > 0 && pre.every(p => p.cancelWindows.length === 0)) {
+      delete def.comboFrom
+      def.flags = [...def.flags, 'comboNoWindow']
+    }
+  }
   return out
 }
 
@@ -224,6 +233,8 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.cancelWindows !== undefined) out.cancelWindows = ov.cancelWindows.map(w => ({ ...w, row: 0 }))   // row 0 = 手写
   if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
   if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
+  if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
+  if (ov.cooldown !== undefined) out.cooldown = ov.cooldown
   const jov = ov.judgments ?? {}
   for (const n of Object.keys(jov))
     if (!def.judgments.some(j => j.name === n)) throw new Error(`${def.owner} ${def.id} 的 judgments 覆盖写了不存在的判定"${n}"`)
@@ -243,6 +254,7 @@ function kindOf(id: string): ActionKind {
   if (id.includes('闪避反击')) return 'normal'
   if (id.includes('闪避')) return 'dodge'
   if (id.startsWith('QTE')) return 'intro'
+  if (id.startsWith('延奏')) return 'outro'
   if (id.startsWith('大招')) return 'liberation'
   if (id.startsWith('E')) return 'skill'
   if (id.includes('重击')) return 'heavy'

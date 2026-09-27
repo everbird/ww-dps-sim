@@ -1,9 +1,9 @@
-# 鸣潮 DPS 引擎 · TD-04 仿真内核规格 v0.1
+# 鸣潮 DPS 引擎 · TD-04 仿真内核规格 v0.1.1
 
-> **状态**：草案 v0.1（2026-09-27）
+> **状态**：草案 v0.1.1（2026-09-27）
 > **依据**：《技术总体设计 v0.1.2》（下称"总设计"）§4 T1 / T2 / T3 / T6 / T7 / T13 / T14、§5.3、§6.1–§6.5、附录 A-1 至 A-3；《TD-01 数据字典与抽取规格 v0.1.1》（下称"TD-01"）§3.1、§3.8、§13、Q4–Q6、Q10、Q11；《TD-02 类型与 Schema v0.1.1》（下称"TD-02"）§4、§7；xlsx「附页1」里数据作者对各列的说明（下称"作者说明"）
 > **下游**：TD-05（切人、变奏 / 延奏接在本文的 `startAction` 与 `outroTrigger` 上）、TD-06（资源与敌人量表接在 P4 / P5）、TD-07（buff 计时按战斗时钟，触发在结算之后）、TD-09（指令语义：调用本文的 `gate` / `settled`，定"强制取消"的写法、等待与超时）
-> **验证**：TypeScript 原型内核（§9，约 340 行）跑通 14 组 35 个用例（§10）；70 个块的 1598 个动作组各"单独出招""连按两次"跑一遍，3196 次仿真全部正常结束（平均每次 0.25 ms），单独出招时判定生成数、结算次数与数据相符；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与例子（§10.4）
+> **验证**：TypeScript 原型内核（§9，约 340 行）跑通 14 组 35 个用例（§10）；70 个块的 1598 个动作组各"单独出招""连按两次"跑一遍，3196 次仿真全部正常结束（平均每次 0.25 ms），单独出招时判定生成数、结算次数与数据相符；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与例子（§10.4）。v0.1.1：测试台改用 TD-09 的正式调度器后，35 个用例照旧通过
 
 ---
 
@@ -339,7 +339,7 @@ A2 不是"任何时候按普攻都能出"的动作，它只能接在 A1 后面�
 
 没有动作或已到结束帧时恒为就绪。角色空闲时，此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2）——这是游戏规则，默认调度不为它等待（如风主 A3 结束后接闪避，A3-2 结束帧之后的 11 段不再结算，Q13）。
 
-**默认调度**（TD-09 定稿）：同一角色的下一条出招指令，除了 `gate` 通过，还要等到当前动作就绪（或自然结束）；写成强制形式时跳过就绪判断，按游戏规则的最早时刻打断。于是：
+**默认调度**（TD-09 §3.4 定稿）：同一角色的下一条出招指令，除了 `gate` 通过，还要等到当前动作就绪（或自然结束）；动作名后写 `!`（如 `散华 A1 E!`）时跳过就绪判断，按游戏规则的最早时刻打断。于是：
 
 | 轴 | 默认 | 强制 |
 |---|---|---|
@@ -354,18 +354,24 @@ A2 不是"任何时候按普攻都能出"的动作，它只能接在 A1 后面�
 ```ts
 type GateResult =
   | { ok: true; via: 'idle' | 'priority' | 'derive' }
-  | { ok: false; wait: boolean; reason: string }   // wait = false：等不来
+  | { ok: false; wait: true; code: WaitCode; reason: string }
+  | { ok: false; wait: false; code: 'comboBroken'; reason: string }   // 等不来：连段已断
 ```
 
-| 原因 | wait | 例 |
-|---|---|---|
-| 本 tick 已开始过动作 | true | 同一角色一 tick 只开始一个动作 |
-| 等前置动作的派生窗口 | true | A1 刚开始就写 A2 |
-| 前置动作的派生窗口已过 / 上一个动作不是前置 | **false** | "A1 的派生窗口已过，连段中断" |
-| 输入锁 | true | "闪避反击 第 23 帧前不响应 dodge" |
-| 优先级不够 / 等派生窗口 | true | "优先级 2 低于 E 当前的 4" |
+按下表的顺序检查，报第一个不满足的（v0.1.1 起带原因代码 `code`，TD-09 按它分段记录等待）：
 
-冷却、能量、角色是否在前台、核心资源条件不在 `gate` 里，由 TD-09（调度器）、TD-06（资源）、角色钩子 `canStart` 判断。
+| 原因 | wait | code | 例 |
+|---|---|---|---|
+| 等前置动作的派生窗口 | true | `combo` | A1 刚开始就写 A2 |
+| 前置动作的派生窗口已过 / 上一个动作不是前置 | **false** | `comboBroken` | "A1 的派生窗口已过，连段中断" |
+| 输入锁 | true | `inputLock` | "闪避反击 第 23 帧前不响应 dodge" |
+| 优先级不够 | true | `priority` | "优先级 2 低于 E 当前的 4" |
+| 优先级相等、不在派生窗口 | true | `derive` | "等 E 的派生窗口" |
+| 本 tick 已开始过动作 | true | `started` | 同一角色一 tick 只开始一个动作 |
+
+"本 tick 已开始过动作"放在最后（v0.1.1 调整）：只有其余都满足时才报它，否则刚出招的那一帧会先报一帧它、掩盖真正的原因（TD-09 §3.2）。
+
+冷却、能量、角色是否在前台、核心资源条件不在 `gate` 里，由 TD-09（调度器）、TD-06（资源）、角色钩子 `canStart` 判断。技能冷却在 v0.1.1 由内核计时：`startAction` 从动作开始时起算（声骸技能共用键 `echo`，见 `cooldownKey`），P6 按战斗速率递减；判断在 TD-09。
 
 ---
 
@@ -377,7 +383,7 @@ type GateResult =
 |---|---|---|
 | ① | 生成数据每行新增 `birthFrame`（§5.4），装配时原样带入 `JudgmentDef.birthFrame` | 445 行 |
 | ② | 膨胀按侧拆锚点：膨胀发生有值 → `ActionDef.dilations`（`anchor: 'action'`）；为空且在判定行上 → `JudgmentDef.hitstop`（`anchor: 'hit'`，不再限定攻击顿帧类）；为空且不在判定行上 → 局部帧 1 + `dilationStartGuess`；系数或持续为空的侧跳过 + `dilationIncomplete` | 2300 个判定有命中膨胀；动作级 475 条；61 组（94 个窗口）/ 11 组（20 个窗口） |
-| ③ | 新增 `comboFrom`：`A{n}` ← `A{n−1}`（同前缀、块内存在）；`闪避反击` ← `极限闪避` | 296 组 / 14 组 |
+| ③ | 新增 `comboFrom`：`A{n}` ← `A{n−1}`（同前缀、块内存在）；`闪避反击` ← `极限闪避`。v0.1.1：前置动作一个派生窗口都没有时不设，flag `comboNoWindow`（TD-09 §8） | 296 组 / 14 组；不设的 7 组 |
 | ④ | 新增 `inputLocks`：备注"第 nF 前不响应输入"→ 全部；"第 nF 前不能闪避"→ `dodge` | 65 组 / 106 组 |
 | ⑤ | 方向变体：组内同时有 -前 / -后 行时只取 -前，flag `dirVariant` | 47 组 |
 | ⑥ | 优先级变化帧凑不齐时截断成已知的前几段，flag `priorityChangeMissing`；没有优先级的给 `[{ fromFrame: 0, value: 0 }]`，flag `noPriority` | 97 组 / 61 组 |
@@ -387,30 +393,65 @@ type GateResult =
 
 其余规则（结束帧、派生窗口、优先级回退链、次数与间隔、可脱手默认值）不变。装配后的 flag 分布（组数）：`priorityChangeGuess` 238、`multiEnd` 188、`noEnd` 167、`priorityChangeMissing` 97、`noPriority` 61、`dilationStartGuess` 61、`dirVariant` 47、`minusOneAfterEnd` 22、`dilationIncomplete` 11；判定级 `persistsGuess` 76、`ticksGuess` 61、`ticksCapped` 40、`noLife` 28。
 
-原型（只装配内核用到的字段，倍率、元素、资源给占位值；正式实现按 TD-01 §13 补齐）：
+v0.1.1 注：`multiEnd` 后来改为只在几行的结束帧取值不同时才标（188 → 156 组，TD-01 v0.1.3）。
+
+原型（只装配内核用到的字段，倍率、元素、资源给占位值；正式实现按 TD-01 §13 补齐）。v0.1.1 的文件里另有角色模块覆盖、按共鸣链数挑判定（TD-01 v0.1.3 §13.2、§13.4）与 `comboNoWindow`，与本文无关的部分可以略过：
 
 ```ts
 // src/data/assemble-action.ts —— 生成数据的动作组 → ActionDef（TD-01 §13.1 / §13.2，按 TD-04 §7 修订）
 // 原型只装配内核用到的时间字段；倍率、元素、资源、castGains 在正式实现里按 TD-01 §13 补齐（这里给占位值）。
-import type { ActionKind, DilationSide } from './common'
+// 另有两步：角色模块的 actionOverrides（TD-01 §13.4），按共鸣链数挑判定 forChain（总设计 §3.3 第 4 步）。
+import type { ActionId, ActionKind, DilationSide } from './common'
+import type { ActionOverride } from './define'
 import type { GenActionFile, GenGroup, GenRow } from './generated.schema'
-import type { ActionDef, CancelWindow, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep } from './gamedata'
+import type { ActionDef, CancelWindow, ChainRange, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep } from './gamedata'
 
 const SIDES: DilationSide[] = ['self', 'enemy', 'ally']
 
-export function assembleBlock(file: GenActionFile): Record<string, ActionDef> {
+/** 装配一个块。overrides = 角色模块的 actionOverrides；写了块里不存在的动作 / 行 / 判定直接报错 */
+export function assembleBlock(file: GenActionFile, overrides: Record<ActionId, ActionOverride> = {}): Record<string, ActionDef> {
   const ids = new Set(file.groups.map(g => g.id))
+  for (const id of Object.keys(overrides))
+    if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
   const out: Record<string, ActionDef> = {}
-  for (const g of file.groups) out[g.id] = assembleGroup(file, g, ids)
+  for (const g of file.groups) {
+    const ov = overrides[g.id]
+    const def = assembleGroup(file, g, ids, ov?.dropRows)
+    out[g.id] = ov ? applyOverride(def, ov) : def
+  }
+  // 前置动作一个派生窗口都没有时，连段永远接不上：不设连段前置，打 flag 交给 curated（TD-09 §8 全量检查发现 7 组）
+  for (const def of Object.values(out)) {
+    if (overrides[def.id]?.comboFrom) continue                        // 手写的连段前置照用
+    const pre = def.comboFrom?.map(id => out[id]).filter(d => d !== undefined) ?? []
+    if (pre.length > 0 && pre.every(p => p.cancelWindows.length === 0)) {
+      delete def.comboFrom
+      def.flags = [...def.flags, 'comboNoWindow']
+    }
+  }
   return out
 }
 
-function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): ActionDef {
+/** 按共鸣链数挑判定（总设计 §3.3 第 4 步）：chainRange 不含该链数的判定去掉；动作的时间字段不受影响 */
+export function forChain(actions: Record<ActionId, ActionDef>, chain: number): Record<ActionId, ActionDef> {
+  const out: Record<ActionId, ActionDef> = {}
+  for (const [id, a] of Object.entries(actions)) {
+    const keep = a.judgments.filter(j => !j.chainRange || (chain >= j.chainRange.min && chain <= j.chainRange.max))
+    out[id] = keep.length === a.judgments.length ? a : { ...a, judgments: keep }
+  }
+  return out
+}
+
+function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropRows: string[] = []): ActionDef {
   const flags = new Set<string>()                           // 组级 flag，同名只记一次
+  for (const n of dropRows)
+    if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 dropRows 写了不存在的行"${n}"`)
+  const kept = g.rows.filter(r => !dropRows.includes(r.name))
   // 方向变体（-前 / -后）是二选一：默认只取 -前 行（TD-04 §7 ⑤）
-  const hasFront = g.rows.some(r => r.nameTags.dir === '前')
-  const rows = g.rows.filter(r => !(hasFront && r.nameTags.dir === '后'))
-  if (rows.length < g.rows.length) flags.add('dirVariant')
+  const hasFront = kept.some(r => r.nameTags.dir === '前')
+  const rows = kept.filter(r => !(hasFront && r.nameTags.dir === '后'))
+  if (rows.length < kept.length) flags.add('dirVariant')
+  // 带链标记的非判定行（膨胀 / 资源 / 标记）暂不按链筛选，交给 TD-06 / TD-08
+  if (rows.some(r => r.kind !== 'hit' && r.nameTags.chain !== undefined)) flags.add('chainNonHit')
 
   // 结束帧：第一个有值的行；都没有则 max(发生帧 + 持续帧, 派生帧)
   let endFrame = rows.find(r => r.endFrame !== null)?.endFrame ?? null
@@ -422,7 +463,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
     endFrame = Math.max(0, ...cands)
     flags.add('noEnd')
   }
-  if (rows.filter(r => r.endFrame !== null).length > 1) flags.add('multiEnd')
+  if (new Set(rows.map(r => r.endFrame).filter(e => e !== null)).size > 1) flags.add('multiEnd')   // 几行的结束帧不一样才算
 
   const cancelWindows: CancelWindow[] = rows.filter(r => r.deriveFrame !== null).map(r => ({
     from: r.deriveFrame!,
@@ -475,7 +516,9 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
   }
 
   const names = new Map<string, number>()
-  const judgments: JudgmentDef[] = rows.filter(r => r.kind === 'hit').map(r => {
+  const hitRows = rows.filter(r => r.kind === 'hit')
+  const chains = chainRanges(hitRows)
+  const judgments: JudgmentDef[] = hitRows.map(r => {
     const n = (names.get(r.name) ?? 0) + 1
     names.set(r.name, n)
     const life = r.lifeFrames ?? 1
@@ -486,6 +529,8 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
     if (r.hints.maxTicks === undefined && iv !== null) jf.push('ticksGuess')
     if (iv !== null && life > 0 && (ticks - 1) * iv >= life) jf.push('ticksCapped')   // 寿命内放不下全部次数（TD-04 §5.2）
     if (r.persists === null && life !== -1) jf.push('persistsGuess')
+    const ch = chains.get(r)
+    if (ch?.additive) jf.push('chainAdditive')
     return {
       name: n > 1 ? `${r.name}#${n}` : r.name,
       row: r.row,
@@ -500,6 +545,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
       gains: { energy: 0, concerto: 0, core: [0, 0, 0] },
       gauges: { toughness: 0, tunability: 0 },
       hitstop: hitstopOf.get(r) ?? null,
+      ...(ch ? { chainRange: ch.range } : {}),
       flags: jf,
     }
   })
@@ -542,11 +588,73 @@ function assemblePriority(rows: GenRow[], flags: Set<string>): PriorityStep[] {
   return steps
 }
 
+const CHAIN_TOKEN = /(?<![A-Za-z])C\d(?!\d)/                // 与构建脚本 name_tags 的 chain 规则相同（TD-01 §3.9）
+
+/** 共鸣链版本（TD-01 §13.2）：行名去掉 C\d 后相同的判定行，是同一判定在不同链数下的版本（无标记算 0），
+ *  链数 c 取"标记 ≤ c"里最大的那个版本——椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]。
+ *  只有一种标记 n > 0、没有别的版本 → 从 n 链起额外出现（chainAdditive，要人确认不是替换某个判定）。 */
+function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive: boolean }> {
+  const families = new Map<string, GenRow[]>()
+  for (const r of hits) {
+    const k = r.name.replace(CHAIN_TOKEN, '')
+    families.set(k, [...(families.get(k) ?? []), r])
+  }
+  const out = new Map<GenRow, { range: ChainRange; additive: boolean }>()
+  for (const rs of families.values()) {
+    if (!rs.some(r => r.nameTags.chain !== undefined)) continue
+    const tags = [...new Set(rs.map(r => r.nameTags.chain ?? 0))].sort((a, b) => a - b)
+    if (tags.length === 1 && tags[0] === 0) continue                 // 只有 C0 版本 = 任何链数
+    for (const r of rs) {
+      const t = r.nameTags.chain ?? 0
+      const next = tags[tags.indexOf(t) + 1]
+      out.set(r, { range: { min: t, max: next === undefined ? 6 : next - 1 }, additive: tags.length === 1 })
+    }
+  }
+  return out
+}
+
+/** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
+const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
+  kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
+  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame'],
+}
+const J_HANDLED: Record<string, string[]> = {
+  lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
+  chainRange: ['chainAdditive'],
+}
+
+function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
+  const accepted = new Set(ov.accept ?? [])
+  for (const [field, fl] of Object.entries(HANDLED)) if (ov[field as keyof ActionOverride] !== undefined) fl.forEach(f => accepted.add(f))
+  const out: ActionDef = { ...def }
+  if (ov.kind !== undefined) out.kind = ov.kind
+  if (ov.endFrame !== undefined) out.endFrame = ov.endFrame
+  if (ov.priority !== undefined) out.priority = ov.priority
+  if (ov.cancelWindows !== undefined) out.cancelWindows = ov.cancelWindows.map(w => ({ ...w, row: 0 }))   // row 0 = 手写
+  if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
+  if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
+  if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
+  if (ov.cooldown !== undefined) out.cooldown = ov.cooldown
+  const jov = ov.judgments ?? {}
+  for (const n of Object.keys(jov))
+    if (!def.judgments.some(j => j.name === n)) throw new Error(`${def.owner} ${def.id} 的 judgments 覆盖写了不存在的判定"${n}"`)
+  out.judgments = def.judgments.map(j => {
+    const o = jov[j.name]
+    const handled = new Set(accepted)
+    for (const k of Object.keys(o ?? {})) (J_HANDLED[k] ?? []).forEach(f => handled.add(f))
+    return { ...j, ...o, flags: j.flags.filter(f => !handled.has(f)) }
+  })
+  out.judgments.sort((a, b) => (a.spawnFrame ?? Infinity) - (b.spawnFrame ?? Infinity))
+  out.flags = def.flags.filter(f => !accepted.has(f))
+  return out
+}
+
 /** 原型用组名推 kind；正式实现先看 dmg 的 Damage.Type（TD-01 §13.1） */
 function kindOf(id: string): ActionKind {
   if (id.includes('闪避反击')) return 'normal'
   if (id.includes('闪避')) return 'dodge'
   if (id.startsWith('QTE')) return 'intro'
+  if (id.startsWith('延奏')) return 'outro'
   if (id.startsWith('大招')) return 'liberation'
   if (id.startsWith('E')) return 'skill'
   if (id.includes('重击')) return 'heavy'
@@ -652,7 +760,7 @@ export interface DilationRuntime {
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedata'
 import type {
-  ActionRuntime, CharRuntime, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent,
+  ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent, WaitCode,
 } from './types'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
@@ -741,8 +849,9 @@ const survives = (j: JudgmentDef): boolean => j.persistsOnCancel && j.lifeFrames
 /** 局部帧 t 时（tick 开头）判定是否已经出现：出现帧 < t 的事件都已发生 */
 const bornBy = (j: JudgmentDef, t: number): boolean => (j.birthFrame ?? j.spawnFrame!) < t
 
-/** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的） */
-export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef): ActionRuntime {
+/** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的）。
+ *  cmd = 由哪条指令开始（TD-09），写进日志；有冷却的动作从这一刻起算冷却 */
+export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, cmd?: CommandRef): ActionRuntime {
   const c = s.chars[slot]
   if (c.action) cancelAction(s, k, slot, def.id)
   const dropped: string[] = []
@@ -767,7 +876,8 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef):
   c.action = a
   c.last = a
   c.startedThisTick = true
-  log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(dropped.length ? { dropped } : {}) })
+  if (def.cooldown) c.cooldowns[cooldownKey(def)] = def.cooldown
+  log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
   return a
 }
 
@@ -921,18 +1031,25 @@ const inWindow = (def: ActionDef, t: number): boolean => def.cancelWindows.some(
 
 export type GateResult =
   | { ok: true; via: 'idle' | 'priority' | 'derive' }
-  | { ok: false; wait: boolean; reason: string }     // wait = false：等不来（连段已断）
+  | { ok: false; wait: true; code: WaitCode; reason: string }
+  | { ok: false; wait: false; code: 'comboBroken'; reason: string }   // 等不来：连段已断
 
+/** 动作层面能不能开始（§6.5）。原因按"连段 → 输入锁 → 优先级 / 派生"的顺序报第一个；
+ *  "本 tick 已开始过动作"放在最后：只有其余都满足时才报它，等待记录里就不会冒出一帧一帧的它（TD-09 §3.2） */
 export function gate(c: CharRuntime, def: ActionDef): GateResult {
-  if (c.startedThisTick) return { ok: false, wait: true, reason: '本 tick 已开始过动作' }
+  const r = gateRules(c, def)
+  return r.ok && c.startedThisTick ? { ok: false, wait: true, code: 'started', reason: '同一角色一个 tick 只能开始一个动作' } : r
+}
+
+function gateRules(c: CharRuntime, def: ActionDef): GateResult {
   if (def.comboFrom?.length) {
     const last = c.last
     if (!last || !def.comboFrom.includes(last.id))
-      return { ok: false, wait: false, reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
+      return { ok: false, wait: false, code: 'comboBroken', reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
     if (!inWindow(last.def, last.localFrame)) {
       return last.def.cancelWindows.some(w => last.localFrame < w.from)
-        ? { ok: false, wait: true, reason: `等 ${last.id} 的派生窗口` }
-        : { ok: false, wait: false, reason: `${last.id} 的派生窗口已过，连段中断` }
+        ? { ok: false, wait: true, code: 'combo', reason: `等 ${last.id} 的派生窗口` }
+        : { ok: false, wait: false, code: 'comboBroken', reason: `${last.id} 的派生窗口已过，连段中断` }
     }
   }
   const a = c.action
@@ -940,14 +1057,19 @@ export function gate(c: CharRuntime, def: ActionDef): GateResult {
   const t = a.localFrame
   for (const l of a.def.inputLocks) {
     if (t < l.until && (l.kinds === 'all' || l.kinds.includes(def.kind)))
-      return { ok: false, wait: true, reason: `${a.id} 第 ${l.until} 帧前不响应${l.kinds === 'all' ? '输入' : ` ${l.kinds.join(' / ')}`}` }
+      return { ok: false, wait: true, code: 'inputLock', reason: `${a.id} 第 ${l.until} 帧前不响应${l.kinds === 'all' ? '输入' : ` ${l.kinds.join(' / ')}`}` }
   }
   const p = priorityAt(a.def, t)
   const P = priorityAt(def, 0)
   if (P > p) return { ok: true, via: 'priority' }
   if (P === p && inWindow(a.def, t)) return { ok: true, via: 'derive' }
-  return { ok: false, wait: true, reason: P < p ? `优先级 ${P} 低于 ${a.id} 当前的 ${p}` : `等 ${a.id} 的派生窗口` }
+  return P < p
+    ? { ok: false, wait: true, code: 'priority', reason: `优先级 ${P} 低于 ${a.id} 当前的 ${p}` }
+    : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
 }
+
+/** 冷却按什么记：声骸技能共用一个冷却（'echo'），其余按动作 ID */
+export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.id)
 
 /** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
  *  角色空闲时恒为就绪：此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2），默认调度不为它等待 */
@@ -978,7 +1100,8 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   advanceActions(s, k, rates)                                   // P3
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
-  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器（buff、技能 CD 同样按战斗速率，TD-06 / TD-07）
+  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却按战斗速率（buff 在 TD-07）
+  for (const c of s.chars) for (const key of Object.keys(c.cooldowns)) c.cooldowns[key] = Math.max(0, c.cooldowns[key]! - rates.battle)
   s.battleFrames += rates.battle                                // P7
   s.frame += 1
   return true
@@ -991,28 +1114,33 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
 
 ### 10.1 测试台
 
-`tests/kernel-harness.ts`：最小状态、最小调度器（出招默认等就绪、`force` 跳过；`switch`；测试专用的 `at: 帧`）、真实数据装配与人造动作构造器。它不是 TD-09 的调度器，只实现本文用例需要的部分。
+`tests/helpers/kernel-harness.ts`：最小状态、真实数据装配与人造动作构造器。v0.1.1 起 `run()` 用 TD-09 的正式调度器执行指令（出招默认等就绪、`force` 跳过；`switch`；`wait`；测试专用的 `at: 帧`），原来那个只够本文用的最小调度器删掉了。
 
 ```ts
-// tests/kernel-harness.ts —— TD-04 用例的测试台：最小状态、最小调度器、动作构造器
-// 调度器只实现 TD-04 需要的三种指令（正式语义见 TD-09）：act（默认等"取消不丢东西"，force 跳过）、switch、at（测试专用：等到某世界帧）。
-import { readFileSync } from 'node:fs'
-import type { ActionId, Slot } from '../src/data/common'
-import { assembleBlock } from '../src/data/assemble-action'
-import { DEFAULT_RULES } from '../src/data/gamedata'
-import type { ActionDef, DilationDef, JudgmentDef } from '../src/data/gamedata'
-import { GenActionFileSchema } from '../src/data/generated.schema'
-import { gate, log, settled, startAction, tick } from '../src/engine/kernel'
-import type { Kernel } from '../src/engine/kernel'
-import type { CharRuntime, SimState } from '../src/engine/types'
+// tests/kernel-harness.ts —— TD-04 / TD-09 用例的测试台：最小状态、指令序列、动作构造器
+// 指令直接写成已解析的形式（槽位 + 动作 ID），交给正式的调度器（src/engine/scheduler.ts，TD-09）执行；
+// 另有测试专用的 at（等到某世界帧），排轴语法写不出来。
+import { existsSync, readFileSync } from 'node:fs'
+import type { ActionId, Slot } from '../../src/data/common'
+import { assembleBlock, forChain } from '../../src/data/assemble-action'
+import type { CharacterModuleDef } from '../../src/data/define'
+import { DEFAULT_RULES } from '../../src/data/gamedata'
+import type { ActionDef, DilationDef, JudgmentDef } from '../../src/data/gamedata'
+import { GenActionFileSchema, type GenActionFile } from '../../src/data/generated.schema'
+import type { Command } from '../../src/data/scenario.schema'
+import { describe } from 'vitest'
+import type { Kernel } from '../../src/engine/kernel'
+import { createScheduler, newQueue, runLoop, ScheduleError, type CompileMember, type SchedulerOptions } from '../../src/engine/scheduler'
+import type { CharRuntime, SimEvent, SimState } from '../../src/engine/types'
 
 export type Cmd =
-  | { act: Slot; action: ActionId; force?: boolean }
+  | { act: Slot; action: ActionId; force?: boolean; delay?: number }
   | { switch: Slot }
+  | { wait: number }
   | { at: number }
 
 export interface Hit { f: number; char: string; judgment: string; tick: number }
-export interface RunResult { s: SimState; hits: Hit[]; outros: { f: number; char: string }[]; frames: number }
+export interface RunResult { s: SimState; hits: Hit[]; outros: { f: number; char: string }[]; frames: number; error?: ScheduleError }
 
 const char = (slot: Slot, name: string): CharRuntime => ({
   slot, name, action: null, last: null, startedThisTick: false, energy: 0, concerto: 0, core: [0, 0, 0, 0, 0], cooldowns: {}, flags: {},
@@ -1024,15 +1152,35 @@ export function newState(names: [string, string, string], onField: Slot = 0): Si
     chars: [char(0, names[0]), char(1, names[1]), char(2, names[2])],
     judgments: [], tails: [], buffs: [], dilations: [], log: [], nextId: 1,
     enemy: {} as SimState['enemy'],                  // 内核不读敌人状态（TD-06）
-    queue: { commands: [], next: 0, waitingSince: null, loop: 0 },
+    queue: newQueue([]),
   }
 }
 
-/** 跑一条指令序列。team[slot] 是该槽位可用的动作表 */
-export function run(
-  team: Record<ActionId, ActionDef>[], cmds: Cmd[],
-  opts: { maxFrames?: number; names?: [string, string, string]; onField?: Slot } = {},
-): RunResult {
+/** Cmd → Command：第 i 条（从 1 起），每条一个动作 */
+export function toCommands(team: Record<ActionId, ActionDef>[], cmds: Cmd[]): Command[] {
+  return cmds.map((c, i): Command => {
+    const ref = { line: i + 1, item: 1 }
+    if ('at' in c) return { kind: 'at', ...ref, frame: c.at }
+    if ('wait' in c) return { kind: 'wait', ...ref, frames: c.wait }
+    if ('switch' in c) return { kind: 'switch', ...ref, to: c.switch }
+    if (!team[c.act]?.[c.action]) throw new Error(`没有动作 ${c.action}`)
+    return { kind: 'act', ...ref, slot: c.act, action: c.action, delay: c.delay ?? 0, force: c.force ?? false }
+  })
+}
+
+export interface RunOptions extends Partial<SchedulerOptions> {
+  maxFrames?: number; names?: [string, string, string]; onField?: Slot; repeat?: number
+}
+
+/** 跑一条指令序列（team[slot] 是该槽位可用的动作表）；也可以直接给编译好的 Command[]。调度报错直接抛出 */
+export function run(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Command[], opts: RunOptions = {}): RunResult {
+  const r = tryRun(team, cmds, opts)
+  if (r.error) throw r.error
+  return r
+}
+
+/** 同 run，但调度报错不抛出，而是连同报错前的状态与日志一起返回（TD-09 §3.3：日志保留到出错为止） */
+export function tryRun(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Command[], opts: RunOptions = {}): RunResult {
   const s = newState(opts.names ?? ['甲', '乙', '丙'], opts.onField ?? 0)
   const hits: Hit[] = []
   const outros: { f: number; char: string }[] = []
@@ -1043,49 +1191,59 @@ export function run(
       outroTrigger: (st, slot) => { outros.push({ f: st.frame, char: st.chars[slot].name }) },
     },
   }
-  const queue = [...cmds]
-  const schedule = (st: SimState): boolean => {
-    while (queue.length > 0) {
-      const c = queue[0]!
-      if ('at' in c) { if (st.frame < c.at) break; queue.shift(); continue }
-      if ('switch' in c) {
-        const cur = st.chars[st.onField].action
-        if (st.switchCd > 0 || c.switch === st.onField || (cur && cur.localFrame < (cur.def.switchLockUntil ?? 0))) break
-        log(st, { type: 'switch', from: st.chars[st.onField].name, to: st.chars[c.switch].name, intro: false })
-        st.onField = c.switch
-        st.switchCd = k.rules.switchCooldown
-        queue.shift()
-        continue
-      }
-      if (c.act !== st.onField) throw new Error(`${st.chars[c.act].name} 不在前台`)
-      const def = team[c.act]![c.action]
-      if (!def) throw new Error(`没有动作 ${c.action}`)
-      const g = gate(st.chars[c.act], def)
-      if (!g.ok) { if (!g.wait) throw new Error(g.reason); break }
-      if (!c.force && !settled(st, c.act)) break
-      startAction(st, k, c.act, def)
-      queue.shift()
-    }
-    return queue.length > 0
+  const commands = cmds.length > 0 && 'kind' in cmds[0]! ? (cmds as Command[]) : toCommands(team, cmds as Cmd[])
+  s.queue = newQueue(commands, opts.repeat ?? 1)
+  const schedule = createScheduler(k, team, { maxWait: Infinity, ...opts })   // TD-04 的用例不设等待上限
+  try {
+    runLoop(s, k, schedule, opts.maxFrames ?? 3000)
+  } catch (e) {
+    if (e instanceof ScheduleError) return { s, hits, outros, frames: s.frame, error: e }
+    throw e
   }
-  const max = opts.maxFrames ?? 3000
-  while (s.frame < max && tick(s, k, schedule)) { /* 逐帧推进 */ }
-  if (s.frame >= max) throw new Error(`超过 ${max} 帧仍未结束`)
   return { s, hits, outros, frames: s.frame }
 }
+
+/** 取某类事件（按 type 收窄） */
+export const eventsOf = <T extends SimEvent['type']>(r: RunResult, type: T): Extract<SimEvent, { type: T }>[] =>
+  r.s.log.filter((e): e is Extract<SimEvent, { type: T }> => e.type === type)
 
 // ---------------------------------------------------------------------------
 // 动作构造：真实数据（从生成的动作文件装配）与人造动作
 
+/** 生成数据是否在本地（公开仓库不带 data/generated，需先 pnpm build:data）；没有时依赖真实数据的用例跳过 */
+export const hasData = existsSync(new URL('../../data/generated/actions/散华.json', import.meta.url))
+/** 依赖生成数据的用例组：没有数据时整组记为跳过，且不执行组内代码 */
+export function dataDescribe(name: string, fn: () => void): void {
+  if (hasData) describe(name, fn)
+  else describe.skip(`${name}（缺 data/generated，已跳过）`, () => {})
+}
+
+/** 读一个块的生成数据（zod 校验过） */
+export function genFile(key: string): GenActionFile {
+  return GenActionFileSchema.parse(JSON.parse(readFileSync(new URL(`../../data/generated/actions/${key}.json`, import.meta.url), 'utf8')))
+}
+
 const blocks = new Map<string, Record<string, ActionDef>>()
+/** 按默认规则装配（不带角色模块的覆盖、不按链数挑判定）——TD-04 用例用的就是它 */
 export function block(key: string): Record<string, ActionDef> {
   let b = blocks.get(key)
   if (!b) {
-    const file = GenActionFileSchema.parse(JSON.parse(readFileSync(new URL(`../data/generated/actions/${key}.json`, import.meta.url), 'utf8')))
-    b = assembleBlock(file)
+    b = assembleBlock(genFile(key))
     blocks.set(key, b)
   }
   return b
+}
+
+/** 场景里的角色动作表：默认规则 + 角色模块的 actionOverrides + 按链数挑判定（总设计 §3.3 第 4 步） */
+export function character(mod: CharacterModuleDef, chain: number): Record<string, ActionDef> {
+  return forChain(assembleBlock(genFile(mod.name), mod.actionOverrides), chain)
+}
+
+/** 编译排轴用的队员：角色动作 + 体型通用动作（闪避、极限闪避…）+ 角色模块的别名（总设计 §3.3 第 4、7 步；声骸 Q 待 M2） */
+export function member(mod: CharacterModuleDef, chain: number): CompileMember {
+  const chars = JSON.parse(readFileSync(new URL('../../data/generated/characters.json', import.meta.url), 'utf8')) as Record<string, { commonBlock: string | null }>
+  const cb = chars[mod.name]?.commonBlock
+  return { name: mod.name, actions: { ...(cb ? block(cb) : {}), ...character(mod, chain) }, aliases: mod.aliases ?? {} }
 }
 
 export function judgment(o: Partial<JudgmentDef> & { name: string }): JudgmentDef {
@@ -1122,18 +1280,18 @@ import { readdirSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import type { ActionDef } from '../src/data/gamedata'
 import { ticksWithinLife } from '../src/engine/kernel'
-import { action, block, hitstop, judgment, run } from './kernel-harness'
-import type { Hit, RunResult } from './kernel-harness'
+import { action, block, dataDescribe, hasData, hitstop, judgment, run } from './helpers/kernel-harness'
+import type { Hit, RunResult } from './helpers/kernel-harness'
 
-const common = block('通用-中@女')
-const sh = block('散华')
+const common = hasData ? block('通用-中@女') : {}
+const sh = hasData ? block('散华') : {}
 const TEAM = [{ ...common, ...sh }, { ...common, ...sh }, { ...common, ...sh }]
 const at = (r: RunResult, name: string) => r.hits.filter(h => h.judgment === name).map(h => h.f)
 const brief = (hs: Hit[]) => hs.map(h => `${h.judgment}@${h.f}`)
 const events = (r: RunResult, type: string) => r.s.log.filter(e => e.type === type)
 const solo = (defs: Record<string, ActionDef>) => [defs, {}, {}]
 
-describe('T04-1 帧约定：散华 E 单独出招', () => {
+dataDescribe('T04-1 帧约定：散华 E 单独出招', () => {
   const r = run(TEAM, [{ act: 0, action: 'E' }])
   test('发生帧 19 → 第 19 帧命中', () => expect(brief(r.hits)).toEqual(['E@19']))
   test('结束帧 96 → 第 96 帧结束，共 96 帧', () => {
@@ -1163,7 +1321,7 @@ describe('T04-2 小数速率与区间边界', () => {
     expect(brief(run(solo(defs), [{ act: 0, action: 'Y' }]).hits)).toEqual(['y1@1', 'y2@1', 'y3@1']))
 })
 
-describe('T04-3 攻击顿帧推迟派生：散华 A1 → A2', () => {
+dataDescribe('T04-3 攻击顿帧推迟派生：散华 A1 → A2', () => {
   const r = run(TEAM, [{ act: 0, action: 'A1' }, { act: 0, action: 'A2' }])
   test('A1 命中后自身 0.05 倍速 5 帧，派生帧 21 推到第 26 帧；A2 在第 51 帧命中', () => {
     expect(events(r, 'actionStart').map(e => e.f)).toEqual([0, 26])
@@ -1177,7 +1335,7 @@ describe('T04-3 攻击顿帧推迟派生：散华 A1 → A2', () => {
   })
 })
 
-describe('T04-4 派生窗口越过结束帧、连段中断', () => {
+dataDescribe('T04-4 派生窗口越过结束帧、连段中断', () => {
   test('A1 在第 46 帧结束；窗口 [21, 50) 在第 54 帧仍开着（局部 49.25），A2 照接', () => {
     const r = run(TEAM, [{ act: 0, action: 'A1' }, { at: 54 }, { act: 0, action: 'A2' }])
     expect(events(r, 'actionEnd').map(e => e.f)).toEqual([46, 123])
@@ -1186,11 +1344,11 @@ describe('T04-4 派生窗口越过结束帧、连段中断', () => {
   test('第 55 帧窗口已关：报错"连段中断"，不等待', () => {
     let msg = ''
     try { run(TEAM, [{ act: 0, action: 'A1' }, { at: 55 }, { act: 0, action: 'A2' }]) } catch (e) { msg = (e as Error).message }
-    expect(msg).toBe('A1 的派生窗口已过，连段中断')
+    expect(msg).toContain('A1 的派生窗口已过，连段中断')
   })
 })
 
-describe('T04-5 中断优先级与"取消不丢东西"', () => {
+dataDescribe('T04-5 中断优先级与"取消不丢东西"', () => {
   test('A1 → E：E（4）可随时打断 A1（2），但默认等 A1 的判定出手（第 14 帧）；E 被 A1 残留的自身顿帧拖到第 37 帧命中', () => {
     const r = run(TEAM, [{ act: 0, action: 'A1' }, { act: 0, action: 'E' }])
     expect(events(r, 'actionStart').map(e => e.f)).toEqual([0, 14])
@@ -1212,7 +1370,7 @@ describe('T04-5 中断优先级与"取消不丢东西"', () => {
   })
 })
 
-describe('T04-6 可脱手与出生帧：散华 重击（重击-2…4 的发生帧 = P + f(Q)，出生帧 11）', () => {
+dataDescribe('T04-6 可脱手与出生帧：散华 重击（重击-2…4 的发生帧 = P + f(Q)，出生帧 11）', () => {
   test('第 12 帧强制闪避：已出现的重击-2…4 转为尾部照常命中，重击-5 作废', () => {
     const r = run(TEAM, [{ act: 0, action: '重击' }, { at: 12 }, { act: 0, action: '闪避', force: true }])
     expect(r.hits.filter(h => h.char === '甲' && h.judgment.startsWith('重击')).map(h => `${h.judgment}@${h.f}`))
@@ -1226,7 +1384,7 @@ describe('T04-6 可脱手与出生帧：散华 重击（重击-2…4 的发生�
   })
 })
 
-describe('T04-7 多段判定与不可脱手：散华 A3（发生帧 18，每 6 帧一次，最多 4 次，不可脱手）', () => {
+dataDescribe('T04-7 多段判定与不可脱手：散华 A3（发生帧 18，每 6 帧一次，最多 4 次，不可脱手）', () => {
   test('A1 A2 A3 A4：A3 在 79/85/91/97 结算四次，A4 等第四次结算后于第 98 帧开始', () => {
     const r = run(TEAM, ['A1', 'A2', 'A3', 'A4'].map(a => ({ act: 0 as const, action: a })))
     expect(at(r, 'A3')).toEqual([79, 85, 91, 97])
@@ -1259,7 +1417,7 @@ describe('T04-7 多段判定与不可脱手：散华 A3（发生帧 18，每 6 �
   })
 })
 
-describe('T04-8 尾部：仇远 强化A3（结束帧 50；强化A3-3…6 出生帧 20、发生帧 56/74/92/110）', () => {
+dataDescribe('T04-8 尾部：仇远 强化A3（结束帧 50；强化A3-3…6 出生帧 20、发生帧 56/74/92/110）', () => {
   const qy = block('仇远')
   const team = [{ ...common, ...qy, 强化A3: { ...qy['强化A3']!, comboFrom: undefined } }, {}, {}]
   const tailHits = (r: RunResult) => r.hits.filter(h => /强化A3-[3-6]/.test(h.judgment)).map(h => h.f)
@@ -1279,7 +1437,7 @@ describe('T04-8 尾部：仇远 强化A3（结束帧 50；强化A3-3…6 出生�
   })
 })
 
-describe('T04-9 全局时停：散华 大招（局部帧 1 登记，敌 / 友 0 倍速 90 帧）', () => {
+dataDescribe('T04-9 全局时停：散华 大招（局部帧 1 登记，敌 / 友 0 倍速 90 帧）', () => {
   test('战斗时钟停 90 帧；时停中的判定照常在发生帧结算', () => {
     const r = run(TEAM, [{ act: 0, action: '大招' }])
     expect(brief(r.hits)).toEqual(['大招-伤害@72'])
@@ -1292,7 +1450,7 @@ describe('T04-9 全局时停：散华 大招（局部帧 1 登记，敌 / 友 0 
   })
 })
 
-describe('T04-10 时停：散华 QTE（敌 / 友 0 倍速 53 帧，战斗时钟照走）', () => {
+dataDescribe('T04-10 时停：散华 QTE（敌 / 友 0 倍速 53 帧，战斗时钟照走）', () => {
   const r = run(TEAM, [{ act: 0, action: 'E' }, { switch: 1 }, { act: 1, action: 'QTE' }])
   test('后台的甲 E 冻结 53 帧：第 72 帧命中；乙 QTE 第 55 帧命中；延奏在第 53 帧触发', () => {
     expect(r.hits.map(h => `${h.char}:${h.judgment}@${h.f}`)).toEqual(['乙:QTE@55', '甲:E@72'])
@@ -1329,14 +1487,14 @@ describe('T04-12 攻击顿帧互相替换，时停与之并存', () => {
   test('换成时停：两者并存取最小，z3 在第 16 帧', () => expect(at(run(solo(defs), [{ act: 0, action: 'Zc' }]), 'z3')).toEqual([16]))
 })
 
-describe('T04-13 极限闪避 → 闪避反击（连段前置 + 减速随取消解除）', () => {
+dataDescribe('T04-13 极限闪避 → 闪避反击（连段前置 + 减速随取消解除）', () => {
   const r = run(TEAM, [{ act: 0, action: '极限闪避' }, { act: 0, action: '闪避反击' }])
   test('0.6 倍速下局部帧在第 30 帧开头恰为 22.0，派生窗口打开，闪避反击开始', () =>
     expect(events(r, 'actionStart').map(e => e.f)).toEqual([0, 30]))
   test('闪避反击不再受减速：第 49 帧命中', () => expect(brief(r.hits)).toEqual(['闪避反击@49']))
 })
 
-describe('T04-14 全量：70 个块 1598 个动作组，单独出招、连按两次', () => {
+dataDescribe('T04-14 全量：70 个块 1598 个动作组，单独出招、连按两次', () => {
   const keys = readdirSync(new URL('../data/generated/actions', import.meta.url)).map(f => f.replace(/\.json$/, ''))
   let groups = 0, spawnMismatch = 0, tickMismatch = 0, errors = 0, minusOneAfterEnd = 0
   for (const key of keys) {
@@ -1377,7 +1535,7 @@ TypeScript 6.0 严格模式编译通过，35 个用例全部通过：
 | T04-1 | 散华 E：第 19 帧命中，第 96 帧结束，共 96 帧 | 通过 |
 | T04-2 | 左闭右开：0.5 倍速 2 帧后派生第 3 帧开、发生帧 3 落在第 4 帧；3 倍速一帧走过三个节点 | 通过 |
 | T04-3 | 散华 A1 顿帧把 A2 从第 21 帧推到第 26 帧，A2 第 51 帧命中 | 通过 |
-| T04-4 | A1 结束后窗口仍开：第 54 帧接 A2；第 55 帧报"连段中断" | 通过 |
+| T04-4 | A1 结束后窗口仍开：第 54 帧接 A2；第 55 帧报"连段中断"（v0.1.1 起报错带出处"第 3 条 甲 A2：…"，断言改为包含） | 通过 |
 | T04-5 | A1 E（第 14 帧）、强制第 5 帧、E A1（第 60 帧）、E 闪避（第 20 帧） | 通过 |
 | T04-6 | 散华重击：第 12 帧取消，出生帧 11 的三段照常命中；第 10 帧取消全部作废 | 通过 |
 | T04-7 | 散华 A3 四段 79 / 85 / 91 / 97，A4 第 98 帧；第 88 帧取消只剩两段；自然结束后的不可脱手判定在下一个动作开始时消失；放不下的次数按寿命截断后即就绪 | 通过 |
@@ -1453,7 +1611,7 @@ TD-02 的 22 个、TD-03 的 23 个用例在本文改动后同样全部通过（
 | Q6 | 膨胀窗口按世界帧倒数：动作被顿帧拖慢时，它自己登记的时停不随之延长 | 按世界帧 | 实测（影响 ≤ 几帧） |
 | Q7 | 优先级变化帧凑不齐（97 组，多为三段） | 截断 + flag | 逐角色 curated |
 | Q8 | 连段前置只自动推断两类；E1 → E2、重击蓄力、D 结尾的闪避反击连段等 | curated | 启用角色时逐个补 |
-| Q9 | 默认"等就绪"是否贴近玩家实际操作；强制写法的语法 | 默认等 | TD-09 + 实测轴时长 |
+| Q9 | 默认"等就绪"是否贴近玩家实际操作；强制写法的语法 | **已关闭**（v0.1.1）：默认等，动作名后写 `!` 强制（TD-09 §3.4）；是否贴近实际操作转为 TD-09 Q2 | —— |
 | Q10 | 输入缓存（预输入） | 不模拟，窗口一开就执行（总设计 §13） | 实测轴时长系统性偏长时再引入 |
 | Q11 | 尾部按战斗时钟，不再受出伤者之后的顿帧 / 时停影响 | 如此 | 实测延迟飞行道具 |
 | Q12 | 多行结束帧（188 组）、方向变体（47 组） | 取第一个 / 取 -前 | 逐角色 curated（原 TD-01 Q4） |
@@ -1465,3 +1623,4 @@ TD-02 的 22 个、TD-03 的 23 个用例在本文改动后同样全部通过（
 ## 附录：变更历史
 
 - **v0.1（2026-09-27）**：初版。定 7 相位 tick（结束判断放在 P2 开头）、左闭右开帧约定与 1e-4 网格、速率表与五种膨胀类型的规则、按侧拆锚点的膨胀登记、时间线与尾部、取消 / 自然结束 / 变更动作三种情形下判定的去留、出生帧（P + f(Q)）、判定时钟与跟随顿帧、中断优先级 / 派生窗口 / 连段前置 / 输入锁、"取消不丢东西"的就绪判断与默认调度。附 TypeScript 原型内核与 35 个用例；在 20260707 版全部 1598 个动作组上各跑两种轴验证，并经独立审阅核对。同步提出 TD-01 v0.1.2、TD-02 v0.1.2、总设计 v0.1.3 的修订。
+- **v0.1.1（2026-09-27）**：随 TD-09 修订。`GateResult` 的失败分支带原因代码，"本 tick 已开始过动作"改到最后判断（§6.5）；内核记技能冷却（`startAction` 起算、P6 按战斗速率递减、`cooldownKey`），`startAction` 带指令出处写进日志；测试台改用 TD-09 的正式调度器（§10.1），T04-4 的断言改为包含；Q9 关闭；§7 注明 `comboNoWindow` 与 `multiEnd` 的后续调整。
