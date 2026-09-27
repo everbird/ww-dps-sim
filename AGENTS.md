@@ -37,6 +37,7 @@ docs/               设计文档
 pnpm install
 pnpm build:data -- --strict 椿,散华,维里奈   # 读 data/raw/*.xlsx；--strict 名单有未连上的伤害判定时退出码 1
 pnpm check:data                              # 用 zod schema 校验 data/generated/
+pnpm check:data -- --flags 椿,散华,维里奈    # 另外列出这些角色装配后还没处理的 flag（TD-01 §14）
 pnpm check                                   # tsc 严格模式
 pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试

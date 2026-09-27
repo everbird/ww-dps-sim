@@ -8,7 +8,7 @@
 
 | 里程碑 | 内容 | 状态 |
 |---|---|---|
-| M0 骨架 | 构建脚本读 xlsx，抽出第一支队伍（椿 · 散华 · 维里奈）的动作与倍率 | 完成，待确认 `docs/m0-confirm.md` |
+| M0 骨架 | 构建脚本读 xlsx，抽出第一支队伍（椿 · 散华 · 维里奈）的动作与倍率 | 完成，`docs/m0-confirm.md` 已确认 |
 | M1 公式 | 乘区收集 + `computeHit`，golden 对拍 | 公式与用例已有（TD-03），待接入构建产物 |
 | M2 单人仿真 | 时钟、动作、判定、调度器 | 内核已有（TD-04），调度器待 TD-09 |
 
@@ -21,6 +21,7 @@ pnpm install
 # 把数据 xlsx 放进 data/raw/（不随仓库发布）
 pnpm build:data -- --strict 椿,散华,维里奈
 pnpm check:data && pnpm check && pnpm test && pnpm test:py
+pnpm check:data -- --flags 椿,散华,维里奈   # 列出装配时靠推断补上、还没人确认的地方
 ```
 
 没有 xlsx 时 `pnpm test` 照样能跑，依赖数据的用例会标为跳过。

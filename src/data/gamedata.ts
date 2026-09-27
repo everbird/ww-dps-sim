@@ -105,8 +105,12 @@ export interface JudgmentDef {
   hitstop: DilationDef | null                       // 每次命中时登记的膨胀（anchor = 'hit'；膨胀发生为空的各侧，任何类型）
   formula?: { type: number; rate: number }          // dmg FormulaType ≠ 0：rate = FormulaParam5（已 × 0.0001），钩子据此算 Formula1
   cureBase?: number                                 // 治疗 / 护盾的固定值 CureBaseValue（calc = 'heal'）
+  chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
   flags: string[]
 }
+
+/** 共鸣链数范围，两端都含：C0 / C3 / C5 三个版本 → [0, 2]、[3, 4]、[5, 6] */
+export interface ChainRange { min: number; max: number }
 
 // ---------------------------------------------------------------------------
 // 武器、声骸、套装

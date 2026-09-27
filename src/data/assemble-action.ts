@@ -1,24 +1,48 @@
 // src/data/assemble-action.ts —— 生成数据的动作组 → ActionDef（TD-01 §13.1 / §13.2，按 TD-04 §7 修订）
 // 原型只装配内核用到的时间字段；倍率、元素、资源、castGains 在正式实现里按 TD-01 §13 补齐（这里给占位值）。
-import type { ActionKind, DilationSide } from './common'
+// 另有两步：角色模块的 actionOverrides（TD-01 §13.4），按共鸣链数挑判定 forChain（总设计 §3.3 第 4 步）。
+import type { ActionId, ActionKind, DilationSide } from './common'
+import type { ActionOverride } from './define'
 import type { GenActionFile, GenGroup, GenRow } from './generated.schema'
-import type { ActionDef, CancelWindow, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep } from './gamedata'
+import type { ActionDef, CancelWindow, ChainRange, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep } from './gamedata'
 
 const SIDES: DilationSide[] = ['self', 'enemy', 'ally']
 
-export function assembleBlock(file: GenActionFile): Record<string, ActionDef> {
+/** 装配一个块。overrides = 角色模块的 actionOverrides；写了块里不存在的动作 / 行 / 判定直接报错 */
+export function assembleBlock(file: GenActionFile, overrides: Record<ActionId, ActionOverride> = {}): Record<string, ActionDef> {
   const ids = new Set(file.groups.map(g => g.id))
+  for (const id of Object.keys(overrides))
+    if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
   const out: Record<string, ActionDef> = {}
-  for (const g of file.groups) out[g.id] = assembleGroup(file, g, ids)
+  for (const g of file.groups) {
+    const ov = overrides[g.id]
+    const def = assembleGroup(file, g, ids, ov?.dropRows)
+    out[g.id] = ov ? applyOverride(def, ov) : def
+  }
   return out
 }
 
-function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): ActionDef {
+/** 按共鸣链数挑判定（总设计 §3.3 第 4 步）：chainRange 不含该链数的判定去掉；动作的时间字段不受影响 */
+export function forChain(actions: Record<ActionId, ActionDef>, chain: number): Record<ActionId, ActionDef> {
+  const out: Record<ActionId, ActionDef> = {}
+  for (const [id, a] of Object.entries(actions)) {
+    const keep = a.judgments.filter(j => !j.chainRange || (chain >= j.chainRange.min && chain <= j.chainRange.max))
+    out[id] = keep.length === a.judgments.length ? a : { ...a, judgments: keep }
+  }
+  return out
+}
+
+function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropRows: string[] = []): ActionDef {
   const flags = new Set<string>()                           // 组级 flag，同名只记一次
+  for (const n of dropRows)
+    if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 dropRows 写了不存在的行"${n}"`)
+  const kept = g.rows.filter(r => !dropRows.includes(r.name))
   // 方向变体（-前 / -后）是二选一：默认只取 -前 行（TD-04 §7 ⑤）
-  const hasFront = g.rows.some(r => r.nameTags.dir === '前')
-  const rows = g.rows.filter(r => !(hasFront && r.nameTags.dir === '后'))
-  if (rows.length < g.rows.length) flags.add('dirVariant')
+  const hasFront = kept.some(r => r.nameTags.dir === '前')
+  const rows = kept.filter(r => !(hasFront && r.nameTags.dir === '后'))
+  if (rows.length < kept.length) flags.add('dirVariant')
+  // 带链标记的非判定行（膨胀 / 资源 / 标记）暂不按链筛选，交给 TD-06 / TD-08
+  if (rows.some(r => r.kind !== 'hit' && r.nameTags.chain !== undefined)) flags.add('chainNonHit')
 
   // 结束帧：第一个有值的行；都没有则 max(发生帧 + 持续帧, 派生帧)
   let endFrame = rows.find(r => r.endFrame !== null)?.endFrame ?? null
@@ -30,7 +54,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
     endFrame = Math.max(0, ...cands)
     flags.add('noEnd')
   }
-  if (rows.filter(r => r.endFrame !== null).length > 1) flags.add('multiEnd')
+  if (new Set(rows.map(r => r.endFrame).filter(e => e !== null)).size > 1) flags.add('multiEnd')   // 几行的结束帧不一样才算
 
   const cancelWindows: CancelWindow[] = rows.filter(r => r.deriveFrame !== null).map(r => ({
     from: r.deriveFrame!,
@@ -83,7 +107,9 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
   }
 
   const names = new Map<string, number>()
-  const judgments: JudgmentDef[] = rows.filter(r => r.kind === 'hit').map(r => {
+  const hitRows = rows.filter(r => r.kind === 'hit')
+  const chains = chainRanges(hitRows)
+  const judgments: JudgmentDef[] = hitRows.map(r => {
     const n = (names.get(r.name) ?? 0) + 1
     names.set(r.name, n)
     const life = r.lifeFrames ?? 1
@@ -94,6 +120,8 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
     if (r.hints.maxTicks === undefined && iv !== null) jf.push('ticksGuess')
     if (iv !== null && life > 0 && (ticks - 1) * iv >= life) jf.push('ticksCapped')   // 寿命内放不下全部次数（TD-04 §5.2）
     if (r.persists === null && life !== -1) jf.push('persistsGuess')
+    const ch = chains.get(r)
+    if (ch?.additive) jf.push('chainAdditive')
     return {
       name: n > 1 ? `${r.name}#${n}` : r.name,
       row: r.row,
@@ -108,6 +136,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>): Acti
       gains: { energy: 0, concerto: 0, core: [0, 0, 0] },
       gauges: { toughness: 0, tunability: 0 },
       hitstop: hitstopOf.get(r) ?? null,
+      ...(ch ? { chainRange: ch.range } : {}),
       flags: jf,
     }
   })
@@ -148,6 +177,65 @@ function assemblePriority(rows: GenRow[], flags: Set<string>): PriorityStep[] {
   const steps: PriorityStep[] = [{ fromFrame: 0, value: values[0]! }]
   for (let i = 1; i < values.length && i - 1 < frames.length; i++) steps.push({ fromFrame: frames[i - 1]!, value: values[i]! })
   return steps
+}
+
+const CHAIN_TOKEN = /(?<![A-Za-z])C\d(?!\d)/                // 与构建脚本 name_tags 的 chain 规则相同（TD-01 §3.9）
+
+/** 共鸣链版本（TD-01 §13.2）：行名去掉 C\d 后相同的判定行，是同一判定在不同链数下的版本（无标记算 0），
+ *  链数 c 取"标记 ≤ c"里最大的那个版本——椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]。
+ *  只有一种标记 n > 0、没有别的版本 → 从 n 链起额外出现（chainAdditive，要人确认不是替换某个判定）。 */
+function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive: boolean }> {
+  const families = new Map<string, GenRow[]>()
+  for (const r of hits) {
+    const k = r.name.replace(CHAIN_TOKEN, '')
+    families.set(k, [...(families.get(k) ?? []), r])
+  }
+  const out = new Map<GenRow, { range: ChainRange; additive: boolean }>()
+  for (const rs of families.values()) {
+    if (!rs.some(r => r.nameTags.chain !== undefined)) continue
+    const tags = [...new Set(rs.map(r => r.nameTags.chain ?? 0))].sort((a, b) => a - b)
+    if (tags.length === 1 && tags[0] === 0) continue                 // 只有 C0 版本 = 任何链数
+    for (const r of rs) {
+      const t = r.nameTags.chain ?? 0
+      const next = tags[tags.indexOf(t) + 1]
+      out.set(r, { range: { min: t, max: next === undefined ? 6 : next - 1 }, additive: tags.length === 1 })
+    }
+  }
+  return out
+}
+
+/** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
+const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
+  kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
+  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame'],
+}
+const J_HANDLED: Record<string, string[]> = {
+  lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
+  chainRange: ['chainAdditive'],
+}
+
+function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
+  const accepted = new Set(ov.accept ?? [])
+  for (const [field, fl] of Object.entries(HANDLED)) if (ov[field as keyof ActionOverride] !== undefined) fl.forEach(f => accepted.add(f))
+  const out: ActionDef = { ...def }
+  if (ov.kind !== undefined) out.kind = ov.kind
+  if (ov.endFrame !== undefined) out.endFrame = ov.endFrame
+  if (ov.priority !== undefined) out.priority = ov.priority
+  if (ov.cancelWindows !== undefined) out.cancelWindows = ov.cancelWindows.map(w => ({ ...w, row: 0 }))   // row 0 = 手写
+  if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
+  if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
+  const jov = ov.judgments ?? {}
+  for (const n of Object.keys(jov))
+    if (!def.judgments.some(j => j.name === n)) throw new Error(`${def.owner} ${def.id} 的 judgments 覆盖写了不存在的判定"${n}"`)
+  out.judgments = def.judgments.map(j => {
+    const o = jov[j.name]
+    const handled = new Set(accepted)
+    for (const k of Object.keys(o ?? {})) (J_HANDLED[k] ?? []).forEach(f => handled.add(f))
+    return { ...j, ...o, flags: j.flags.filter(f => !handled.has(f)) }
+  })
+  out.judgments.sort((a, b) => (a.spawnFrame ?? Infinity) - (b.spawnFrame ?? Infinity))
+  out.flags = def.flags.filter(f => !accepted.has(f))
+  return out
 }
 
 /** 原型用组名推 kind；正式实现先看 dmg 的 Damage.Type（TD-01 §13.1） */

@@ -4,4 +4,8 @@ import { defineCharacter } from '../../../src/data/define'
 export default defineCharacter('维里奈', {
   weaponType: '音感仪',
   aliases: { E: 'E', R: '大招', QTE: 'QTE' },
+  actionOverrides: {
+    // A3 的三行是同一段普攻的互斥情形（倍率相同）；打单体默认目标在 3m 内，另两行去掉，否则会算三次伤害（m0-confirm 2.1）
+    A3: { dropRows: ['A3-无目标/3m外', 'A3-地面出场技'] },
+  },
 })

@@ -2,10 +2,11 @@
 // 调度器只实现 TD-04 需要的三种指令（正式语义见 TD-09）：act（默认等"取消不丢东西"，force 跳过）、switch、at（测试专用：等到某世界帧）。
 import { existsSync, readFileSync } from 'node:fs'
 import type { ActionId, Slot } from '../../src/data/common'
-import { assembleBlock } from '../../src/data/assemble-action'
+import { assembleBlock, forChain } from '../../src/data/assemble-action'
+import type { CharacterModuleDef } from '../../src/data/define'
 import { DEFAULT_RULES } from '../../src/data/gamedata'
 import type { ActionDef, DilationDef, JudgmentDef } from '../../src/data/gamedata'
-import { GenActionFileSchema } from '../../src/data/generated.schema'
+import { GenActionFileSchema, type GenActionFile } from '../../src/data/generated.schema'
 import { describe } from 'vitest'
 import { gate, log, settled, startAction, tick } from '../../src/engine/kernel'
 import type { Kernel } from '../../src/engine/kernel'
@@ -90,15 +91,25 @@ export function dataDescribe(name: string, fn: () => void): void {
   else describe.skip(`${name}（缺 data/generated，已跳过）`, () => {})
 }
 
+/** 读一个块的生成数据（zod 校验过） */
+export function genFile(key: string): GenActionFile {
+  return GenActionFileSchema.parse(JSON.parse(readFileSync(new URL(`../../data/generated/actions/${key}.json`, import.meta.url), 'utf8')))
+}
+
 const blocks = new Map<string, Record<string, ActionDef>>()
+/** 按默认规则装配（不带角色模块的覆盖、不按链数挑判定）——TD-04 用例用的就是它 */
 export function block(key: string): Record<string, ActionDef> {
   let b = blocks.get(key)
   if (!b) {
-    const file = GenActionFileSchema.parse(JSON.parse(readFileSync(new URL(`../../data/generated/actions/${key}.json`, import.meta.url), 'utf8')))
-    b = assembleBlock(file)
+    b = assembleBlock(genFile(key))
     blocks.set(key, b)
   }
   return b
+}
+
+/** 场景里的角色动作表：默认规则 + 角色模块的 actionOverrides + 按链数挑判定（总设计 §3.3 第 4 步） */
+export function character(mod: CharacterModuleDef, chain: number): Record<string, ActionDef> {
+  return forChain(assembleBlock(genFile(mod.name), mod.actionOverrides), chain)
 }
 
 export function judgment(o: Partial<JudgmentDef> & { name: string }): JudgmentDef {

@@ -5,20 +5,22 @@ import type { BuffDefInput } from './buff.schema'
 import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
 import type { CharacterHooks } from '../engine/types'
 
-/** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据 */
+/** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据。
+ *  覆盖了带 flag 的字段，该 flag 即视为已处理（如改 priority 消掉 priorityChangeGuess）；名字写错直接报错，不做模糊匹配。 */
 export interface ActionOverride {
+  dropRows?: string[]                       // 装配前去掉的行（行名）：互斥的"情形"版本只留一个，如维里奈 A3 只留"目标3m内"
   kind?: ActionKind
-  endFrame?: Frame
+  endFrame?: Frame                          // 不会重算派生窗口；需要时一并覆盖 cancelWindows
   priority?: PriorityStep[]
   cancelWindows?: Omit<CancelWindow, 'row'>[]
   outroTriggerFrame?: Frame
   switchLockUntil?: Frame
-  judgments?: Record<string, JudgmentOverride>
-  accept?: string[]                         // 明确接受、不再提示的 flag
+  judgments?: Record<string, JudgmentOverride>   // 键是判定名（组内重名带 #n）
+  accept?: string[]                         // 明确接受、不再提示的 flag（动作级与该动作的判定级都算）
 }
 
 export type JudgmentOverride = Partial<Pick<JudgmentDef,
-  'spawnFrame' | 'lifeFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target'>>
+  'spawnFrame' | 'lifeFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target' | 'chainRange'>>
 
 export interface CharacterModule {
   weaponType: WeaponType                    // xlsx 没有，必填（TD-01 Q18）
