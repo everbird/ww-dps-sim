@@ -1,0 +1,26 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install openpyxl
+      - run: pnpm install --no-frozen-lockfile
+      - run: pnpm check
+      # 仓库不带 xlsx 与构建产物：依赖数据的用例会自动跳过（见 tests/helpers/kernel-harness.ts）
+      - run: pnpm test
+      - run: pnpm test:py
