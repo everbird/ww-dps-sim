@@ -25,9 +25,12 @@
 tools/build/        ① 数据构建（Python + openpyxl）：xlsx → data/generated/
 data/raw/           xlsx（不进 git）
 data/generated/     构建产物（不进 git，公开仓库不发布原作者的数据）；fixtures/ 下是 golden 夹具
-data/curated/       手写数据（进 git）：dmg-join.json、characters/<角色>.ts …
-src/data/           ② schema 与装配（TypeScript）
-src/engine/         ③ 仿真引擎：纯库，不许引入 DOM、fs、网络
+data/curated/       手写数据（进 git）：dmg-join.json、characters/<角色>.ts、weapons.ts …
+src/data/           ② schema、动作装配、注册层（registry.ts 纯函数；load.ts 是 Node 侧读盘）
+src/engine/         ③ 仿真引擎：纯库，不许引入 DOM、fs、网络（resolve → simulate → summary）
+src/cli/            命令行（pnpm sim）
+scenarios/          场景文件（YAML）
+out/                pnpm sim 写出的事件日志（不进 git）
 tests/              Vitest；依赖 data/generated 的用例在缺数据时自动跳过
 docs/               设计文档
 ```
@@ -44,6 +47,7 @@ pnpm check                                   # tsc 严格模式
 pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试
 pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.3）：改公式、改乘区拆分、换 xlsx 后跑一次，不进 CI
+pnpm sim scenarios/m0-散华单人.yaml          # 跑一个场景：终端打印汇总，事件日志写到 out/<场景名>.json
 ```
 
 **每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈 && pnpm check:data`。
@@ -70,3 +74,11 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4。之后的：
    - 物理、谐度破坏与响应"减防后先取整"的写法（TD-03 §3.2、Q1），拆分时把 `FLOOR(…)` 整体记为目标防御（`defRate` 记 0），夹具逐位复现 xlsx；TD-03 公式不取整这一差异照旧（Q1）。
    - 「聚爆效应121」（伤害配置 B2622，爱弥斯"聚爆轨迹强化E"）其实是乘在聚爆效应伤害上的独立因子（伤害计算 Q1040–Q1055），TD-03 §9.4 记成了"不参与伤害公式"。夹具里并入 0 类加深，构建报告有提示；它该落哪个乘区留给 TD-06。
    - 扰动对拍比 TD-03 的范围大：改写全部被引用的「伤害配置」R1791 起的数值格（含角色专属格）与目标防御、七项抗性，共 2340 格；R1792–R1815、R2139–R2142 预先算好的因子格按公式现算。20 轮 63800 次比较，全等 63772；其余 28 次都是"防御分母 ≤ 0"（TD-03 §1.3，xlsx 算出负系数，TD-03 取上限 2）。
+6. **M2 单人仿真的实现决定**（总设计 §3.3–§3.5，TD-01 §13、TD-02 §7）：
+   - 装配按 TD-01 §13 补齐了伤害与资源字段（倍率、属性、元素、标签、资源、削韧 / 偏谐、castGains、Formula1 参数、治疗固定值）。`kindGuess` 只在 dmg 与组名都推不出、退到 `other` 时打（§13.1 没说清哪种算猜测；T01-14 期望按组名推出的不打）。事件生成的判定（E-引爆冰棱…）"进入即得"的协奏归判定自己，在它结算时发，不并进动作的 castGains（总设计 §6.7）。
+   - 技能树属性节点：角色模块新增 `treeStats`（`CharacterDef.treeStats`），手填、进静态面板；`nanoka.json` 新增 `treeStats`，`check:data --flags` 拿它核对（与冷却同一做法）。角色基础暴击 5%、暴伤 150%、共鸣效率 100% 是 xlsx 的常数，写在 `resolve.ts` 的 `CHAR_BASE`。
+   - 只有写了角色模块的角色进 GameData；武器被动写在 `data/curated/weapons.ts`（总设计 §7 的单文件），行进序曲 / 奇幻变奏的"回复协奏"不是 buff，等 TD-06。
+   - 自定义敌人缺省：防御 8 × 等级 + 792（enemies.json 1402 条里 1342 条如此），各元素抗性 10%，生命不设上限。
+   - 类型：`ResolvedMember.echoes[].def` 可为 null（echoes.json 在 M3，之前只计入词条并提示）；`SimResult.error` 带出运行期报错；`KernelHooks.timers` 是 P6 的 buff 计时；`Summary.waits` 带 `item`。
+   - 统计窗口（总设计 §3.5）：最后一条指令是出招时取该动作结束或被取消的战斗帧，切人取切人那一刻，`wait` 取等完那一刻；战斗帧 < 窗口终点的伤害计入，其余是窗口外。
+   - 异常效应、谐度破坏、震谐 / 骇破响应的伤害在 M4 之前记 0 并提示一次，不按直接伤害算。触发型 buff、能量与协奏、切人变奏 / 延奏、`onEvent` 钩子在 M3。

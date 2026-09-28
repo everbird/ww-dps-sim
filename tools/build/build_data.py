@@ -24,10 +24,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
+from enemies import build_enemies  # noqa: E402
 import golden  # noqa: E402
 import nanoka  # noqa: E402
 from parse import Issues, as_num  # noqa: E402
 from report import render, render_golden  # noqa: E402
+from weapons import build_weapons  # noqa: E402
 from xlformula import Evaluator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -104,6 +106,10 @@ def main() -> int:
     index_rows = list(wb['索引'].iter_rows(min_row=1, max_row=47, max_col=23, values_only=True))
     characters = build_characters(base_rows, index_rows, {blk['key']: blk for blk in blocks}, issues)
 
+    # §7 武器、§9 敌人
+    weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues)
+    enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues)
+
     # §5.1 公式定义原文
     formula_ref = {}
     e4 = b['E4'].value
@@ -141,6 +147,8 @@ def main() -> int:
         _dump(out / 'actions' / f"{blk['key']}.json", blk)
     _dump(out / 'characters.json', characters)
     _dump(out / 'formula-ref.json', formula_ref)
+    _dump(out / 'weapons.json', weapons)
+    _dump_lines(out / 'enemies.json', enemies)
     (out / 'fixtures').mkdir(exist_ok=True)
     _dump(out / 'fixtures' / 'golden-damage.json', golden.clean(golden_damage))
     _dump_lines(out / 'fixtures' / 'golden-zones.json', golden.clean(golden_zones))
@@ -159,6 +167,8 @@ def main() -> int:
         'dmgNoConfig': flags['dmgNoConfig'], '伤害判定没连上（noDmg）': flags['noDmg'],
         '出生帧': sum(1 for r in rows if r['birthFrame'] is not None),
         '角色（characters.json）': len(characters),
+        '武器（weapons.json）': len(weapons),
+        '敌人（enemies.json）': len(enemies),
         'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
         'golden 乘区格': len(golden_zones),
     }
@@ -168,7 +178,8 @@ def main() -> int:
         'settings': settings,
         'counts': {'blocks': len(blocks), 'groups': counts['动作组'], 'rows': len(rows), 'hitRows': kinds['hit'],
                    'joined': sum(1 for r in hit if 'dmg' in r), 'noDmg': flags['noDmg'],
-                   'characters': len(characters), 'goldenEntries': len(golden_damage['entries']),
+                   'characters': len(characters), 'weapons': len(weapons), 'enemies': len(enemies),
+                   'goldenEntries': len(golden_damage['entries']),
                    'goldenZones': len(golden_zones)},
     }
     _dump(out / 'meta.json', meta)

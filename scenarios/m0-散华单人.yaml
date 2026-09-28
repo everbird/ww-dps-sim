@@ -1,0 +1,17 @@
+# M2 单人轴示例：只有散华出招（M0 队伍的配置见 docs/m0-confirm.md 第 4 节）。
+# 声骸还没接（echoes.json 在 M3），这里不写；共鸣链与武器精炼按 m0-confirm 填。
+data: "20260707"
+team:
+  - char: 椿
+    chain: 0
+    weapon: { name: 千古洑流, rank: 5 }
+  - char: 散华
+    chain: 6
+    weapon: { name: 行进序曲, rank: 5 }
+  - char: 维里奈
+    chain: 3
+    weapon: { name: 奇幻变奏, rank: 5 }
+enemy: { preset: 全息6/朔雷之鳞 }
+initial: { onField: 1 }            # 散华先上场
+rotation:
+  - 散华 E A1 A2 A3 A4 A5 R        # TD-09 §2.5 示意轴的第 1 条；手算见 tests/sim.test.ts M2-2

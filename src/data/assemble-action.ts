@@ -1,22 +1,32 @@
 // src/data/assemble-action.ts —— 生成数据的动作组 → ActionDef（TD-01 §13.1 / §13.2，按 TD-04 §7 修订）
-// 原型只装配内核用到的时间字段；倍率、元素、资源、castGains 在正式实现里按 TD-01 §13 补齐（这里给占位值）。
+// 时间字段（结束帧、派生窗口、优先级、膨胀…）与伤害 / 资源字段（倍率、元素、标签、资源、削韧、castGains）都按 TD-01 §13 装配。
 // 另有两步：角色模块的 actionOverrides（TD-01 §13.4），按共鸣链数挑判定 forChain（总设计 §3.3 第 4 步）。
-import type { ActionId, ActionKind, DilationSide } from './common'
+import { DAMAGE_TAG_BY_TYPE, ELEMENT_BY_CODE } from './common'
+import type { ActionId, ActionKind, DamageTag, DilationSide, Element, ResourceKind } from './common'
 import type { ActionOverride } from './define'
-import type { GenActionFile, GenGroup, GenRow } from './generated.schema'
-import type { ActionDef, CancelWindow, ChainRange, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep } from './gamedata'
+import type { GainCell, GenActionFile, GenGroup, GenRow } from './generated.schema'
+import type {
+  ActionDef, CancelWindow, CastGain, ChainRange, DilationDef, DilationWindow, InputLock, JudgmentDef, PriorityStep,
+} from './gamedata'
 
 const SIDES: DilationSide[] = ['self', 'enemy', 'ally']
 
+export interface AssembleOptions {
+  element?: Element                         // 没连上 dmg 的判定用角色元素（TD-01 §13.2）；缺省物理
+  charNames?: ReadonlySet<string>           // 命中类型写成角色名的判定算友方
+}
+
 /** 装配一个块。overrides = 角色模块的 actionOverrides；写了块里不存在的动作 / 行 / 判定直接报错 */
-export function assembleBlock(file: GenActionFile, overrides: Record<ActionId, ActionOverride> = {}): Record<string, ActionDef> {
+export function assembleBlock(
+  file: GenActionFile, overrides: Record<ActionId, ActionOverride> = {}, opts: AssembleOptions = {},
+): Record<string, ActionDef> {
   const ids = new Set(file.groups.map(g => g.id))
   for (const id of Object.keys(overrides))
     if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
   const out: Record<string, ActionDef> = {}
   for (const g of file.groups) {
     const ov = overrides[g.id]
-    const def = assembleGroup(file, g, ids, ov?.dropRows)
+    const def = assembleGroup(file, g, ids, opts, ov?.dropRows)
     out[g.id] = ov ? applyOverride(def, ov) : def
   }
   // 前置动作一个派生窗口都没有时，连段永远接不上：不设连段前置，打 flag 交给 curated（TD-09 §8 全量检查发现 7 组）
@@ -41,7 +51,7 @@ export function forChain(actions: Record<ActionId, ActionDef>, chain: number): R
   return out
 }
 
-function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropRows: string[] = []): ActionDef {
+function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, opts: AssembleOptions, dropRows: string[] = []): ActionDef {
   const flags = new Set<string>()                           // 组级 flag，同名只记一次
   for (const n of dropRows)
     if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 dropRows 写了不存在的行"${n}"`)
@@ -72,7 +82,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropR
   }))
 
   const priority = assemblePriority(rows, flags)
-  const kind = kindOf(g.id)
+  const kind = kindOfGroup(g.id, rows, flags)
 
   // 连段前置：A{n} ← A{n−1}（同前缀、块内存在）；闪避反击 ← 极限闪避（TD-04 §6.2）
   let comboFrom: string[] | undefined
@@ -131,6 +141,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropR
     if (r.persists === null && life !== -1) jf.push('persistsGuess')
     const ch = chains.get(r)
     if (ch?.additive) jf.push('chainAdditive')
+    const dmgFields = judgmentDamage(r, kind, opts, jf)
     return {
       name: n > 1 ? `${r.name}#${n}` : r.name,
       row: r.row,
@@ -141,9 +152,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropR
       tickInterval: iv,
       persistsOnCancel: life === -1 ? false : (r.persists ?? true),
       followHitstop: r.followHitstop === true,
-      target: 'enemy', calc: 'damage', multiplier: 1, relatedAttr: 'atk', element: '物理', tags: [],   // 占位（原型不连 dmg）
-      gains: { energy: 0, concerto: 0, core: [0, 0, 0] },
-      gauges: { toughness: 0, tunability: 0 },
+      ...dmgFields,
       hitstop: hitstopOf.get(r) ?? null,
       ...(ch ? { chainRange: ch.range } : {}),
       flags: jf,
@@ -157,7 +166,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, dropR
   return {
     id: g.id, owner: file.key, kind, endFrame, cancelWindows, priority,
     ...(comboFrom ? { comboFrom } : {}),
-    inputLocks, judgments, dilations, castGains: [],
+    inputLocks, judgments, dilations, castGains: castGainsOf(rows),
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
     source: { file: file.key, rows: g.rows.map(r => r.row) },
@@ -250,7 +259,35 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   return out
 }
 
-/** 原型用组名推 kind；正式实现先看 dmg 的 Damage.Type（TD-01 §13.1） */
+// ---------------------------------------------------------------------------
+// 伤害与资源字段（TD-01 §13.1 kind / castGains，§13.2 判定）
+
+/** Damage.Type → 动作类别（TD-01 §13.1）；其余类型（其他、异常、谐度破坏、响应）不决定类别 */
+const KIND_BY_TYPE: Readonly<Record<number, ActionKind>> = {
+  0: 'normal', 1: 'heavy', 4: 'skill', 2: 'liberation', 3: 'intro', 7: 'outro', 5: 'echo',
+}
+/** 没连上 dmg 的判定按动作类别推标签 */
+const TAG_BY_KIND: Readonly<Record<ActionKind, DamageTag>> = {
+  normal: '普攻', heavy: '重击', skill: '共鸣技能', liberation: '共鸣解放', intro: '变奏', outro: '延奏', echo: '声骸技能',
+  dodge: '其他', other: '其他',
+}
+const ENEMY_TARGETS = new Set(['目标', '目标子弹', '指定目标', '弹刀目标'])
+const ALLY_TARGETS = new Set(['友方', '队伍', '目标队友'])
+const ATTR_BY_PROP: Readonly<Record<number, JudgmentDef['relatedAttr']>> = { 7: 'atk', 2: 'hp', 10: 'def', 11: 'energyRegen' }
+const CALC_BY_TYPE = ['damage', 'heal', 'hpCost'] as const
+
+/** 组内第一个连上 dmg 的判定的 Damage.Type 决定类别；都没有则按组名前缀；再没有 → other，打 kindGuess */
+function kindOfGroup(id: string, rows: GenRow[], flags: Set<string>): ActionKind {
+  for (const r of rows) {
+    const k = r.kind === 'hit' && r.dmg ? KIND_BY_TYPE[r.dmg.damageType] : undefined
+    if (k) return k
+  }
+  const k = kindOf(id)
+  if (k === 'other') flags.add('kindGuess')
+  return k
+}
+
+/** 按组名推类别（没有 dmg 可看时） */
 function kindOf(id: string): ActionKind {
   if (id.includes('闪避反击')) return 'normal'
   if (id.includes('闪避')) return 'dodge'
@@ -261,4 +298,79 @@ function kindOf(id: string): ActionKind {
   if (id.includes('重击')) return 'heavy'
   if (/A\d/.test(id) || id.includes('普攻')) return 'normal'
   return 'other'
+}
+
+function targetOf(r: GenRow, opts: AssembleOptions, jf: string[]): JudgmentDef['target'] {
+  const t = r.hitTarget?.trim() ?? ''
+  if (t === '' || ENEMY_TARGETS.has(t)) return 'enemy'
+  if (ALLY_TARGETS.has(t) || opts.charNames?.has(t)) return 'ally'
+  if (t === '无') return 'none'
+  jf.push('targetOther')
+  return 'other'
+}
+
+/** 每次结算发放的资源：普通数字取 total；公式按"逐段命中"项取（只有一项取它，多项取平均），进入即得的项归 castGains。
+ *  事件生成的判定（E-引爆冰棱…）不随动作施放，它的"进入即得"项在它结算时一起发（总设计 §6.7） */
+function perHit(cell: GainCell | null, r: GenRow, jf: string[]): number {
+  if (!cell) return 0
+  const onSpawn = r.eventSpawned ? cell.onAction ?? 0 : 0
+  if (!cell.perHit) return cell.onAction !== undefined ? onSpawn : cell.total
+  if (cell.perHit.length > 1 && !jf.includes('gainTermsMulti')) jf.push('gainTermsMulti')
+  return cell.perHit.reduce((a, b) => a + b, 0) / cell.perHit.length + onSpawn
+}
+
+type DamageFields = Pick<JudgmentDef,
+  'target' | 'calc' | 'multiplier' | 'relatedAttr' | 'element' | 'tags' | 'gains' | 'gauges' | 'formula' | 'cureBase' | 'coreOncePerAction'>
+
+/** 判定的伤害与资源字段（TD-01 §13.2）。没连上 dmg、明确无伤害（dmg-join 为 null、dmgNoConfig）、治疗 / 扣血、非敌方、
+ *  备注"无伤害"的判定倍率为 0；伤害型判定没连上的，构建时已在行上打了 noDmg */
+function judgmentDamage(r: GenRow, kind: ActionKind, opts: AssembleOptions, jf: string[]): DamageFields {
+  const target = targetOf(r, opts, jf)
+  const d = r.dmg
+  if (r.flags.includes('noDmg')) jf.push('noDmg')
+  let relatedAttr: JudgmentDef['relatedAttr'] = 'atk'
+  if (d) {
+    const a = ATTR_BY_PROP[d.relatedProperty]
+    if (a) relatedAttr = a
+    else jf.push('relatedAttrOther')
+  }
+  const calc = d ? CALC_BY_TYPE[d.calcType] : 'damage'
+  const damaging = d !== undefined && d.calcType === 0 && target === 'enemy' && !r.hints.noDamage
+  const core = r.gains.core
+  const shared = core.map(c => c?.sharedRows !== undefined) as [boolean, boolean, boolean]
+  return {
+    target, calc, relatedAttr,
+    multiplier: damaging ? d.multiplier : 0,
+    element: d ? ELEMENT_BY_CODE[d.element] ?? '物理' : opts.element ?? '物理',
+    tags: [d ? DAMAGE_TAG_BY_TYPE[d.damageType] ?? '其他' : TAG_BY_KIND[kind]],
+    gains: {
+      energy: perHit(r.gains.energy, r, jf),
+      concerto: perHit(r.gains.concerto, r, jf),
+      core: [perHit(core[0], r, jf), perHit(core[1], r, jf), perHit(core[2], r, jf)],
+    },
+    gauges: { toughness: r.toughness ?? 0, tunability: r.tunability ?? 0 },
+    ...(d && d.formulaType !== 0 ? { formula: { type: d.formulaType, rate: d.formulaRate ?? 0 } } : {}),
+    ...(d?.cureBase !== undefined ? { cureBase: d.cureBase } : {}),
+    ...(shared.some(Boolean) ? { coreOncePerAction: shared } : {}),
+  }
+}
+
+const RESOURCE_OF = { energy: 'energy', concerto: 'concerto' } as const
+/** 施放类资源：组内资源行（gain）的合计，加上判定行资源公式里"进入动作即得"的项；都在进入动作的那一刻发放（TD-01 §13.1）。
+ *  事件生成的判定不算在内（见 perHit） */
+function castGainsOf(rows: GenRow[]): CastGain[] {
+  const sum = new Map<ResourceKind, number>()
+  const add = (k: ResourceKind, v: number | undefined) => { if (v) sum.set(k, (sum.get(k) ?? 0) + v) }
+  for (const r of rows) {
+    const cells: [ResourceKind, GainCell | null][] = [
+      [RESOURCE_OF.energy, r.gains.energy], [RESOURCE_OF.concerto, r.gains.concerto],
+      ['core1', r.gains.core[0]], ['core2', r.gains.core[1]], ['core3', r.gains.core[2]],
+    ]
+    for (const [k, c] of cells) {
+      if (!c) continue
+      if (r.kind === 'gain') add(k, c.total)
+      else if (r.kind === 'hit' && !r.eventSpawned) add(k, c.onAction)
+    }
+  }
+  return [...sum].map(([resource, amount]) => ({ atFrame: 0, resource, amount }))
 }

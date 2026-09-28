@@ -21,7 +21,9 @@ RAW = {
                         'level': {'1': lv('红椿盛绽伤害', '57.15%*2', '61.84%*2', fmt=None), '10': lv('冷却时间', *['4'] * 20)}}},
         '7': {'skill': {'type': '共鸣回路', 'name': '植物性宇宙', 'desc': '', 'param': [],
                         'level': {'3': lv('一日花冷却时间', *['25'] * 20)}}},
-        '9': {'skill': {'name': '暴击伤害提升', 'desc': '暴击伤害提升{0}', 'param': ['2.40%']}},     # 属性节点：没有 type
+        '9': {'node_type': 4, 'skill': {'name': '暴击伤害提升', 'desc': '暴击伤害提升{0}', 'param': ['2.40%']}},   # 属性节点：没有 type
+        '13': {'node_type': 4, 'skill': {'name': '暴击伤害提升', 'desc': '', 'param': ['5.60%']}},
+        '10': {'node_type': 4, 'skill': {'name': '攻击提升', 'desc': '', 'param': ['1.80%']}},
         '3': {'skill': {'type': '共鸣解放', 'name': '甲', 'desc': '', 'param': [],
                         'level': {'2': lv('冷却时间', *(['20'] * 9 + ['18'] * 11))}}},
     },
@@ -44,6 +46,9 @@ class Nanoka抽取(unittest.TestCase):
     def test_冷却随等级变化时取10级并标出(self):
         cd = extract_character(RAW)['skills'][1]['cooldowns'][0]
         self.assertEqual((cd['seconds'], cd['frames'], cd.get('variesByLevel')), (18.0, 1080, True))
+
+    def test_技能树属性节点求和(self):
+        self.assertEqual(extract_character(RAW)['treeStats'], {'暴击伤害提升': 0.08, '攻击提升': 0.018})
 
     def test_共鸣链(self):
         self.assertEqual(extract_character(RAW)['chains'], [{'n': 1, 'name': '一', 'desc': '无'}, {'n': 2, 'name': '二', 'desc': '倍率提升120%'}])

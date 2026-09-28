@@ -7,9 +7,10 @@ import { z } from 'zod'
 import { assembleBlock } from './assemble-action'
 import type { CharacterModuleDef } from './define'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenMetaSchema, GoldenDamageSchema, GoldenZonesSchema, NanokaFileSchema, type NanokaFile,
+  GenActionFileSchema, GenCharactersSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema, GoldenDamageSchema, GoldenZonesSchema,
+  NanokaFileSchema, type NanokaFile,
 } from './generated.schema'
-import { checkCooldowns } from './nanoka-check'
+import { checkCooldowns, checkTreeStats } from './nanoka-check'
 
 const root = new URL('../../data/generated/', import.meta.url)
 if (!existsSync(new URL('meta.json', root))) {
@@ -29,6 +30,8 @@ function check(schema: z.ZodType, rel: string): void {
 check(GenMetaSchema, 'meta.json')
 check(GenCharactersSchema, 'characters.json')
 check(z.record(z.string(), z.string()), 'formula-ref.json')
+check(z.array(GenWeaponSchema), 'weapons.json')
+check(z.array(GenEnemySchema), 'enemies.json')
 const actions = readdirSync(new URL('actions/', root)).filter(f => f.endsWith('.json'))
 for (const f of actions) check(GenActionFileSchema, `actions/${f}`)
 const hasNanoka = existsSync(new URL('nanoka.json', root))
@@ -43,7 +46,7 @@ if (failed > 0) {
   console.error(`${failed} 个文件未通过 schema 校验`)
   process.exit(1)
 }
-console.log(`schema 校验通过：meta、characters、formula-ref${hasNanoka ? '、nanoka' : ''}${hasGolden ? '、golden 两个夹具' : ''} 与 ${actions.length} 个动作文件`)
+console.log(`schema 校验通过：meta、characters、formula-ref、weapons、enemies${hasNanoka ? '、nanoka' : ''}${hasGolden ? '、golden 两个夹具' : ''} 与 ${actions.length} 个动作文件`)
 const nanoka: NanokaFile | undefined = hasNanoka ? NanokaFileSchema.parse(read('nanoka.json')) : undefined
 
 const fi = process.argv.indexOf('--flags')
@@ -71,7 +74,7 @@ async function listFlags(name: string): Promise<void> {
   console.log(`\n${name}：${acts.length} 个动作；未处理的 flag 动作级 ${nAct}、判定级 ${nJudg}${mod ? '' : '（没有角色模块）'}`)
   for (const l of lines) console.log(l)
   const nk = nanoka?.characters[name]
-  const cds = nk ? checkCooldowns(assembled, mod?.aliases ?? {}, nk) : []
-  if (!nk) console.log(`  （nanoka.json 里没有${name}，冷却没核对）`)
-  else if (cds.length > 0) console.log(`  冷却与 nanoka ${nanoka!.version} 对不上：\n${cds.map(c => `    ${c}`).join('\n')}`)
+  const cds = nk ? [...checkCooldowns(assembled, mod?.aliases ?? {}, nk), ...checkTreeStats(mod?.treeStats ?? {}, nk)] : []
+  if (!nk) console.log(`  （nanoka.json 里没有${name}，冷却与技能树没核对）`)
+  else if (cds.length > 0) console.log(`  冷却 / 技能树与 nanoka ${nanoka!.version} 对不上：\n${cds.map(c => `    ${c}`).join('\n')}`)
 }

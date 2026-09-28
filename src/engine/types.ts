@@ -28,7 +28,7 @@ export interface ResolvedMember {
   def: CharacterDef
   chain: Chain
   weapon: { def: WeaponDef; rank: Rank }
-  echoes: { def: EchoDef; set: string; main: StatValues; subs: StatValues }[]
+  echoes: { def: EchoDef | null; set: string; main: StatValues; subs: StatValues }[]   // def 为 null：还没有声骸数据（echoes.json 在 M3），只计入词条
   panel: StaticPanel
   actions: Record<ActionId, ActionDef>      // 角色动作 + 体型通用动作 + 首位声骸动作
   aliases: Record<string, ActionId>         // 角色别名 + 'Q'（首位声骸技能）
@@ -248,12 +248,17 @@ export interface Summary {
   byAction: { char: CharName; action: ActionId; damage: number; hits: number; share: number }[]
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
-  waits: { line: number; loop: number; code: WaitCode; frames: number; reason: string }[]
+  waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   warnings: { code: string; message: string; line?: number }[]
   perLoop?: { loop: number; dps: number; energyDelta: [number, number, number]; concertoDelta: [number, number, number] }[]
 }
 
-export interface SimResult { log: SimEvent[]; summary: Summary }
+export interface SimResult {
+  log: SimEvent[]
+  summary: Summary
+  /** 运行期报错（TD-09 §3.3：等不来、等超时、超过帧数上限）；日志与汇总保留到出错为止 */
+  error?: { code: string; message: string; frame: number; line?: number; loop?: number }
+}
 
 // ---------------------------------------------------------------------------
 // 角色钩子（总设计 §6.9）：只有四个，ctx 只开放受控操作

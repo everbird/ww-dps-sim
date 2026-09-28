@@ -5,16 +5,20 @@
   "description": "鸣潮逐帧期望 DPS 仿真与配装择优工具",
   "type": "module",
   "packageManager": "pnpm@10.0.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build:data": "python3 tools/build/build_data.py",
     "check": "tsc -p tsconfig.json",
     "check:data": "tsx src/data/check-generated.ts",
     "golden:perturb": "python3 tools/build/golden_perturb.py",
+    "sim": "tsx src/cli/sim.ts",
     "test": "vitest run",
     "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'"
   },
   "dependencies": {
+    "yaml": "^2.9.1",
     "zod": "^4.0.0"
   },
   "devDependencies": {

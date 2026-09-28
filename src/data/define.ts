@@ -1,6 +1,6 @@
 // src/data/define.ts —— 手写数据模块的类型与 define* 辅助函数（TD-02 §5）
 // define* 只做类型约束、原样返回；buff 在注册层装载时再用 BuffDefSchema 校验并补默认值。
-import type { ActionId, ActionKind, BodyType, CharName, Frame, WeaponType } from './common'
+import type { ActionId, ActionKind, BodyType, CharName, Frame, StatKey, WeaponType } from './common'
 import type { BuffDefInput } from './buff.schema'
 import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
 import type { CharacterHooks } from '../engine/types'
@@ -30,6 +30,9 @@ export interface CharacterModule {
   bodyType?: BodyType                       // 覆盖 `索引` 的分类（女-特殊 等）
   mergeBlocks?: string[]                    // 并入其他动作块（TD-01 Q2）
   coreCaps?: Partial<Record<1 | 2 | 3 | 4 | 5, number>>   // 修正核心资源上限（TD-01 Q22）
+  /** 技能树属性节点（回路节点）全部点亮后的合计，进静态面板（总设计 §3.3 第 2 步）。xlsx 没有这项；
+   *  按 nanoka 的 skill_trees 手填，`pnpm check:data -- --flags` 会拿 nanoka 核对（与冷却同一做法） */
+  treeStats?: Partial<Record<StatKey, number>>
   aliases?: Record<string, ActionId>
   buffs?: BuffDefInput[]
   hooks?: CharacterHooks
