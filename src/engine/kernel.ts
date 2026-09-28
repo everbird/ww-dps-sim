@@ -15,6 +15,7 @@ export interface KernelHooks {
   settle(s: SimState, j: JudgmentRuntime, tick: number): void
   castGain?(s: SimState, slot: Slot, src: EventSource, index: number): void      // TD-06
   outroTrigger?(s: SimState, slot: Slot, src: EventSource): void                  // TD-05
+  timers?(s: SimState, rates: Rates): void                                        // P6 的 buff 计时（TD-07）
 }
 export interface Kernel { rules: Rules; hooks: KernelHooks }
 /** 时间线事件的来源：进行中的动作，或脱离动作的尾部 */
@@ -347,8 +348,9 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   advanceActions(s, k, rates)                                   // P3
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
-  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却按战斗速率（buff 在 TD-07）
+  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却、buff 都按战斗速率
   for (const c of s.chars) for (const key of Object.keys(c.cooldowns)) c.cooldowns[key] = Math.max(0, c.cooldowns[key]! - rates.battle)
+  k.hooks.timers?.(s, rates)
   s.battleFrames += rates.battle                                // P7
   s.frame += 1
   return true

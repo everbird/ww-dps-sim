@@ -1,0 +1,129 @@
+// src/data/registry.ts —— 注册层：生成数据 + 手写模块 → GameData（总设计 §2 ②、TD-02 §4）
+// 纯函数，不读文件：Node 侧由 load.ts 读盘后调用，网页将来 fetch 之后调用同一个函数。
+// 只有写了角色模块（data/curated/characters/<角色>.ts）的角色进 GameData：武器类型、别名、buff、技能树属性都在模块里，
+// 没有模块的角色算不对（总设计 T10：一次一支队伍）。
+import { STAT_BY_PROP_ID, type BlockKey, type StatKey } from './common'
+import { assembleBlock } from './assemble-action'
+import { BuffDefSchema, type BuffDef, type BuffDefInput } from './buff.schema'
+import type { CharacterModuleDef, EchoSetModule, WeaponModule } from './define'
+import type { GenActionFile, GenCharacter, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
+import {
+  DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
+} from './gamedata'
+import { parseOrThrow } from './validate'
+
+export interface GeneratedFiles {
+  meta: GenMeta
+  characters: Record<string, GenCharacter>
+  actions: Record<BlockKey, GenActionFile>          // 块键 → 动作文件（角色块与通用块）
+  weapons: GenWeapon[]
+  enemies: GenEnemy[]
+}
+
+export interface CuratedModules {
+  characters: CharacterModuleDef[]
+  weapons: WeaponModule[]
+  echoSets: EchoSetModule[]
+  envBuffs: BuffDefInput[]
+}
+
+export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameData {
+  const charNames = new Set(Object.keys(gen.characters))
+  const characters: Record<string, CharacterDef> = {}
+  for (const mod of cur.characters) characters[mod.name] = buildCharacter(gen, mod, charNames)
+
+  const commonActions: Record<BlockKey, Record<string, ActionDef>> = {}
+  for (const [key, file] of Object.entries(gen.actions))
+    if (key.startsWith('通用-')) commonActions[key] = assembleBlock(file, {}, { charNames })
+
+  const passives = new Map(cur.weapons.map(w => [w.name, w]))
+  const weapons: Record<string, WeaponDef> = {}
+  for (const w of gen.weapons) weapons[w.key] = buildWeapon(w, passives.get(w.key))
+  for (const name of passives.keys())
+    if (!weapons[name]) throw new Error(`data/curated/weapons 写了不存在的武器"${name}"`)
+
+  const echoSets: Record<string, EchoSetDef> = {}
+  for (const s of cur.echoSets) {
+    echoSets[s.name] = {
+      name: s.name,
+      pieces: Object.fromEntries(Object.entries(s.pieces).map(([n, bs]) => [n, bs.map(b => buff(b, `声骸套装 ${s.name}`))])),
+    }
+  }
+
+  const enemies: Record<string, EnemyPreset> = {}
+  for (const e of gen.enemies) {
+    enemies[e.id] = {
+      id: e.id, name: e.name, tag: e.tag, cost: e.cost, level: e.level, hp: e.hp, def: e.def, res: e.res,
+      whiteBar: e.whiteBar, poise: e.poise, tunabilityMax: e.tunabilityMax,
+    }
+  }
+
+  return {
+    version: /(\d{8})/.exec(gen.meta.xlsxFile)?.[1] ?? gen.meta.xlsxFile,
+    meta: gen.meta,
+    characters, commonActions, weapons,
+    echoes: {},                                     // echoes.json 在 M3（TD-01 §12.1）
+    echoSets, enemies,
+    effects: {}, abnormalBaseByLevel: [],           // M4
+    tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } },   // M4
+    envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
+    rules: DEFAULT_RULES,
+  }
+}
+
+/** 装载一条手写 buff：补默认值并校验（TD-02 §5.1） */
+function buff(b: BuffDefInput, where: string): BuffDef {
+  return parseOrThrow(BuffDefSchema, b, `${where} 的 buff ${b.id}`)
+}
+
+function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames: ReadonlySet<string>): CharacterDef {
+  const g = gen.characters[mod.name]
+  if (!g) throw new Error(`角色模块 ${mod.name} 在 characters.json 里找不到（名字要与动作表块名一致）`)
+  const file = gen.actions[mod.name]
+  if (!file) throw new Error(`没有 ${mod.name} 的动作文件`)
+  const opts = { element: g.element, charNames }
+  let actions = assembleBlock(file, mod.actionOverrides, opts)
+  for (const key of mod.mergeBlocks ?? []) {                  // 并入其他动作块（TD-01 Q2）
+    const extra = gen.actions[key]
+    if (!extra) throw new Error(`${mod.name} 的 mergeBlocks 写了不存在的块"${key}"`)
+    const more = assembleBlock(extra, {}, opts)
+    for (const id of Object.keys(more)) if (actions[id]) throw new Error(`${mod.name} 并入 ${key} 时动作重名：${id}`)
+    actions = { ...actions, ...more }
+  }
+  for (const [alias, id] of Object.entries(mod.aliases ?? {}))
+    if (!actions[id]) throw new Error(`${mod.name} 的别名 ${alias} 指向不存在的动作"${id}"`)
+  const flags: string[] = []
+  for (const a of Object.values(actions)) {
+    for (const f of a.flags) flags.push(`${a.id}:${f}`)
+    for (const j of a.judgments) for (const f of j.flags) flags.push(`${a.id}/${j.name}:${f}`)
+  }
+  return {
+    name: mod.name, element: g.element, weaponType: mod.weaponType, bodyType: mod.bodyType ?? g.bodyType,
+    commonBlock: g.commonBlock, base: g.base90, energyCost: g.energyCost,
+    coreResources: g.coreResources.map(c => ({
+      slot: c.slot as 1 | 2 | 3 | 4 | 5, name: c.name, cap: mod.coreCaps?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.cap,
+    })),
+    tunabilityRate: g.tunabilityRate, harmonyBreakBoost: g.harmonyBreakBoost,
+    treeStats: mod.treeStats ?? {},
+    actions, aliases: mod.aliases ?? {},
+    buffs: (mod.buffs ?? []).map(b => buff(b, mod.name)),
+    ...(mod.hooks ? { hooks: mod.hooks } : {}),
+    flags,
+  }
+}
+
+function statOf(propId: number, where: string): StatKey {
+  const s = STAT_BY_PROP_ID[propId]
+  if (!s) throw new Error(`${where}：属性 ID ${propId} 不认识（TD-01 §4.2）`)
+  return s
+}
+
+function buildWeapon(w: GenWeapon, mod: WeaponModule | undefined): WeaponDef {
+  return {
+    key: w.key, rarity: w.rarity, type: w.type,
+    main: { stat: statOf(w.main.propId, `武器 ${w.key} 主属性`), value: w.main.value90 },
+    sub: { stat: statOf(w.sub.propId, `武器 ${w.key} 副属性`), value: w.sub.value90 },
+    effects: w.effects,
+    passives: (mod?.passives ?? []).map(b => buff(b, `武器 ${w.key}`)),
+  }
+}

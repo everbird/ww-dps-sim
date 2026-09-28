@@ -3,6 +3,7 @@ import { defineCharacter } from '../../../src/data/define'
 
 export default defineCharacter('椿', {
   weaponType: '迅刀',
+  treeStats: { '暴击伤害': 0.16, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E1', R: '大招', QTE: 'QTE' },
   actionOverrides: {
     // 共鸣技能（2026-09-27 用户说明，出处：nanoka 的共鸣技能与共鸣回路描述）：

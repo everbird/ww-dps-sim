@@ -292,6 +292,7 @@ export const NanokaCharacterSchema = z.strictObject({
     cooldowns: z.array(NanokaCooldownSchema),
   })),
   chains: z.array(z.strictObject({ n: int().min(1).max(6), name: z.string(), desc: z.string() })),
+  treeStats: z.record(z.string(), z.number()),      // 技能树属性节点：名字（"攻击提升"）→ 全部点亮的合计（小数）
 })
 export const NanokaFileSchema = z.strictObject({
   source: z.string(),

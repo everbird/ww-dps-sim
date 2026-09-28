@@ -1,9 +1,10 @@
-"""nanoka 静态数据：角色技能冷却与技能文本（m0-confirm §5；AGENTS.md 差异 4）。
+"""nanoka 静态数据：角色技能冷却、技能文本与技能树属性节点（m0-confirm §5；AGENTS.md 差异 4）。
 
 来源 https://static.nanoka.cc：
   manifest.json                     → ww.live / ww.latest 版本号
   ww/<版本>/character.json          → 角色 ID 表（按中文名 zh 对上 xlsx 的块名）
-  ww/<版本>/zh/character/<ID>.json  → skill_trees[].skill：类型、名字、描述、level 参数（含"冷却时间"）
+  ww/<版本>/zh/character/<ID>.json  → skill_trees[].skill：类型、名字、描述、level 参数（含"冷却时间"）；
+                                      node_type 4 的节点是属性加成（"攻击提升 1.80%"），按名字求和成 treeStats
 
 下载的原文件缓存在 data/raw/nanoka/<版本>/（不进 git），有缓存就不再联网。
 只在构建时用，运行时不依赖外网（总设计 §13）。
@@ -63,8 +64,32 @@ def fill(desc: str, params: list) -> str:
     return re.sub(r'\{(\d+)\}', lambda m: str(params[int(m.group(1))]) if int(m.group(1)) < len(params) else m.group(0), text)
 
 
+def _percent(p) -> float | None:
+    """'1.80%' → 0.018（按十进制算，免得浮点尾巴）"""
+    from decimal import Decimal, InvalidOperation
+    try:
+        return float(Decimal(str(p).strip().rstrip('%')) / 100)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def tree_stats(raw: dict) -> dict[str, float]:
+    """技能树属性节点（node_type 4）：名字 → 全部点亮后的合计"""
+    from decimal import Decimal
+    tot: dict[str, Decimal] = {}
+    for node in (raw.get('skill_trees') or {}).values():
+        if str(node.get('node_type')) != '4':
+            continue
+        s = node.get('skill') or {}
+        v = _percent((s.get('param') or [None])[0])
+        if v is None or not s.get('name'):
+            continue
+        tot[s['name']] = tot.get(s['name'], Decimal(0)) + Decimal(str(v))
+    return {k: float(v) for k, v in tot.items()}
+
+
 def extract_character(raw: dict) -> dict:
-    """一个角色文件 → {id, skills, chains}；只留有类型的技能节点（属性加成节点没有 type）"""
+    """一个角色文件 → {id, skills, chains, treeStats}；skills 只留有类型的技能节点（属性加成节点没有 type）"""
     skills = []
     for key in sorted(raw.get('skill_trees', {}), key=int):
         s = raw['skill_trees'][key].get('skill') or {}
@@ -87,7 +112,7 @@ def extract_character(raw: dict) -> dict:
                        'cooldowns': cooldowns})
     chains = [{'n': int(k), 'name': c.get('name', ''), 'desc': fill(c.get('desc', ''), c.get('param') or [])}
               for k, c in sorted((raw.get('chains') or {}).items(), key=lambda kv: int(kv[0]))]
-    return {'id': raw['id'], 'name': raw.get('name', ''), 'skills': skills, 'chains': chains}
+    return {'id': raw['id'], 'name': raw.get('name', ''), 'skills': skills, 'chains': chains, 'treeStats': tree_stats(raw)}
 
 
 def build(names: list[str], requested: str, name_map: dict[str, str | None]) -> tuple[dict, list[str]]:

@@ -1,9 +1,9 @@
-// tests/nanoka.test.ts —— 手填冷却与 nanoka 的核对（src/data/nanoka-check.ts；m0-confirm §5）
+// tests/nanoka.test.ts —— 手填冷却、技能树属性与 nanoka 的核对（src/data/nanoka-check.ts；m0-confirm §5）
 // 人造数据的用例总能跑；M0 队伍的用例依赖 data/generated/nanoka.json（pnpm build:data 联网取到后才有），没有时跳过。
 import { existsSync, readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { NanokaFileSchema, type NanokaCharacter } from '../src/data/generated.schema'
-import { checkCooldowns } from '../src/data/nanoka-check'
+import { checkCooldowns, checkTreeStats, treeStatKey } from '../src/data/nanoka-check'
 import 椿 from '../data/curated/characters/椿'
 import 散华 from '../data/curated/characters/散华'
 import 维里奈 from '../data/curated/characters/维里奈'
@@ -12,7 +12,7 @@ import { action, character, hasData } from './helpers/kernel-harness'
 const skill = (type: string, name: string, cds: [string, number][]): NanokaCharacter['skills'][number] =>
   ({ type, name, desc: '', cooldowns: cds.map(([n, s]) => ({ name: n, seconds: s, frames: s * 60 })) })
 const nk: NanokaCharacter = {
-  id: 1, name: '甲', chains: [],
+  id: 1, name: '甲', chains: [], treeStats: { 攻击提升: 0.12, 冷凝伤害加成提升: 0.12 },
   skills: [skill('共鸣技能', '技', [['冷却时间', 4]]), skill('共鸣解放', '解', [['冷却时间', 25]]), skill('共鸣回路', '回', [['一日花冷却时间', 25]])],
 }
 const aliases = { E: 'E1', R: '大招' }
@@ -36,13 +36,28 @@ describe('nanoka 冷却核对', () => {
   })
 })
 
+describe('nanoka 技能树属性核对', () => {
+  test('节点名 → 属性键', () => {
+    expect(['攻击提升', '暴击提升', '暴击伤害提升', '冷凝伤害加成提升', '治疗效果加成提升', '生命提升', '不认识'].map(treeStatKey))
+      .toEqual(['攻击%', '暴击率', '暴击伤害', '冷凝伤害加成', '治疗效果加成', '生命%', undefined])
+  })
+  test('对得上不报；数不同、少写、多写都报', () => {
+    expect(checkTreeStats({ '攻击%': 0.12, '冷凝伤害加成': 0.12 }, nk)).toEqual([])
+    expect(checkTreeStats({ '攻击%': 0.1, '暴击率': 0.08 }, nk)).toEqual([
+      '技能树 攻击%：角色模块 0.1，nanoka 0.12', '技能树 冷凝伤害加成：角色模块 0，nanoka 0.12', '技能树 暴击率：角色模块 0.08，nanoka 0',
+    ])
+  })
+})
+
 const NANOKA = new URL('../data/generated/nanoka.json', import.meta.url)
 const m0 = hasData && existsSync(NANOKA) ? describe : describe.skip
-m0('M0 队伍的冷却与 nanoka 一致（椿 E1 / E2 4 秒、E3 25 秒、大招 25 秒；散华 E 10 秒、大招 16 秒；维里奈 E 12 秒、大招 25 秒）', () => {
+m0('M0 队伍的冷却、技能树属性与 nanoka 一致（椿 E1 / E2 4 秒、E3 25 秒、大招 25 秒；散华 E 10 秒、大招 16 秒；维里奈 E 12 秒、大招 25 秒）', () => {
   const file = () => NanokaFileSchema.parse(JSON.parse(readFileSync(NANOKA, 'utf8')))
   for (const [mod, chain] of [[椿, 0], [散华, 6], [维里奈, 3]] as const) {
     test(mod.name, () => {
-      expect(checkCooldowns(character(mod, chain), mod.aliases ?? {}, file().characters[mod.name]!)).toEqual([])
+      const nkc = file().characters[mod.name]!
+      expect(checkCooldowns(character(mod, chain), mod.aliases ?? {}, nkc)).toEqual([])
+      expect(checkTreeStats(mod.treeStats ?? {}, nkc)).toEqual([])
     })
   }
 })

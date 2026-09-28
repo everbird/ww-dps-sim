@@ -3,6 +3,7 @@ import { defineCharacter } from '../../../src/data/define'
 
 export default defineCharacter('散华', {
   weaponType: '迅刀',
+  treeStats: { '冷凝伤害加成': 0.12, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E', R: '大招', QTE: 'QTE', A1: 'A1', A2: 'A2', A3: 'A3', A4: 'A4', A5: 'A5' },
   buffs: [
     {
