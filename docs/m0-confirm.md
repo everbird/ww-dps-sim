@@ -136,4 +136,6 @@ pnpm check:data -- --flags 椿,散华,维里奈
 
 来源：[B 站 wiki 椿](https://wiki.biligame.com/wutheringwaves/%E5%85%B1%E9%B8%A3%E8%80%85/%E6%A4%BF)、nanoka `ww/3.6/zh/character/1603.json`。
 
-**数据来源**：nanoka 的静态数据可以直接取 JSON（参考椰果工具箱 `src/lib/api/provider/nanoka`）：`https://static.nanoka.cc/manifest.json` 给出版本（`ww.live` / `ww.latest`），`/ww/<版本>/character.json` 是角色 ID 表（椿 1603、散华 1102、维里奈 1503），`/ww/<版本>/zh/character/<ID>.json` 的 `skill_trees[].skill.level` 里有"冷却时间"等参数。已用它核对椿的共鸣技能冷却 4 秒。以后可以在构建时抓取、缓存，自动补角色技能冷却（写代码的云端环境连不上这个域名，要在你本机跑）。
+**数据来源**：nanoka 的静态数据可以直接取 JSON（参考椰果工具箱 `src/lib/api/provider/nanoka`）：`https://static.nanoka.cc/manifest.json` 给出版本（`ww.live` / `ww.latest`），`/ww/<版本>/character.json` 是角色 ID 表（椿 1603、散华 1102、维里奈 1503），`/ww/<版本>/zh/character/<ID>.json` 的 `skill_trees[].skill.level` 里有"冷却时间"等参数。已用它核对椿的共鸣技能冷却 4 秒。
+
+**已接进构建**（2026-09-28）：`pnpm build:data` 顺带抓取 nanoka（缓存在 `data/raw/nanoka/<版本>/`），抽出技能冷却与文本写到 `data/generated/nanoka.json`；`pnpm check:data -- --flags` 拿它核对角色模块手填的冷却，只提示不自动填（共用冷却、跟随动作推不出来）。第一次核对发现三人的大招冷却没填，已按 nanoka 3.7 补上：椿 25 秒、散华 16 秒、维里奈 25 秒。xlsx 名与 nanoka 名不同的（漂泊者各形态）写在 `data/curated/nanoka-names.json`。

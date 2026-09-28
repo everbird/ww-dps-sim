@@ -37,8 +37,9 @@ docs/               设计文档
 ```bash
 pnpm install
 pnpm build:data -- --strict 椿,散华,维里奈   # 读 data/raw/*.xlsx；--strict 名单有未连上的伤害判定时退出码 1
+                                             # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
-pnpm check:data -- --flags 椿,散华,维里奈    # 另外列出这些角色装配后还没处理的 flag（TD-01 §14）
+pnpm check:data -- --flags 椿,散华,维里奈    # 另外列出这些角色装配后还没处理的 flag（TD-01 §14），以及手填冷却与 nanoka 对不上的地方
 pnpm check                                   # tsc 严格模式
 pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试
@@ -61,5 +62,5 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4。之后的：
 
 1. **延奏触发不随变奏被取消而作废**（2026-09-27 用户确认：延奏是下场角色发出的）。变奏被打断时，没走到的 `outro` 事件转为尾部照常发生，也不挡"就绪"。改动了 TD-04 §4.2 的取消规则与 §6.4 的就绪条件、TD-09 §3.4 的表格与 Q1（关闭），以及总设计不变量 4 / 5 的表述。下次改 TD-04 / TD-05 时并回。
 2. **共用冷却 `cooldownGroup`**：`ActionDef` 与 `ActionOverride` 新增，椿 E1 / E2 共用 4 秒冷却（一日花 E3 单独 25 秒）。并回 TD-01 §13.4、TD-02、TD-09 §3.2。
-3. **M0 队伍的技能冷却已填**（椿 E1 / E2 共用 4 秒、E3 一日花 25 秒，散华 E 10 秒，维里奈 E 12 秒）。TD-09 §2.5 示意轴的第 2 轮因此会等冷却，文中的时间表需要重算；T09-10 已按新结果改。
-4. **nanoka 数据**：`static.nanoka.cc` 的 JSON 可以作为角色技能冷却、技能文本的来源（见 `docs/m0-confirm.md` 第 5 节），计划在构建时抓取并缓存。并回 TD-01（新增一节）与总设计第 7 节。
+3. **M0 队伍的技能冷却已填**（椿 E1 / E2 共用 4 秒、E3 一日花 25 秒，散华 E 10 秒，维里奈 E 12 秒；大招按 nanoka 3.7：椿 25 秒、散华 16 秒、维里奈 25 秒）。TD-09 §2.5 示意轴的第 2 轮因此会等冷却，文中的时间表需要重算；T09-10 已按新结果改。
+4. **nanoka 数据**：`static.nanoka.cc` 的 JSON 作为角色技能冷却、技能文本的来源（见 `docs/m0-confirm.md` 第 5 节）。已实现：`tools/build/nanoka.py` 在构建时抓取并缓存到 `data/raw/nanoka/`，产出 `data/generated/nanoka.json`（schema `NanokaFileSchema`），`src/data/nanoka-check.ts` 核对手填冷却（只提示，不自动填）。并回 TD-01（新增一节）、TD-02 与总设计第 7 节。

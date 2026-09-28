@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
+import nanoka  # noqa: E402
 from parse import Issues, as_num  # noqa: E402
 from report import render  # noqa: E402
 
@@ -49,7 +50,11 @@ def main() -> int:
     ap.add_argument('--out', default=str(ROOT / 'data' / 'generated'))
     ap.add_argument('--curated', default=str(ROOT / 'data' / 'curated'))
     ap.add_argument('--strict', default='', help='逗号分隔的角色名：这些角色的伤害判定必须全部连上 dmg')
-    args = ap.parse_args()
+    ap.add_argument('--nanoka', default='live', help="nanoka 版本（live / latest / 3.7…）；off = 不取（沿用上次的 nanoka.json）")
+    argv = sys.argv[1:]
+    if argv[:1] == ['--']:  # pnpm 10 把 `pnpm build:data -- …` 里的 `--` 原样传进来
+        argv = argv[1:]
+    args = ap.parse_args(argv)
 
     if args.xlsx:
         xlsx = Path(args.xlsx)
@@ -154,6 +159,17 @@ def main() -> int:
     }
     _dump(out / 'meta.json', meta)
     report = render(meta, counts, blocking, strict, gaps, cross, issues, blocks, flags)
+
+    # nanoka：技能冷却与技能文本（m0-confirm §5）。取不到只提示，不阻断
+    if args.nanoka != 'off':
+        try:
+            nk, notes = nanoka.build(list(characters), args.nanoka, nanoka.load_name_map(Path(args.curated)))
+            _dump(out / 'nanoka.json', nk)
+            report += f"\n## nanoka\n\n版本 {nk['version']}，{len(nk['characters'])} 个角色 → `nanoka.json`。\n"
+            report += ''.join(f'\n- {n}' for n in notes) + ('\n' if notes else '')
+        except Exception as e:  # noqa: BLE001
+            print(f'nanoka 没取到（{e}）；沿用上次的 nanoka.json', file=sys.stderr)
+            report += f'\n## nanoka\n\n没取到：{e}\n'
     (out / 'build-report.md').write_text(report, 'utf-8')
 
     print(f"完成：{len(blocks)} 块、{counts['动作组']} 组、{len(rows)} 行；连上 {meta['counts']['joined']}，"
