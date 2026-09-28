@@ -30,5 +30,6 @@ export default defineCharacter('散华', {
     谐度破坏: { accept: ['multiEnd'] },     // 两个结束帧是谐度破坏的两段，取第一个即可
     // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
     QTE: { priority: [{ fromFrame: 0, value: 11 }, { fromFrame: 42, value: 8 }] },
+    E: { cooldown: 600 },                  // 共鸣技能冷却 10 秒（2026-09-27 用户提供）
   },
 })

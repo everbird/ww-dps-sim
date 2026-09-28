@@ -17,6 +17,7 @@ export interface ActionOverride {
   switchLockUntil?: Frame
   comboFrom?: ActionId[]                    // 连段前置（TD-04 §6.2）：自动推断之外的，如 E1 → E2
   cooldown?: Frame                          // 技能冷却（帧）：xlsx 只有声骸的，角色技能的冷却写在这里（TD-09 §3.2）
+  cooldownGroup?: string                    // 几个动作共用一个冷却时写同一个组名（椿的 E1 / E2 / E3 → 'E'）
   judgments?: Record<string, JudgmentOverride>   // 键是判定名（组内重名带 #n）
   accept?: string[]                         // 明确接受、不再提示的 flag（动作级与该动作的判定级都算）
 }

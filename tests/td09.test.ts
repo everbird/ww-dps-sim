@@ -250,11 +250,17 @@ dataDescribe('T09-10 编译 + 运行：M0 队伍（椿 0 链、散华 6 链、�
     const a4 = (r: RunResult) => r.hits.filter(h => h.judgment.startsWith('A4-')).length
     expect([a4(d), a4(f)]).toEqual([20, 5])
   })
-  test('三人各放一次 E 轮换两轮：切人不打断动作，每次切人等切人冷却', () => {
+  test('三人各放一次 E 轮换两轮：切人不打断动作；第 2 轮等散华 E（10 秒）与维里奈 E（12 秒）的冷却', () => {
     const r = go(['散华 E', 'switch 椿', '椿 E', 'switch 维里奈', '维里奈 E', 'switch 散华'], 1, 2)
-    expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([0, 60, 120, 180, 240, 300])
-    expect(eventsOf(r, 'loop').map(e => e.f)).toEqual([0, 120])
-    expect(starts(r)).toEqual(['E@0', 'E1@0', 'E@60', 'E@120', 'E1@180', 'E@240'])
+    expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([0, 60, 120, 600, 660, 780])
+    expect(eventsOf(r, 'loop').map(e => e.f)).toEqual([0, 600])
+    expect(starts(r)).toEqual(['E@0', 'E1@0', 'E@60', 'E@600', 'E1@600', 'E@780'])
+    expect(eventsOf(r, 'wait').filter(e => e.code === 'cooldown').map(e => `${e.cmd.loop}.${e.cmd.line} ${e.frames}`)).toEqual(['2.1 480', '2.5 120'])
+  })
+  test('椿的 E1 / E2 / E3 共用 4 秒冷却：E1 后接 E2 要等到第 240 帧', () => {
+    const r = go(['椿 E1 E2'], 0)
+    expect(starts(r)).toEqual(['E1@0', 'E2@240'])
+    expect(waits(r)).toEqual(['1:derive 0+85', '1:cooldown 85+155'])
   })
 })
 

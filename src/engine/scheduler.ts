@@ -170,7 +170,10 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
         return { go: false, code: g.code, reason: g.reason }
       }
       const cd = ch.cooldowns[cooldownKey(def)] ?? 0
-      if (cd > 0) return { go: false, code: 'cooldown', reason: `${def.id} 冷却还剩 ${Math.ceil(cd)} 帧` }
+      if (cd > 0) {
+        const who = def.cooldownGroup ? `${def.id}（与同组共用冷却 ${def.cooldownGroup}）` : def.id
+        return { go: false, code: 'cooldown', reason: `${who} 冷却还剩 ${Math.ceil(cd)} 帧` }
+      }
       const res = opts.canAfford?.(s, c.slot, def) ?? true
       if (res !== true) return { go: false, code: 'resource', reason: res }
       const hook = opts.canStart?.(s, c.slot, def) ?? true

@@ -187,6 +187,21 @@ dataDescribe('T04-10 时停：散华 QTE（敌 / 友 0 倍速 53 帧，战斗时
   })
 })
 
+describe('T04-10b 变奏被打断不影响延奏（延奏是下场角色发出的）', () => {
+  const Q = action({ id: 'Q', kind: 'intro', endFrame: 60, outroTriggerFrame: 20 })
+  const X = action({ id: 'X', priority: [{ fromFrame: 0, value: 10 }] })
+  test('第 5 帧强制打断：延奏触发转为尾部，照样在第 20 帧发生', () => {
+    const r = run([{ Q, X }, {}, {}], [{ act: 0, action: 'Q' }, { at: 5 }, { act: 0, action: 'X', force: true }])
+    expect(r.s.log.filter(e => e.type === 'actionStart').map(e => e.f)).toEqual([0, 5])
+    expect(r.outros).toEqual([{ f: 20, char: '甲' }])
+  })
+  test('延奏触发不挡"就绪"：不强制也在第 1 帧打断（没有判定要等）', () => {
+    const r = run([{ Q, X }, {}, {}], [{ act: 0, action: 'Q' }, { act: 0, action: 'X' }])
+    expect(r.s.log.filter(e => e.type === 'actionStart').map(e => e.f)).toEqual([0, 1])
+    expect(r.outros).toEqual([{ f: 20, char: '甲' }])
+  })
+})
+
 describe('T04-11 跟随顿帧', () => {
   const mk = (follow: boolean) => action({
     id: follow ? 'F' : 'N', endFrame: 40, judgments: [

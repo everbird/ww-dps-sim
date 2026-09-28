@@ -137,9 +137,11 @@ function cancelAction(s: SimState, k: Kernel, slot: Slot, by: ActionId): void {
     dropped.push(j.def.name)
     return false
   })
-  // ② 未发生的事件：已出现且可脱手的判定转为尾部，按战斗时钟继续；其余（资源、膨胀、延奏触发、未出现的判定）作废
+  // ② 未发生的事件：已出现且可脱手的判定转为尾部，按战斗时钟继续；延奏触发也转为尾部——延奏是下场角色发出的，
+  //    上场角色的变奏被打断不影响它（2026-09-27 用户确认，见 AGENTS.md 差异 1）；其余（资源、膨胀、未出现的判定）作废
   const rest = timelineOf(a.def).slice(a.cursor)
-  const keep = rest.filter(e => e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t))
+  const keep = rest.filter(e => e.kind === 'outro'
+    || (e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t)))
   for (const e of rest) if (e.kind === 'spawn' && !keep.includes(e)) dropped.push(a.def.judgments[e.index]!.name)
   if (keep.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: t, events: keep })
   // ③ 已登记的膨胀窗口照常走完；只有 clearSelfOnCancel 类型（极限闪避减速）撤掉自身侧
@@ -312,8 +314,8 @@ function gateRules(c: CharRuntime, def: ActionDef): GateResult {
     : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
 }
 
-/** 冷却按什么记：声骸技能共用一个冷却（'echo'），其余按动作 ID */
-export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.id)
+/** 冷却按什么记：声骸技能共用一个冷却（'echo'）；共用冷却的技能按 cooldownGroup（椿的 E1 / E2 / E3 共用 'E'）；其余按动作 ID */
+export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.cooldownGroup ?? def.id)
 
 /** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
  *  角色空闲时恒为就绪：此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2），默认调度不为它等待 */
@@ -324,6 +326,7 @@ export function settled(s: SimState, slot: Slot): boolean {
   const tl = timelineOf(a.def)
   for (let i = a.cursor; i < tl.length; i++) {
     const e = tl[i]!
+    if (e.kind === 'outro') continue                            // 延奏触发打断后照样发生（转尾部），不用等
     if (e.kind !== 'spawn') return false
     const j = a.def.judgments[e.index]!
     if (!(survives(j) && bornBy(j, t))) return false

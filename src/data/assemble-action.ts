@@ -235,6 +235,7 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
   if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
   if (ov.cooldown !== undefined) out.cooldown = ov.cooldown
+  if (ov.cooldownGroup !== undefined) out.cooldownGroup = ov.cooldownGroup
   const jov = ov.judgments ?? {}
   for (const n of Object.keys(jov))
     if (!def.judgments.some(j => j.name === n)) throw new Error(`${def.owner} ${def.id} 的 judgments 覆盖写了不存在的判定"${n}"`)
