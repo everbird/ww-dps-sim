@@ -263,7 +263,8 @@ dataDescribe('T09-10 编译 + 运行：M0 队伍（椿 0 链、散华 6 链、�
     expect(waits(r)).toEqual(['1:derive 0+85', '1:cooldown 85+155'])
     const e3 = go(['椿 E1 E3'], 0)
     expect(starts(e3)).toEqual(['E1@0', 'E3@36'])      // 一日花优先级 8 > E1 的 4：E1 第 2 段出手后即可接，不等 E1 的冷却
-    expect(e3.s.chars[0].cooldowns).toMatchObject({ E: 0, E3: 900 - (e3.s.battleFrames - 36) })
+    const b = e3.s.battleFrames                          // 两个冷却各算各的：E 从第 0 帧、E3 从第 36 帧起算
+    expect(e3.s.chars[0].cooldowns).toEqual({ E: 240 - b, E3: 900 - (b - 36) })
   })
 })
 
