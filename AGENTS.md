@@ -24,7 +24,7 @@
 ```text
 tools/build/        ① 数据构建（Python + openpyxl）：xlsx → data/generated/
 data/raw/           xlsx（不进 git）
-data/generated/     构建产物（不进 git，公开仓库不发布原作者的数据）
+data/generated/     构建产物（不进 git，公开仓库不发布原作者的数据）；fixtures/ 下是 golden 夹具
 data/curated/       手写数据（进 git）：dmg-join.json、characters/<角色>.ts …
 src/data/           ② schema 与装配（TypeScript）
 src/engine/         ③ 仿真引擎：纯库，不许引入 DOM、fs、网络
@@ -43,6 +43,7 @@ pnpm check:data -- --flags 椿,散华,维里奈    # 另外列出这些角色装
 pnpm check                                   # tsc 严格模式
 pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试
+pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.3）：改公式、改乘区拆分、换 xlsx 后跑一次，不进 CI
 ```
 
 **每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈 && pnpm check:data`。
@@ -64,3 +65,8 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4。之后的：
 2. **共用冷却 `cooldownGroup`**：`ActionDef` 与 `ActionOverride` 新增，椿 E1 / E2 共用 4 秒冷却（一日花 E3 单独 25 秒）。并回 TD-01 §13.4、TD-02、TD-09 §3.2。
 3. **M0 队伍的技能冷却已填**（椿 E1 / E2 共用 4 秒、E3 一日花 25 秒，散华 E 10 秒，维里奈 E 12 秒；大招按 nanoka 3.7：椿 25 秒、散华 16 秒、维里奈 25 秒）。TD-09 §2.5 示意轴的第 2 轮因此会等冷却，文中的时间表需要重算；T09-10 已按新结果改。
 4. **nanoka 数据**：`static.nanoka.cc` 的 JSON 作为角色技能冷却、技能文本的来源（见 `docs/m0-confirm.md` 第 5 节）。已实现：`tools/build/nanoka.py` 在构建时抓取并缓存到 `data/raw/nanoka/`，产出 `data/generated/nanoka.json`（schema `NanokaFileSchema`），`src/data/nanoka-check.ts` 核对手填冷却（只提示，不自动填）。并回 TD-01（新增一节）、TD-02 与总设计第 7 节。
+5. **golden 抽取（M1）放在 `tools/build/`，用 Python**：TD-03 §10.3 说原型脚本移植到 `scripts/golden/`；构建已按 T12 的退路改用 Python，所以一起放进构建：`xlformula.py`（公式解析与求值）、`golden.py`（TD-01 §11.1 标准答案 + TD-03 §10 逐格乘区，随 `pnpm build:data` 写出 `data/generated/fixtures/golden-damage.json`、`golden-zones.json`，构建报告有"golden"一节）、`golden_perturb.py`（扰动对拍）。与 TD-03 的出入：
+   - 计数为伤害 2939、治疗 48（TD-03 §1.2 记 2940 / 47），总数 3190 不变：鉴心"护盾回复生命值"（伤害计算 J558）有治疗加成因子、dmg 里 CalculateType 为 1，按治疗算。T03-9 的计数断言已改。
+   - 物理、谐度破坏与响应"减防后先取整"的写法（TD-03 §3.2、Q1），拆分时把 `FLOOR(…)` 整体记为目标防御（`defRate` 记 0），夹具逐位复现 xlsx；TD-03 公式不取整这一差异照旧（Q1）。
+   - 「聚爆效应121」（伤害配置 B2622，爱弥斯"聚爆轨迹强化E"）其实是乘在聚爆效应伤害上的独立因子（伤害计算 Q1040–Q1055），TD-03 §9.4 记成了"不参与伤害公式"。夹具里并入 0 类加深，构建报告有提示；它该落哪个乘区留给 TD-06。
+   - 扰动对拍比 TD-03 的范围大：改写全部被引用的「伤害配置」R1791 起的数值格（含角色专属格）与目标防御、七项抗性，共 2340 格；R1792–R1815、R2139–R2142 预先算好的因子格按公式现算。20 轮 63800 次比较，全等 63772；其余 28 次都是"防御分母 ≤ 0"（TD-03 §1.3，xlsx 算出负系数，TD-03 取上限 2）。

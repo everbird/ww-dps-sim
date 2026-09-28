@@ -10,6 +10,7 @@
     "build:data": "python3 tools/build/build_data.py",
     "check": "tsc -p tsconfig.json",
     "check:data": "tsx src/data/check-generated.ts",
+    "golden:perturb": "python3 tools/build/golden_perturb.py",
     "test": "vitest run",
     "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'"
   },

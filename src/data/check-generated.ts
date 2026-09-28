@@ -6,7 +6,9 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { z } from 'zod'
 import { assembleBlock } from './assemble-action'
 import type { CharacterModuleDef } from './define'
-import { GenActionFileSchema, GenCharactersSchema, GenMetaSchema, NanokaFileSchema, type NanokaFile } from './generated.schema'
+import {
+  GenActionFileSchema, GenCharactersSchema, GenMetaSchema, GoldenDamageSchema, GoldenZonesSchema, NanokaFileSchema, type NanokaFile,
+} from './generated.schema'
 import { checkCooldowns } from './nanoka-check'
 
 const root = new URL('../../data/generated/', import.meta.url)
@@ -31,12 +33,17 @@ const actions = readdirSync(new URL('actions/', root)).filter(f => f.endsWith('.
 for (const f of actions) check(GenActionFileSchema, `actions/${f}`)
 const hasNanoka = existsSync(new URL('nanoka.json', root))
 if (hasNanoka) check(NanokaFileSchema, 'nanoka.json')
+const hasGolden = existsSync(new URL('fixtures/golden-zones.json', root))
+if (hasGolden) {
+  check(GoldenDamageSchema, 'fixtures/golden-damage.json')
+  check(GoldenZonesSchema, 'fixtures/golden-zones.json')
+}
 
 if (failed > 0) {
   console.error(`${failed} 个文件未通过 schema 校验`)
   process.exit(1)
 }
-console.log(`schema 校验通过：meta、characters、formula-ref${hasNanoka ? '、nanoka' : ''} 与 ${actions.length} 个动作文件`)
+console.log(`schema 校验通过：meta、characters、formula-ref${hasNanoka ? '、nanoka' : ''}${hasGolden ? '、golden 两个夹具' : ''} 与 ${actions.length} 个动作文件`)
 const nanoka: NanokaFile | undefined = hasNanoka ? NanokaFileSchema.parse(read('nanoka.json')) : undefined
 
 const fi = process.argv.indexOf('--flags')
