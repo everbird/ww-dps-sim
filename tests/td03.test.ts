@@ -209,6 +209,7 @@ const GOLDEN = new URL('../data/generated/fixtures/golden-zones.json', import.me
   })
   test('按公式分类计数', () => {
     const n = (f: GoldenZone['formula']) => all.filter(g => g.formula === f).length
-    expect([n('hurt'), n('abnormal'), n('tune'), n('heal')]).toEqual([2940, 173, 30, 47])
+    // TD-03 §1.2 记为 2940 / 47：鉴心"护盾回复生命值"（J558）按公式形状是治疗，这里算进治疗
+    expect([n('hurt'), n('abnormal'), n('tune'), n('heal')]).toEqual([2939, 173, 30, 48])
   })
 })

@@ -24,9 +24,11 @@ sys.path.insert(0, str(Path(__file__).parent))
 from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
+import golden  # noqa: E402
 import nanoka  # noqa: E402
 from parse import Issues, as_num  # noqa: E402
-from report import render  # noqa: E402
+from report import render, render_golden  # noqa: E402
+from xlformula import Evaluator  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 EXPECTED_SETTINGS = {'framerate': 60, 'halfFrameThreshold': 0.5, 'coop': False,
@@ -113,6 +115,12 @@ def main() -> int:
         if isinstance(name, str) and text is not None:
             formula_ref[name.strip()] = str(text).strip()
 
+    # golden：标准答案与逐格乘区（TD-01 §11.1、TD-03 §10）
+    book = {name: golden.sheet_values(wb[name]) for name in golden.SHEETS}
+    fbook = {name: golden.sheet_formulas(wbf[name]) for name in (golden.CALC, golden.CFG)}
+    golden_damage = golden.golden_damage(book[golden.CALC], book[golden.CFG].get('B3'), golden.dmg_by_calc(book['dmg']))
+    golden_zones, golden_info = golden.golden_zones(Evaluator(book, fbook))
+
     # --strict
     strict_names = [s.strip() for s in args.strict.replace('，', ',').split(',') if s.strip()]
     strict = {}
@@ -133,6 +141,9 @@ def main() -> int:
         _dump(out / 'actions' / f"{blk['key']}.json", blk)
     _dump(out / 'characters.json', characters)
     _dump(out / 'formula-ref.json', formula_ref)
+    (out / 'fixtures').mkdir(exist_ok=True)
+    _dump(out / 'fixtures' / 'golden-damage.json', golden.clean(golden_damage))
+    _dump_lines(out / 'fixtures' / 'golden-zones.json', golden.clean(golden_zones))
 
     rows = [r for blk in blocks for g in blk['groups'] for r in g['rows']]
     kinds = Counter(r['kind'] for r in rows)
@@ -148,6 +159,8 @@ def main() -> int:
         'dmgNoConfig': flags['dmgNoConfig'], '伤害判定没连上（noDmg）': flags['noDmg'],
         '出生帧': sum(1 for r in rows if r['birthFrame'] is not None),
         '角色（characters.json）': len(characters),
+        'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
+        'golden 乘区格': len(golden_zones),
     }
     meta = {
         'xlsxFile': xlsx.name, 'xlsxSha256': hashlib.sha256(xlsx.read_bytes()).hexdigest(),
@@ -155,10 +168,12 @@ def main() -> int:
         'settings': settings,
         'counts': {'blocks': len(blocks), 'groups': counts['动作组'], 'rows': len(rows), 'hitRows': kinds['hit'],
                    'joined': sum(1 for r in hit if 'dmg' in r), 'noDmg': flags['noDmg'],
-                   'characters': len(characters)},
+                   'characters': len(characters), 'goldenEntries': len(golden_damage['entries']),
+                   'goldenZones': len(golden_zones)},
     }
     _dump(out / 'meta.json', meta)
     report = render(meta, counts, blocking, strict, gaps, cross, issues, blocks, flags)
+    report += render_golden(golden_damage, golden_zones, golden_info)
 
     # nanoka：技能冷却与技能文本（m0-confirm §5）。取不到只提示，不阻断
     if args.nanoka != 'off':
@@ -188,6 +203,12 @@ def _resource_version(wb) -> str | None:
 
 def _dump(path: Path, obj) -> None:
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=1, default=as_num) + '\n', 'utf-8')
+
+
+def _dump_lines(path: Path, items: list) -> None:
+    """数组每项一行（条目多、每条结构相同时更好读、diff 也更干净）"""
+    body = ',\n'.join(json.dumps(x, ensure_ascii=False, default=as_num) for x in items)
+    path.write_text(f'[\n{body}\n]\n', 'utf-8')
 
 
 if __name__ == '__main__':
