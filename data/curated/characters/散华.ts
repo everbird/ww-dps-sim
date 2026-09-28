@@ -31,5 +31,6 @@ export default defineCharacter('散华', {
     // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
     QTE: { priority: [{ fromFrame: 0, value: 11 }, { fromFrame: 42, value: 8 }] },
     E: { cooldown: 600 },                  // 共鸣技能冷却 10 秒（2026-09-27 用户提供）
+    大招: { cooldown: 960 },               // 共鸣解放冷却 16 秒（nanoka 3.7）；大招-引爆冰川是跟随判定的动作，不设冷却
   },
 })

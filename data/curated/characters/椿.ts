@@ -14,5 +14,6 @@ export default defineCharacter('椿', {
     E1: { cooldown: 240, cooldownGroup: 'E' },
     E2: { cooldown: 240, cooldownGroup: 'E' },
     E3: { cooldown: 1500 },
+    大招: { cooldown: 1500 },             // 共鸣解放冷却 25 秒（nanoka 3.7）
   },
 })

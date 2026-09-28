@@ -275,6 +275,31 @@ export const GenMetaSchema = z.strictObject({
   counts: z.record(z.string(), z.number()),
 })
 
+/** nanoka.json：nanoka 静态数据里的技能冷却与文本（tools/build/nanoka.py；m0-confirm §5）。只用来核对与起草，装配不直接读 */
+export const NanokaCooldownSchema = z.strictObject({
+  name: z.string(),                                 // "冷却时间"、"一日花冷却时间"…
+  seconds: z.number().min(0),
+  frames: int().min(0),
+  variesByLevel: z.literal(true).optional(),        // 各技能等级不同时标出；取的是 skillLevel 级
+})
+export const NanokaCharacterSchema = z.strictObject({
+  id: int().positive(),
+  name: z.string(),
+  skills: z.array(z.strictObject({
+    type: z.string(),                               // 常态攻击、共鸣技能、共鸣解放、变奏技能、延奏技能、共鸣回路、固有技能、谐度破坏
+    name: z.string(),
+    desc: z.string(),                               // 去掉富文本标签、填好参数
+    cooldowns: z.array(NanokaCooldownSchema),
+  })),
+  chains: z.array(z.strictObject({ n: int().min(1).max(6), name: z.string(), desc: z.string() })),
+})
+export const NanokaFileSchema = z.strictObject({
+  source: z.string(),
+  version: z.string(),
+  skillLevel: int().positive(),
+  characters: z.record(z.string(), NanokaCharacterSchema),   // 键是 xlsx 的角色块名
+})
+
 export const GoldenDamageSchema = z.strictObject({
   context: z.strictObject({ char: z.string(), panel: z.record(z.string(), z.number()), target: z.record(z.string(), z.union([z.number(), z.string()])) }),
   entries: z.array(z.strictObject({
@@ -324,3 +349,5 @@ export type GenBuffText = z.infer<typeof GenBuffTextSchema>
 export type GenMeta = z.infer<typeof GenMetaSchema>
 export type GoldenDamage = z.infer<typeof GoldenDamageSchema>
 export type GoldenZone = z.infer<typeof GoldenZoneSchema>
+export type NanokaCharacter = z.infer<typeof NanokaCharacterSchema>
+export type NanokaFile = z.infer<typeof NanokaFileSchema>
