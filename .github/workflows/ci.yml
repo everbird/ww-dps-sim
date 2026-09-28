@@ -1,9 +1,8 @@
 name: ci
 
+# 个人仓库：每个分支的推送都跑一次（PR 上显示的就是分支最新提交的结果）
 on:
   push:
-    branches: [main]
-  pull_request:
 
 jobs:
   check:
@@ -14,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
+          # 不开 cache: pnpm——它要求仓库里有 pnpm-lock.yaml，而写代码的环境装不了 npm 包、生成不了锁文件
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
