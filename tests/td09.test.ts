@@ -257,10 +257,13 @@ dataDescribe('T09-10 编译 + 运行：M0 队伍（椿 0 链、散华 6 链、�
     expect(starts(r)).toEqual(['E@0', 'E1@0', 'E@60', 'E@600', 'E1@600', 'E@780'])
     expect(eventsOf(r, 'wait').filter(e => e.code === 'cooldown').map(e => `${e.cmd.loop}.${e.cmd.line} ${e.frames}`)).toEqual(['2.1 480', '2.5 120'])
   })
-  test('椿的 E1 / E2 / E3 共用 4 秒冷却：E1 后接 E2 要等到第 240 帧', () => {
+  test('椿的 E1 / E2 共用 4 秒冷却，E1 后接 E2 要等到第 240 帧；一日花 E3 单独 15 秒，不受 E1 影响', () => {
     const r = go(['椿 E1 E2'], 0)
     expect(starts(r)).toEqual(['E1@0', 'E2@240'])
     expect(waits(r)).toEqual(['1:derive 0+85', '1:cooldown 85+155'])
+    const e3 = go(['椿 E1 E3'], 0)
+    expect(starts(e3)).toEqual(['E1@0', 'E3@36'])      // 一日花优先级 8 > E1 的 4：E1 第 2 段出手后即可接，不等 E1 的冷却
+    expect(e3.s.chars[0].cooldowns).toMatchObject({ E: 0, E3: 900 - (e3.s.battleFrames - 36) })
   })
 })
 

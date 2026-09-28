@@ -314,7 +314,7 @@ function gateRules(c: CharRuntime, def: ActionDef): GateResult {
     : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
 }
 
-/** 冷却按什么记：声骸技能共用一个冷却（'echo'）；共用冷却的技能按 cooldownGroup（椿的 E1 / E2 / E3 共用 'E'）；其余按动作 ID */
+/** 冷却按什么记：声骸技能共用一个冷却（'echo'）；共用冷却的技能按 cooldownGroup（椿的 E1 / E2 共用 'E'）；其余按动作 ID */
 export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.cooldownGroup ?? def.id)
 
 /** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
