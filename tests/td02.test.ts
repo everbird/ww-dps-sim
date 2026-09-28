@@ -119,7 +119,8 @@ describe('T02-4 生成数据 schema', () => {
   })
   test('核心回收必须是三槽', () => {
     const r = GenRowSchema.safeParse({ ...eRow, gains: { ...eRow.gains, core: [{ total: 1 }, null] } })
-    expect(firstIssue(r).path).toBe('gains.core.2')                  // 指到缺的那一槽
+    expect(r.success).toBe(false)
+    expect(firstIssue(r).path).toContain('gains.core')               // 路径指到 core（zod 4 的新旧版本分别报 core 与 core.2）
   })
   test('组名块内唯一', () => {
     const g = { id: 'E', rawId: '12', idNum: 12, idSuffix: '', rows: [eRow] }
