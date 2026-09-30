@@ -4,7 +4,7 @@
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedata'
 import type {
-  ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent, WaitCode,
+  ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TailRuntime, TimelineEvent, WaitCode,
 } from './types'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
@@ -13,13 +13,15 @@ export const SLOTS: readonly Slot[] = [0, 1, 2]
 export interface KernelHooks {
   /** P4 一次结算（TD-03 伤害 → TD-06 资源 → TD-07 触发）。可在里面调用 spawnJudgment 生成连锁判定，同一 tick 内接着结算 */
   settle(s: SimState, j: JudgmentRuntime, tick: number): void
-  castGain?(s: SimState, slot: Slot, src: EventSource, index: number): void      // TD-06
+  /** 动作刚开始（actionStart 已记）：扣大招能量 → actionStart 的触发与钩子 → 施放资源（TD-06 §7） */
+  actionStarted?(s: SimState, slot: Slot, a: ActionRuntime): void
+  castGain?(s: SimState, slot: Slot, src: EventSource, index: number): void      // atFrame > 0 的施放资源（TD-06 §7）
   outroTrigger?(s: SimState, slot: Slot, src: EventSource): void                  // TD-05
   timers?(s: SimState, rates: Rates): void                                        // P6 的 buff 计时（TD-07）
 }
 export interface Kernel { rules: Rules; hooks: KernelHooks }
-/** 时间线事件的来源：进行中的动作，或脱离动作的尾部 */
-export interface EventSource { def: ActionDef; instance: number }
+/** 时间线事件的来源：进行中的动作，或脱离动作的尾部（ActionRuntime、TailRuntime 都符合） */
+export interface EventSource { def: ActionDef; instance: number; skip?: string[]; detached?: true }
 
 // ---------------------------------------------------------------------------
 // §2 帧约定
@@ -35,7 +37,8 @@ export function log(s: SimState, ev: DistOmit<SimEvent, 'f' | 't'>): void {
 }
 
 // ---------------------------------------------------------------------------
-// §4.1 时间线：动作里一切"到某帧发生"的事，按帧排好，用游标推进
+// §4.1 时间线：动作里一切"到某帧发生"的事，按帧排好，用游标推进。
+// 施放资源只放 atFrame > 0 的：进入即得的那部分在开始动作的那一刻由资源模块发（TD-06 §7）
 
 const ORDER = { gain: 0, dilation: 1, spawn: 2, outro: 3 } as const
 const timelines = new WeakMap<ActionDef, TimelineEvent[]>()
@@ -44,7 +47,7 @@ export function timelineOf(def: ActionDef): TimelineEvent[] {
   const cached = timelines.get(def)
   if (cached) return cached
   const tl: TimelineEvent[] = []
-  def.castGains.forEach((g, index) => tl.push({ frame: g.atFrame, kind: 'gain', index }))
+  def.castGains.forEach((g, index) => { if (g.atFrame > 0) tl.push({ frame: g.atFrame, kind: 'gain', index }) })
   def.dilations.forEach((d, index) => { if (d.anchor === 'action') tl.push({ frame: d.start, kind: 'dilation', index }) })
   def.judgments.forEach((j, index) => { if (j.spawnFrame !== null) tl.push({ frame: j.spawnFrame, kind: 'spawn', index }) })
   if (def.outroTriggerFrame !== undefined) tl.push({ frame: def.outroTriggerFrame, kind: 'outro' })
@@ -95,18 +98,19 @@ const survives = (j: JudgmentDef): boolean => j.persistsOnCancel && j.lifeFrames
 const bornBy = (j: JudgmentDef, t: number): boolean => (j.birthFrame ?? j.spawnFrame!) < t
 
 /** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的）。
- *  cmd = 由哪条指令开始（TD-09），写进日志；有冷却的动作从这一刻起算冷却 */
+ *  延奏动作的独立时间线与它生成的判定不受影响（TD-05 §4.3）。
+ *  cmd = 由哪条指令开始（TD-09），写进日志，接续动作继承它（TD-08 P10）；有冷却的动作从这一刻起算冷却 */
 export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, cmd?: CommandRef): ActionRuntime {
   const c = s.chars[slot]
   if (c.action) cancelAction(s, k, slot, def.id)
   const dropped: string[] = []
   s.judgments = s.judgments.filter(j => {
-    if (j.owner !== slot || survives(j.def)) return true
+    if (j.owner !== slot || survives(j.def) || j.detached) return true
     dropped.push(j.def.name)
     return false
   })
   for (const tail of s.tails) {
-    if (tail.owner !== slot) continue
+    if (tail.owner !== slot || tail.detached) continue
     tail.events = tail.events.filter(e => {
       if (e.kind !== 'spawn' || survives(tail.def.judgments[e.index]!)) return true
       dropped.push(tail.def.judgments[e.index]!.name)
@@ -116,18 +120,19 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   s.tails = s.tails.filter(t => t.events.length > 0)
   const a: ActionRuntime = {
     id: def.id, def, instance: s.nextId++, localFrame: 0, startedAt: s.frame, cursor: 0, ended: false,
-    coreGranted: [false, false, false],
+    coreGranted: [false, false, false], ...(cmd ? { cmd } : {}),
   }
   c.action = a
   c.last = a
   c.startedThisTick = true
   if (def.cooldown) c.cooldowns[cooldownKey(def)] = def.cooldown
   log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
+  k.hooks.actionStarted?.(s, slot, a)
   return a
 }
 
-/** 取消（§4.2）：同一角色开始新动作时，旧动作在局部帧 t 被打断 */
-function cancelAction(s: SimState, k: Kernel, slot: Slot, by: ActionId): void {
+/** 取消（§4.2）：同一角色开始新动作时，旧动作在局部帧 t 被打断；也用于"第nF后切人结束技能"（TD-05 §5，by = '切人'） */
+export function cancelAction(s: SimState, k: Kernel, slot: Slot, by: string): void {
   const c = s.chars[slot]
   const a = c.action!
   const t = a.localFrame
@@ -143,8 +148,8 @@ function cancelAction(s: SimState, k: Kernel, slot: Slot, by: ActionId): void {
   const rest = timelineOf(a.def).slice(a.cursor)
   const keep = rest.filter(e => e.kind === 'outro'
     || (e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t)))
-  for (const e of rest) if (e.kind === 'spawn' && !keep.includes(e)) dropped.push(a.def.judgments[e.index]!.name)
-  if (keep.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: t, events: keep })
+  for (const e of rest) if (e.kind === 'spawn' && !keep.includes(e) && !skipped(a, e)) dropped.push(a.def.judgments[e.index]!.name)
+  if (keep.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: t, events: keep, ...(a.skip ? { skip: a.skip } : {}) })
   // ③ 已登记的膨胀窗口照常走完；只有 clearSelfOnCancel 类型（极限闪避减速）撤掉自身侧
   s.dilations = s.dilations.filter(d => !(d.instance === a.instance && d.side === 'self' && k.rules.dilation[d.type].clearSelfOnCancel))
   a.ended = true
@@ -158,7 +163,7 @@ function endAction(s: SimState, slot: Slot): void {
   const a = c.action!
   s.judgments = s.judgments.filter(j => !(j.actionInstance === a.instance && j.def.lifeFrames === -1))
   const rest = timelineOf(a.def).slice(a.cursor).filter(e => !(e.kind === 'spawn' && a.def.judgments[e.index]!.lifeFrames === -1))
-  if (rest.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: a.localFrame, events: rest })
+  if (rest.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: a.localFrame, events: rest, ...(a.skip ? { skip: a.skip } : {}) })
   a.ended = true
   c.action = null
   log(s, { type: 'actionEnd', char: c.name, action: a.id, instance: a.instance })
@@ -172,8 +177,14 @@ export function endDueActions(s: SimState): void {
   }
 }
 
-/** P3：三名角色按槽位推进局部帧，发生区间内的时间线事件；尾部按战斗时钟推进 */
+/** P3：三名角色按槽位推进局部帧，发生区间内的时间线事件；尾部按战斗时钟推进。
+ *  本 tick P3 里才出现的尾部（延奏动作的独立时间线，TD-05 §4.3）排在最后推进：它的局部第 0 帧就是本 tick */
 export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
+  const old = new Set(s.tails)
+  const advanceTail = (tail: TailRuntime) => {
+    while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, tail.owner, tail, tail.events.shift()!)
+    tail.localFrame = snap(tail.localFrame + rates.battle)
+  }
   for (const slot of SLOTS) {
     const c = s.chars[slot]
     const r = rates.chars[slot]
@@ -186,14 +197,18 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
     } else if (c.last) {
       c.last.localFrame = snap(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
     }
-    for (const tail of s.tails) {
-      if (tail.owner !== slot) continue
-      while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, slot, tail, tail.events.shift()!)
-      tail.localFrame = snap(tail.localFrame + rates.battle)
-    }
+    for (const tail of s.tails) if (tail.owner === slot && old.has(tail)) advanceTail(tail)
+  }
+  for (let i = 0; i < s.tails.length; i++) {
+    const tail = s.tails[i]!
+    if (!old.has(tail)) { old.add(tail); advanceTail(tail) }
   }
   s.tails = s.tails.filter(t => t.events.length > 0)
 }
+
+/** 钩子跳过的判定（TD-08 skipJudgments）：不生成，也不算"没出手" */
+const skipped = (src: EventSource, e: TimelineEvent): boolean =>
+  e.kind === 'spawn' && src.skip !== undefined && src.skip.includes(src.def.judgments[e.index]!.name)
 
 function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: TimelineEvent): void {
   switch (e.kind) {
@@ -201,7 +216,9 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
     case 'dilation':
       registerDilation(s, k.rules, src.def.dilations[e.index]!, slot, src.instance, s.chars[slot].action?.instance === src.instance)
       break
-    case 'spawn': spawnJudgment(s, slot, src.def.id, src.instance, src.def.judgments[e.index]!); break
+    case 'spawn':
+      if (!skipped(src, e)) spawnJudgment(s, slot, src.def.id, src.instance, src.def.judgments[e.index]!, src.detached)
+      break
     case 'outro': k.hooks.outroTrigger?.(s, slot, src); break
   }
 }
@@ -211,8 +228,13 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
 
 let settleQueue: JudgmentRuntime[] | null = null   // P4 进行中时，新生成的判定追加到这里，同一 tick 内结算
 
-export function spawnJudgment(s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef): JudgmentRuntime {
-  const j: JudgmentRuntime = { id: s.nextId++, owner, action, actionInstance: instance, def, spawnedAt: s.frame, age: 0, ticksDone: 0 }
+/** detached：由延奏动作的独立时间线生成，不随持有者之后的动作消失（TD-05 §4.3） */
+export function spawnJudgment(
+  s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef, detached?: true,
+): JudgmentRuntime {
+  const j: JudgmentRuntime = {
+    id: s.nextId++, owner, action, actionInstance: instance, def, spawnedAt: s.frame, age: 0, ticksDone: 0, ...(detached ? { detached } : {}),
+  }
   s.judgments.push(j)
   settleQueue?.push(j)
   log(s, { type: 'judgmentSpawn', char: s.chars[owner].name, action, judgment: def.name, id: j.id })
@@ -327,7 +349,7 @@ export function settled(s: SimState, slot: Slot): boolean {
   const tl = timelineOf(a.def)
   for (let i = a.cursor; i < tl.length; i++) {
     const e = tl[i]!
-    if (e.kind === 'outro') continue                            // 延奏触发打断后照样发生（转尾部），不用等
+    if (e.kind === 'outro' || skipped(a, e)) continue          // 延奏触发打断后照样发生（转尾部），不用等；跳过的判定不会出现
     if (e.kind !== 'spawn') return false
     const j = a.def.judgments[e.index]!
     if (!(survives(j) && bornBy(j, t))) return false

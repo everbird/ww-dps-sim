@@ -85,14 +85,26 @@ class T01_12_备注并列写法(unittest.TestCase):
     def test_cases(self):
         self.assertEqual(extract_hints('第68F前不响应输入、不能切人\n第57F触发上一角色延奏\n第1F获得100点战势、20点权柄'),
                          {'noInputBefore': 68, 'noSwitchBefore': 68, 'outroTriggerFrame': 57})
+        # 区间写法取起点并标出（TD-05 §4.1，原 T01-12 不产出）
         self.assertEqual(extract_hints('第71F前不能切人、不响应输入\n第30F获得3点晶质\n第59～65F触发上一角色延奏，伤害命中后触发被动2'),
-                         {'noSwitchBefore': 71, 'noInputBefore': 71})
+                         {'noSwitchBefore': 71, 'noInputBefore': 71, 'outroTriggerFrame': 59, 'outroRange': True})
         self.assertEqual(extract_hints('地面E，第21F前不能闪避、跳跃\n第12F重新索敌，摇杆方向，最大距离10m'), {'noDodgeBefore': 21})
 
     def test_several_locks_in_one_sentence(self):
         """逗号分开的几条限制各自匹配（千咲 QTE）"""
         self.assertEqual(extract_hints('第48F前不响应输入，第54F前不能切人，第100F前可派生A2 | 第34F触发上一角色延奏'),
                          {'noInputBefore': 48, 'noSwitchBefore': 54, 'outroTriggerFrame': 34})
+
+    def test_switch_ends_action(self):
+        """TD-05 §5：切人会结束的动作"""
+        self.assertEqual(extract_hints('第72F后切人立即结束技能'), {'endOnSwitchAfter': 72})
+        self.assertEqual(extract_hints('第24F后切人结束技能；持续帧内每6F进行一次判定，最多19次'),
+                         {'endOnSwitchAfter': 24, 'tickInterval': 6, 'maxTicks': 19})
+        self.assertEqual(extract_hints('第80F后切人消失'), {'endOnSwitchAfter': 80})
+        self.assertEqual(extract_hints('切人立即消失'), {'endOnSwitchAfter': 0})
+        self.assertEqual(extract_hints('切人后中断动作并触发离场'), {'endOnSwitchAfter': 0})
+        self.assertEqual(extract_hints('第30F前切人不离场'), {})
+        self.assertEqual(extract_hints('立即触发上一角色延奏 不处于轮滑状态时…'), {'outroTriggerFrame': 0})
 
     def test_other_hints(self):
         self.assertEqual(extract_hints('持续帧内每6F进行一次判定，最多4次'), {'tickInterval': 6, 'maxTicks': 4})

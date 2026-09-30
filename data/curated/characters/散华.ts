@@ -13,9 +13,25 @@ export default defineCharacter('散华', {
       target: 'self', duration: 480, trigger: { on: 'intro' },
     },
     {
+      // 持续时间待确认：nanoka 3.7 写 10 秒，xlsx 写"施放A5后，获得持续时间为8秒的15%暴击率提升buff"；先按 nanoka
+      id: '散华.共鸣链1',
+      source: '共鸣链1：施放第5段普攻时，散华自身暴击提升15%，持续10秒。',
+      zone: 'critRate', value: 0.15, target: 'self', duration: 600,
+      requires: { chain: 1 },
+      trigger: { on: 'actionStart', where: { actions: ['A5'] } },
+    },
+    {
+      id: '散华.共鸣链5',
+      source: '共鸣链5：共鸣回路冰绽的暴击伤害提升100%。（"消失时直接爆炸"归钩子，TD-08 §5.1）',
+      zone: 'critDamage', value: 1, filter: { judgments: ['E-引爆冰棱', 'QTE-引爆冰棘', '大招-引爆冰川'] },
+      target: 'self', duration: 'inf', trigger: 'always',
+      requires: { chain: 5 },
+    },
+    {
+      // xlsx："每个引爆周期可获得1层"：一次重击爆裂同时引爆几块冰只算一层，写成同一战斗帧内只触发一次（TD-07 §4.4）
       id: '散华.共鸣链6',
       source: '共鸣链6：引爆【冰棱】或【冰川】后，队伍中的角色攻击提升10%，持续20秒，可叠加2层',
-      zone: 'atkPct', value: 0.1, target: 'team', maxStacks: 2, duration: 1200,
+      zone: 'atkPct', value: 0.1, target: 'team', maxStacks: 2, duration: 1200, icd: 1,
       requires: { chain: 6 },
       trigger: { on: 'judgmentSettle', where: { judgments: ['E-引爆冰棱', 'QTE-引爆冰棘', '大招-引爆冰川'] } },
     },
@@ -25,6 +41,15 @@ export default defineCharacter('散华', {
       zone: 'DamageAmplify0', value: 0.38,                 // 不带类别的"伤害加深"= 0 类（TD-03 §2）
       filter: { tags: ['普攻'] }, target: 'nextIn', duration: 840, onSwitchOut: 'clear',
       trigger: { on: 'outro' },
+    },
+  ],
+  // 共鸣链4 的后半句"5秒内的下次重击爆裂伤害提升120%"与固有2"冰绽造成的伤害提升20%"落哪个乘区待确认（TD-07 Q5），暂不写
+  resourceEffects: [
+    {
+      id: '散华.共鸣链4.能量',
+      source: '共鸣链4：施放共鸣解放焦瞑冻土时，回复10点共鸣能量。',
+      resource: 'energy', amount: 10, requires: { chain: 4 },
+      trigger: { on: 'actionStart', where: { actions: ['大招'] } },
     },
   ],
   actionOverrides: {

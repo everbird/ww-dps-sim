@@ -132,7 +132,7 @@ describe('T02-4 生成数据 schema', () => {
 })
 
 describe('T02-5 BuffDef', () => {
-  const outro: BuffDefInput = 散华.buffs![2]!
+  const outro: BuffDefInput = 散华.buffs!.find(b => b.id === '散华.延奏')!
   test('合法定义补齐默认值', () => {
     const r = BuffDefSchema.safeParse(outro)
     expect(r.success).toBe(true)
@@ -177,6 +177,7 @@ describe('T02-6 编译期约束（tsc 通过即成立）', () => {
         case 'intro': case 'outro': return ev.char
         case 'buffApply': case 'buffExpire': return ev.buff
         case 'resource': return `${ev.char} ${ev.resource} ${ev.delta}`
+        case 'resourceFull': return `${ev.char} ${ev.resource} 满`
         case 'enemyState': return ev.change
         case 'effectTick': return ev.effect
         case 'wait': return `等待 ${ev.frames}`

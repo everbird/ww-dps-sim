@@ -1,7 +1,7 @@
 // src/data/define.ts —— 手写数据模块的类型与 define* 辅助函数（TD-02 §5）
 // define* 只做类型约束、原样返回；buff 在注册层装载时再用 BuffDefSchema 校验并补默认值。
 import type { ActionId, ActionKind, BodyType, CharName, Frame, StatKey, WeaponType } from './common'
-import type { BuffDefInput } from './buff.schema'
+import type { BuffDefInput, ResourceEffectInput } from './buff.schema'
 import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
 import type { CharacterHooks } from '../engine/types'
 
@@ -18,6 +18,9 @@ export interface ActionOverride {
   comboFrom?: ActionId[]                    // 连段前置（TD-04 §6.2）：自动推断之外的，如 E1 → E2
   cooldown?: Frame                          // 技能冷却（帧）：xlsx 只有声骸的，角色技能的冷却写在这里（TD-09 §3.2）
   cooldownGroup?: string                    // 几个动作共用一个冷却时写同一个组名（椿的 E1 / E2 → 'E'）
+  energyCost?: number                       // 开始时要有并扣掉的大招能量；别名 R 的动作自动设，写 0 取消（TD-06 §2.3）
+  endOnSwitchOut?: Frame                    // 切出时局部帧 ≥ 它就结束（TD-05 §5）；构建脚本从备注抽，这里可改
+  followUp?: { after: string; action: ActionId }   // 本动作的判定 after 第一次结算后，立刻开始 action（TD-08 P10）
   judgments?: Record<string, JudgmentOverride>   // 键是判定名（组内重名带 #n）
   accept?: string[]                         // 明确接受、不再提示的 flag（动作级与该动作的判定级都算）
 }
@@ -35,6 +38,7 @@ export interface CharacterModule {
   treeStats?: Partial<Record<StatKey, number>>
   aliases?: Record<string, ActionId>
   buffs?: BuffDefInput[]
+  resourceEffects?: ResourceEffectInput[]   // 资源型触发效果（TD-07 §9）
   hooks?: CharacterHooks
   actionOverrides?: Record<ActionId, ActionOverride>
 }
@@ -48,7 +52,7 @@ export function defineCharacter(name: CharName, mod: CharacterModule): Character
 export interface EchoSetModule { name: string; pieces: Partial<Record<2 | 3 | 5, BuffDefInput[]>> }
 export const defineEchoSet = (m: EchoSetModule): EchoSetModule => m
 
-export interface WeaponModule { name: string; passives: BuffDefInput[] }
+export interface WeaponModule { name: string; passives: BuffDefInput[]; resourceEffects?: ResourceEffectInput[] }
 export const defineWeapon = (m: WeaponModule): WeaponModule => m
 
 export interface EchoModule {

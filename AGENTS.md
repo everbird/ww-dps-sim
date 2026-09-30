@@ -13,6 +13,10 @@
 | `wuwa-dps-td02-types-schema-v0.1.3.md` | 全部类型与 zod schema |
 | `wuwa-dps-td03-damage-formula-v0.1.md` | 伤害公式与乘区 |
 | `wuwa-dps-td04-sim-kernel-v0.1.1.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定 |
+| `wuwa-dps-td05-switch-concerto-v0.1.md`（草案，已实现） | 切人、变奏 / 延奏、协奏清零、切人结束技能 |
+| `wuwa-dps-td06-resources-v0.1.md`（草案，已实现） | 角色资源：大招能量分配与门槛、协奏时机、核心资源（敌人量表在 v0.2） |
+| `wuwa-dps-td07-buff-system-v0.1.md`（草案，已实现） | buff 实例、作用对象、触发与顺序、消耗型 / 标记型、资源型效果、原文起草 |
+| `wuwa-dps-td08-character-module-v0.1.md`（草案，通用部分已实现） | 角色模块怎么写：钩子、写法模式、M0 三人的草案与待确认项 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、循环 |
 | `wuwa-dps-design-v0.2.9.md`（机制设计） | 游戏机制；与总设计冲突时以总设计附录 A 为准 |
 | `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）的数据确认结果与待办 |
@@ -27,7 +31,7 @@ data/raw/           xlsx（不进 git）
 data/generated/     构建产物（不进 git，公开仓库不发布原作者的数据）；fixtures/ 下是 golden 夹具
 data/curated/       手写数据（进 git）：dmg-join.json、characters/<角色>.ts、weapons.ts …
 src/data/           ② schema、动作装配、注册层（registry.ts 纯函数；load.ts 是 Node 侧读盘）
-src/engine/         ③ 仿真引擎：纯库，不许引入 DOM、fs、网络（resolve → simulate → summary）
+src/engine/         ③ 仿真引擎：纯库，不许引入 DOM、fs、网络（resolve → simulate → summary；内核 kernel、调度 scheduler、切人 switch、资源 resources、触发 triggers）
 src/cli/            命令行（pnpm sim）
 scenarios/          场景文件（YAML）
 out/                pnpm sim 写出的事件日志（不进 git）
@@ -75,10 +79,11 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4。之后的：
    - 「聚爆效应121」（伤害配置 B2622，爱弥斯"聚爆轨迹强化E"）其实是乘在聚爆效应伤害上的独立因子（伤害计算 Q1040–Q1055），TD-03 §9.4 记成了"不参与伤害公式"。夹具里并入 0 类加深，构建报告有提示；它该落哪个乘区留给 TD-06。
    - 扰动对拍比 TD-03 的范围大：改写全部被引用的「伤害配置」R1791 起的数值格（含角色专属格）与目标防御、七项抗性，共 2340 格；R1792–R1815、R2139–R2142 预先算好的因子格按公式现算。20 轮 63800 次比较，全等 63772；其余 28 次都是"防御分母 ≤ 0"（TD-03 §1.3，xlsx 算出负系数，TD-03 取上限 2）。
 6. **M2 单人仿真的实现决定**（总设计 §3.3–§3.5，TD-01 §13、TD-02 §7）：
-   - 装配按 TD-01 §13 补齐了伤害与资源字段（倍率、属性、元素、标签、资源、削韧 / 偏谐、castGains、Formula1 参数、治疗固定值）。`kindGuess` 只在 dmg 与组名都推不出、退到 `other` 时打（§13.1 没说清哪种算猜测；T01-14 期望按组名推出的不打）。事件生成的判定（E-引爆冰棱…）"进入即得"的协奏归判定自己，在它结算时发，不并进动作的 castGains（总设计 §6.7）。
+   - 装配按 TD-01 §13 补齐了伤害与资源字段（倍率、属性、元素、标签、资源、削韧 / 偏谐、castGains、Formula1 参数、治疗固定值）。`kindGuess` 只在 dmg 与组名都推不出、退到 `other` 时打（§13.1 没说清哪种算猜测；T01-14 期望按组名推出的不打）。M3 起类别按 dmg 的技能归类取（TD-07 §4.3）。事件生成的判定（E-引爆冰棱…）"进入即得"的协奏归判定自己，在它结算时发，不并进动作的 castGains（总设计 §6.7）。
    - 技能树属性节点：角色模块新增 `treeStats`（`CharacterDef.treeStats`），手填、进静态面板；`nanoka.json` 新增 `treeStats`，`check:data --flags` 拿它核对（与冷却同一做法）。角色基础暴击 5%、暴伤 150%、共鸣效率 100% 是 xlsx 的常数，写在 `resolve.ts` 的 `CHAR_BASE`。
-   - 只有写了角色模块的角色进 GameData；武器被动写在 `data/curated/weapons.ts`（总设计 §7 的单文件），行进序曲 / 奇幻变奏的"回复协奏"不是 buff，等 TD-06。
+   - 只有写了角色模块的角色进 GameData；武器被动写在 `data/curated/weapons.ts`（总设计 §7 的单文件），行进序曲 / 奇幻变奏的"回复协奏"不是 buff，M3 写成资源型效果（TD-07 §9）。
    - 自定义敌人缺省：防御 8 × 等级 + 792（enemies.json 1402 条里 1342 条如此），各元素抗性 10%，生命不设上限。
    - 类型：`ResolvedMember.echoes[].def` 可为 null（echoes.json 在 M3，之前只计入词条并提示）；`SimResult.error` 带出运行期报错；`KernelHooks.timers` 是 P6 的 buff 计时；`Summary.waits` 带 `item`。
-   - 统计窗口（总设计 §3.5）：最后一条指令是出招时取该动作结束或被取消的战斗帧，切人取切人那一刻，`wait` 取等完那一刻；战斗帧 < 窗口终点的伤害计入，其余是窗口外。
-   - 异常效应、谐度破坏、震谐 / 骇破响应的伤害在 M4 之前记 0 并提示一次，不按直接伤害算。触发型 buff、能量与协奏、切人变奏 / 延奏、`onEvent` 钩子在 M3。
+   - 统计窗口（总设计 §3.5）：最后一条指令是出招时取该动作结束或被取消的战斗帧，切人取切人那一刻，`wait` 取等完那一刻；战斗帧 < 窗口终点的伤害计入，其余是窗口外。M3 起变奏切人开始的变奏动作（及接续动作）带切人指令的出处，按它结束算（TD-05 §2）。
+   - 异常效应、谐度破坏、震谐 / 骇破响应的伤害在 M4 之前记 0 并提示一次，不按直接伤害算。触发型 buff、能量与协奏、切人变奏 / 延奏、`onEvent` 钩子已在 M3 接上（第 7 条）。
+7. **M3（TD-05～08）对已有文档的调整**：列在 TD-05～08 各自最后一节"对其他文档的调整"——TD-01 §13.1（动作类别按技能归类、施放资源跟随共鸣链版本、`endOnSwitchOut` 与区间写法的延奏触发帧）、TD-02（新类型与字段）、TD-04（时间线只放 atFrame > 0 的施放资源、`actionStarted` 钩子、独立尾部、跳过的判定）、TD-09（`switch` 事件由 `onSwitch` 记、变奏带切人指令的出处）、总设计 §6.4 / §6.7 / §6.8 / §6.9。下次改这些文档时并回。

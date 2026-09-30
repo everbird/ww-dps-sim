@@ -32,6 +32,8 @@ export const HintsSchema = z.strictObject({
   tickInterval: int().positive().optional(),
   maxTicks: int().positive().optional(),
   outroTriggerFrame: int().min(0).optional(),
+  outroRange: z.literal(true).optional(),          // 备注写成"第 a～bF 触发"，outroTriggerFrame 取 a（TD-05 §4.1）
+  endOnSwitchAfter: int().min(0).optional(),       // "第nF后切人结束技能 / 消失"；0 = 切人立即结束（TD-05 §5）
   priorityChangeFrames: z.array(int().min(0)).optional(),
   noDodgeBefore: int().min(0).optional(),
   noInputBefore: int().min(0).optional(),

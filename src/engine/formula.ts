@@ -210,7 +210,7 @@ const DEF_ZONES: ReadonlySet<ZoneId> = new Set<ZoneId>(['RoleIgnoreDefRate', 'Ta
 
 /** 异常效应伤害的防御例外：出伤者身上的减防 / 无视防御不生效（xlsx 异常防御系数里的"对异常补偿"两格） */
 function skipForAbnormal(b: ActiveBuff): boolean {
-  return DEF_ZONES.has(b.def.zone) && b.def.target !== 'enemy' && b.owner !== 'env' && !b.def.filter?.tags?.includes('异常效应')
+  return b.def.zone !== undefined && DEF_ZONES.has(b.def.zone) && b.def.target !== 'enemy' && b.owner !== 'env' && !b.def.filter?.tags?.includes('异常效应')
 }
 
 /** 按 zone 把 value × stacks 累加；critOnly 的进暴击专属桶；最后并入钩子直接补的值 */
@@ -218,6 +218,7 @@ export function accumulate(h: HitView, buffs: readonly ActiveBuff[], draft?: Pic
   const acc = emptyAccumulator()
   const abnormal = h.tags.includes('异常效应')
   for (const b of buffs) {
+    if (b.def.zone === undefined) continue                    // 标记型 buff 不参与伤害（TD-07 §7）
     if (!matchesFilter(b.def.filter, h)) continue
     if (abnormal && skipForAbnormal(b)) continue
     const bucket = b.def.filter?.critOnly ? acc.critOnly : acc.zones

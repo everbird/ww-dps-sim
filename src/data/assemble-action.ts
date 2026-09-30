@@ -43,10 +43,12 @@ export function assembleBlock(
 
 /** 按共鸣链数挑判定（总设计 §3.3 第 4 步）：chainRange 不含该链数的判定去掉；动作的时间字段不受影响 */
 export function forChain(actions: Record<ActionId, ActionDef>, chain: number): Record<ActionId, ActionDef> {
+  const ok = (r?: ChainRange) => !r || (chain >= r.min && chain <= r.max)
   const out: Record<ActionId, ActionDef> = {}
   for (const [id, a] of Object.entries(actions)) {
-    const keep = a.judgments.filter(j => !j.chainRange || (chain >= j.chainRange.min && chain <= j.chainRange.max))
-    out[id] = keep.length === a.judgments.length ? a : { ...a, judgments: keep }
+    const keep = a.judgments.filter(j => ok(j.chainRange))
+    const gains = a.castGains.filter(g => ok(g.chainRange))      // 施放资源跟随判定行的版本（TD-06 §1）
+    out[id] = keep.length === a.judgments.length && gains.length === a.castGains.length ? a : { ...a, judgments: keep, castGains: gains }
   }
   return out
 }
@@ -161,14 +163,18 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, opts:
   judgments.sort((a, b) => (a.spawnFrame ?? Infinity) - (b.spawnFrame ?? Infinity))
   if (judgments.some(j => j.lifeFrames === -1 && j.spawnFrame !== null && j.spawnFrame >= endFrame!)) flags.add('minusOneAfterEnd')   // 动作停了才出现，永远不会生成（TD-04 §4.3）
 
-  const outro = rows.find(r => r.hints.outroTriggerFrame !== undefined)?.hints.outroTriggerFrame
+  const outroRow = rows.find(r => r.hints.outroTriggerFrame !== undefined)
+  const outro = outroRow?.hints.outroTriggerFrame
+  if (outroRow?.hints.outroRange) flags.add('outroRange')        // 区间写法取了起点（TD-05 §4.1）
   const switchLock = maxHint('noSwitchBefore')
+  const endOnSwitch = rows.find(r => r.hints.endOnSwitchAfter !== undefined)?.hints.endOnSwitchAfter
   return {
     id: g.id, owner: file.key, kind, endFrame, cancelWindows, priority,
     ...(comboFrom ? { comboFrom } : {}),
-    inputLocks, judgments, dilations, castGains: castGainsOf(rows),
+    inputLocks, judgments, dilations, castGains: castGainsOf(rows, chains),
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
+    ...(endOnSwitch !== undefined ? { endOnSwitchOut: endOnSwitch } : {}),
     source: { file: file.key, rows: g.rows.map(r => r.row) },
     flags: [...flags],
   }
@@ -225,7 +231,7 @@ function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive:
 /** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
 const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
-  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame'],
+  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'],
 }
 const J_HANDLED: Record<string, string[]> = {
   lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
@@ -242,6 +248,9 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.cancelWindows !== undefined) out.cancelWindows = ov.cancelWindows.map(w => ({ ...w, row: 0 }))   // row 0 = 手写
   if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
   if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
+  if (ov.energyCost !== undefined) out.energyCost = ov.energyCost
+  if (ov.endOnSwitchOut !== undefined) out.endOnSwitchOut = ov.endOnSwitchOut
+  if (ov.followUp !== undefined) out.followUp = ov.followUp
   if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
   if (ov.cooldown !== undefined) out.cooldown = ov.cooldown
   if (ov.cooldownGroup !== undefined) out.cooldownGroup = ov.cooldownGroup
@@ -262,9 +271,11 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
 // ---------------------------------------------------------------------------
 // 伤害与资源字段（TD-01 §13.1 kind / castGains，§13.2 判定）
 
-/** Damage.Type → 动作类别（TD-01 §13.1）；其余类型（其他、异常、谐度破坏、响应）不决定类别 */
-const KIND_BY_TYPE: Readonly<Record<number, ActionKind>> = {
-  0: 'normal', 1: 'heavy', 4: 'skill', 2: 'liberation', 3: 'intro', 7: 'outro', 5: 'echo',
+/** dmg Skill.Type（技能归类）→ 动作类别（TD-07 §4.3 修订 TD-01 §13.1）：施放什么技能看技能归类，伤害标签才看 Damage.Type。
+ *  椿的 E1 / E2 / E3 是共鸣技能（2），伤害类型却是普攻（0）。其余代码不决定类别、按组名推：延奏组散在 8 / 9 / 12 / 13 里，
+ *  而 12 里也有赞妮"E1-精准反击前置"、丽贝卡"待机"这类非延奏的组 */
+const KIND_BY_SKILL_TYPE: Readonly<Record<number, ActionKind>> = {
+  0: 'normal', 1: 'heavy', 2: 'skill', 3: 'liberation', 4: 'intro', 5: 'normal',
 }
 /** 没连上 dmg 的判定按动作类别推标签 */
 const TAG_BY_KIND: Readonly<Record<ActionKind, DamageTag>> = {
@@ -276,10 +287,11 @@ const ALLY_TARGETS = new Set(['友方', '队伍', '目标队友'])
 const ATTR_BY_PROP: Readonly<Record<number, JudgmentDef['relatedAttr']>> = { 7: 'atk', 2: 'hp', 10: 'def', 11: 'energyRegen' }
 const CALC_BY_TYPE = ['damage', 'heal', 'hpCost'] as const
 
-/** 组内第一个连上 dmg 的判定的 Damage.Type 决定类别；都没有则按组名前缀；再没有 → other，打 kindGuess */
+/** 组内第一个连上 dmg 的判定的技能归类决定类别；都没有则按组名前缀；再没有 → other，打 kindGuess */
 function kindOfGroup(id: string, rows: GenRow[], flags: Set<string>): ActionKind {
   for (const r of rows) {
-    const k = r.kind === 'hit' && r.dmg ? KIND_BY_TYPE[r.dmg.damageType] : undefined
+    const t = r.kind === 'hit' ? r.dmg?.skillType : undefined
+    const k = t !== undefined && t !== null ? KIND_BY_SKILL_TYPE[t] : undefined
     if (k) return k
   }
   const k = kindOf(id)
@@ -357,10 +369,16 @@ function judgmentDamage(r: GenRow, kind: ActionKind, opts: AssembleOptions, jf: 
 
 const RESOURCE_OF = { energy: 'energy', concerto: 'concerto' } as const
 /** 施放类资源：组内资源行（gain）的合计，加上判定行资源公式里"进入动作即得"的项；都在进入动作的那一刻发放（TD-01 §13.1）。
- *  事件生成的判定不算在内（见 perHit） */
-function castGainsOf(rows: GenRow[]): CastGain[] {
-  const sum = new Map<ResourceKind, number>()
-  const add = (k: ResourceKind, v: number | undefined) => { if (v) sum.set(k, (sum.get(k) ?? 0) + v) }
+ *  事件生成的判定不算在内（见 perHit）；带共鸣链版本的判定行，它的项单列并带上 chainRange，由 forChain 筛（TD-06 §1） */
+function castGainsOf(rows: GenRow[], chains: Map<GenRow, { range: ChainRange }>): CastGain[] {
+  const sums = new Map<string, CastGain>()
+  const add = (k: ResourceKind, v: number | undefined, range?: ChainRange) => {
+    if (!v) return
+    const key = `${k}|${range ? `${range.min}-${range.max}` : ''}`
+    const g = sums.get(key)
+    if (g) g.amount += v
+    else sums.set(key, { atFrame: 0, resource: k, amount: v, ...(range ? { chainRange: range } : {}) })
+  }
   for (const r of rows) {
     const cells: [ResourceKind, GainCell | null][] = [
       [RESOURCE_OF.energy, r.gains.energy], [RESOURCE_OF.concerto, r.gains.concerto],
@@ -369,8 +387,8 @@ function castGainsOf(rows: GenRow[]): CastGain[] {
     for (const [k, c] of cells) {
       if (!c) continue
       if (r.kind === 'gain') add(k, c.total)
-      else if (r.kind === 'hit' && !r.eventSpawned) add(k, c.onAction)
+      else if (r.kind === 'hit' && !r.eventSpawned) add(k, c.onAction, chains.get(r)?.range)
     }
   }
-  return [...sum].map(([resource, amount]) => ({ atFrame: 0, resource, amount }))
+  return [...sums.values()]
 }
