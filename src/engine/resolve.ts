@@ -7,7 +7,7 @@ import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
-import type { RegisteredBuff, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
+import type { RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
 export const CHAR_BASE = { critRate: 0.05, critDamage: 1.5, energyRegen: 1 } as const
@@ -36,7 +36,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   const env: RegisteredBuff[] = []
   for (const id of sc.environment) {
     const def = data.envBuffs[id]
-    if (def) env.push({ def, value: scalar(def, 1), owner: 'env' })
+    if (def) env.push({ def, value: pick(def.value, 1), owner: 'env' })
     else issues.push(`environment 里的 ${id} 不存在（现有：${Object.keys(data.envBuffs).join('、') || '无'}）`)
   }
   const rules = resolveRules(sc.options.rules, issues)
@@ -44,7 +44,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   const onField = sc.initial.onField as Slot
   let commands: ResolvedScenario['commands'] = []
   if (built.every(b => b !== null)) {
-    const team = built.map(b => b!.member)
+    const team = built.map(b => b.member)
     const compiled = compileRotation(
       sc.rotation, team.map((m): CompileMember => ({ name: m.def.name, actions: m.actions, aliases: m.aliases })), onField, sc.options.repeat,
     )
@@ -56,13 +56,14 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     }
   }
   if (issues.length > 0) throw new ResolveError(issues)
-  const members = built as { member: ResolvedMember; buffs: RegisteredBuff[] }[]
+  const members = built as Built[]
   const team = members.map(b => b.member) as [ResolvedMember, ResolvedMember, ResolvedMember]
 
   const buffs = [...members.flatMap(b => b.buffs), ...env]
-  const triggered = buffs.filter(b => b.def.trigger !== 'always').map(b => b.def.id)
-  if (triggered.length > 0)
-    warnings.push(`触发型 buff 要到 M3 才会触发，这次不生效：${[...new Set(triggered)].join('、')}`)
+  const effects = members.flatMap(b => b.effects)
+  // 共鸣效率不按伤害元素 / 标签过滤：写了 filter 的按无条件算（TD-06 §2.1）
+  const regenFiltered = buffs.filter(b => b.def.zone === 'energyRegen' && b.def.filter).map(b => b.def.id)
+  if (regenFiltered.length > 0) warnings.push(`共鸣效率 buff 不看 filter，按无条件算：${[...new Set(regenFiltered)].join('、')}`)
   for (const m of team) {
     if (m.def.flags.length > 0)
       warnings.push(`${m.def.name} 有 ${m.def.flags.length} 处装配时推断的值（pnpm check:data -- --flags ${m.def.name} 查看）`)
@@ -72,7 +73,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     Array.isArray(x) ? x : (team.map(m => (x === 'full' || x === 'empty' ? f(m) : x)) as [number, number, number])
   const e = sc.initial.energy
   return {
-    data, team, enemy, buffs, commands,
+    data, team, enemy, buffs, effects, commands,
     initial: {
       energy: trio(e, m => (e === 'full' ? m.def.energyCost : 0)),
       concerto: trio(sc.initial.concerto, () => 0),
@@ -91,10 +92,9 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
 // 队员：面板、buff、动作表
 
 type MemberInput = Scenario['team'][number]
+interface Built { member: ResolvedMember; buffs: RegisteredBuff[]; effects: RegisteredEffect[] }
 
-function resolveMember(
-  m: MemberInput, slot: Slot, data: GameData, issues: string[], warnings: string[],
-): { member: ResolvedMember; buffs: RegisteredBuff[] } | null {
+function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: string[], warnings: string[]): Built | null {
   const where = `队伍第 ${slot + 1} 位 ${m.char}`
   const def = data.characters[m.char]
   if (!def) {
@@ -136,8 +136,13 @@ function resolveMember(
 
   // 常驻与触发型 buff：角色（按共鸣链过滤）、武器被动（按谐振阶取值）、套装件数效果
   for (const b of def.buffs)
-    if (!b.requires || chain >= b.requires.chain) buffs.push({ def: b, value: scalar(b, rank), owner: slot })
-  for (const b of weapon.passives) buffs.push({ def: b, value: scalar(b, rank), owner: slot })
+    if (!b.requires || chain >= b.requires.chain) buffs.push({ def: b, value: pick(b.value, rank), owner: slot })
+  for (const b of weapon.passives) buffs.push({ def: b, value: pick(b.value, rank), owner: slot })
+  // 资源型触发效果（TD-07 §9）：同样按共鸣链过滤、按谐振阶取值
+  const effects: RegisteredEffect[] = []
+  for (const e of def.resourceEffects)
+    if (!e.requires || chain >= e.requires.chain) effects.push({ def: e, amount: pick(e.amount, rank), owner: slot })
+  for (const e of weapon.resourceEffects) effects.push({ def: e, amount: pick(e.amount, rank), owner: slot })
   for (const [name, n] of sets) {
     const set = data.echoSets[name]
     if (!set) {
@@ -145,7 +150,7 @@ function resolveMember(
       continue
     }
     for (const [need, list] of Object.entries(set.pieces)) {
-      if (n >= Number(need)) for (const b of list ?? []) buffs.push({ def: b, value: scalar(b, rank), owner: slot })
+      if (n >= Number(need)) for (const b of list ?? []) buffs.push({ def: b, value: pick(b.value, rank), owner: slot })
     }
   }
 
@@ -154,13 +159,13 @@ function resolveMember(
   const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain) }
   return {
     member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, actions, aliases: def.aliases },
-    buffs,
+    buffs, effects,
   }
 }
 
-/** 数组值 = 武器 R1–R5，按谐振阶取 */
-function scalar(b: BuffDef, rank: number): number {
-  return Array.isArray(b.value) ? b.value[rank - 1]! : b.value
+/** 数组值 = 武器 R1–R5，按谐振阶取；标记型 buff 没有数值，记 0 */
+function pick(v: number | readonly number[] | undefined, rank: number): number {
+  return Array.isArray(v) ? v[rank - 1]! : (v as number | undefined) ?? 0
 }
 
 /** 属性 → 面板（面板类乘区）或常驻 buff（带过滤条件的加成）。同一来源、同一属性合成一条 buff，日志里好认 */

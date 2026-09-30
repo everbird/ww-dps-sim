@@ -33,8 +33,10 @@ dataDescribe('M2 单人仿真', () => {
     const [椿, 散华] = r.team
     // 散华：攻击 275 + 行进序曲 337 = 612，技能树攻击 12%；共鸣效率 1 + 0.5184；冷凝加成 12% 是带过滤的常驻 buff
     expect(散华.panel).toMatchObject({ atk: { base: 612, pct: 0.12, flat: 0 }, critRate: 0.05, critDamage: 1.5, energyRegen: 1.5184 })
-    expect(r.buffs.filter(b => b.owner === 1 && b.def.trigger === 'always').map(b => [b.def.id, b.value, b.def.filter]))
-      .toEqual([['散华.技能树.冷凝伤害加成', 0.12, { elements: ['冷凝'] }]])
+    expect(r.buffs.filter(b => b.owner === 1 && b.def.trigger === 'always').map(b => [b.def.id, b.value, b.def.filter])).toEqual([
+      ['散华.技能树.冷凝伤害加成', 0.12, { elements: ['冷凝'] }],
+      ['散华.共鸣链5', 1, { judgments: ['E-引爆冰棱', 'QTE-引爆冰棘', '大招-引爆冰川'] }],
+    ])
     // 椿：千古洑流副属性暴击 24.3%，技能树暴伤 16%；R5 被动"共鸣效率提升"取第 5 阶 25.6%
     expect(椿.panel).toMatchObject({ critRate: 0.05 + 0.243, critDamage: 1.66, energyRegen: 1 })
     expect(r.buffs.find(b => b.def.id === '千古洑流.共鸣效率')!.value).toBe(0.256)
@@ -46,21 +48,23 @@ dataDescribe('M2 单人仿真', () => {
     expect(starts).toEqual(['E@0', 'A1@60', 'A2@86', 'A3@121', 'A4@158', 'A5@196', '大招@230'])   // 与 TD-09 §2.5 相同
 
     // 手算：攻击 floor(612 × 1.12) = 685；90 级打 1512 防御；冷凝抗 10%；冷凝加成 12%；暴击 5%、暴伤 150%
+    // 6 链：共鸣链1"施放第5段普攻时暴击 +15%"（M3 起生效），A5 与之后的大招按暴击 20% 算
     const atk = 685, def = 1 / (1512 / 1520 + 1), bonus = 1.12, res = 0.9
-    const hand = (rate: number) => {
+    const hand = (rate: number, p = 0.05) => {
       const nc = Math.ceil(rate * atk * 1 * def * bonus * res)
       const cr = Math.ceil(rate * atk * 1.5 * def * bonus * res)
-      return { nonCrit: nc, crit: cr, expected: 0.95 * nc + 0.05 * cr }
+      return { nonCrit: nc, crit: cr, expected: (1 - p) * nc + p * cr }
     }
     // 倍率（dmg RateLv_10）：E 3.5985、A1 0.4871、A2 0.7376、A3 0.2158 × 4 段、A4 0.3967 × 2、A5 2.3381、大招 8.0948
     const rates = [3.5985, 0.4871, 0.7376, 0.2158, 0.2158, 0.2158, 0.2158, 0.3967, 0.3967, 2.3381, 8.0948]
-    expect(hitsOf(out.log).map(h => h.dmg)).toEqual(rates.map(hand))
+    const crit = rates.map((_, i) => (i >= 9 ? 0.2 : 0.05))
+    expect(hitsOf(out.log).map(h => h.dmg)).toEqual(rates.map((x, i) => hand(x, crit[i])))
 
     // 窗口（战斗帧）：大招第 230 帧出手。A5 第 229 帧命中登记的自身顿帧（0.05 倍速 11 帧）挂在散华身上，取消 A5 不撤
     // （TD-04 §3.3，只有极限闪避的减速随取消撤掉），所以大招第 230–240 帧只走 0.55 帧；第 241 帧走过局部第 1 帧，
     // 登记 90 帧全局时停，第 242–331 帧战斗时钟停走；第 312 帧走过局部第 72 帧出伤，随后自身顿帧 0.2 倍速 11 帧，
     // 局部到第 324 帧才 74.75，再走 47 帧到 121.75 ≥ 结束帧 121 → 第 371 帧结束，战斗帧 371 − 90 = 281
-    const total = rates.map(hand).reduce((a, h) => a + h.expected, 0)
+    const total = rates.map((x, i) => hand(x, crit[i])).reduce((a, h) => a + h.expected, 0)
     expect(out.log.filter(e => e.type === 'hit').map(e => e.f).at(-1)).toBe(312)
     expect(out.summary.windowFrames).toBe(281)
     expect(out.summary.totalDamage).toBeCloseTo(total, 9)

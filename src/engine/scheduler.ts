@@ -7,9 +7,9 @@ import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf'
+export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth'
 
-/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限。cmd 指出第几轮第几条 */
+/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
@@ -100,7 +100,7 @@ export interface SchedulerOptions {
   canAfford?(s: SimState, slot: Slot, def: ActionDef): true | string
   /** TD-08：角色钩子 canStart（形态、层数之类的条件） */
   canStart?(s: SimState, slot: Slot, def: ActionDef): true | string
-  /** TD-05：切人之后的事（变奏 / 延奏 / 协奏）。缺省只换前台、启动切人冷却 */
+  /** TD-05：切人之后的事（变奏 / 延奏 / 协奏），switch 事件由它记（要先算出是不是变奏切人）。缺省只换前台、启动切人冷却、记 switch */
   onSwitch?(s: SimState, k: Kernel, from: Slot, to: Slot, cmd: CommandRef): void
 }
 
@@ -198,8 +198,8 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       const from = s.onField
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
-      log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
-      opts.onSwitch?.(s, k, from, c.to, ref)
+      if (opts.onSwitch) opts.onSwitch(s, k, from, c.to, ref)
+      else log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
       return
     }
     case 'act':

@@ -46,11 +46,18 @@ export const TriggerFilterSchema = z.strictObject({
 })
 export type TriggerFilter = z.output<typeof TriggerFilterSchema>
 
+/** 触发条件：一个事件（可带过滤），或它们的数组（任一事件都触发，TD-07 §1） */
+export const TriggerSpecSchema = z.strictObject({ on: z.enum(TRIGGER_EVENTS), where: TriggerFilterSchema.optional() })
+export type TriggerSpec = z.output<typeof TriggerSpecSchema>
+const Triggers = z.union([TriggerSpecSchema, z.array(TriggerSpecSchema).min(1)])
+const RankValue = z.union([Ratio, z.tuple([Ratio, Ratio, Ratio, Ratio, Ratio])])   // 数组 = 武器 R1–R5
+const Requires = z.strictObject({ chain: z.number().int().min(1).max(6) })
+
 export const BuffDefSchema = z.strictObject({
   id: z.string().min(1),                                  // 全局唯一：'散华.共鸣链6'
   source: z.string().min(1),                              // 原文出处（整句），方便核对
-  zone: z.enum(ZONE_IDS),                                 // 加深 / 最终伤害的类别写在名字里（TD-03 §2）
-  value: z.union([Ratio, z.tuple([Ratio, Ratio, Ratio, Ratio, Ratio])]),   // 数组 = 武器 R1–R5
+  zone: z.enum(ZONE_IDS).optional(),                      // 加深 / 最终伤害的类别写在名字里（TD-03 §2）；不写 = 标记型（TD-07 §7）
+  value: RankValue.optional(),                            // 标记型不写
   filter: BuffFilterSchema.optional(),
   target: z.enum(BUFF_TARGETS),
   maxStacks: z.number().int().min(1).default(1),
@@ -59,12 +66,16 @@ export const BuffDefSchema = z.strictObject({
   onSwitchOut: z.enum(['persist', 'clear']).default('persist'),      // 原文明写才 clear（机制设计 6.1）
   refresh: z.enum(['refresh', 'keep']).default('refresh'),           // 再触发时是否刷新持续时间
   icd: z.number().int().min(1).optional(),                           // 触发内置冷却（"每秒可获得一层"= 60）
-  trigger: z.union([
-    z.literal('always'),
-    z.strictObject({ on: z.enum(TRIGGER_EVENTS), where: TriggerFilterSchema.optional() }),
-  ]),
-  requires: z.strictObject({ chain: z.number().int().min(1).max(6) }).optional(),   // 共鸣链门槛
+  trigger: z.union([z.literal('always'), Triggers]),
+  consume: z.strictObject({                                          // "下次 X…"：被 X 用掉（TD-07 §6）
+    on: z.enum(TRIGGER_EVENTS),
+    where: TriggerFilterSchema.optional(),
+    stacks: z.union([z.number().int().min(1), z.literal('all')]).default('all'),
+  }).optional(),
+  requires: Requires.optional(),                                     // 共鸣链门槛
 }).superRefine((b, ctx) => {
+  if ((b.zone === undefined) !== (b.value === undefined))
+    ctx.addIssue({ code: 'custom', path: ['value'], message: '乘区与数值要么都写，要么都不写（都不写 = 标记型 buff）' })
   if (b.filter?.critOnly && (b.zone === 'critRate' || b.zone === 'critDamage'))
     ctx.addIssue({ code: 'custom', path: ['filter', 'critOnly'], message: '暴击率 / 暴伤本来就只影响暴击，不需要 critOnly' })
   if (b.trigger === 'always' && b.duration !== 'inf')
@@ -77,3 +88,18 @@ export const BuffDefSchema = z.strictObject({
 export type BuffDef = z.output<typeof BuffDefSchema>
 /** 手写时的形状（可省略有默认值的字段） */
 export type BuffDefInput = z.input<typeof BuffDefSchema>
+
+/** 资源型触发效果："施放共鸣技能时回复 8 点协奏能量"（TD-07 §9）。与 buff 共用触发机制，落地调 TD-06 的 grant */
+export const ResourceEffectSchema = z.strictObject({
+  id: z.string().min(1),
+  source: z.string().min(1),
+  resource: z.enum(RESOURCE_KINDS),
+  amount: RankValue,                                       // 可负；数组 = 武器 R1–R5
+  target: z.enum(['self', 'team', 'teamExceptSelf', 'onField']).default('self'),
+  trigger: Triggers,
+  icd: z.number().int().min(1).optional(),
+  scaledByRegen: z.literal(true).optional(),               // 能量乘共鸣效率：只给文案写明"此效果受共鸣效率影响"的（TD-06 Q3）
+  requires: Requires.optional(),
+})
+export type ResourceEffect = z.output<typeof ResourceEffectSchema>
+export type ResourceEffectInput = z.input<typeof ResourceEffectSchema>

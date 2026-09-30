@@ -5,6 +5,31 @@ export default defineCharacter('维里奈', {
   weaponType: '音感仪',
   treeStats: { '治疗效果加成': 0.12, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E', R: '大招', QTE: 'QTE' },
+  buffs: [
+    {
+      // "重击星星花绽放"= 强化重击（动作组"重击"，带强化冲的那一版）；空中攻击星星花绽放对应哪个动作还没对，暂不写（M0 的轴不用空中攻击）
+      id: '维里奈.固有1',
+      source: '固有技能1：施放重击星星花绽放、空中攻击星星花绽放、共鸣解放草木生长或延奏技能盛放时，队伍中的角色攻击提升20%，持续20秒。',
+      zone: 'atkPct', value: 0.2, target: 'team', duration: 1200,
+      trigger: [{ on: 'actionStart', where: { actions: ['重击', '大招'] } }, { on: 'outro' }],
+    },
+    {
+      id: '维里奈.延奏',
+      source: '延奏：持续为下一位登场角色回复生命值……附近队伍中所有角色全伤害加深15%，持续30秒。（治疗不建模）',
+      zone: 'DamageAmplify0', value: 0.15, target: 'team', duration: 1800,   // 不带类别的"全伤害加深"= 0 类（TD-03 §2）
+      trigger: { on: 'outro' },
+    },
+  ],
+  resourceEffects: [
+    {
+      id: '维里奈.共鸣链2.光合能量', source: '共鸣链2：施放共鸣技能扩繁试验时，额外获得1点【光合能量】和10点协奏能量。',
+      resource: 'core1', amount: 1, requires: { chain: 2 }, trigger: { on: 'actionStart', where: { actions: ['E'] } },
+    },
+    {
+      id: '维里奈.共鸣链2.协奏', source: '共鸣链2：施放共鸣技能扩繁试验时，额外获得1点【光合能量】和10点协奏能量。',
+      resource: 'concerto', amount: 10, requires: { chain: 2 }, trigger: { on: 'actionStart', where: { actions: ['E'] } },
+    },
+  ],
   actionOverrides: {
     // A3 的三行是同一段普攻的互斥情形（倍率相同）；打单体默认目标在 3m 内，另两行去掉，否则会算三次伤害（m0-confirm 2.1）
     A3: { dropRows: ['A3-无目标/3m外', 'A3-地面出场技'] },

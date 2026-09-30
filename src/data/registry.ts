@@ -4,7 +4,9 @@
 // 没有模块的角色算不对（总设计 T10：一次一支队伍）。
 import { STAT_BY_PROP_ID, type BlockKey, type StatKey } from './common'
 import { assembleBlock } from './assemble-action'
-import { BuffDefSchema, type BuffDef, type BuffDefInput } from './buff.schema'
+import {
+  BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
+} from './buff.schema'
 import type { CharacterModuleDef, EchoSetModule, WeaponModule } from './define'
 import type { GenActionFile, GenCharacter, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
 import {
@@ -76,6 +78,11 @@ function buff(b: BuffDefInput, where: string): BuffDef {
   return parseOrThrow(BuffDefSchema, b, `${where} 的 buff ${b.id}`)
 }
 
+/** 装载一条资源型触发效果（TD-07 §9） */
+function effect(e: ResourceEffectInput, where: string): ResourceEffect {
+  return parseOrThrow(ResourceEffectSchema, e, `${where} 的资源型效果 ${e.id}`)
+}
+
 function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames: ReadonlySet<string>): CharacterDef {
   const g = gen.characters[mod.name]
   if (!g) throw new Error(`角色模块 ${mod.name} 在 characters.json 里找不到（名字要与动作表块名一致）`)
@@ -92,6 +99,16 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
   }
   for (const [alias, id] of Object.entries(mod.aliases ?? {}))
     if (!actions[id]) throw new Error(`${mod.name} 的别名 ${alias} 指向不存在的动作"${id}"`)
+  // 别名 R 指向的动作收大招能量（TD-06 §2.3）；actionOverrides 里写了 energyCost（含 0）的以它为准
+  const rId = mod.aliases?.R
+  const r = rId !== undefined ? actions[rId] : undefined
+  if (r && r.energyCost === undefined && g.energyCost > 0) actions = { ...actions, [r.id]: { ...r, energyCost: g.energyCost } }
+  for (const a of Object.values(actions)) {
+    const f = a.followUp
+    if (!f) continue
+    if (!actions[f.action]) throw new Error(`${mod.name} ${a.id} 的 followUp 指向不存在的动作"${f.action}"`)
+    if (!a.judgments.some(j => j.name === f.after)) throw new Error(`${mod.name} ${a.id} 的 followUp 写的判定"${f.after}"不在这个动作里`)
+  }
   const flags: string[] = []
   for (const a of Object.values(actions)) {
     for (const f of a.flags) flags.push(`${a.id}:${f}`)
@@ -107,6 +124,7 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     treeStats: mod.treeStats ?? {},
     actions, aliases: mod.aliases ?? {},
     buffs: (mod.buffs ?? []).map(b => buff(b, mod.name)),
+    resourceEffects: (mod.resourceEffects ?? []).map(e => effect(e, mod.name)),
     ...(mod.hooks ? { hooks: mod.hooks } : {}),
     flags,
   }
@@ -125,5 +143,6 @@ function buildWeapon(w: GenWeapon, mod: WeaponModule | undefined): WeaponDef {
     sub: { stat: statOf(w.sub.propId, `武器 ${w.key} 副属性`), value: w.sub.value90 },
     effects: w.effects,
     passives: (mod?.passives ?? []).map(b => buff(b, `武器 ${w.key}`)),
+    resourceEffects: (mod?.resourceEffects ?? []).map(e => effect(e, `武器 ${w.key}`)),
   }
 }

@@ -1,5 +1,6 @@
 // data/curated/weapons.ts —— 武器被动写成 BuffDef（总设计 §3.2）。数值按谐振阶 R1–R5 写成数组，原文见 weapons.json 的 effects。
 // 只写用到的武器；xlsx 只有"属性 + 各阶数值 + 文本"，触发条件与持续时间由这里补。
+import type { ResourceEffectInput } from '../../src/data/buff.schema'
 import { defineWeapon } from '../../src/data/define'
 
 export default [
@@ -19,8 +20,14 @@ export default [
       },
     ],
   }),
-  // 行进序曲（散华）、奇幻变奏（维里奈）：被动都是"施放共鸣技能时，回复8点协奏能量，每20秒可触发1次"——
-  // 回复资源不是 buff，写不成 BuffDef；等资源模块（TD-06）接上
-  defineWeapon({ name: '行进序曲', passives: [] }),
-  defineWeapon({ name: '奇幻变奏', passives: [] }),
+  // 行进序曲（散华）、奇幻变奏（维里奈）：被动都是回复协奏，写成资源型触发效果（TD-07 §9）；定值，各阶相同
+  defineWeapon({ name: '行进序曲', passives: [], resourceEffects: [concerto8('行进序曲')] }),
+  defineWeapon({ name: '奇幻变奏', passives: [], resourceEffects: [concerto8('奇幻变奏')] }),
 ]
+
+function concerto8(weapon: string): ResourceEffectInput {
+  return {
+    id: `${weapon}.协奏`, source: '施放共鸣技能时，回复8点协奏能量，每20秒可触发1次。',
+    resource: 'concerto', amount: 8, icd: 1200, trigger: { on: 'actionStart', where: { actionKinds: ['skill'] } },
+  }
+}

@@ -189,6 +189,13 @@ _HINTS = [
      lambda m: {'tickInterval': int(m.group(1)), 'maxTicks': int(m.group(2))}),
     (re.compile(r'每\s*(\d+)\s*F\s*进行一次判定'), lambda m: {'tickInterval': int(m.group(1))}),
     (re.compile(r'第\s*(\d+)\s*F\s*触发上一角色延奏'), lambda m: {'outroTriggerFrame': int(m.group(1))}),
+    # 区间写法取起点并标出（TD-05 §4.1）；"立即触发"= 第 0 帧
+    (re.compile(r'第\s*(\d+)\s*F?\s*[～~]\s*\d+\s*F\s*触发上一角色延奏'),
+     lambda m: {'outroTriggerFrame': int(m.group(1)), 'outroRange': True}),
+    (re.compile(r'立即触发上一角色延奏'), lambda m: {'outroTriggerFrame': 0}),
+    # 切人会结束的动作（TD-05 §5）："第nF后切人（立即）结束技能 / 消失"→ n；"切人立即消失 / 结束"、"切人后中断动作"→ 0
+    (re.compile(r'第\s*(\d+)\s*F\s*后切人(?:立即)?(?:结束技能|消失)'), lambda m: {'endOnSwitchAfter': int(m.group(1))}),
+    (re.compile(r'(?<!后)切人(?:立即(?:结束技能|消失)|后中断动作)'), lambda m: {'endOnSwitchAfter': 0}),
     (re.compile(r'第\s*(\d+(?:\s*F?\s*[、,，]\s*\d+)*)\s*F\s*改变(?:中断)?优先级'),
      lambda m: {'priorityChangeFrames': [int(x) for x in re.findall(r'\d+', m.group(1))]}),
     (re.compile(r'无伤害'), lambda m: {'noDamage': True}),

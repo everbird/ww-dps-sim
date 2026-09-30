@@ -4,7 +4,7 @@ import type {
   ActionId, ActionKind, BlockKey, BodyType, CharName, DamageTag, DilationSide, DilationType, EffectName, Element,
   Frame, ResourceKind, StatKey, WeaponType,
 } from './common'
-import type { BuffDef } from './buff.schema'
+import type { BuffDef, ResourceEffect } from './buff.schema'
 import type { GenMeta, GenWeapon } from './generated.schema'
 import type { CharacterHooks } from '../engine/types'
 
@@ -39,6 +39,7 @@ export interface CharacterDef {
   actions: Record<ActionId, ActionDef>
   aliases: Record<string, ActionId>                 // "R" → "大招"
   buffs: BuffDef[]                                  // 被动 / 共鸣链 / 延奏 / 回路（curated）
+  resourceEffects: ResourceEffect[]                 // 资源型触发效果（curated，TD-07 §9）
   hooks?: CharacterHooks
   flags: string[]                                   // 装配时未处理的数据问题汇总
 }
@@ -64,13 +65,17 @@ export interface ActionDef {
   switchLockUntil?: Frame                           // 此帧前不能切人
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖
   cooldownGroup?: string                            // 共用冷却的组名（椿 E1 / E2 共用 'E'）；缺省按动作 ID
+  energyCost?: number                               // 开始时要有、并扣掉的大招能量：注册层给别名 R 的动作设（TD-06 §2.3）
+  endOnSwitchOut?: Frame                            // 切出时局部帧 ≥ 它就结束（"第nF后切人结束技能"，TD-05 §5）
+  followUp?: { after: string; action: ActionId }    // 该判定第一次结算后立刻开始 action（TD-08 P10）
   source: { file: string; rows: number[] }          // 追溯到 xlsx 行
   flags: string[]
 }
 
 export interface CancelWindow { from: Frame; until: Frame; row: number }
 export interface PriorityStep { fromFrame: Frame; value: number }
-export interface CastGain { atFrame: Frame; resource: ResourceKind; amount: number }   // atFrame 0 = 进入动作即得
+/** atFrame 0 = 进入动作即得（开始动作的那一刻由资源模块发，TD-06 §7）；chainRange：由判定行汇总来的项跟随该行的共鸣链版本 */
+export interface CastGain { atFrame: Frame; resource: ResourceKind; amount: number; chainRange?: ChainRange }
 /** 当前动作局部帧 < until 时，kinds 里的新动作（'all' = 一切输入）不能开始 */
 export interface InputLock { until: Frame; kinds: ActionKind[] | 'all' }
 
@@ -125,6 +130,7 @@ export interface WeaponDef {
   sub: { stat: StatKey; value: number }             // 90 级
   effects: GenWeapon['effects']                     // 原始被动数据（文本 + R1–R5 数值）
   passives: BuffDef[]                               // curated 写成的 buff
+  resourceEffects: ResourceEffect[]                 // curated 写成的资源型效果（TD-07 §9）
 }
 
 export interface EchoDef {

@@ -4,7 +4,7 @@ import type {
   ActionId, Chain, CharName, DamageTag, DilationSide, DilationType, EffectName, Element, Frame, Rank, ResourceKind, Slot,
   StatKey, ZoneId,
 } from '../data/common'
-import type { BuffDef, EnemyStateChange } from '../data/buff.schema'
+import type { BuffDef, EnemyStateChange, ResourceEffect } from '../data/buff.schema'
 import type { ActionDef, CharacterDef, EchoDef, EnemyPreset, GameData, JudgmentDef, Rules, WeaponDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
 
@@ -16,6 +16,7 @@ export interface ResolvedScenario {
   team: [ResolvedMember, ResolvedMember, ResolvedMember]
   enemy: EnemyPreset
   buffs: RegisteredBuff[]                   // 常驻实例 + 触发监听器，已按共鸣链过滤、按谐振阶取值
+  effects: RegisteredEffect[]               // 资源型触发效果（TD-07 §9），同上
   commands: Command[]
   initial: { energy: [number, number, number]; concerto: [number, number, number]; onField: Slot }
   rules: Rules
@@ -53,8 +54,14 @@ export interface StatParts { base: number; pct: number; flat: number }
 
 export interface RegisteredBuff {
   def: BuffDef
-  value: number                             // 已按武器谐振阶选定
+  value: number                             // 已按武器谐振阶选定；标记型为 0
   owner: Slot | 'env'                       // 'env' = 场景 buff
+}
+
+export interface RegisteredEffect {
+  def: ResourceEffect
+  amount: number                            // 已按武器谐振阶选定
+  owner: Slot
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +81,9 @@ export interface SimState {
   queue: QueueState
   log: SimEvent[]
   nextId: number                            // 判定 / buff / 动作实例的递增编号
+  outroLinks: { introInstance: number; from: Slot }[]   // 变奏动作实例 → 延奏的发出者（TD-05 §3）
+  pendingNextIn: { owner: Slot | 'env'; defId: string; stacks: number }[]   // 挂起到下一次切入的 nextIn buff（TD-07 §3）
+  lastTrigger: Record<string, number>       // "持有者|定义 id" → 上次触发成功的战斗帧（内置冷却，TD-07 §4.4）
 }
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
@@ -122,6 +132,8 @@ export interface ActionRuntime {
   cursor: number                            // 时间线（timelineOf(def)）上下一个待发生事件的下标
   ended: boolean                            // 已结束或被取消（此后只作为 CharRuntime.last 保留）
   coreGranted: [boolean, boolean, boolean]
+  cmd?: CommandRef                          // 由哪条指令开始（接续动作继承，TD-08 P10）
+  skip?: string[]                           // 钩子跳过的判定名（TD-08 skipJudgments）
 }
 
 /** 动作时间线上的一个事件（TD-04 §4.1）：按帧升序，同帧按 gain → dilation → spawn → outro */
@@ -139,6 +151,8 @@ export interface TailRuntime {
   instance: number
   localFrame: number                        // 沿用动作的局部坐标，改按战斗时钟推进
   events: TimelineEvent[]
+  detached?: true                           // 延奏动作的独立时间线：不受持有者之后的动作影响（TD-05 §4.3）
+  skip?: string[]                           // 跳过的判定名（同 ActionRuntime.skip）
 }
 
 export interface JudgmentRuntime {
@@ -150,6 +164,7 @@ export interface JudgmentRuntime {
   spawnedAt: number                         // 世界帧
   age: number                               // 判定时钟上的年龄（帧，可为小数）：生成时 0，每 tick 结算后推进（TD-04 §5.2）
   ticksDone: number
+  detached?: true                           // 由延奏动作的独立时间线生成：不随持有者之后的动作消失（TD-05 §4.3）
 }
 
 export interface BuffRuntime {
@@ -207,6 +222,8 @@ export interface HitEvent extends EventBase {
   judgment: string
   id: number
   tick: number
+  element: Element                          // 这次结算最终的元素与标签（modifyHit 之后，TD-07 §4.1）
+  tags: DamageTag[]
   dmg: { nonCrit: number; crit: number; expected: number } | null   // 非伤害判定为 null
   factors?: HitFactors
   buffs: string[]                           // 生效的 buff，"id×层数"
@@ -227,10 +244,12 @@ export type SimEvent =
   | HitEvent
   | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean; cmd?: CommandRef })
   | (EventBase & { type: 'intro'; char: CharName; action: ActionId })
-  | (EventBase & { type: 'outro'; char: CharName })
+  // outro：char = 延奏的发出者（切出者），to = 这次变奏的角色；instance = 延奏动作独立时间线的实例号（TD-05 §6）
+  | (EventBase & { type: 'outro'; char: CharName; to: CharName; instance?: number })
   | (EventBase & { type: 'buffApply'; buff: string; target: CharName | 'enemy'; stacks: number; remaining: number | 'inf' })
   | (EventBase & { type: 'buffExpire'; buff: string; target: CharName | 'enemy'; reason: 'timeout' | 'switchOut' | 'removed' })
   | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string })
+  | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
   | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
   | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
@@ -280,6 +299,8 @@ export interface HookContext {
   removeBuff(id: string, target?: Slot | 'enemy'): void
   addResource(resource: ResourceKind, amount: number, slot?: Slot): void
   spawnJudgment(judgment: string, opts?: { action?: ActionId }): void
+  /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
+  skipJudgments(instance: number, names: string[]): void
   setFlag(key: string, value: number | boolean | string): void
   getFlag(key: string): number | boolean | string | undefined
   warn(message: string): void
@@ -294,6 +315,7 @@ export interface HitDraft {
   element: Element                          // 初值 = judgment.element
   tags: DamageTag[]                         // 初值 = judgment.tags
   effect?: EffectName                       // 异常效应自身的伤害才有
+  energyScale: number                       // 基础能量倍率，初值 1（TD-06 §2.1）
   zones: Partial<Record<ZoneId, number>>    // 钩子直接补的乘区值（与 buff 同样累加）
   critOnly: Partial<Record<ZoneId, number>>
 }

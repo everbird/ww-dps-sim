@@ -34,6 +34,7 @@ export function newState(names: [string, string, string], onField: Slot = 0): Si
     judgments: [], tails: [], buffs: [], dilations: [], log: [], nextId: 1,
     enemy: {} as SimState['enemy'],                  // 内核不读敌人状态（TD-06）
     queue: newQueue([]),
+    outroLinks: [], pendingNextIn: [], lastTrigger: {},
   }
 }
 
