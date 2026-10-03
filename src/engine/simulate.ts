@@ -6,6 +6,7 @@ import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type Sim } from './context'
 import { accumulate, computeHit, hitView, matchesFilter } from './formula'
+import { checkHit, checkTick } from './invariants'
 import { log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
 import { createScheduler, newQueue, runLoop, ScheduleError } from './scheduler'
@@ -18,6 +19,7 @@ import type {
 
 export function simulate(r: ResolvedScenario): SimResult {
   const s = initialState(r)
+  let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
     rules: r.rules,
     hooks: {
@@ -26,7 +28,13 @@ export function simulate(r: ResolvedScenario): SimResult {
       actionStarted: (st, slot, a) => { payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st) },
       castGain: (st, slot, src, i) => { castGainAt(sim, st, slot, src, i); drain(sim, st) },
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
-      timers: (st, rates) => { tickBuffs(st, rates); drain(sim, st); sim.bus.spawned.clear() },
+      timers: (st, rates) => {
+        tickBuffs(st, rates)
+        drain(sim, st)
+        sim.bus.spawned.clear()
+        checkTick(sim, st, lastBattle)                            // 总设计 §11 第 4 条：每个 tick 结束查一次
+        lastBattle = st.battleFrames
+      },
     },
   }
   const sim: Sim = {
@@ -108,6 +116,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       enemy: { def: r.enemy.def, res: r.enemy.res[draft.element] },
     }, acc, r.rules)
     dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
+    checkHit(s, dmg, m.def.name, d.name)
     factors = res.factors
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
