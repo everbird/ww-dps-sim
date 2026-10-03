@@ -315,7 +315,7 @@ export interface HitDraft {
   element: Element                          // 初值 = judgment.element
   tags: DamageTag[]                         // 初值 = judgment.tags
   effect?: EffectName                       // 异常效应自身的伤害才有
-  energyScale: number                       // 基础能量倍率，初值 1（TD-06 §2.1）
+  selfEnergyScale: number                   // 只乘出伤者自己那份能量，队友那 50% 不变；初值 1（TD-06 §2.1，椿含苞实测）
   zones: Partial<Record<ZoneId, number>>    // 钩子直接补的乘区值（与 buff 同样累加）
   critOnly: Partial<Record<ZoneId, number>>
 }

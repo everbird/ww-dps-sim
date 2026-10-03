@@ -7,11 +7,11 @@ export default defineCharacter('维里奈', {
   aliases: { E: 'E', R: '大招', QTE: 'QTE' },
   buffs: [
     {
-      // "重击星星花绽放"= 强化重击（动作组"重击"，带强化冲的那一版）；空中攻击星星花绽放对应哪个动作还没对，暂不写（M0 的轴不用空中攻击）
+      // "重击星星花绽放"= 强化重击（动作组"重击"）；"空中攻击星星花绽放"= 强化空中A1–A3（nanoka 3.7 三段倍率与之一致，TD-07 Q9）
       id: '维里奈.固有1',
       source: '固有技能1：施放重击星星花绽放、空中攻击星星花绽放、共鸣解放草木生长或延奏技能盛放时，队伍中的角色攻击提升20%，持续20秒。',
       zone: 'atkPct', value: 0.2, target: 'team', duration: 1200,
-      trigger: [{ on: 'actionStart', where: { actions: ['重击', '大招'] } }, { on: 'outro' }],
+      trigger: [{ on: 'actionStart', where: { actions: ['重击', '强化空中A1', '强化空中A2', '强化空中A3', '大招'] } }, { on: 'outro' }],
     },
     {
       id: '维里奈.延奏',
@@ -33,6 +33,9 @@ export default defineCharacter('维里奈', {
   actionOverrides: {
     // A3 的三行是同一段普攻的互斥情形（倍率相同）；打单体默认目标在 3m 内，另两行去掉，否则会算三次伤害（m0-confirm 2.1）
     A3: { dropRows: ['A3-无目标/3m外', 'A3-地面出场技'] },
+    // 强化重击的两行是两种起手，不是先后两段：一次强化重击只消耗 1 层光合能量、回 12 协奏（nanoka 3.7）。
+    // 两行都算会变成 +24 / −2；先留与普通重击同样第 24 帧冲出的"强化冲"（连冲何时出现待查，m0-confirm §6 V2）
+    重击: { dropRows: ['重击-强化连冲'] },
     E: { cooldown: 720 },                  // 共鸣技能冷却 12 秒，不是按次数充能（2026-09-27 用户提供）
     大招: { cooldown: 1500 },              // 共鸣解放冷却 25 秒（nanoka 3.7）
   },

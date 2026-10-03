@@ -9,6 +9,7 @@ import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
 let gd: GameData
 const onHit = { rules: { concertoTiming: 'onHit' } }
+const onCast = { rules: { concertoTiming: 'onCast' } }
 
 dataDescribe('TD-06 M0 队伍', () => {
   beforeAll(async () => { gd = await loadGameData() })
@@ -29,19 +30,21 @@ dataDescribe('TD-06 M0 队伍', () => {
   test('T06-3 扣除与施放资源：开始时先扣能量，再是 actionStart 的触发（散华 C4 +10，定值不乘效率），最后施放资源', () => {
     const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 R'] })
     expect(at(out.log, 0)).toEqual([
-      'loop', 'start 散华 大招', '散华 energy -100 cost', '散华 energy +10 散华.共鸣链4.能量',
+      'loop', 'start 散华 大招', '散华 energy -100 cost', '+散华.共鸣链4→散华×1 300', '散华 energy +10 散华.共鸣链4.能量',
       '散华 concerto +20 cast', '散华 core1 +2 cast',
     ])
   })
 
   test('T06-4 协奏时机：onCast 在动作开始时发（按段数汇总），onHit 随每次结算发；进入即得两种模式都在开始时', () => {
-    const cast = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'] })
+    const cast = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'], options: onCast })
     expect(at(cast.log, 0)).toContain('散华 concerto +2 cast')
     expect(eventsOfLog(cast.log, 'hit')[0]!.gains.concerto).toBe(0)
     const hit = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'], options: onHit })
     expect(eventsOfLog(hit.log, 'resource')).toEqual([])
     expect(eventsOfLog(hit.log, 'hit').map(h => [h.f, h.gains.concerto])).toEqual([[13, 2]])
-    for (const opts of [{}, onHit]) {                 // E 的 15 是"进入即得"
+    const dflt = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'] })   // 默认按命中给（2026-10-03 实测，TD-06 Q1）
+    expect(eventsOfLog(dflt.log, 'hit').map(h => h.gains.concerto)).toEqual([2])
+    for (const opts of [onCast, onHit]) {                 // E 的 15 是"进入即得"
       const e = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 E'], options: opts })
       expect(at(e.log, 0)).toContain('散华 concerto +15 cast')
     }
@@ -64,7 +67,7 @@ dataDescribe('TD-06 M0 队伍', () => {
       const start = eventsOfLog(out.log, 'actionStart').find(e => e.action === 'A3')!.f
       return { start: at(out.log, start), hits: eventsOfLog(out.log, 'hit').filter(h => h.action === 'A3') }
     }
-    const cast = a3({})
+    const cast = a3(onCast)
     const hit = a3(onHit)
     expect(cast.start).toContain('散华 concerto +8 cast')
     expect(hit.start.filter(x => x.includes('cast'))).toEqual([])
@@ -133,14 +136,18 @@ describe('TD-06 人造角色', () => {
     expect(eventsOfLog(out.log, 'warning').map(w => w.code)).toEqual(['coreSlot'])
   })
 
-  test('基础能量倍率 energyScale（modifyHit）放大这次结算的全队分配；大招所需能量为 0 的角色不收能量', () => {
+  test('selfEnergyScale（modifyHit）只放大出伤者自己那份，队友那 50% 不变；大招所需能量为 0 的角色不收能量', () => {
     const 甲: SynthChar = {
       name: '甲',
       actions: [action({ id: 'X', endFrame: 40, judgments: [hitAt('x', 10, { gains: { energy: 4, concerto: 0, core: [0, 0, 0] } })] })],
-      hooks: { modifyHit: (_ctx, d) => { d.energyScale = 2.5 } },
+      hooks: { modifyHit: (_ctx, d) => { d.selfEnergyScale = 2.5 } },
     }
     const out = synthRun([甲, idle('乙'), { name: '丙', actions: [], energyCost: 0 }], { initial: { energy: 'empty' }, rotation: ['甲 X'] })
-    expect(eventsOfLog(out.log, 'hit')[0]!.gains.energy).toEqual({ 甲: 10, 乙: 5 })
+    expect(eventsOfLog(out.log, 'hit')[0]!.gains.energy).toEqual({ 甲: 10, 乙: 2 })   // 基础 4：甲 4 × 2.5，乙 4 × 0.5
+    // ×0（椿含苞）：出伤者拿不到，队友照常
+    const zero = synthRun([{ ...甲, hooks: { modifyHit: (_ctx, d) => { d.selfEnergyScale = 0 } } }, idle('乙'), idle('丙')],
+      { initial: { energy: 'empty' }, rotation: ['甲 X'] })
+    expect(eventsOfLog(zero.log, 'hit')[0]!.gains.energy).toEqual({ 乙: 2, 丙: 2 })
   })
 
   test('资源型效果：定值默认不乘共鸣效率，scaledByRegen 才乘（TD-06 Q3）', () => {

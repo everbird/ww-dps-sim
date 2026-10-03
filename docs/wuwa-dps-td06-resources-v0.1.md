@@ -19,7 +19,7 @@
 
 1. **大招能量**按每次结算全队分配：出伤者得 基础 × 1 × 自身共鸣效率，另两人各得 基础 × 0.5 × 各自共鸣效率（机制设计 §4.1）。共鸣效率 = 静态面板 + 该角色身上的 `energyRegen` buff。上限是大招所需能量，超出作废。
 2. **大招门槛**：动作带 `energyCost`（别名 `R` 的动作 = 角色的大招所需能量）；能量不够就等（`resource`），开始时扣除。
-3. **协奏**只给施放者，不乘共鸣效率，上限 100。`rules.concertoTiming = 'onCast'`（默认）：动作开始时一次性发放该动作各判定的协奏回收（× 段数）；`'onHit'`：随每次结算发放。两种模式下"进入即得"的部分都在动作开始时发（TD-01 §3.7 的公式末项）。
+3. **协奏**只给施放者，不乘共鸣效率，上限 100。`rules.concertoTiming = 'onHit'`（默认，2026-10-03 实测）：逐段所得随每次结算发放；`'onCast'`：动作开始时一次性发放（× 段数）。两种模式下"进入即得"的部分都在动作开始时发（TD-01 §3.7 的公式末项）。
 4. **核心资源**：判定的核心回收在每次结算时给出伤者；施放类在动作开始时给；带合并区标记的每个动作实例只发一次（首段结算时）。
 5. **消耗就写在数据里**：负数的回收就是消耗（椿每段普攻 −4.57 红椿·蕊、一日花协奏 −70、维里奈强化重击光合能量 −1）。统一"带符号累加，截在 [0, 上限]"。
 6. **动作开始时的顺序**：扣大招能量 → `actionStart` 的触发与钩子（TD-07 / TD-08）→ 施放资源（进入即得 + onCast 的协奏）。
@@ -48,8 +48,9 @@
 ### 2.1 每次结算的分配
 
 ```text
-base = gains.energy × energyScale                     energyScale：钩子可改的"基础能量倍率"，缺省 1（TD-08 §4 模式 P7）
-出伤者 d：     d.energy += base × rules.energyShare.dealer (1)   × R(d)
+base = gains.energy
+出伤者 d：     d.energy += base × rules.energyShare.dealer (1) × selfEnergyScale × R(d)
+               selfEnergyScale：钩子可改，只乘出伤者自己那份，缺省 1（TD-08 §4 模式 P7）
 另两人 i：     i.energy += base × rules.energyShare.others (0.5) × R(i)
 R(x) = x 的静态面板共鸣效率 + x 身上 zone = 'energyRegen' 的 buff 合计（结算这一刻）
 ```
@@ -94,8 +95,8 @@ xlsx 的协奏回收有两部分：公式末项是"进入动作即得"（已装�
 
 | 模式 | 进入即得（`castGains`） | 逐段所得（判定的 `gains.concerto`） | 事件生成的判定（E-引爆冰棱…） |
 |---|---|---|---|
-| `onCast`（默认，总设计 §6.7） | 动作开始时 | 动作开始时，按该动作时间线上**未被跳过**的判定汇总：Σ `gains.concerto` × 寿命内结算次数 | 它每次结算时（含它自己的"进入即得"，TD-01 §13.2） |
-| `onHit` | 动作开始时 | 每次结算时 | 同左 |
+| `onCast` | 动作开始时 | 动作开始时，按该动作时间线上**未被跳过**的判定汇总：Σ `gains.concerto` × 寿命内结算次数 | 它每次结算时（含它自己的"进入即得"，TD-01 §13.2） |
+| `onHit`（默认，2026-10-03 实测） | 动作开始时 | 每次结算时 | 同左 |
 
 - `onCast` 下动作被取消也不退还（机制设计 §4.2："大招打断 E 照拿协奏，但没有伤害"）；`onHit` 下没结算的段不给。
 - "未被跳过"：钩子在 `actionStart` 里用 `ctx.skipJudgments` 去掉的运行时版本（TD-08 §4 模式 P5）不计入。所以施放资源排在 `actionStart` 的触发与钩子之后发（§0.1 第 6 条）。
@@ -171,7 +172,7 @@ export function canAfford(s: SimState, slot: Slot, def: ActionDef): true | strin
 export function payCost(sim: Sim, s: SimState, slot: Slot, def: ActionDef): void                      // §2.3 扣除
 export function castResources(sim: Sim, s: SimState, slot: Slot, src: EventSource): void              // §3.2、§4 施放资源（动作或延奏的独立时间线）
 export function castGainAt(sim: Sim, s: SimState, slot: Slot, src: EventSource, index: number): void  // atFrame > 0 的施放资源（§7）
-export function settleGains(sim: Sim, s: SimState, j: JudgmentRuntime, energyScale: number)
+export function settleGains(sim: Sim, s: SimState, j: JudgmentRuntime, selfEnergyScale: number)
   : { gains: HitEvent['gains']; full: ResourceFullEvent[] }                                           // §2.1、§3.2、§4
 export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind, amount: number, cause: string, scaledByRegen?: boolean): number   // §5
 ```
@@ -182,7 +183,7 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 |---|---|
 | `ActionDef` / `ActionOverride` | 新增 `energyCost?: number` |
 | `CastGain` | 新增 `chainRange?: ChainRange`：由判定行汇总来的施放资源跟随该行的共鸣链版本（§1 的装配缺陷） |
-| `HitDraft` | 新增 `energyScale: number`（缺省 1），钩子 `modifyHit` 可改 |
+| `HitDraft` | 新增 `selfEnergyScale: number`（缺省 1），钩子 `modifyHit` 可改，只乘出伤者自己那份 |
 | `SimEvent` | 新增 `resourceFull` |
 | `Rules` | 不变：沿用 `concertoMax`、`concertoTiming`、`energyShare`、`sampleInterval` |
 
@@ -202,7 +203,7 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 | T06-6 消耗与下限 | 椿：`switch` 进场的变奏（QTE 施放资源红椿·蕊 +100、协奏 +10），接 `A1`（红椿·蕊 −6.15） | 红椿·蕊 100 → 93.85；从 0 开始打 A1 → 仍是 0（截在下限），`gains.core` 记实际增减 0 |
 | T06-7 上限与 resourceFull | 散华初始协奏 [0, 90, 0]，`散华 E`、`散华 A1` | E 开始时行进序曲 +8 → 98，施放资源 +15 → 100（实际 +2，溢出 13 作废），记一次 `resourceFull`（协奏）；之后再加不再记 |
 | T06-8 共鸣链版本 | 椿 0 链 `E3`（需协奏满，TD-08 的 canStart） | 施放资源只有一日花的一版：协奏 −70、红椿·蕊 +100；不是三个版本的和 |
-| 人造角色 | 合并区；没有的核心资源槽；`energyScale`；`energyCost = 0`；`scaledByRegen` | 合并区只在首段发；没有的槽丢弃并提示一次；×2.5 按全队分配；0 的角色不收能量；定值 10 → 10，标了 `scaledByRegen` → 10 × 1.5 |
+| 人造角色 | 合并区；没有的核心资源槽；`selfEnergyScale`；`energyCost = 0`；`scaledByRegen` | 合并区只在首段发；没有的槽丢弃并提示一次；×2.5 只放大出伤者那份、×0 时队友照常；0 的角色不收能量；定值 10 → 10，标了 `scaledByRegen` → 10 × 1.5 |
 | 资源曲线 | 初始能量 `empty`，`散华 E` | 采样帧 0、30、60、90、95（最后一帧）；第 30 帧的能量是 E 命中后的 [6.28, 15.184, 7.592] |
 
 ---
@@ -211,10 +212,10 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 
 | # | 问题 | 当前做法 | 如何关闭 |
 |---|---|---|---|
-| Q1 | 协奏发放时机（onCast / onHit）：视频说施放时，xlsx 按段存 | 开关，默认 onCast（总设计 §13） | 半程切人实测：打半个多段技能切走，看协奏是全额还是按已命中段数 |
-| Q2 | 多段判定的资源是否每段各给一次 | 每段一次（dmg Energy 按每段，§1） | 实测一个多段技能的总回能 |
+| Q1 | 协奏发放时机（onCast / onHit）：视频说施放时，xlsx 按段存 | **已关闭（2026-10-03 用户实测）**：逐段所得按命中给，默认改为 `onHit`；"进入即得"仍在出手时给（沿用 xlsx 的记法） | —— |
+| Q2 | 多段判定的资源是否每段各给一次 | **已关闭（2026-10-03 用户实测）**：每段给一次，数值以 xlsx 为准 | —— |
 | Q3 | "回复 N 点共鸣能量"这类定值回复是否乘共鸣效率 | **已定（2026-09-30）：不乘**；文案写明"此效果受共鸣效率影响"的才乘（`scaledByRegen`）。依据：菲比文案专门标注了"此效果受共鸣效率影响"（17173 菲比技能介绍），nanoka 3.7 里其余 17 条"回复 N 点共鸣能量"都没有这个标注 | 有条件时实测散华 C4 |
-| Q4 | 基础能量倍率（椿"消耗红椿·蕊时基础共鸣能量回复效率提升 150%"）是否也放大队友的 50% 份额 | 放大（改的是"基础值"） | **请确认**（汇总在 `m0-confirm.md` §6），或实测 |
+| Q4 | 基础能量倍率（椿"消耗红椿·蕊时基础共鸣能量回复效率提升 150%"）是否也放大队友的 50% 份额 | **已关闭（2026-10-03 用户实测）**：含苞期间（"降低至0%"）队友的能量照常增长，所以只作用于出伤者自己那份；字段改名 `selfEnergyScale` | —— |
 | Q5 | 莫特斐大招-前置 −150 能量与大招所需能量的关系 | 视为数据自带的扣除，不再另扣 | 做到莫特斐时 |
 | Q6 | 核心资源槽名与机制对不上：散华槽 1"指针"（上限 70）的回收其实是【透视】层数（A5 / E / QTE +1、大招 +2、重击居合 −2） | 照数据累加；透视不影响伤害，不处理 | 需要时用 `coreCaps` / 钩子修 |
 | Q7 | 场景设核心资源的初始值 | 不支持，都从 0 开始 | 需要时在 `initial` 加字段 |

@@ -16,7 +16,7 @@ describe('TD-08 通用能力', () => {
       ],
       hooks: { onEvent: (ctx, ev) => { if (ev.type === 'actionStart' && ev.char === '甲' && ev.action === 'X') ctx.skipJudgments(ev.instance, ['v2']) } },
     }
-    const out = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X Y'] })
+    const out = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X Y'], options: { rules: { concertoTiming: 'onCast' } } })
     expect(eventsOfLog(out.log, 'hit').map(h => h.judgment)).toEqual(['v1'])
     expect(eventsOfLog(out.log, 'resource').map(e => [e.f, e.delta, e.cause])).toEqual([[0, 5, 'cast']])
     // v1 第 10 帧出手后 X 就算就绪（v2 不会出现），Y 第 11 帧开始；不跳过要等到 v2 之后

@@ -1,6 +1,6 @@
 # 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1
 
-> **状态**：草案 v0.1（2026-09-28），待审。§5 的 M0 队伍草案里标"请确认"的条目要你拍板后再写代码。通用能力（§1.2 的新覆盖字段、§3.2 的 `skipJudgments` 与 `energyScale`）已实现（2026-09-30，用例 `tests/td08.test.ts`）
+> **状态**：草案 v0.1（2026-09-28），待审。§5 的 M0 队伍草案里标"请确认"的条目要你拍板后再写代码。通用能力（§1.2 的新覆盖字段、§3.2 的 `skipJudgments` 与 `selfEnergyScale`）已实现（2026-09-30，用例 `tests/td08.test.ts`）
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§4 T8、§6.9、§3.3；《TD-01 数据字典 v0.1.3》§13.4；《TD-02 类型与 Schema v0.1.3》§5.2、§7.4、Q5；《TD-03 伤害公式规格 v0.1》§3.2、§3.4、§4、Q6、Q7、Q13；《TD-05 切人与变奏 / 延奏 v0.1》；《TD-06 资源 v0.1》；《TD-07 Buff 系统 v0.1》；`docs/m0-confirm.md`
 > **下游**：每个角色的 `data/curated/characters/<角色>.ts` 与它的测试
 > **验证**：§5 的机制逐条对照了 nanoka 3.7 技能描述、xlsx 动作表备注与「伤害计算」页的公式写法
@@ -19,7 +19,7 @@
 
 1. 模块 = 数据（武器类型、技能树属性、别名、buff、资源型效果、动作覆盖）+ 至多四个钩子（`onResolve`、`canStart`、`onEvent`、`modifyHit`）。
 2. 角色状态放在两处：**标记**（`ctx.setFlag`，无计时，如椿的盛绽）与**标记型 buff**（有层数、有倒计时、可被切人清除，如椿的含苞、散华的冰棱，TD-07 §7）。
-3. 新增两项受控能力：`ctx.skipJudgments(instance, names)`（运行时挑判定版本）、`HitDraft.energyScale`（这次结算的基础能量倍率，TD-06 §2.1）。
+3. 新增两项受控能力：`ctx.skipJudgments(instance, names)`（运行时挑判定版本）、`HitDraft.selfEnergyScale`（这次结算的基础能量倍率，TD-06 §2.1）。
 4. 新增两个动作覆盖字段：`followUp`（某判定命中后自动接下一个动作组，维里奈 QTE-冲 → QTE-撞）、`energyCost` / `endOnSwitchOut`（TD-06 / TD-05）。
 5. 每个角色至少带：装配快照（flag 已知）、nanoka 核对（冷却、技能树）、每个钩子机制一个用例、一条代表轴的回归快照。
 
@@ -84,7 +84,7 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | `onResolve(ctx)` | 仿真开始：常驻 buff 施加之后、第 0 帧之前 | 初始化标记（初始形态）、施加开场的标记型 buff | —— |
 | `canStart(ctx, actionId)` | 调度器每 tick 检查出招合法性时（TD-09 §3.2 第 7 项，冷却与资源之后、就绪之前） | 返回 `true` 或不允许的原因（写进等待记录，代码 `hook`） | 改状态（这里只读） |
 | `onEvent(ctx, ev)` | 事件队列处理每条事件的最后一步（TD-07 §5 ④）：buff 触发与资源型效果之后 | 用 `ctx` 的全部写操作 | 直接改 `ctx.state` |
-| `modifyHit(ctx, draft)` | 每次结算、收集 buff 之前（TD-03 §4） | 改倍率、`extraFlat`、元素、标签、`energyScale`，往 `zones` / `critOnly` 补值 | 用 `ctx` 的写操作（结算中途改状态会让顺序难以追溯；要改就在随后的 `hit` 事件里改） |
+| `modifyHit(ctx, draft)` | 每次结算、收集 buff 之前（TD-03 §4） | 改倍率、`extraFlat`、元素、标签、`selfEnergyScale`，往 `zones` / `critOnly` 补值 | 用 `ctx` 的写操作（结算中途改状态会让顺序难以追溯；要改就在随后的 `hit` 事件里改） |
 
 `onEvent` 收到**所有**事件（不只是 TD-07 的触发目录），包括自己与队友的 `hit`、`actionStart`、`buffExpire`、`resource`、`judgmentSpawn`、`switch`、`intro`、`outro`。每个角色都会收到全队的事件，按 `ev.char` 判断是谁的。
 
@@ -101,7 +101,7 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | `skipJudgments(instance, names)` ★ | 在某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效。在 `actionStart` / `outro` 事件里调用，TD-06 的协奏汇总也会排除它们 |
 | `warn(message)` | 记一条警告 |
 
-`HitDraft` 新增 `energyScale`（缺省 1）★：这次结算的基础能量倍率（TD-06 §2.1）。
+`HitDraft` 新增 `selfEnergyScale`（缺省 1）★：这次结算出伤者自己那份能量的倍率，队友那 50% 不受影响（TD-06 §2.1）。
 
 ### 3.3 写钩子的规矩
 
@@ -122,7 +122,7 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | P4 | 事件生成判定 | `onEvent` 看某次 `hit`，`ctx.spawnJudgment` | 散华 重击爆裂引爆冰棱 / 冰棘 / 冰川 |
 | P5 | 运行时挑版本 | `onEvent` 看 `actionStart` / `outro`，`ctx.skipJudgments` 去掉不适用的版本 | 椿 延奏（普通 / 含苞 / 含苞追加）|
 | P6 | 倍率随状态变 / Formula1 | `modifyHit`：`draft.multiplier += judgment.formula.rate × N`（xlsx 写法 `FormulaParam5 × N × 属性`，TD-03 §3.2）；不必读攻击力 | 椿 酣梦 |
-| P7 | 基础能量倍率 | `modifyHit`：`draft.energyScale = …` | 椿 消耗红椿·蕊时 ×2.5，含苞时 ×0 |
+| P7 | 出伤者能量倍率 | `modifyHit`：`draft.selfEnergyScale = …`（只乘出伤者那份） | 椿 消耗红椿·蕊时 ×2.5，含苞时 ×0 |
 | P8 | 伤害类型改写 | 静态：`actionOverrides.<动作>.judgments.<判定>.tags`；随状态：`modifyHit` 改 `draft.tags` | 椿 重击修枝视为普攻 |
 | P9 | 队友命中触发的追加攻击 | `onEvent` 看任何人的 `hit`（`dmg ≠ null`），敌人身上有标记且内置冷却已过 → `spawnJudgment`；冷却时刻存标记 | 维里奈 光合标记协同攻击（每秒 1 次） |
 | P10 | 命中后接下一个动作组 | `actionOverrides.<动作>.followUp`（数据，不写钩子） | 维里奈 QTE-冲 命中 → QTE-撞 |
@@ -155,7 +155,7 @@ onEvent(ctx, ev) {
 | 变奏"留下 1 道【冰棘】"（486F）、大招"形成 1 道【冰川】"（390F） | 同上：QTE 第 55 帧、大招-伤害第 72 帧结算时施加 `散华.冰棘` / `散华.冰川` | 同 ① |
 | 重击爆裂引爆范围内的冰棱、冰棘、冰川（冰绽，共鸣技能伤害）；数据：重击居合-1"第29F～36F可引爆" | P4：重击居合-1（第 26 帧）结算时，敌人身上有哪种冰就生成对应的引爆判定（E-引爆冰棱 / QTE-引爆冰棘 / 大招-引爆冰川），移除该冰 | ② 按第 26 帧的命中引爆，比备注的第 29 帧早 3 帧，可以接受吗；③ 重击居合两行（第 26 帧、第 75 帧，倍率都是 1.8629）是一次打两下，还是两个版本（像维里奈 A3 那样只留一行） |
 | C5"冰棱、冰川、冰棘消失时直接爆炸" | P2：收到 `散华.冰*` 的 `buffExpire`（`timeout`）→ 生成对应引爆判定 | —— |
-| C5"冰绽的暴击伤害 +100%"、C6、固有 2、C1、C4 | 数据（TD-07 §12）：C1、C5、C6、C4 的回能已写；固有 2 与 C4 的伤害提升待 TD-07 Q5 | 见 TD-07 Q5、Q8 |
+| C5"冰绽的暴击伤害 +100%"、C6、固有 2、C1、C4 | 数据（TD-07 §12），都已写 | —— |
 | 【透视】层数、指针（核心资源 1） | 不建模（只影响冰痕区域大小，不影响伤害；TD-06 Q6） | —— |
 | 重击爆裂需要松开时指针落在冰痕区域 | 视为总能成功 | —— |
 
@@ -167,7 +167,7 @@ onEvent(ctx, ev) {
 | 一日花 E3：协奏满且一日花不在冷却时替换共鸣技能；消耗 70 协奏（数据 −70）；回复 100 红椿·蕊（数据）；进入含苞 | P3：`canStart(E3)` 要协奏 ≥ 100（冷却 25 秒已在数据）；P2：E3 开始时施加标记型 buff `椿.含苞`（900 帧，`onSwitchOut: 'clear'`） | —— |
 | 含苞提前结束："切换至其他角色时"、"消耗完【红椿·蕊】时" | `clear` 处理切人；P11：每次自己的 `hit` 后红椿·蕊为 0 → `removeBuff` | —— |
 | 酣梦（含苞时）：常态攻击、盛绽各段、旋舞、偿赎、红椿盛绽、黯蕊猎心的伤害倍率 +50%；一日花时每层红椿·蕾再 +5%（最多 +50%） | P6：含苞中这些判定 `multiplier += formula.rate × N`，N = 10 + 施放一日花时的红椿·蕾层数（≤ 10）。xlsx 就是这样写的：`FormulaParam5`（= 倍率 × 5%）× 层数 × 攻击 | ⑤ 红椿·蕾的规则按 nanoka 3.7（每消耗 10 点蕊得 1 层，15 秒，最多 10 层，一日花时清空并折算）还是 xlsx 备注（一日花得 10 层，含苞结束清空，上限 50 层）；本文按 nanoka |
-| 红椿·蕊：各段命中消耗（数据负数）；"此次攻击的基础共鸣能量回复效率提升 150%"；含苞时这些攻击的基础回能效率降为 0 | P7：`modifyHit` 里 蕊 > 0 → `energyScale = 2.5`；含苞中 → `energyScale = 0` | 见 TD-06 Q4 |
+| 红椿·蕊：各段命中消耗（数据负数）；"此次攻击的基础共鸣能量回复效率提升 150%"；含苞时这些攻击的基础回能效率降为 0 | P7：`modifyHit` 里 蕊 > 0 → `selfEnergyScale = 2.5`；含苞中 → `selfEnergyScale = 0` | —— （TD-06 Q4 已关闭：只乘椿自己那份） |
 | 每消耗 10 点红椿·蕊 → 协奏 +4、红椿·蕾 +1（15 秒，10 层；含苞中不获得） | P11：标记记累计消耗量；标记型 buff `椿.红椿·蕾` | 同 ⑤ |
 | 延奏：329.24% 湮灭伤害；一日花后的下次延奏额外 459.02%；数据三个版本（普通 / 含苞 / 含苞追加）倍率都是 0 | 倍率手填（`actionOverrides.延奏.judgments`：普通、含苞 3.2924，含苞追加 4.5902）；P5：`outro` 事件里按此刻是否含苞跳过另一版（m0-confirm §5） | ⑥ 三个版本的倍率这样填对吗；含苞追加是"一日花后的下次延奏"——按"切走那一刻在含苞中"判断（m0-confirm）会不会漏掉"含苞已结束但一日花后还没发过延奏"的情形 |
 | 固有 1"重击修枝伤害视为普攻伤害" | P8 静态：`actionOverrides.重击.judgments.*.tags = ['普攻']`（P1重击在数据里已经是普攻）——已写 | —— |
@@ -212,7 +212,7 @@ M0 三人的用例在实现时写进 `tests/m0-team.test.ts`，编号 T08-散华
 
 ## 8. 对其他文档的调整
 
-- **TD-02**：`HookContext` 新增 `skipJudgments`；`HitDraft` 新增 `energyScale`；`ActionOverride` / `ActionDef` 新增 `followUp`、`energyCost`、`endOnSwitchOut`；`CharacterModule` 新增 `resourceEffects`（原稿写作 `effects`，与 `WeaponDef.effects` 的原始文本重名，改了）；`ActionRuntime` 新增 `cmd?`（接续动作继承）、`skip?: string[]`，`TailRuntime` 新增 `skip?`（被跳过的判定名）；Q5 关闭（按本文 §3.2 的清单扩充，以后再加一项记一次附录）。
+- **TD-02**：`HookContext` 新增 `skipJudgments`；`HitDraft` 新增 `selfEnergyScale`；`ActionOverride` / `ActionDef` 新增 `followUp`、`energyCost`、`endOnSwitchOut`；`CharacterModule` 新增 `resourceEffects`（原稿写作 `effects`，与 `WeaponDef.effects` 的原始文本重名，改了）；`ActionRuntime` 新增 `cmd?`（接续动作继承）、`skip?: string[]`，`TailRuntime` 新增 `skip?`（被跳过的判定名）；Q5 关闭（按本文 §3.2 的清单扩充，以后再加一项记一次附录）。
 - **TD-04**：§4.1 时间线的 `spawn` 事件跳过 `skip` 里的判定（跳过的判定也不挡"就绪"，§6.4）；§9 `startAction` 支持继承指令出处（`followUp`），开始后调 `hooks.actionStarted`（TD-06 §7）。
 - **TD-09**：§3.9 指令的完成时刻：出招若有接续动作，按最后一个接续动作结束的帧。
 - **总设计**：§6.9 钩子表补调用时机与"能 / 不能做的事"（本文 §3.1）；示例改用本文 §4。
