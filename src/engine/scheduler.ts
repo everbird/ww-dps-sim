@@ -7,9 +7,9 @@ import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth'
+export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant'
 
-/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）。cmd 指出第几轮第几条 */
+/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
