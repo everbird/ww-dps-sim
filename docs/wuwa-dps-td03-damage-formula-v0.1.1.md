@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-03 伤害公式规格 v0.1
+# 鸣潮 DPS 引擎 · TD-03 伤害公式规格 v0.1.1
 
-> **状态**：草案 v0.1（2026-09-26）
+> **状态**：v0.1.1（2026-10-03），已实现（`src/engine/formula.ts`）。v0.1.1 并回 M1 golden 抽取的实现与 M2 的面板常数，见附录
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§4 T4 / T8 / T14、§6.6、§6.7、§6.9、附录 A-4 至 A-6；《设计文档 v0.2.9》（下称"机制设计"）§3、§3.1、4B；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§4、§5、§11；《TD-02 类型与 Schema v0.1》（下称"TD-02"）§2、§5.1、§7
 > **下游**：TD-04（结算放在 tick 的哪一步）、TD-06（异常叠层、谐度破坏何时触发、集谐层数）、TD-07（buff 库导入按 §9 落乘区）、TD-08（`modifyHit` 怎么写）、TD-10（`HitFactors` 怎么展示）
 > **验证**：xlsx「伤害计算」页 3317 个公式格全部读懂；其中 3190 个伤害 / 治疗格按本文公式重算，Python 原型与 TypeScript 实现都与缓存值逐位一致；把全部分区格随机改写 20 轮（约 6.4 万次重算），除一处已知的取整位置差异外也全部一致（§1.2）
@@ -57,9 +57,9 @@ Res(r) = r<=0 ? 1-r/2 : r<0.8 ? 1-r : 1/(1+r*5)
 | 检查 | 对象 | 结果 |
 |---|---|---|
 | 公式能否原样重算 | 「伤害计算」全部 3317 个公式格（R4–R1026 各列组的未暴击 / 暴击格 3216 个，R1039–R1106 异常表与谐度破坏表 101 个），用一个最小的公式解析器按缓存值重算 | 3315 格与缓存值全等；另 2 格是导航链接 |
-| 本文公式（Python 原型） | 其中 3190 个伤害 / 治疗格：按 §10 拆出乘区，再按 §3–§7 重算 | 全等：直接伤害 2940、异常效应 173、谐度破坏与响应 30、治疗 47 |
+| 本文公式（Python 原型） | 其中 3190 个伤害 / 治疗格：按 §10 拆出乘区，再按 §3–§7 重算 | 全等：直接伤害 2940、异常效应 173、谐度破坏与响应 30、治疗 47（M1 的正式抽取记为直接伤害 2939、治疗 48：鉴心"护盾回复生命值"J558 有治疗加成因子、dmg 里 CalculateType 为 1，按治疗算；总数不变） |
 | 本文公式（TypeScript） | 同上 3190 格（§11 T03-9） | 全等 |
-| 扰动对拍 | 随机改写被引用的分区格与汇总格共 2329 个、目标防御与各抗性，20 轮，每轮 3190 格；期望值由解析器按原数组公式重算 | 63800 次中 63637 次全等；其余 163 次都出在"减防后先取整"的公式变体上（§3.2 防御）：86 次只差 1（CEILING 进位不同），其余相对差不超过 0.05% |
+| 扰动对拍 | 随机改写被引用的分区格与汇总格共 2329 个、目标防御与各抗性，20 轮，每轮 3190 格；期望值由解析器按原数组公式重算 | 63800 次中 63637 次全等；其余 163 次都出在"减防后先取整"的公式变体上（§3.2 防御）：86 次只差 1（CEILING 进位不同），其余相对差不超过 0.05%。M1 的正式实现范围更大、全等更多，见 §10.3 |
 | 未纳入 | 127 格 | 倍率显示格 94、引用别处的复制格 14、护盾 14、白条削减 3、导航 2 |
 
 **为什么要扰动对拍**：缓存值只用了一套配置（秧秧·玄翎面板、全息 6 目标，TD-01 §11.1）。在这套配置里只有加成（0.12 / 0.2 / 0.32 / 0.72 / 0.92）、抗性 0.2、无视防御 0.12、0 类加深 0.36、暴伤 2.3 取了非零值，减防、减免、特殊加成、1–9 类加深、最终伤害都是 0——缓存值只证明了它们的中性值。扰动对拍把每个乘区和减免、防御的钳位分支都走到了。加深与最终伤害的"≥ 0"钳位不在扰动范围内（xlsx 对单独一类加深的写法与本文分组不同，只在出现低于 −100% 的加深时才有区别），由 §11 T03-3 单独覆盖。
@@ -196,6 +196,8 @@ Res(r) = r<=0 ? 1-r/2 : r<0.8 ? 1-r : 1/(1+r*5)
 
 - 非暴击、暴击两个分支各自 CEILING 到整数（与缓存值一致）；期望值不取整，只用于累计。
 
+- **角色的基础暴击、暴伤、共鸣效率**（v0.1.1）：全员相同，是 xlsx 的常数——暴击 5%（伤害配置 B2196 = 500 × 0.0001）、暴伤 150%（B2204）、共鸣效率 100%（B2218）。实现写在 `src/engine/resolve.ts` 的 `CHAR_BASE`，静态面板从它起算（总设计 §3.3 第 2 步）。
+
 ### 3.3 暴击两支
 
 - 非暴击分支：暴击系数 1，只用 `acc.zones`。
@@ -306,243 +308,15 @@ flowchart LR
 
 ## 8. 代码 `src/engine/formula.ts`
 
-四个计算函数与收集函数都在这一个文件里，全部是纯函数。类型 `StaticPanel`、`HitDraft`、`ZoneAccumulator`、`HitFactors` 在 `engine/types.ts`（TD-02 §7，本文改版见 §12.1）。
+v0.1.1 起本文不再内嵌代码，以仓库为准。全部是纯函数，不读任何全局状态；乘法顺序照 xlsx 数组公式从左到右写。导出：
 
-```ts
-// src/engine/formula.ts —— 伤害公式（TD-03）：全部是纯函数，不读任何全局状态
-// 公式来源：base!E5 CalculateHurt / E6 CalculateHeal / E7 CalculateAbnormal 与「伤害计算」页数组公式（TD-03 §1）。
-// 乘法顺序照 xlsx 数组公式从左到右写，保证与标准答案逐位一致（CEILING 对最后一位很敏感）。
-import { AMPLIFY_ZONES, FINAL_ZONES, ZONE_IDS } from '../data/common'
-import type { DamageTag, EffectName, Element, Slot, ZoneId } from '../data/common'
-import type { BuffDef, BuffFilter } from '../data/buff.schema'
-import type { Rules, TuneBreakTable } from '../data/gamedata'
-import type { HitDraft, HitFactors, StaticPanel, StatParts, ZoneAccumulator } from './types'
-
-export type ZoneSums = Record<ZoneId, number>
-export type FormulaRules = Pick<Rules, 'critRateCap' | 'defFactorCap' | 'highResThreshold'>
-export type RelatedAttr = 'atk' | 'hp' | 'def' | 'energyRegen'
-
-export const emptyZones = (): ZoneSums => Object.fromEntries(ZONE_IDS.map(z => [z, 0])) as ZoneSums
-export const emptyAccumulator = (): ZoneAccumulator => ({ zones: emptyZones(), critOnly: emptyZones() })
-
-function addZones(a: ZoneSums, b: Partial<ZoneSums>): ZoneSums {
-  const out = { ...a }
-  for (const k of Object.keys(b) as ZoneId[]) out[k] += b[k] ?? 0
-  return out
-}
-
-// ---------------------------------------------------------------------------
-// §3.2 各因子
-
-/** 面板合成：floor(基础 × (1 + 百分比)) + 固定值（xlsx 伤害配置 R2147 的写法） */
-export function composeStat(p: StatParts, pct: number, flat: number): number {
-  return Math.floor(p.base * (1 + p.pct + pct)) + p.flat + flat
-}
-
-/** RelatedProperty 对应的属性值；共鸣效率按游戏内单位（1 = 0.01%）换算，倍率 × 它 = 原始倍率 × 共鸣效率 */
-export function relatedAttrValue(attr: RelatedAttr, panel: StaticPanel, z: ZoneSums): number {
-  switch (attr) {
-    case 'atk': return composeStat(panel.atk, z.atkPct, z.atkFlat)
-    case 'hp': return composeStat(panel.hp, z.hpPct, z.hpFlat)
-    case 'def': return composeStat(panel.def, z.defPct, z.defFlat)
-    case 'energyRegen': return (panel.energyRegen + z.energyRegen) * 10000
-  }
-}
-
-/**
- * 防御系数：min(cap, 1 / (有效防御 / (800 + 8·Lv) + 1))，有效防御 = 目标防御 × (1 + 防御±%) × (1 − 无视防御)。
- * 减防超过 100% 时有效防御为负、系数 > 1；分母 ≤ 0 时 xlsx 会算出负数，这里直接取上限（TD-03 §3.2）。
- */
-export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2): number {
-  const d = targetDef * (1 + defRate) * (1 - ignore) / (800 + level * 8) + 1
-  return d <= 0 ? cap : Math.min(cap, 1 / d)
-}
-
-/** 抗性系数（三段）：r ≤ 0 → 1 − r/2；r < 0.8 → 1 − r；否则 1 / (1 + 5r) */
-export function resFactor(r: number, high = 0.8): number {
-  if (r <= 0) return 1 - r / 2
-  if (r < high) return 1 - r
-  return 1 / (1 + r * 5)
-}
-
-const clamp0 = (x: number) => Math.max(x, 0)
-const AMP_1_9 = AMPLIFY_ZONES.slice(1, 10)
-const FINAL_0_7 = FINAL_ZONES.slice(0, 8)
-const ampClasses = (z: ZoneSums) => AMP_1_9.reduce((p, k) => p * (1 + z[k]), 1)
-const finalClasses = (z: ZoneSums) => FINAL_0_7.reduce((p, k) => p * (1 + z[k]), 1)
-
-// ---------------------------------------------------------------------------
-// §3 直接伤害（CalculateHurt）
-
-export interface HitContext {
-  rate: number                         // 倍率，= HitDraft.multiplier
-  attr: RelatedAttr
-  panel: StaticPanel                   // 出伤者静态面板
-  extraFlat: number                    // Formula1：钩子给出的附加基础伤害
-  level: number                        // 出伤者等级（rules.charLevel）
-  enemy: { def: number; res: number }  // 目标防御；本次伤害元素的基础抗性
-}
-
-export interface HitResult {
-  nonCrit: number                      // 已 CEILING
-  crit: number                         // 已 CEILING
-  expected: number                     // (1 − p) × nonCrit + p × crit，不取整
-  critRate: number                     // p，已钳到 [0, critRateCap]
-  factors: HitFactors
-}
-
-export function computeHit(ctx: HitContext, acc: ZoneAccumulator, rules: FormulaRules): HitResult {
-  const zc = addZones(acc.zones, acc.critOnly)                     // 暴击分支 = 全部 + 暴击专属
-  const critDamage = ctx.panel.critDamage + zc.critDamage
-  const nc = hurt(ctx, acc.zones, 1, rules)
-  const cr = hurt(ctx, zc, critDamage, rules)
-  const p = Math.min(Math.max(ctx.panel.critRate + acc.zones.critRate, 0), rules.critRateCap)
-  return {
-    nonCrit: nc.value, crit: cr.value, expected: (1 - p) * nc.value + p * cr.value, critRate: p,
-    factors: { ...nc.factors, critRate: p, critDamage },
-  }
-}
-
-function hurt(ctx: HitContext, z: ZoneSums, crit: number, rules: FormulaRules) {
-  const base = ctx.rate * (1 + z.RateBonus) * relatedAttrValue(ctx.attr, ctx.panel, z) + z.ExtraEffect9 + ctx.extraFlat
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
-  const bonus = 1 + z.DamageChange + z.DamageChangeElement + z.DamageChangeType
-  const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
-  const dr1 = 1 - Math.min(z.TargetDamageReduce, 1)
-  const dr2 = 1 - Math.min(z.TargetElementDamageReduce, 1)
-  const special = 1 + Math.max(z.SpecialDamageChange, -1)
-  const amp19 = clamp0(ampClasses(z))
-  const fin07 = clamp0(finalClasses(z))
-  const fin1001 = clamp0(1 + z.FinalDamage1001)
-  const amp0 = clamp0(1 + z.DamageAmplify0)
-  const amp1002 = clamp0(1 + z.DamageAmplify1002)
-  const value = Math.ceil(base * crit * def * bonus * res * dr1 * dr2 * special * amp19 * fin07 * fin1001 * amp0 * amp1002)
-  return {
-    value,
-    factors: { base, def, bonus, res, reduce: dr1 * dr2, special, amplify: amp0 * amp19 * amp1002, final: fin07 * fin1001 },
-  }
-}
-
-// ---------------------------------------------------------------------------
-// §5 异常效应伤害（CalculateAbnormal）：不暴击、不吃伤害加成
-
-export interface AbnormalContext {
-  base: number                         // abnormalBaseByLevel[等级 − 1]
-  multiplier: number                   // 当前层数的倍率（EffectDef.multipliers[层数 − 1]）
-  level: number
-  enemy: { def: number; res: number }  // res：效应所属元素的基础抗性
-}
-
-export function computeAbnormal(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules): number {
-  const z = acc.zones
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
-  const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
-  return Math.ceil(ctx.base * ctx.multiplier * def * res
-    * (1 - Math.min(z.TargetDamageReduce, 1)) * (1 - Math.min(z.TargetElementDamageReduce, 1))
-    * (1 + Math.max(z.SpecialDamageChange, -1))
-    * clamp0(ampClasses(z)) * clamp0(finalClasses(z)) * clamp0(1 + z.FinalDamage1001)
-    * clamp0(1 + z.DamageAmplify0) * clamp0(1 + z.DamageAmplify1002))
-}
-
-export const abnormalBase = (table: number[], level: number): number => table[level - 1] ?? 0
-
-// ---------------------------------------------------------------------------
-// §6 谐度破坏 / 震谐响应 / 骇破响应：基础值按等级与敌人 COST
-
-/** Excel ROUND(x, 2)（正数：四舍五入到分） */
-const round2 = (x: number) => Math.round(x * 100) / 100
-export const tuneBase = (t: TuneBreakTable, level: number, cost: 1 | 3 | 4): number =>
-  round2((t.baseByLevel[level - 1] ?? 0) * t.costFactor[cost])
-
-export interface TuneContext {
-  base: number                         // tuneBase(…)
-  rate: number                         // 谐度破坏：通用「谐度破坏-<武器>」行；响应：角色的响应行
-  level: number
-  enemy: { def: number; res: number }  // 谐度破坏按物理抗性；响应按角色元素
-  harmonyBreakBoost: number            // 谐破增幅（点），面板 + buff
-  vsNormal?: boolean                   // 谐度破坏打在非失谐目标上（× 0.0001）
-}
-
-export function computeTuneBreak(ctx: TuneContext, acc: ZoneAccumulator, rules: FormulaRules): number {
-  const z = acc.zones
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
-  const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
-  let v = ctx.base * ctx.rate * def * res
-    * (1 - Math.min(z.TargetDamageReduce, 1)) * (1 - Math.min(z.TargetElementDamageReduce, 1))
-    * (1 + ctx.harmonyBreakBoost * 0.01) * clamp0(finalClasses(z))
-  if (ctx.vsNormal) v *= 1 - 0.9999
-  return Math.ceil(v)
-}
-
-// ---------------------------------------------------------------------------
-// §7 治疗（CalculateHeal）：不暴击
-
-export interface HealContext { rate: number; attr: RelatedAttr; panel: StaticPanel; cureBase: number }
-
-export function computeHeal(ctx: HealContext, acc: ZoneAccumulator): number {
-  const z = acc.zones
-  const attr = relatedAttrValue(ctx.attr, ctx.panel, z)
-  return Math.ceil((ctx.rate * attr + ctx.cureBase) * (ctx.panel.healBonus + z.healBonus + z.TargetHealedChange + 1))
-}
-
-// ---------------------------------------------------------------------------
-// §4 收集：哪些 buff 进这一次结算、怎么累加
-
-/** 对本次结算有效的 buff 实例（引擎已按作用对象筛过：挂在出伤者身上，或挂在目标身上） */
-export interface ActiveBuff { def: BuffDef; value: number; stacks: number; owner: Slot | 'env' }
-
-/** 过滤条件要看的信息 */
-export interface HitView {
-  element: Element
-  tags: readonly DamageTag[]
-  action: string
-  judgment: string
-  effect?: EffectName                  // 异常效应自身的伤害
-  enemyEffects: ReadonlySet<EffectName>
-}
-
-export function hitView(d: HitDraft, action: string, enemyEffects: ReadonlySet<EffectName>): HitView {
-  return { element: d.element, tags: d.tags, action, judgment: d.judgment.name, ...(d.effect ? { effect: d.effect } : {}), enemyEffects }
-}
-
-/** 字段之间是"且"，同一字段的多个取值是"或"；没写的字段不限制 */
-export function matchesFilter(f: BuffFilter | undefined, h: HitView): boolean {
-  if (!f) return true
-  if (f.elements && !f.elements.includes(h.element)) return false
-  if (f.tags && !f.tags.some(t => h.tags.includes(t))) return false
-  if (f.actions && !f.actions.includes(h.action)) return false
-  if (f.judgments && !f.judgments.includes(h.judgment)) return false
-  if (f.enemyEffect && !h.enemyEffects.has(f.enemyEffect)) return false
-  if (f.effects && !(h.effect && f.effects.includes(h.effect))) return false
-  return true
-}
-
-const DEF_ZONES: ReadonlySet<ZoneId> = new Set<ZoneId>(['RoleIgnoreDefRate', 'TargetDefRate'])
-
-/** 异常效应伤害的防御例外：出伤者身上的减防 / 无视防御不生效（xlsx 异常防御系数里的"对异常补偿"两格） */
-function skipForAbnormal(b: ActiveBuff): boolean {
-  return DEF_ZONES.has(b.def.zone) && b.def.target !== 'enemy' && b.owner !== 'env' && !b.def.filter?.tags?.includes('异常效应')
-}
-
-/** 按 zone 把 value × stacks 累加；critOnly 的进暴击专属桶；最后并入钩子直接补的值 */
-export function accumulate(h: HitView, buffs: readonly ActiveBuff[], draft?: Pick<HitDraft, 'zones' | 'critOnly'>): ZoneAccumulator {
-  const acc = emptyAccumulator()
-  const abnormal = h.tags.includes('异常效应')
-  for (const b of buffs) {
-    if (!matchesFilter(b.def.filter, h)) continue
-    if (abnormal && skipForAbnormal(b)) continue
-    const bucket = b.def.filter?.critOnly ? acc.critOnly : acc.zones
-    bucket[b.def.zone] += b.value * b.stacks
-  }
-  if (draft) {
-    acc.zones = addZones(acc.zones, draft.zones)
-    acc.critOnly = addZones(acc.critOnly, draft.critOnly)
-  }
-  return acc
-}
-```
-
----
+| 名字 | 作用 |
+|---|---|
+| `computeHit(ctx, acc, rules)` | 直接伤害：非暴击 / 暴击两支与期望（§3） |
+| `computeAbnormal`、`computeTuneBreak`、`computeHeal` | 异常效应（§5）、谐度破坏与响应（§6）、治疗（§7） |
+| `accumulate(view, active, draft)`、`hitView`、`matchesFilter` | 一次结算收集 buff（§4）；标记型 buff（没有乘区）跳过（TD-07 §7） |
+| `composeStat`、`relatedAttrValue`、`defFactor`、`resFactor` | 各因子（§3.2） |
+| `emptyZones`、`emptyAccumulator` | 乘区累加器 |
 
 ## 9. xlsx 映射
 
@@ -691,7 +465,12 @@ export const GoldenZonesSchema = z.array(GoldenZoneSchema)
 ### 10.3 局限与扰动对拍
 
 - golden 只覆盖保存时的那一套配置（§1.2）。要更多真实样本，在 Excel 里换角色或配置、重算后另存一份再抽（TD-01 §11.1）。
-- 扰动对拍是开发期工具，不进 CI：把被引用的分区格、汇总格和目标防御 / 抗性随机改写，用同一个解析器按原数组公式算出"期望值"，再按 10.2 拆乘区、按本文公式重算，逐格比较。改公式、换 xlsx 版本后跑一次即可。原型三个脚本（解析器、抽取、扰动）随本文附上，M1 移植到 `scripts/golden/`。
+- 扰动对拍是开发期工具，不进 CI：把被引用的分区格、汇总格和目标防御 / 抗性随机改写，用同一个解析器按原数组公式算出"期望值"，再按 10.2 拆乘区、按本文公式重算，逐格比较。改公式、换 xlsx 版本后跑一次即可。
+- **M1 的实现**（v0.1.1）：构建已改用 Python（TD-01 §0.2），三个脚本放进 `tools/build/`，没有另开 `scripts/golden/`：`xlformula.py`（公式解析与求值）、`golden.py`（随 `pnpm build:data` 写出 `golden-damage.json` 与 `golden-zones.json`，构建报告有"golden"一节）、`golden_perturb.py`（`pnpm golden:perturb -- --rounds 20`）。与原型的出入：
+  - **计数**：直接伤害 2939、治疗 48（§1.2）。
+  - **减防后先取整**的写法（物理、谐度破坏与响应，§3.2）：拆分时把 `FLOOR(…)` 整体记为目标防御（`defRate` 记 0），夹具逐位复现 xlsx；本文公式不取整这一差异照旧（Q1）。
+  - **「聚爆效应121」**（伤害配置 B2622，爱弥斯"聚爆轨迹强化E"）其实是乘在聚爆效应伤害上的独立因子（伤害计算 Q1040–Q1055），§9.4 记成了"不参与伤害公式"。夹具里并入 0 类加深，构建报告有提示；它该落哪个乘区留给 TD-06 v0.2（M4）。
+  - **扰动范围更大**：改写全部被引用的「伤害配置」R1791 起的数值格（含角色专属格）与目标防御、七项抗性，共 2340 格；R1792–R1815、R2139–R2142 预先算好的因子格按公式现算。20 轮 63800 次比较，全等 63772；其余 28 次都是"防御分母 ≤ 0"（§1.3：xlsx 算出负系数，本文取上限 2）。
 
 ---
 
@@ -699,221 +478,7 @@ export const GoldenZonesSchema = z.array(GoldenZoneSchema)
 
 ### 11.1 代码
 
-`tests/td03.test.ts`，与 TD-02 的测试放在同一工程里运行。
-
-```ts
-// tests/td03.test.ts —— TD-03 伤害公式的测试（§11）
-import { readFileSync } from 'node:fs'
-import { describe, expect, test } from 'vitest'
-import { AMPLIFY_ZONES, FINAL_ZONES } from '../src/data/common'
-import type { ZoneId } from '../src/data/common'
-import { BuffDefSchema } from '../src/data/buff.schema'
-import type { BuffDefInput } from '../src/data/buff.schema'
-import { GoldenZonesSchema } from '../src/data/generated.schema'
-import type { GoldenZone } from '../src/data/generated.schema'
-import { DEFAULT_RULES } from '../src/data/gamedata'
-import type { TuneBreakTable } from '../src/data/gamedata'
-import {
-  accumulate, computeAbnormal, computeHeal, computeHit, computeTuneBreak, defFactor, emptyAccumulator, resFactor, tuneBase,
-} from '../src/engine/formula'
-import type { ActiveBuff, HitContext, HitView } from '../src/engine/formula'
-import type { StaticPanel, ZoneAccumulator } from '../src/engine/types'
-
-const R = DEFAULT_RULES
-const panel = (o: Partial<StaticPanel> = {}): StaticPanel => ({
-  hp: { base: 0, pct: 0, flat: 0 }, atk: { base: 0, pct: 0, flat: 0 }, def: { base: 0, pct: 0, flat: 0 },
-  critRate: 0, critDamage: 1.5, energyRegen: 1, healBonus: 0, tunabilityRate: 1, harmonyBreakBoost: 0, ...o,
-})
-const acc = (zones: Partial<Record<ZoneId, number>>, critOnly: Partial<Record<ZoneId, number>> = {}): ZoneAccumulator => {
-  const a = emptyAccumulator()
-  Object.assign(a.zones, zones); Object.assign(a.critOnly, critOnly)
-  return a
-}
-const enemy = { def: 1593, res: 0.2 }             // 全息 6 · 90 级（伤害计算 R3）
-
-describe('T03-1 标准形：散华 普攻第一段（伤害计算 D5 / E5）', () => {
-  const ctx: HitContext = {
-    rate: 0.4871, attr: 'atk', extraFlat: 0, level: 90, enemy,
-    panel: panel({ atk: { base: 1928, pct: 0, flat: 0 }, critRate: 0.913, critDamage: 2.3 }),
-  }
-  const r = computeHit(ctx, acc({ DamageChangeElement: 0.12, DamageChangeType: 0.2 }), R)
-  test('非暴击 485、暴击 1114', () => {
-    expect(r.nonCrit).toBe(485)
-    expect(r.crit).toBe(1114)
-  })
-  test('期望 = 0.087 × 485 + 0.913 × 1114', () => expect(r.expected).toBeCloseTo(1059.277, 3))
-  test('各因子', () => {
-    expect(r.factors.base).toBeCloseTo(939.1288, 4)
-    expect(r.factors.def).toBeCloseTo(1520 / 3113, 9)
-    expect(r.factors.bonus).toBeCloseTo(1.32, 9)
-    expect(r.factors.res).toBeCloseTo(0.8, 9)
-  })
-})
-
-describe('T03-2 无视防御 + 0 类加深：散华 重击·爆裂（P5 / Q5）', () => {
-  const ctx: HitContext = {
-    rate: 1.8629, attr: 'atk', extraFlat: 0, level: 90, enemy,
-    panel: panel({ atk: { base: 1928, pct: 0, flat: 0 }, critDamage: 2.3 }),
-  }
-  const r = computeHit(ctx, acc({ DamageChangeElement: 0.12, RoleIgnoreDefRate: 0.12, DamageAmplify0: 0.36 }), R)
-  test('防御系数 0.5202', () => expect(r.factors.def).toBeCloseTo(0.5202201352572352, 12))
-  test('非暴击 2277、暴击 5237', () => {
-    expect(r.nonCrit).toBe(2277)
-    expect(r.crit).toBe(5237)
-  })
-})
-
-describe('T03-3 抗性三段与钳位', () => {
-  test('负抗减半、常规、高抗衰减', () => {
-    expect(resFactor(-0.2)).toBeCloseTo(1.1, 12)
-    expect(resFactor(0.2)).toBeCloseTo(0.8, 12)
-    expect(resFactor(0.79)).toBeCloseTo(0.21, 12)
-    expect(resFactor(0.8)).toBeCloseTo(0.2, 12)            // 阈值属于高抗段：1 / (1 + 4)
-    expect(resFactor(1)).toBeCloseTo(1 / 6, 12)
-  })
-  test('防御系数：减防超过 100% 时 > 1，上限 2', () => {
-    expect(defFactor(1593, -1.2, 0, 90)).toBeCloseTo(1.26519, 5)
-    expect(defFactor(1593, -1.5, 0, 90)).toBe(2)
-    expect(defFactor(1593, -2, 0, 90)).toBe(2)              // 分母 ≤ 0：取上限，不出负数
-  })
-  const ctx: HitContext = { rate: 1, attr: 'atk', extraFlat: 0, level: 90, enemy: { def: 0, res: 0 }, panel: panel({ atk: { base: 1000, pct: 0, flat: 0 } }) }
-  test('减免超过 100% 按 100% 算', () => expect(computeHit(ctx, acc({ TargetDamageReduce: 1.5 }), R).nonCrit).toBe(0))
-  test('加深 1–9 类先连乘再钳到 ≥ 0（与 xlsx 一致）', () => {
-    expect(computeHit(ctx, acc({ DamageAmplify1: -1.5, DamageAmplify2: -1.5 }), R).nonCrit).toBe(250)
-    expect(computeHit(ctx, acc({ DamageAmplify1: -1.5 }), R).nonCrit).toBe(0)
-  })
-})
-
-describe('T03-4 暴击分支', () => {
-  const ctx: HitContext = { rate: 1, attr: 'atk', extraFlat: 0, level: 90, enemy: { def: 0, res: 0 }, panel: panel({ atk: { base: 1000, pct: 0, flat: 0 }, critRate: 1.3, critDamage: 2 }) }
-  const r = computeHit(ctx, acc({ critDamage: 0.5 }, { DamageAmplify3: 0.2 }), R)
-  test('critOnly 只进暴击分支', () => {
-    expect(r.nonCrit).toBe(1000)
-    expect(r.crit).toBe(3000)                              // 1000 × (2 + 0.5) × 1.2
-  })
-  test('暴击率钳到 100%', () => {
-    expect(r.critRate).toBe(1)
-    expect(r.expected).toBe(3000)
-  })
-})
-
-describe('T03-5 面板合成', () => {
-  test('floor(基础 × (1 + 百分比)) + 固定值', () => {
-    const ctx: HitContext = { rate: 1, attr: 'atk', extraFlat: 0, level: 90, enemy: { def: 0, res: 0 }, panel: panel({ atk: { base: 1000, pct: 0.333, flat: 50 } }) }
-    // 1000 × (1 + 0.333 + 0.1) = 1433 → +50 +20 = 1503
-    expect(computeHit(ctx, acc({ atkPct: 0.1, atkFlat: 20 }), R).factors.base).toBe(1503)
-  })
-  test('共鸣效率类（RelatedProperty 11）：布兰特 直到世界尽头-治疗量（J204）', () => {
-    const heal = computeHeal({ rate: 0.0332, attr: 'energyRegen', cureBase: 950, panel: panel({ energyRegen: 1.2 }) }, emptyAccumulator())
-    expect(heal).toBe(1349)
-  })
-})
-
-describe('T03-6 异常效应：光噪效应 1 层（伤害计算 E1040）', () => {
-  test('3674 × 0.3 × 防御 × 抗性 → 431', () => {
-    expect(computeAbnormal({ base: 3674, multiplier: 0.3, level: 90, enemy }, emptyAccumulator(), R)).toBe(431)
-  })
-})
-
-describe('T03-7 谐度破坏：对 COST4 通用（伤害计算 E1098 / F1098）', () => {
-  const t: TuneBreakTable = {
-    variants: [], baseByLevel: Array.from({ length: 100 }, (_, i) => (i === 89 ? 3865000 : 0)),
-    costFactor: { 1: 0.00018530030524049998, 3: 0.0005559214354978414, 4: 0.0025943077491359817 },
-  }
-  test('基础值 ROUND(3865000 × 系数, 2)', () => {
-    expect(tuneBase(t, 90, 4)).toBe(10027)
-    expect(tuneBase(t, 90, 1)).toBe(716.19)
-  })
-  const ctx = { base: tuneBase(t, 90, 4), rate: 16, level: 90, enemy, harmonyBreakBoost: 0 }
-  test('对失谐 62668、对常态 7', () => {
-    expect(computeTuneBreak(ctx, emptyAccumulator(), R)).toBe(62668)
-    expect(computeTuneBreak({ ...ctx, vsNormal: true }, emptyAccumulator(), R)).toBe(7)
-  })
-})
-
-describe('T03-8 收集 buff', () => {
-  const mk = (b: BuffDefInput, stacks = 1, owner: ActiveBuff['owner'] = 0): ActiveBuff =>
-    ({ def: BuffDefSchema.parse(b), value: b.value as number, stacks, owner })
-  const common = { source: 't', target: 'self' as const, duration: 60, trigger: { on: 'intro' as const } }
-  const buffs = [
-    mk({ ...common, id: 'a', zone: 'DamageChangeType', value: 0.2, filter: { tags: ['普攻'] } }),
-    mk({ ...common, id: 'b', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['冷凝'] }, maxStacks: 3 }, 3),
-    mk({ ...common, id: 'c', zone: 'DamageAmplify3', value: 0.25, filter: { critOnly: true } }),
-    mk({ ...common, id: 'd', zone: 'RoleIgnoreDefRate', value: 0.15 }),
-    mk({ ...common, id: 'e', zone: 'TargetDefRate', value: -0.1 }, 1, 'env'),
-    mk({ ...common, id: 'f', zone: 'DamageAmplify0', value: 0.3, filter: { effects: ['光噪效应'] } }),
-    mk({ ...common, id: 'g', zone: 'TargetDefRate', value: -0.02, target: 'enemy', maxStacks: 12 }, 5),   // 挂在目标上的减防（虚湮一类）
-    mk({ ...common, id: 'h', zone: 'TargetDefRate', value: -0.18 }),                                    // 出伤者自己的"防御无视10"
-  ]
-  const hit: HitView = { element: '冷凝', tags: ['普攻'], action: 'A1', judgment: 'A1', enemyEffects: new Set() }
-  test('过滤、层数、暴击专属', () => {
-    const a = accumulate(hit, buffs)
-    expect(a.zones.DamageChangeType).toBe(0.2)
-    expect(a.zones.DamageChangeElement).toBeCloseTo(0.3, 12)
-    expect(a.zones.DamageAmplify3).toBe(0)
-    expect(a.critOnly.DamageAmplify3).toBe(0.25)
-    expect(a.zones.DamageAmplify0).toBe(0)                 // 不是光噪效应自身的伤害
-  })
-  test('直接伤害吃全部减防', () => expect(accumulate(hit, buffs).zones.TargetDefRate).toBeCloseTo(-0.38, 12))
-  test('异常效应伤害：出伤者身上的减防 / 无视防御不生效，目标身上的与场景的生效', () => {
-    const a = accumulate({ element: '衍射', tags: ['异常效应'], action: '光噪效应', judgment: '光噪效应', effect: '光噪效应', enemyEffects: new Set(['光噪效应']) }, buffs)
-    expect(a.zones.RoleIgnoreDefRate).toBe(0)
-    expect(a.zones.TargetDefRate).toBeCloseTo(-0.2, 12)   // 场景 -0.1 + 目标 5 × -0.02
-    expect(a.zones.DamageAmplify0).toBe(0.3)
-  })
-  test('钩子补的乘区值并入', () => {
-    const a = accumulate(hit, [], { zones: { SpecialDamageChange: 0.1 }, critOnly: { critDamage: 0.2 } })
-    expect(a.zones.SpecialDamageChange).toBe(0.1)
-    expect(a.critOnly.critDamage).toBe(0.2)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// T03-9 标准答案全量对拍：golden-zones.json（TD-03 §10 的抽取结果）逐条喂给公式
-type GoldenZ = GoldenZone['z']
-
-function zonesOf(z: GoldenZ): ZoneAccumulator {
-  const a = emptyAccumulator(); const Z = a.zones
-  Z.DamageChange = z.bonus ?? 0
-  Z.TargetDefRate = z.def?.defRate ?? 0; Z.RoleIgnoreDefRate = z.def?.ignore ?? 0
-  Z.TargetDamageReduce = z.dr ?? 0; Z.TargetElementDamageReduce = z.dre ?? 0
-  Z.SpecialDamageChange = z.special ?? 0
-  Z.DamageAmplify0 = z.amp0 ?? 0; Z.DamageAmplify1002 = z.amp1002 ?? 0
-  z.amp?.forEach((v, i) => { Z[AMPLIFY_ZONES[i + 1]!] = v })
-  z.fin?.forEach((v, i) => { Z[FINAL_ZONES[i]!] = v })
-  Z.FinalDamage1001 = z.fin1001 ?? 0
-  Z.healBonus = z.heal ?? 0
-  return a
-}
-
-function evaluate(g: GoldenZone): number {
-  const z = g.z; const a = zonesOf(z)
-  const level = z.def?.level ?? 90
-  const en = { def: z.def?.targetDef ?? 0, res: z.res ?? 0 }
-  switch (g.formula) {
-    case 'hurt': {
-      const r = computeHit({ rate: 0, attr: 'atk', extraFlat: z.base, level, enemy: en, panel: panel({ critDamage: z.crit ?? 1 }) }, a, R)
-      return g.branch === 'nc' ? r.nonCrit : r.crit
-    }
-    case 'abnormal': return computeAbnormal({ base: z.base, multiplier: 1, level, enemy: en }, a, R)
-    case 'tune': return computeTuneBreak({ base: z.base, rate: 1, level, enemy: en, harmonyBreakBoost: (z.breakBoost ?? 0) * 100, ...(z.vsNormal ? { vsNormal: true } : {}) }, a, R)
-    case 'heal': return computeHeal({ rate: 0, attr: 'atk', cureBase: z.base, panel: panel() }, a)
-  }
-}
-
-describe('T03-9 标准答案全量对拍', () => {
-  const all = GoldenZonesSchema.parse(JSON.parse(readFileSync(new URL('./fixtures/golden-zones.json', import.meta.url), 'utf8')))
-  test('没有未归类因子', () => expect(all.filter(g => g.z.other !== undefined).map(g => g.cell)).toEqual([]))
-  test(`${all.length} 条全部逐位一致`, () => {
-    const bad = all.filter(g => evaluate(g) !== g.expected)
-    expect(bad.map(g => `${g.cell} ${g.name} ${evaluate(g)} ≠ ${g.expected}`)).toEqual([])
-  })
-  test('按公式分类计数', () => {
-    const n = (f: GoldenZone['formula']) => all.filter(g => g.formula === f).length
-    expect([n('hurt'), n('abnormal'), n('tune'), n('heal')]).toEqual([2940, 173, 30, 47])
-  })
-})
-```
+v0.1.1 起不再内嵌，见 `tests/td03.test.ts`（23 个用例，分组同 11.2）。
 
 ### 11.2 结果
 
@@ -991,3 +556,4 @@ TD-02 的 22 个用例在本文改动后同样全部通过（T02-5 的"加深类
 ## 附录：变更历史
 
 - **v0.1（2026-09-26）**：初版。解码 `base` 页三条游戏公式与「伤害计算」页全部 3317 个数组公式，定出乘区全表（面板类 12、公式类 33；加深与最终伤害的类别写进名字）、四个计算函数、收集规则与钩子时机、xlsx 分区与汇总格映射、golden 抽取方法。Python 原型与 TypeScript 实现在 3190 个伤害 / 治疗格上与缓存值逐位一致，扰动对拍约 6.4 万次除取整位置差异外全部一致。同时提出对 TD-01、TD-02、总设计的调整（§12）。
+- **v0.1.1（2026-10-03）**：并回 M1 / M2 实现时的决定（AGENTS.md 差异 5、6）。§1.2 记 M1 的正式计数（直接伤害 2939、治疗 48）；§3.2 补角色基础暴击 / 暴伤 / 共鸣效率常数；§10.3 golden 抽取放在 `tools/build/`（Python），与原型的四处出入（计数、减防先取整按目标防御记、聚爆效应121 并入 0 类加深、扰动范围与结果）；§8、§11.1 不再内嵌代码，改为接口一览与测试文件指引。

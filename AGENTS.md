@@ -8,16 +8,16 @@
 
 | 文档 | 管什么 |
 |---|---|
-| `wuwa-dps-engine-tech-design-v0.1.4.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、里程碑 |
-| `wuwa-dps-td01-data-dictionary-v0.1.3.md` | xlsx 每一列的含义与抽取规则、装配默认映射、角色模块的覆盖字段 |
-| `wuwa-dps-td02-types-schema-v0.1.3.md` | 全部类型与 zod schema |
-| `wuwa-dps-td03-damage-formula-v0.1.md` | 伤害公式与乘区 |
-| `wuwa-dps-td04-sim-kernel-v0.1.1.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定 |
-| `wuwa-dps-td05-switch-concerto-v0.1.md`（草案，已实现） | 切人、变奏 / 延奏、协奏清零、切人结束技能 |
-| `wuwa-dps-td06-resources-v0.1.md`（草案，已实现） | 角色资源：大招能量分配与门槛、协奏时机、核心资源（敌人量表在 v0.2） |
-| `wuwa-dps-td07-buff-system-v0.1.md`（草案，已实现） | buff 实例、作用对象、触发与顺序、消耗型 / 标记型、资源型效果、原文起草 |
-| `wuwa-dps-td08-character-module-v0.1.md`（草案，通用部分已实现） | 角色模块怎么写：钩子、写法模式、M0 三人的草案与待确认项 |
-| `wuwa-dps-td09-rotation-scheduler-v0.1.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、循环 |
+| `wuwa-dps-engine-tech-design-v0.1.5.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、里程碑与进度 |
+| `wuwa-dps-td01-data-dictionary-v0.1.4.md` | xlsx 每一列的含义与抽取规则、nanoka 数据、装配默认映射、角色模块的覆盖字段 |
+| `wuwa-dps-td02-types-schema-v0.1.4.md` | 全部类型与 zod schema（类型一览，代码以仓库为准） |
+| `wuwa-dps-td03-damage-formula-v0.1.1.md` | 伤害公式与乘区、golden 抽取 |
+| `wuwa-dps-td04-sim-kernel-v0.1.2.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定、尾部 |
+| `wuwa-dps-td05-switch-concerto-v0.1.md` | 切人、变奏 / 延奏、协奏清零、切人结束技能 |
+| `wuwa-dps-td06-resources-v0.1.md` | 角色资源：大招能量分配与门槛、协奏时机、核心资源（敌人量表在 v0.2） |
+| `wuwa-dps-td07-buff-system-v0.1.md` | buff 实例、作用对象、触发与事件队列、消耗型 / 标记型、资源型效果、原文起草 |
+| `wuwa-dps-td08-character-module-v0.1.md` | 角色模块怎么写：钩子、写法模式、M0 三人的模块 |
+| `wuwa-dps-td09-rotation-scheduler-v0.1.1.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、循环 |
 | `wuwa-dps-design-v0.2.9.md`（机制设计） | 游戏机制；与总设计冲突时以总设计附录 A 为准 |
 | `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）的数据确认结果与待办 |
 
@@ -68,32 +68,6 @@ pnpm test -- -u                              # 场景汇总快照（tests/scenar
 
 ## 与设计文档的差异（实现时的决定，下次改文档时并回）
 
-M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4。之后的：
+M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下的 11 处已于 2026-10-03 并回总设计 v0.1.5、TD-01 v0.1.4、TD-02 v0.1.4、TD-03 v0.1.1、TD-04 v0.1.2、TD-09 v0.1.1（各文档附录的变更历史逐条列出）。之后的新决定记在下面：
 
-1. **延奏触发不随变奏被取消而作废**（2026-09-27 用户确认：延奏是下场角色发出的）。变奏被打断时，没走到的 `outro` 事件转为尾部照常发生，也不挡"就绪"。改动了 TD-04 §4.2 的取消规则与 §6.4 的就绪条件、TD-09 §3.4 的表格与 Q1（关闭），以及总设计不变量 4 / 5 的表述。下次改 TD-04 / TD-05 时并回。
-2. **共用冷却 `cooldownGroup`**：`ActionDef` 与 `ActionOverride` 新增，椿 E1 / E2 共用 4 秒冷却（一日花 E3 单独 25 秒）。并回 TD-01 §13.4、TD-02、TD-09 §3.2。
-3. **M0 队伍的技能冷却已填**（椿 E1 / E2 共用 4 秒、E3 一日花 25 秒，散华 E 10 秒，维里奈 E 12 秒；大招按 nanoka 3.7：椿 25 秒、散华 16 秒、维里奈 25 秒）。TD-09 §2.5 示意轴的第 2 轮因此会等冷却，文中的时间表需要重算；T09-10 已按新结果改。
-4. **nanoka 数据**：`static.nanoka.cc` 的 JSON 作为角色技能冷却、技能文本的来源（见 `docs/m0-confirm.md` 第 5 节）。已实现：`tools/build/nanoka.py` 在构建时抓取并缓存到 `data/raw/nanoka/`，产出 `data/generated/nanoka.json`（schema `NanokaFileSchema`），`src/data/nanoka-check.ts` 核对手填冷却（只提示，不自动填）。并回 TD-01（新增一节）、TD-02 与总设计第 7 节。
-5. **golden 抽取（M1）放在 `tools/build/`，用 Python**：TD-03 §10.3 说原型脚本移植到 `scripts/golden/`；构建已按 T12 的退路改用 Python，所以一起放进构建：`xlformula.py`（公式解析与求值）、`golden.py`（TD-01 §11.1 标准答案 + TD-03 §10 逐格乘区，随 `pnpm build:data` 写出 `data/generated/fixtures/golden-damage.json`、`golden-zones.json`，构建报告有"golden"一节）、`golden_perturb.py`（扰动对拍）。与 TD-03 的出入：
-   - 计数为伤害 2939、治疗 48（TD-03 §1.2 记 2940 / 47），总数 3190 不变：鉴心"护盾回复生命值"（伤害计算 J558）有治疗加成因子、dmg 里 CalculateType 为 1，按治疗算。T03-9 的计数断言已改。
-   - 物理、谐度破坏与响应"减防后先取整"的写法（TD-03 §3.2、Q1），拆分时把 `FLOOR(…)` 整体记为目标防御（`defRate` 记 0），夹具逐位复现 xlsx；TD-03 公式不取整这一差异照旧（Q1）。
-   - 「聚爆效应121」（伤害配置 B2622，爱弥斯"聚爆轨迹强化E"）其实是乘在聚爆效应伤害上的独立因子（伤害计算 Q1040–Q1055），TD-03 §9.4 记成了"不参与伤害公式"。夹具里并入 0 类加深，构建报告有提示；它该落哪个乘区留给 TD-06。
-   - 扰动对拍比 TD-03 的范围大：改写全部被引用的「伤害配置」R1791 起的数值格（含角色专属格）与目标防御、七项抗性，共 2340 格；R1792–R1815、R2139–R2142 预先算好的因子格按公式现算。20 轮 63800 次比较，全等 63772；其余 28 次都是"防御分母 ≤ 0"（TD-03 §1.3，xlsx 算出负系数，TD-03 取上限 2）。
-6. **M2 单人仿真的实现决定**（总设计 §3.3–§3.5，TD-01 §13、TD-02 §7）：
-   - 装配按 TD-01 §13 补齐了伤害与资源字段（倍率、属性、元素、标签、资源、削韧 / 偏谐、castGains、Formula1 参数、治疗固定值）。`kindGuess` 只在 dmg 与组名都推不出、退到 `other` 时打（§13.1 没说清哪种算猜测；T01-14 期望按组名推出的不打）。M3 起类别按 dmg 的技能归类取（TD-07 §4.3）。事件生成的判定（E-引爆冰棱…）"进入即得"的协奏归判定自己，在它结算时发，不并进动作的 castGains（总设计 §6.7）。
-   - 技能树属性节点：角色模块新增 `treeStats`（`CharacterDef.treeStats`），手填、进静态面板；`nanoka.json` 新增 `treeStats`，`check:data --flags` 拿它核对（与冷却同一做法）。角色基础暴击 5%、暴伤 150%、共鸣效率 100% 是 xlsx 的常数，写在 `resolve.ts` 的 `CHAR_BASE`。
-   - 只有写了角色模块的角色进 GameData；武器被动写在 `data/curated/weapons.ts`（总设计 §7 的单文件），行进序曲 / 奇幻变奏的"回复协奏"不是 buff，M3 写成资源型效果（TD-07 §9）。
-   - 自定义敌人缺省：防御 8 × 等级 + 792（enemies.json 1402 条里 1342 条如此），各元素抗性 10%，生命不设上限。
-   - 类型：`ResolvedMember.echoes[].def` 可为 null（echoes.json 在 M3，之前只计入词条并提示）；`SimResult.error` 带出运行期报错；`KernelHooks.timers` 是 P6 的 buff 计时；`Summary.waits` 带 `item`。
-   - 统计窗口（总设计 §3.5）：最后一条指令是出招时取该动作结束或被取消的战斗帧，切人取切人那一刻，`wait` 取等完那一刻；战斗帧 < 窗口终点的伤害计入，其余是窗口外。M3 起变奏切人开始的变奏动作（及接续动作）带切人指令的出处，按它结束算（TD-05 §2）。
-   - 异常效应、谐度破坏、震谐 / 骇破响应的伤害在 M4 之前记 0 并提示一次，不按直接伤害算。触发型 buff、能量与协奏、切人变奏 / 延奏、`onEvent` 钩子已在 M3 接上（第 7 条）。
-7. **M3（TD-05～08）对已有文档的调整**：列在 TD-05～08 各自最后一节"对其他文档的调整"——TD-01 §13.1（动作类别按技能归类、施放资源跟随共鸣链版本、`endOnSwitchOut` 与区间写法的延奏触发帧）、TD-02（新类型与字段）、TD-04（时间线只放 atFrame > 0 的施放资源、`actionStarted` 钩子、独立尾部、跳过的判定）、TD-09（`switch` 事件由 `onSwitch` 记、变奏带切人指令的出处）、总设计 §6.4 / §6.7 / §6.8 / §6.9。下次改这些文档时并回。
-8. **协奏发放时机默认改为 `onHit`**（2026-10-03 用户实测：协奏按命中给；"进入即得"仍在出手时）。总设计 §6.7 的资源表、§13 的待定项按此修订；TD-06 Q1 已关闭。
-9. **伤害表取级**（TD-01 §4.3 修订）：只有第 1 级有倍率、其余各级都是 0 的技能（延奏等不随技能等级成长，全表 43 行）取 1 级，原先一律取 10 级读成了 0。`tools/build/dmg.py` 的 `level_index`。
-10. **M0 三人的钩子已写**（TD-08 §5，`tests/m0-team.test.ts`）。为此新增 `BuffDef.trigger: 'hook'`（只由钩子施加的标记型 buff）与 `HookContext.chain`；并回 TD-02、TD-07 §1、TD-08 §3.2。
-11. **M3 完成**（2026-10-03，总设计 §12 的完成标志：§11 第 3 条首批机制用例全部通过）：
-   - 首批用例在 `tests/m3-cases.test.ts`（案例 A 半程切人、案例 B 攒协奏 → 变奏 / 延奏 → 大招、全局时停下 buff 与冷却暂停、同帧"xxx 后"）；取消与可脱手见 `tests/td04.test.ts`。
-   - §11 第 4 条不变量检查常开：`src/engine/invariants.ts`，每个 tick 结束查资源范围、计时器、战斗时钟，每次结算查伤害；不成立时 `SimResult.error.code = 'invariant'`（`ScheduleErrorCode` 新增）。
-   - 总设计 §4"单次仿真预计毫秒到十毫秒量级，M3 实测确认"：M0 三人轴（约 30 秒战斗、2204 个世界帧、472 条事件）`simulate` 中位 16 ms、p95 31 ms；散华单人轴 1.6 ms（2 核 EPYC VPS、Node 22、tsx 直接跑未打包）。处在估计的上沿，单次够用；M5 批量对比时再看要不要优化。
-   - 声骸数据（`echoes.json`、首位声骸技能 Q、套装效果）原排 M3（TD-01 §8），不在完成标志里，留作下一步。
-
+（暂无）

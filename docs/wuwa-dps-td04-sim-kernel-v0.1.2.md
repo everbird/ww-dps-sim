@@ -1,9 +1,9 @@
-# 鸣潮 DPS 引擎 · TD-04 仿真内核规格 v0.1.1
+# 鸣潮 DPS 引擎 · TD-04 仿真内核规格 v0.1.2
 
-> **状态**：草案 v0.1.1（2026-09-27）
+> **状态**：v0.1.2（2026-10-03），已实现（`src/engine/kernel.ts`）。v0.1.2 并回 M2 / M3 实现时的决定（延奏触发转尾部、施放资源的时机、`actionStarted` 钩子、延奏动作的独立时间线、钩子跳过的判定），见附录
 > **依据**：《技术总体设计 v0.1.2》（下称"总设计"）§4 T1 / T2 / T3 / T6 / T7 / T13 / T14、§5.3、§6.1–§6.5、附录 A-1 至 A-3；《TD-01 数据字典与抽取规格 v0.1.1》（下称"TD-01"）§3.1、§3.8、§13、Q4–Q6、Q10、Q11；《TD-02 类型与 Schema v0.1.1》（下称"TD-02"）§4、§7；xlsx「附页1」里数据作者对各列的说明（下称"作者说明"）
 > **下游**：TD-05（切人、变奏 / 延奏接在本文的 `startAction` 与 `outroTrigger` 上）、TD-06（资源与敌人量表接在 P4 / P5）、TD-07（buff 计时按战斗时钟，触发在结算之后）、TD-09（指令语义：调用本文的 `gate` / `settled`，定"强制取消"的写法、等待与超时）
-> **验证**：TypeScript 原型内核（§9，约 340 行）跑通 14 组 35 个用例（§10）；70 个块的 1598 个动作组各"单独出招""连按两次"跑一遍，3196 次仿真全部正常结束（平均每次 0.25 ms），单独出招时判定生成数、结算次数与数据相符；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与例子（§10.4）。v0.1.1：测试台改用 TD-09 的正式调度器后，35 个用例照旧通过
+> **验证**：v0.1 时 TypeScript 原型内核（约 340 行，v0.1.2 起代码以仓库为准，§9）跑通 14 组 35 个用例（§10）；70 个块的 1598 个动作组各"单独出招""连按两次"跑一遍，3196 次仿真全部正常结束（平均每次 0.25 ms），单独出招时判定生成数、结算次数与数据相符；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与例子（§10.4）。v0.1.1：测试台改用 TD-09 的正式调度器后，35 个用例照旧通过
 
 ---
 
@@ -25,10 +25,12 @@
 2. 局部时间按左闭右开推进：本 tick 走过 [t, t + r)，落在里面的帧节点本 tick 发生；"窗口开没开""优先级是多少"用 tick 开头的 t 判断（§2）。
 3. 速率 = 作用在该单位上的全部膨胀窗口取最小值。同一单位上攻击顿帧只留最新的一个，时停类与之并存；窗口登记后下一 tick 起生效，按世界帧倒数；全局时停让战斗时钟停走（§3）。
 4. 判定生成后归战场所有：第一次结算就在生成的那个 tick，之后按间隔在判定时钟上结算。判定时钟一般是战斗时钟，"跟随顿帧"的判定随出伤者的局部速率（§5）。
-5. 取消 = 同一角色在结束帧之前开始新动作。已生成的判定按"可脱手"去留；还没生成的，若已经**出现**（发生帧公式 P + f(Q) 的 P 已过）且可脱手，转为**尾部**照常生成，其余作废（§4.2、§5.4）。
+5. 取消 = 同一角色在结束帧之前开始新动作。已生成的判定按"可脱手"去留；还没生成的，若已经**出现**（发生帧公式 P + f(Q) 的 P 已过）且可脱手，转为**尾部**照常生成，其余作废；没走到的延奏触发也转为尾部照常发生（延奏是下场角色发出的）（§4.2、§5.4）。
 6. 自然结束时，结束帧及以后的时间线事件一律转为尾部，按战斗时钟照常发生（持续帧 -1 的判定除外）。角色再开始新动作时，此前动作留下的不可脱手判定一并消失（§4.3）。
 7. 合法性：新动作优先级高于当前值可以随时打断；等于当前值须在派生窗口内；连段动作（A2）还要求前一段的派生窗口开着——窗口可以越过结束帧，错过即连段中断（§6）。
-8. 默认调度等到"取消不丢东西"（打断后不会丢掉判定、资源或延奏触发）再打断；想抢帧用强制写法（语法归 TD-09，§6.4）。
+8. 默认调度等到"取消不丢东西"（打断后不会丢掉判定或资源；延奏触发转尾部照常发生，不用等）再打断；想抢帧用强制写法（语法归 TD-09，§6.4）。
+9. 开始动作时内核调 `hooks.actionStarted`：资源模块在这里扣大招能量、处理 `actionStart` 的触发、发"进入即得"的施放资源（TD-06 §7）；时间线上只留 `atFrame > 0` 的施放资源（§4.1）。
+10. 尾部有三种来源：取消、自然结束、延奏动作的独立时间线（TD-05 §4.3，不受持有者之后的动作影响）（§4.4）。
 
 ---
 
@@ -50,12 +52,12 @@ flowchart TD
 | 相位 | 做什么 | 细则 |
 |---|---|---|
 | P1 速率 | 由现有膨胀窗口算速率表 `Rates`；每个窗口用掉 1 帧，用完的移除 | §3.1 |
-| P2 结束与指令 | ① 局部帧 ≥ 结束帧的动作自然结束；② 执行指令（TD-09）：一个 tick 可以连续执行多条，但同一角色一个 tick 最多开始一个动作；③ 若指令已空、三人空闲、没有存活判定也没有尾部，仿真结束，本 tick 不计入 | §4.3、§6 |
-| P3 推进动作 | 按槽位 0 → 1 → 2：推进当前动作的局部帧，发生区间内的时间线事件；空闲角色推进"上一个动作"的计时（判断连段窗口用）；推进该角色的尾部 | §4.1、§4.4 |
+| P2 结束与指令 | ① 局部帧 ≥ 结束帧的动作自然结束；② 执行指令（TD-09）：一个 tick 可以连续执行多条，但同一角色一个 tick 最多开始一个动作；开始动作时调 `hooks.actionStarted`（TD-06 §7）；切人调 TD-05 的 `onSwitch`；③ 若指令已空、三人空闲、没有存活判定也没有尾部，仿真结束，本 tick 不计入 | §4.2、§4.3、§6 |
+| P3 推进动作 | 按槽位 0 → 1 → 2：推进当前动作的局部帧，发生区间内的时间线事件；空闲角色推进"上一个动作"的计时（判断连段窗口用）；推进该角色的尾部。本 tick P3 里才出现的尾部（延奏动作的独立时间线）排在最后推进 | §4.1、§4.4 |
 | P4 结算 | 按槽位、生成顺序结算到点的判定（TD-03 → TD-06 → TD-07）；每次结算后登记该判定的命中膨胀；结算中生成的连锁判定在同一 tick 接着结算；最后推进全部判定的年龄，移除到期的 | §5 |
 | P5 敌人量表 | 破盾、失谐、谐度破坏、异常效应跳伤 | TD-06 |
-| P6 计时器 | buff、技能 CD、切人 CD、效应时长按战斗速率递减 | §3.4、TD-06 / TD-07 |
-| P7 收尾 | `battleFrames += rates.battle`，`frame += 1`，采样资源曲线 | TD-10 |
+| P6 计时器 | buff、技能 CD、切人 CD、效应时长按战斗速率递减（`hooks.timers`）；随后处理本 tick 剩下的事件队列，并检查不变量（总设计 §11 第 4 条） | §3.4、TD-06 / TD-07 |
+| P7 收尾 | `battleFrames += rates.battle`，`frame += 1`；资源曲线由日志派生（TD-06 §6.1） | —— |
 
 - **为什么结束放在 P2 开头**：结束帧 96 的动作，P3 在 f = 95 把局部帧推到 96，下一 tick 开头才结束。这样动作的局部区间 [0, 96) 每一帧都在"进行中"状态下走过（持续帧 -1 的判定在最后一帧仍能结算），结束与下一个动作的开始落在同一 tick，日志首尾相接（结束帧 96 的动作占 0 → 96，下一个动作从 96 开始）。
 - **P1 在 P2 之前**：P2 里新开始的动作，本 tick 就按 P1 算好的该角色速率推进。
@@ -184,16 +186,16 @@ interface Rates {
 
 | 事件 | 来源 | 发生时 |
 |---|---|---|
-| `gain` | `castGains[i]`；`atFrame` 默认 0 ="进入动作即得"，即开始的那个 tick | `hooks.castGain`（TD-06） |
+| `gain` | `castGains[i]` 中 `atFrame > 0` 的项（目前只可能来自角色模块覆盖）；`atFrame` = 0 的"进入动作即得"不在时间线上，开始动作的那一刻由资源模块发（TD-06 §7） | `hooks.castGain`（TD-06） |
 | `dilation` | `dilations[i]`（`anchor: 'action'`） | 登记膨胀（§3.2） |
-| `spawn` | `judgments[i]`（有发生帧的） | 生成判定（§5.1） |
+| `spawn` | `judgments[i]`（有发生帧的）；钩子 `skipJudgments` 列出的判定不生成（TD-08 §3.2） | 生成判定（§5.1） |
 | `outro` | `outroTriggerFrame` | `hooks.outroTrigger`（TD-05：上一角色的延奏） |
 
 同帧按 gain → dilation → spawn → outro 排；这个顺序不影响结果，因为结算都在 P4。`ActionRuntime.cursor` 指向下一个没发生的事件（取代 TD-02 的 `nextJudgment` / `castGainsDone`）。发生帧为空的判定（156 行）不在时间线上，由角色钩子通过 `ctx.spawnJudgment`（内部调用内核的 `spawnJudgment`）生成。
 
 ### 4.2 开始与取消
 
-**开始**（`startAction`，只在 P2 调用）：局部帧 0；`c.action = c.last = 新实例`；记 `actionStart`。
+**开始**（`startAction`）：局部帧 0；`c.action = c.last = 新实例`，带指令出处 `cmd`（接续动作继承，TD-08 P10）；记 `actionStart`；随后调 `hooks.actionStarted`（TD-06 §7）。一般在 P2 调用；变奏动作由切人开始（TD-05 §2），接续动作在触发它的结算之后开始（P4，下一 tick 起推进）。
 
 **取消**：同一角色在当前动作结束帧之前开始新动作（总设计不变量 4）。切人、被时停都不是取消。旧动作在局部帧 t（tick 开头）被打断：
 
@@ -203,12 +205,13 @@ interface Rates {
 | 已生成、不可脱手（含持续帧 -1） | 立即移除 |
 | 未生成、已出现（出生帧 < t）且可脱手 | 转为尾部，在原发生帧照常生成（§4.4） |
 | 其余未生成的判定 | 作废 |
-| 未发生的施放资源、膨胀、延奏触发 | 作废 |
+| 未发生的延奏触发 | 转为尾部，照常发生：延奏是下场角色发出的，变奏被打断不影响它（2026-09-27 确认，TD-05 §4.1） |
+| 未发生的施放资源、膨胀 | 作废 |
 | 已登记的膨胀窗口 | 照常走完（极限闪避的自身减速除外，§3.2） |
 
-`actionCancel.dropped` 记下被移除和作废的判定名（T04-5、T04-6、T04-7）。
+`actionCancel.dropped` 记下被移除和作废的判定名（T04-5、T04-6、T04-7）；钩子跳过的判定不算作废，尾部继承跳过列表。取消还用于"第nF后切人结束技能"（TD-05 §5，`by: '切人'`），所以 `cancelAction` 导出。
 
-**变更动作**：作者说明"不能脱手的判定在变更技能后立即消失"。所以新动作开始时（不论旧动作是被取消，还是早已自然结束），该角色此前动作留下的不可脱手判定——还活着的、在尾部里等着生成的——一并移除，记在 `actionStart.dropped`（T04-7 第三例）。
+**变更动作**：作者说明"不能脱手的判定在变更技能后立即消失"。所以新动作开始时（不论旧动作是被取消，还是早已自然结束），该角色此前动作留下的不可脱手判定——还活着的、在尾部里等着生成的——一并移除，记在 `actionStart.dropped`（T04-7 第三例）。延奏动作的独立时间线与它生成的判定（`detached`）除外（TD-05 §4.3）。
 
 ### 4.3 自然结束
 
@@ -221,7 +224,9 @@ interface Rates {
 
 ### 4.4 尾部
 
-尾部（`TailRuntime`）是脱离了动作、仍要发生的时间线事件：沿用动作的局部坐标，改按战斗时钟推进，事件同样在 [x, x + r) 内发生。有两种来源：取消时已出现且可脱手的判定（只有 spawn 事件），自然结束时剩下的全部事件。它生成的判定仍记在原动作实例名下。
+尾部（`TailRuntime`）是脱离了动作、仍要发生的时间线事件：沿用动作的局部坐标，改按战斗时钟推进，事件同样在 [x, x + r) 内发生。有三种来源：取消时已出现且可脱手的判定与没走到的延奏触发，自然结束时剩下的全部事件，以及延奏动作的独立时间线（`detached`，TD-05 §4.3：局部帧从 0 起，持续帧 -1 的判定不生成）。它生成的判定仍记在原动作实例名下。
+
+- 延奏动作的独立时间线不受持有者之后的动作影响："变更动作"不清它，它生成的判定带 `detached`，也不清。它在本 tick 的 P3 里出现，排在 P3 最后推进，所以局部第 0 帧就是触发的那个 tick。
 
 - 尾部不再跟着动作走：出伤者之后的顿帧、时停都不影响它。唯一的例外是"变更动作"：出伤者开始新动作时，尾部里不可脱手的判定被清掉（§4.2）。
 - 尾部登记的膨胀不作用于出伤者自身（与命中登记的自身侧同一条规则，§3.2）。
@@ -231,7 +236,7 @@ interface Rates {
 
 ### 4.5 切人与后台
 
-切人只改前台归属、启动切人 CD，不碰任何动作（总设计不变量 3）。三名角色每 tick 都在 P3 推进（不变量 2），后台动作照常生成判定、登记膨胀、走完结束（T04-9、T04-10）。切人的完整语义（变奏、延奏、协奏）在 TD-05。
+切人只改前台归属、启动切人 CD，不碰任何动作（总设计不变量 3）。三名角色每 tick 都在 P3 推进（不变量 2），后台动作照常生成判定、登记膨胀、走完结束（T04-9、T04-10）。切人的完整语义（变奏、延奏、协奏）在 TD-05；两个例外也在那里：变奏切人时切入者在后台的动作被变奏动作取消，带"第nF后切人结束技能"的动作在切出时按取消处理。
 
 ---
 
@@ -334,7 +339,7 @@ A2 不是"任何时候按普攻都能出"的动作，它只能接在 A1 后面�
 
 按中断优先级，E 可以在 A1 的第 1 帧就打断它——但那样 A1 什么都没打出来，这不是"A1 E"这条轴想表达的意思。所以内核另给一个判断 `settled(slot)`：**现在打断当前动作，会不会丢掉判定、资源或延奏**。满足以下全部条件为就绪：
 
-- 时间线上剩下的事件都是判定，而且每个都已出现且可脱手（打断后会转为尾部）；
+- 时间线上剩下的事件都是判定，而且每个都已出现且可脱手（打断后会转为尾部）；延奏触发不算（打断后转尾部照常发生），钩子跳过的判定也不算；
 - 本动作已生成的不可脱手判定都已结算完寿命内能结算的全部次数（`ticksWithinLife`：放不下的按寿命截断，§5.2）。
 
 没有动作或已到结束帧时恒为就绪。角色空闲时，此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2）——这是游戏规则，默认调度不为它等待（如风主 A3 结束后接闪避，A3-2 结束帧之后的 11 段不再结算，Q13）。
@@ -680,8 +685,12 @@ export interface ActionDef {
   comboFrom?: ActionId[]                            // 连段前置（§6.2）
   inputLocks: InputLock[]                           // 输入锁（§6.3）
   dilations: DilationDef[]                          // 按动作局部帧登记的膨胀（anchor = 'action'）
-  castGains: CastGain[]                             // atFrame 0 = 进入动作即得
+  castGains: CastGain[]                             // atFrame 0 = 进入动作即得（开始时由资源模块发，TD-06 §7）
+  energyCost?: number                               // v0.1.2：大招能量门槛与扣除（TD-06 §2.3）
+  endOnSwitchOut?: Frame                            // v0.1.2：切出时局部帧 ≥ 它就按取消处理（TD-05 §5）
+  followUp?: { after: string; action: ActionId }    // v0.1.2：该判定第一次结算后接 action（TD-08 P10）
 }
+export interface CastGain { atFrame: Frame; resource: ResourceKind; amount: number; chainRange?: ChainRange }
 export interface InputLock { until: Frame; kinds: ActionKind[] | 'all' }
 
 export interface JudgmentDef {
@@ -720,6 +729,8 @@ export interface ActionRuntime {
   cursor: number                                    // 时间线上下一个待发生事件的下标
   ended: boolean
   coreGranted: [boolean, boolean, boolean]
+  cmd?: CommandRef                                  // v0.1.2：由哪条指令开始（接续动作继承）
+  skip?: string[]                                   // v0.1.2：钩子跳过的判定名（TD-08 §3.2）
 }
 export type TimelineEvent =
   | { frame: Frame; kind: 'gain'; index: number } | { frame: Frame; kind: 'dilation'; index: number }
@@ -728,12 +739,15 @@ export interface TailRuntime {
   owner: Slot; action: ActionId; def: ActionDef; instance: number
   localFrame: number                                // 沿用动作的局部坐标，按战斗时钟推进
   events: TimelineEvent[]
+  detached?: true                                   // v0.1.2：延奏动作的独立时间线（TD-05 §4.3）
+  skip?: string[]                                   // v0.1.2：继承动作的跳过列表
 }
 export interface JudgmentRuntime {
   id: number; owner: Slot; action: ActionId; actionInstance: number; def: JudgmentDef
   spawnedAt: number                                 // 世界帧
   age: number                                       // 判定时钟上的年龄
   ticksDone: number
+  detached?: true                                   // v0.1.2：由独立时间线生成，持有者开始新动作时不清
 }
 export interface DilationRuntime {
   type: DilationType; source: Slot; side: DilationSide
@@ -745,370 +759,24 @@ export interface DilationRuntime {
 }
 ```
 
-事件 `actionStart` 新增可选的 `dropped`（§4.2"变更动作"）。
+事件 `actionStart` 新增可选的 `dropped`（§4.2"变更动作"）。v0.1.2 的完整类型见 TD-02 v0.1.4。
 
 ---
 
 ## 9. 代码 `src/engine/kernel.ts`
 
-内核只依赖类型与 `Rules`；伤害、资源、buff、切人通过 `KernelHooks` 接入，调度器（TD-09）通过 `gate` / `settled` / `startAction` 与 `tick(s, k, schedule)` 的 `schedule` 回调接入。
+v0.1.2 起本文不再内嵌代码，以仓库为准。内核只依赖类型与 `Rules`；伤害、资源、buff、切人通过 `KernelHooks` 接入，调度器（TD-09）通过 `gate` / `settled` / `startAction` 与 `tick(s, k, schedule)` 的 `schedule` 回调接入。导出：
 
-```ts
-// src/engine/kernel.ts —— 仿真内核：时钟与膨胀、动作推进 / 取消 / 结束、判定生命周期、动作层合法性（TD-04）
-// 只管"时间怎么走、动作和判定什么时候发生"。伤害、资源、buff、敌人、切人的细则经 KernelHooks 挂到各自模块
-// （TD-03、TD-05、TD-06、TD-07）；指令队列的完整语义归 TD-09，这里只提供它要调用的 gate / settled / startAction。
-import type { ActionId, Slot } from '../data/common'
-import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedata'
-import type {
-  ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TimelineEvent, WaitCode,
-} from './types'
-
-export const SLOTS: readonly Slot[] = [0, 1, 2]
-
-/** 内核调出去的接口：P4 的结算、施放资源、延奏触发由其他模块实现 */
-export interface KernelHooks {
-  /** P4 一次结算（TD-03 伤害 → TD-06 资源 → TD-07 触发）。可在里面调用 spawnJudgment 生成连锁判定，同一 tick 内接着结算 */
-  settle(s: SimState, j: JudgmentRuntime, tick: number): void
-  castGain?(s: SimState, slot: Slot, src: EventSource, index: number): void      // TD-06
-  outroTrigger?(s: SimState, slot: Slot, src: EventSource): void                  // TD-05
-}
-export interface Kernel { rules: Rules; hooks: KernelHooks }
-/** 时间线事件的来源：进行中的动作，或脱离动作的尾部 */
-export interface EventSource { def: ActionDef; instance: number }
-
-// ---------------------------------------------------------------------------
-// §2 帧约定
-
-/** 局部帧 / 年龄每次推进后取整到 1e-4 帧：膨胀系数都是 1e-4 的整数倍，这样与整数帧的比较不受浮点误差影响 */
-export const snap = (x: number): number => Math.round(x * 1e4) / 1e4
-/** 本 tick 走过局部区间 [t, t + r)：帧 F 落在里面就在本 tick 发生（左闭右开）；r = 0 时什么都不发生 */
-export const within = (F: number, t: number, r: number): boolean => F >= t && F < t + r
-
-type DistOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
-export function log(s: SimState, ev: DistOmit<SimEvent, 'f' | 't'>): void {
-  s.log.push({ ...ev, f: s.frame, t: s.battleFrames / 60 } as SimEvent)
-}
-
-// ---------------------------------------------------------------------------
-// §4.1 时间线：动作里一切"到某帧发生"的事，按帧排好，用游标推进
-
-const ORDER = { gain: 0, dilation: 1, spawn: 2, outro: 3 } as const
-const timelines = new WeakMap<ActionDef, TimelineEvent[]>()
-
-export function timelineOf(def: ActionDef): TimelineEvent[] {
-  const cached = timelines.get(def)
-  if (cached) return cached
-  const tl: TimelineEvent[] = []
-  def.castGains.forEach((g, index) => tl.push({ frame: g.atFrame, kind: 'gain', index }))
-  def.dilations.forEach((d, index) => { if (d.anchor === 'action') tl.push({ frame: d.start, kind: 'dilation', index }) })
-  def.judgments.forEach((j, index) => { if (j.spawnFrame !== null) tl.push({ frame: j.spawnFrame, kind: 'spawn', index }) })
-  if (def.outroTriggerFrame !== undefined) tl.push({ frame: def.outroTriggerFrame, kind: 'outro' })
-  tl.sort((a, b) => a.frame - b.frame || ORDER[a.kind] - ORDER[b.kind])   // 稳定排序：同帧同类按定义顺序
-  timelines.set(def, tl)
-  return tl
-}
-
-// ---------------------------------------------------------------------------
-// §3 P1：速率表与膨胀窗口
-
-export function computeRates(s: SimState, rules: Rules): Rates {
-  const chars = [Infinity, Infinity, Infinity]
-  let enemy = Infinity
-  let battle: 0 | 1 = 1
-  for (const d of s.dilations) {
-    if (d.target === 'enemy') enemy = Math.min(enemy, d.rate)
-    else chars[d.target] = Math.min(chars[d.target]!, d.rate)
-    if (rules.dilation[d.type].stopsBattleClock) battle = 0
-    d.remaining -= 1                                   // 本 tick 用掉一帧（世界帧）
-  }
-  s.dilations = s.dilations.filter(d => d.remaining > 0)
-  const or1 = (r: number) => (r === Infinity ? 1 : r)  // 没有窗口 = 1；有窗口取最小（含 > 1 的加速窗口）
-  return { battle, chars: [or1(chars[0]!), or1(chars[1]!), or1(chars[2]!)], enemy: or1(enemy) }
-}
-
-/** 登记一条膨胀定义：按侧展开到具体单位；攻击顿帧类的侧先撤掉该单位上已有的攻击顿帧。下一 tick 起生效 */
-export function registerDilation(
-  s: SimState, rules: Rules, def: DilationDef, source: Slot, instance: number, withSelf: boolean,
-): void {
-  const sides = [['self', def.self], ['enemy', def.enemy], ['ally', def.ally]] as const
-  for (const [side, w] of sides) {
-    if (!w || w.duration <= 0 || (side === 'self' && !withSelf)) continue
-    const hitstop = rules.dilation[def.type].hitstopSides.includes(side)
-    const targets: (Slot | 'enemy')[] = side === 'self' ? [source] : side === 'enemy' ? ['enemy'] : SLOTS.filter(x => x !== source)
-    for (const target of targets) {
-      if (hitstop) s.dilations = s.dilations.filter(d => !(d.target === target && d.hitstop))
-      s.dilations.push({ type: def.type, source, side, target, rate: w.rate, remaining: w.duration, hitstop, instance })
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// §4 动作：开始、取消、自然结束、推进
-
-const survives = (j: JudgmentDef): boolean => j.persistsOnCancel && j.lifeFrames !== -1
-/** 局部帧 t 时（tick 开头）判定是否已经出现：出现帧 < t 的事件都已发生 */
-const bornBy = (j: JudgmentDef, t: number): boolean => (j.birthFrame ?? j.spawnFrame!) < t
-
-/** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的）。
- *  cmd = 由哪条指令开始（TD-09），写进日志；有冷却的动作从这一刻起算冷却 */
-export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, cmd?: CommandRef): ActionRuntime {
-  const c = s.chars[slot]
-  if (c.action) cancelAction(s, k, slot, def.id)
-  const dropped: string[] = []
-  s.judgments = s.judgments.filter(j => {
-    if (j.owner !== slot || survives(j.def)) return true
-    dropped.push(j.def.name)
-    return false
-  })
-  for (const tail of s.tails) {
-    if (tail.owner !== slot) continue
-    tail.events = tail.events.filter(e => {
-      if (e.kind !== 'spawn' || survives(tail.def.judgments[e.index]!)) return true
-      dropped.push(tail.def.judgments[e.index]!.name)
-      return false
-    })
-  }
-  s.tails = s.tails.filter(t => t.events.length > 0)
-  const a: ActionRuntime = {
-    id: def.id, def, instance: s.nextId++, localFrame: 0, startedAt: s.frame, cursor: 0, ended: false,
-    coreGranted: [false, false, false],
-  }
-  c.action = a
-  c.last = a
-  c.startedThisTick = true
-  if (def.cooldown) c.cooldowns[cooldownKey(def)] = def.cooldown
-  log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
-  return a
-}
-
-/** 取消（§4.2）：同一角色开始新动作时，旧动作在局部帧 t 被打断 */
-function cancelAction(s: SimState, k: Kernel, slot: Slot, by: ActionId): void {
-  const c = s.chars[slot]
-  const a = c.action!
-  const t = a.localFrame
-  const dropped: string[] = []
-  // ① 已生成的判定：可脱手的留下，其余（含持续帧 -1）立即移除
-  s.judgments = s.judgments.filter(j => {
-    if (j.actionInstance !== a.instance || survives(j.def)) return true
-    dropped.push(j.def.name)
-    return false
-  })
-  // ② 未发生的事件：已出现且可脱手的判定转为尾部，按战斗时钟继续；其余（资源、膨胀、延奏触发、未出现的判定）作废
-  const rest = timelineOf(a.def).slice(a.cursor)
-  const keep = rest.filter(e => e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t))
-  for (const e of rest) if (e.kind === 'spawn' && !keep.includes(e)) dropped.push(a.def.judgments[e.index]!.name)
-  if (keep.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: t, events: keep })
-  // ③ 已登记的膨胀窗口照常走完；只有 clearSelfOnCancel 类型（极限闪避减速）撤掉自身侧
-  s.dilations = s.dilations.filter(d => !(d.instance === a.instance && d.side === 'self' && k.rules.dilation[d.type].clearSelfOnCancel))
-  a.ended = true
-  c.action = null
-  log(s, { type: 'actionCancel', char: c.name, action: a.id, instance: a.instance, by, dropped })
-}
-
-/** 自然结束（§4.3）：局部帧到达 endFrame。持续帧 -1 的判定随之移除；没发生的事件转为尾部（持续帧 -1 的判定除外：动作停了它就不存在） */
-function endAction(s: SimState, slot: Slot): void {
-  const c = s.chars[slot]
-  const a = c.action!
-  s.judgments = s.judgments.filter(j => !(j.actionInstance === a.instance && j.def.lifeFrames === -1))
-  const rest = timelineOf(a.def).slice(a.cursor).filter(e => !(e.kind === 'spawn' && a.def.judgments[e.index]!.lifeFrames === -1))
-  if (rest.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: a.localFrame, events: rest })
-  a.ended = true
-  c.action = null
-  log(s, { type: 'actionEnd', char: c.name, action: a.id, instance: a.instance })
-}
-
-/** P2 开头：局部帧已到 endFrame 的动作结束。放在这里而不是上一 tick 的 P3 末尾，动作才能占满 [0, endFrame) 的每一帧 */
-export function endDueActions(s: SimState): void {
-  for (const slot of SLOTS) {
-    const a = s.chars[slot].action
-    if (a && a.localFrame >= a.def.endFrame) endAction(s, slot)
-  }
-}
-
-/** P3：三名角色按槽位推进局部帧，发生区间内的时间线事件；尾部按战斗时钟推进 */
-export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
-  for (const slot of SLOTS) {
-    const c = s.chars[slot]
-    const r = rates.chars[slot]
-    const a = c.action
-    if (a) {
-      const tl = timelineOf(a.def)
-      const until = Math.min(a.localFrame + r, a.def.endFrame)   // ≥ endFrame 的事件一律归尾部（§4.3）
-      while (a.cursor < tl.length && tl[a.cursor]!.frame < until) fireEvent(s, k, slot, a, tl[a.cursor++]!)
-      a.localFrame = snap(a.localFrame + r)
-    } else if (c.last) {
-      c.last.localFrame = snap(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
-    }
-    for (const tail of s.tails) {
-      if (tail.owner !== slot) continue
-      while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, slot, tail, tail.events.shift()!)
-      tail.localFrame = snap(tail.localFrame + rates.battle)
-    }
-  }
-  s.tails = s.tails.filter(t => t.events.length > 0)
-}
-
-function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: TimelineEvent): void {
-  switch (e.kind) {
-    case 'gain': k.hooks.castGain?.(s, slot, src, e.index); break
-    case 'dilation':
-      registerDilation(s, k.rules, src.def.dilations[e.index]!, slot, src.instance, s.chars[slot].action?.instance === src.instance)
-      break
-    case 'spawn': spawnJudgment(s, slot, src.def.id, src.instance, src.def.judgments[e.index]!); break
-    case 'outro': k.hooks.outroTrigger?.(s, slot, src); break
-  }
-}
-
-// ---------------------------------------------------------------------------
-// §5 判定：生成、结算次数、年龄、到期
-
-let settleQueue: JudgmentRuntime[] | null = null   // P4 进行中时，新生成的判定追加到这里，同一 tick 内结算
-
-export function spawnJudgment(s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef): JudgmentRuntime {
-  const j: JudgmentRuntime = { id: s.nextId++, owner, action, actionInstance: instance, def, spawnedAt: s.frame, age: 0, ticksDone: 0 }
-  s.judgments.push(j)
-  settleQueue?.push(j)
-  log(s, { type: 'judgmentSpawn', char: s.chars[owner].name, action, judgment: def.name, id: j.id })
-  return j
-}
-
-/** 第 n 次结算在年龄 n × 间隔；没有间隔时在寿命内均分 */
-export const tickSpacing = (j: JudgmentDef): number =>
-  j.tickInterval ?? (j.ticks > 1 && j.lifeFrames > 0 ? j.lifeFrames / j.ticks : 0)
-/** 寿命内实际能结算的次数：第 n 次要满足 n × 间隔 < 寿命（寿命 -1 时就是 ticks） */
-export function ticksWithinLife(j: JudgmentDef): number {
-  if (j.lifeFrames === -1) return j.ticks
-  const spacing = tickSpacing(j)
-  let n = 0
-  for (let i = 0; i < j.ticks; i++) if (i === 0 || i * spacing < j.lifeFrames) n++
-  return n
-}
-/** 判定时钟：跟随顿帧的随出伤者局部速率，其余随战斗时钟 */
-export const judgmentRate = (j: JudgmentRuntime, rates: Rates): number =>
-  j.def.followHitstop ? rates.chars[j.owner] : rates.battle
-
-/** P4：按槽位、生成顺序结算到点的判定；然后推进年龄，移除到期的 */
-export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
-  const queue = [...s.judgments].sort((a, b) => a.owner - b.owner || a.id - b.id)
-  settleQueue = queue
-  try {
-    for (let i = 0; i < queue.length; i++) {
-      const j = queue[i]!
-      if (!s.judgments.includes(j)) continue           // 连锁中被移除
-      const r = judgmentRate(j, rates)
-      const spacing = tickSpacing(j.def)
-      while (j.ticksDone < j.def.ticks) {
-        const n = j.ticksDone
-        const at = n * spacing
-        const due = n === 0
-          ? j.age === 0                                   // 第一次：生成的那个 tick，不看速率
-          : within(at, j.age, r) && (j.def.lifeFrames === -1 || at < j.def.lifeFrames)
-        if (!due) break
-        j.ticksDone++
-        k.hooks.settle(s, j, n)
-        if (j.def.hitstop) {
-          const self = s.chars[j.owner].action?.instance === j.actionInstance   // 自身侧只作用于仍在进行的出招动作
-          registerDilation(s, k.rules, j.def.hitstop, j.owner, j.actionInstance, self)
-        }
-      }
-    }
-  } finally {
-    settleQueue = null
-  }
-  for (const j of s.judgments) j.age = snap(j.age + judgmentRate(j, rates))
-  s.judgments = s.judgments.filter(j => j.def.lifeFrames === -1 || j.age < j.def.lifeFrames)
-}
-
-// ---------------------------------------------------------------------------
-// §6 动作层合法性：优先级、派生窗口、连段前置、输入锁；以及"取消会不会丢东西"
-
-export const priorityAt = (def: ActionDef, t: number): number => {
-  let v = def.priority[0]?.value ?? 0
-  for (const p of def.priority) if (p.fromFrame <= t) v = p.value
-  return v
-}
-const inWindow = (def: ActionDef, t: number): boolean => def.cancelWindows.some(w => t >= w.from && t < w.until)
-
-export type GateResult =
-  | { ok: true; via: 'idle' | 'priority' | 'derive' }
-  | { ok: false; wait: true; code: WaitCode; reason: string }
-  | { ok: false; wait: false; code: 'comboBroken'; reason: string }   // 等不来：连段已断
-
-/** 动作层面能不能开始（§6.5）。原因按"连段 → 输入锁 → 优先级 / 派生"的顺序报第一个；
- *  "本 tick 已开始过动作"放在最后：只有其余都满足时才报它，等待记录里就不会冒出一帧一帧的它（TD-09 §3.2） */
-export function gate(c: CharRuntime, def: ActionDef): GateResult {
-  const r = gateRules(c, def)
-  return r.ok && c.startedThisTick ? { ok: false, wait: true, code: 'started', reason: '同一角色一个 tick 只能开始一个动作' } : r
-}
-
-function gateRules(c: CharRuntime, def: ActionDef): GateResult {
-  if (def.comboFrom?.length) {
-    const last = c.last
-    if (!last || !def.comboFrom.includes(last.id))
-      return { ok: false, wait: false, code: 'comboBroken', reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
-    if (!inWindow(last.def, last.localFrame)) {
-      return last.def.cancelWindows.some(w => last.localFrame < w.from)
-        ? { ok: false, wait: true, code: 'combo', reason: `等 ${last.id} 的派生窗口` }
-        : { ok: false, wait: false, code: 'comboBroken', reason: `${last.id} 的派生窗口已过，连段中断` }
-    }
-  }
-  const a = c.action
-  if (!a) return { ok: true, via: 'idle' }
-  const t = a.localFrame
-  for (const l of a.def.inputLocks) {
-    if (t < l.until && (l.kinds === 'all' || l.kinds.includes(def.kind)))
-      return { ok: false, wait: true, code: 'inputLock', reason: `${a.id} 第 ${l.until} 帧前不响应${l.kinds === 'all' ? '输入' : ` ${l.kinds.join(' / ')}`}` }
-  }
-  const p = priorityAt(a.def, t)
-  const P = priorityAt(def, 0)
-  if (P > p) return { ok: true, via: 'priority' }
-  if (P === p && inWindow(a.def, t)) return { ok: true, via: 'derive' }
-  return P < p
-    ? { ok: false, wait: true, code: 'priority', reason: `优先级 ${P} 低于 ${a.id} 当前的 ${p}` }
-    : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
-}
-
-/** 冷却按什么记：声骸技能共用一个冷却（'echo'），其余按动作 ID */
-export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.id)
-
-/** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
- *  角色空闲时恒为就绪：此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2），默认调度不为它等待 */
-export function settled(s: SimState, slot: Slot): boolean {
-  const a = s.chars[slot].action
-  if (!a || a.localFrame >= a.def.endFrame) return true
-  const t = a.localFrame
-  const tl = timelineOf(a.def)
-  for (let i = a.cursor; i < tl.length; i++) {
-    const e = tl[i]!
-    if (e.kind !== 'spawn') return false
-    const j = a.def.judgments[e.index]!
-    if (!(survives(j) && bornBy(j, t))) return false
-  }
-  return !s.judgments.some(j => j.actionInstance === a.instance && !survives(j.def) && j.ticksDone < ticksWithinLife(j.def))
-}
-
-// ---------------------------------------------------------------------------
-// §1 一个 tick
-
-/** 推进一个世界帧。schedule 是 P2 的指令执行（TD-09），返回"还有没有未执行的指令"。返回 false = 已无事可做，本 tick 不计入 */
-export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean): boolean {
-  const rates = computeRates(s, k.rules)                        // P1
-  for (const c of s.chars) c.startedThisTick = false
-  endDueActions(s)                                              // P2 开头
-  const pending = schedule(s)                                   // P2 执行指令
-  if (!pending && s.chars.every(c => !c.action) && s.judgments.length === 0 && s.tails.length === 0) return false
-  advanceActions(s, k, rates)                                   // P3
-  settleJudgments(s, k, rates)                                  // P4
-  // P5 敌人量表：TD-06
-  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却按战斗速率（buff 在 TD-07）
-  for (const c of s.chars) for (const key of Object.keys(c.cooldowns)) c.cooldowns[key] = Math.max(0, c.cooldowns[key]! - rates.battle)
-  s.battleFrames += rates.battle                                // P7
-  s.frame += 1
-  return true
-}
-```
-
----
+| 名字 | 作用 |
+|---|---|
+| `KernelHooks` | `settle`（P4 一次结算）、`actionStarted?`（开始动作之后，TD-06 §7）、`castGain?`（`atFrame > 0` 的施放资源）、`outroTrigger?`（TD-05）、`timers?`（P6 计时，TD-07） |
+| `Kernel`、`EventSource` | 规则 + 钩子；时间线事件的来源（进行中的动作或尾部：`def`、`instance`、`skip?`、`detached?`） |
+| `timelineOf`、`snap`、`within`、`log` | 时间线（§4.1）、1e-4 网格与左闭右开（§2）、记事件 |
+| `computeRates`、`registerDilation` | P1 速率表、登记膨胀（§3） |
+| `startAction(s, k, slot, def, cmd?)`、`cancelAction(s, k, slot, by)`、`endDueActions`、`advanceActions` | 开始 / 取消 / 自然结束 / P3 推进（§4） |
+| `spawnJudgment(s, owner, action, instance, def, detached?)`、`tickSpacing`、`ticksWithinLife`、`judgmentRate`、`settleJudgments` | 判定（§5） |
+| `priorityAt`、`gate`、`cooldownKey`、`settled` | 动作层合法性与就绪（§6） |
+| `tick(s, k, schedule)`、`SLOTS` | 一个 tick（§1） |
 
 ## 10. 测试用例
 
@@ -1560,7 +1228,7 @@ TD-02 的 22 个、TD-03 的 23 个用例在本文改动后同样全部通过（
 
 ## 11. 不变量（开发模式断言）
 
-在总设计 §11 的不变量之外，内核在开发模式下每 tick 检查：
+总设计 §11 第 4 条的不变量（资源范围、计时器不为负、战斗时钟不倒退、伤害不为负）已在 M3 实现、常开（`src/engine/invariants.ts`，不成立时 `SimResult.error.code = 'invariant'`）。下面是内核这一层另外可查的几条，**还没实现**，排查问题时再加：
 
 1. 局部帧、判定年龄、尾部坐标单调不减；都落在 1e-4 网格上。
 2. `battleFrames ≤ frame`；速率都 ≥ 0。
@@ -1624,3 +1292,4 @@ TD-02 的 22 个、TD-03 的 23 个用例在本文改动后同样全部通过（
 
 - **v0.1（2026-09-27）**：初版。定 7 相位 tick（结束判断放在 P2 开头）、左闭右开帧约定与 1e-4 网格、速率表与五种膨胀类型的规则、按侧拆锚点的膨胀登记、时间线与尾部、取消 / 自然结束 / 变更动作三种情形下判定的去留、出生帧（P + f(Q)）、判定时钟与跟随顿帧、中断优先级 / 派生窗口 / 连段前置 / 输入锁、"取消不丢东西"的就绪判断与默认调度。附 TypeScript 原型内核与 35 个用例；在 20260707 版全部 1598 个动作组上各跑两种轴验证，并经独立审阅核对。同步提出 TD-01 v0.1.2、TD-02 v0.1.2、总设计 v0.1.3 的修订。
 - **v0.1.1（2026-09-27）**：随 TD-09 修订。`GateResult` 的失败分支带原因代码，"本 tick 已开始过动作"改到最后判断（§6.5）；内核记技能冷却（`startAction` 起算、P6 按战斗速率递减、`cooldownKey`），`startAction` 带指令出处写进日志；测试台改用 TD-09 的正式调度器（§10.1），T04-4 的断言改为包含；Q9 关闭；§7 注明 `comboNoWindow` 与 `multiEnd` 的后续调整。
+- **v0.1.2（2026-10-03）**：并回 M2 / M3 实现时的决定（AGENTS.md 差异 1、6、7、11）。取消时没走到的延奏触发转为尾部照常发生，也不挡就绪（§4.2、§6.4）；时间线只放 `atFrame > 0` 的施放资源，"进入即得"在开始动作时由资源模块发，`startAction` 之后调新钩子 `actionStarted`（§1、§4.1、§4.2）；尾部的第三种来源"延奏动作的独立时间线"（`detached`），本 tick P3 里出现的尾部排在最后推进（§4.4）；钩子跳过的判定不生成、不算作废、不挡就绪（§4.1、§4.2、§6.4）；`cancelAction` 导出，用于"切人结束技能"；P6 补 `timers` 钩子、事件队列收尾与不变量检查（§1）；§8 类型补新字段；§9 不再内嵌代码，改为导出接口一览；§11 注明总设计 §11 第 4 条的检查已实现、本节几条尚未实现。
