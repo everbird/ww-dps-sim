@@ -66,7 +66,7 @@ export const BuffDefSchema = z.strictObject({
   onSwitchOut: z.enum(['persist', 'clear']).default('persist'),      // 原文明写才 clear（机制设计 6.1）
   refresh: z.enum(['refresh', 'keep']).default('refresh'),           // 再触发时是否刷新持续时间
   icd: z.number().int().min(1).optional(),                           // 触发内置冷却（"每秒可获得一层"= 60）
-  trigger: z.union([z.literal('always'), Triggers]),
+  trigger: z.union([z.literal('always'), z.literal('hook'), Triggers]),   // 'hook'：只由角色钩子施加（标记型状态，TD-08 §3.2）
   consume: z.strictObject({                                          // "下次 X…"：被 X 用掉（TD-07 §6）
     on: z.enum(TRIGGER_EVENTS),
     where: TriggerFilterSchema.optional(),

@@ -293,6 +293,7 @@ export interface CharacterHooks {
 
 export interface HookContext {
   readonly self: Slot
+  readonly chain: Chain                     // 本角色的共鸣链数（钩子里按链数分支，如散华 C5）
   readonly state: Readonly<SimState>        // 只读查询；改状态只能走下面的方法
   buffStacks(id: string, target?: Slot | 'enemy'): number   // 0 = 没有
   addBuff(id: string, opts?: { target?: Slot | 'enemy'; stacks?: number }): void   // id 指本角色 buffs 里的定义

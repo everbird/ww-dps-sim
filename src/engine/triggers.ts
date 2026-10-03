@@ -69,7 +69,7 @@ function handle(sim: Sim, s: SimState, ev: SimEvent): void {
   if (occs.length > 0) {
     consume(sim, s, occs)
     for (const reg of sim.r.buffs) {
-      if (reg.def.trigger === 'always') continue
+      if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
       if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined)
     }
@@ -122,7 +122,7 @@ function matches(s: SimState, on: TriggerSpec['on'], where: TriggerFilter | unde
 function firing(
   s: SimState, trigger: BuffDef['trigger'], owner: Slot | 'env', id: string, icd: number | undefined, occs: Occurrence[],
 ): Occurrence | undefined {
-  if (trigger === 'always') return undefined
+  if (typeof trigger === 'string') return undefined
   const specs = Array.isArray(trigger) ? trigger : [trigger]
   const occ = occs.find(o => specs.some(sp => matches(s, sp.on, sp.where, owner, o)))
   if (!occ || icd === undefined) return occ

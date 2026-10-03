@@ -1,11 +1,28 @@
-// data/curated/characters/椿.ts —— 角色模块（M0 只填 xlsx 没有的信息；buff 与钩子在 M2 / M3 按 TD-07 / TD-08 补）
+// data/curated/characters/椿.ts —— 角色模块（TD-08 §5.2；结论见 m0-confirm §6 C1–C3、G3）
 import { defineCharacter } from '../../../src/data/define'
+
+/** 白椿（不在盛绽）才能用的动作；盛绽状态下普攻 / 重击 / E 换成盛绽版本（"盛绽·"开头与 E2） */
+const WHITE = new Set(['A1', 'A2', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1'])
+const BLOOM = (id: string) => id.startsWith('盛绽·') || id === 'E2'
+const OUTRO_PLAIN = ['延奏-C0普通', '延奏-C5普通']
+const OUTRO_BUD = ['延奏-C0含苞', '延奏-C0含苞追加', '延奏-C5含苞', '延奏-C5含苞追加']
+const snap = (x: number) => Math.round(x * 1e9) / 1e9
 
 export default defineCharacter('椿', {
   weaponType: '迅刀',
   treeStats: { '暴击伤害': 0.16, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E1', R: '大招', QTE: 'QTE' },
   buffs: [
+    {
+      // 一日花进入含苞，15 秒；切人或红椿·蕊耗完时提前结束（后者在钩子里）
+      id: '椿.含苞', source: '共鸣回路：施放一日花时，进入含苞状态；切换至其他角色时、消耗完【红椿·蕊】时，将提前结束含苞状态',
+      target: 'self', duration: 900, onSwitchOut: 'clear', trigger: { on: 'actionStart', where: { actions: ['E3'] } },
+    },
+    {
+      // nanoka 3.7 的规则（m0-confirm §6 C2）：每消耗 10 点蕊得 1 层，15 秒，最多 10 层；一日花时清空并折算进酣梦
+      id: '椿.红椿·蕾', source: '共鸣回路：每消耗10点【红椿·蕊】，回复4点协奏能量，并获得1层红椿·蕾，持续15秒，可叠加10层',
+      target: 'self', maxStacks: 10, duration: 900, trigger: 'hook',
+    },
     {
       id: '椿.固有1',
       source: '固有技能1：湮灭伤害加成提升15%，重击修枝伤害视为普攻伤害。（后半句见 actionOverrides.重击）',
@@ -19,6 +36,61 @@ export default defineCharacter('椿', {
       target: 'self', duration: 'inf', trigger: 'always',
     },
   ],
+  hooks: {
+    canStart(ctx, id) {
+      const c = ctx.state.chars[ctx.self]
+      const bloom = ctx.getFlag('盛绽') === true
+      if (id === 'E3') return c.concerto >= 100 ? true : '一日花要协奏满'
+      // 协奏满且一日花不在冷却时，共鸣技能替换为一日花
+      if ((id === 'E1' || id === 'E2') && c.concerto >= 100 && !(c.cooldowns['E3'] ?? 0)) return '协奏满时共鸣技能是一日花（E3）'
+      if (BLOOM(id) && !bloom) return `${id} 要在盛绽状态下`
+      if (WHITE.has(id) && bloom) return `盛绽状态下 ${id} 换成了盛绽版本`
+      return true
+    },
+    onEvent(ctx, ev) {
+      if (ev.type === 'actionStart' && ev.char === '椿') {
+        if (ev.action === 'E1') ctx.setFlag('盛绽', true)                       // 切人不退出盛绽（m0-confirm §6 C1）
+        if (ev.action === 'E2' || ev.action === '盛绽·跳跃') ctx.setFlag('盛绽', false)
+        if (ev.action === 'E3') {                                                // 清空红椿·蕾，层数折算进酣梦
+          ctx.setFlag('酣梦层数', Math.min(10, ctx.buffStacks('椿.红椿·蕾')))
+          ctx.removeBuff('椿.红椿·蕾')
+        }
+        return
+      }
+      if (ev.type === 'hit' && ev.char === '椿') {
+        const used = -(ev.gains.core[0] ?? 0)
+        if (used <= 0) return
+        // 每消耗 10 点蕊：协奏 +4、红椿·蕾 +1（含苞中不得蕾）
+        let acc = snap(Number(ctx.getFlag('蕊消耗') ?? 0) + used)
+        const bud = ctx.buffStacks('椿.含苞') > 0
+        while (acc >= 10) {
+          acc = snap(acc - 10)
+          ctx.addResource('concerto', 4)
+          if (!bud) ctx.addBuff('椿.红椿·蕾')
+        }
+        ctx.setFlag('蕊消耗', acc)
+        if (bud && ctx.state.chars[ctx.self].core[0] <= 0) ctx.removeBuff('椿.含苞')   // 蕊耗完，含苞提前结束
+        return
+      }
+      // 延奏挑版本（m0-confirm §6 C3）：切走那一刻在含苞中 → 含苞 + 含苞追加，否则 → 普通。
+      // 含苞在切出时就被清掉了，所以在切出那一刻记下
+      if (ev.type === 'switch' && ev.from === '椿') ctx.setFlag('切走时含苞', false)
+      if (ev.type === 'buffExpire' && ev.buff === '椿.含苞' && ev.reason === 'switchOut') ctx.setFlag('切走时含苞', true)
+      if (ev.type === 'outro' && ev.char === '椿' && ev.instance !== undefined)
+        ctx.skipJudgments(ev.instance, ctx.getFlag('切走时含苞') === true ? OUTRO_PLAIN : OUTRO_BUD)
+    },
+    // 消耗红椿·蕊的那几类攻击（数据里核心回收为负的，与酣梦、回能规则覆盖的是同一组）
+    modifyHit(ctx, d) {
+      const j = d.judgment
+      if (!(j.gains.core[0] < 0)) return
+      if (ctx.buffStacks('椿.含苞') > 0) {
+        d.selfEnergyScale = 0                                                    // 含苞期间自己的回能降至 0%（队友不受影响，G3）
+        if (j.formula) d.multiplier += j.formula.rate * (10 + Number(ctx.getFlag('酣梦层数') ?? 0))   // 酣梦 +50%，每层蕾 +5%
+      } else if (ctx.state.chars[ctx.self].core[0] > 0) {
+        d.selfEnergyScale = 2.5                                                  // 消耗蕊时自己的基础回能 +150%（G3）
+      }
+    },
+  },
   actionOverrides: {
     // 固有1"重击修枝伤害视为普攻伤害"：吃普攻加成与普攻加深（TD-08 P8）；P1重击在数据里已经是普攻
     重击: { judgments: { '重击-1': { tags: ['普攻'] }, '重击-2': { tags: ['普攻'] }, '重击-3': { tags: ['普攻'] } } },

@@ -150,6 +150,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
   }
   return {
     self,
+    chain: m.chain,
     state: s,
     buffStacks: (id, target = self) => s.buffs.find(b => b.defId === id && b.owner === self && b.target === target)?.stacks ?? 0,
     addBuff: (id, opts = {}) => {
