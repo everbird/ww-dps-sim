@@ -88,7 +88,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   const d = j.def
   const draft: HitDraft = {
     judgment: d, char: m.def.name, multiplier: d.multiplier, extraFlat: 0, element: d.element, tags: [...d.tags],
-    energyScale: 1, zones: {}, critOnly: {},
+    selfEnergyScale: 1, zones: {}, critOnly: {},
   }
   m.def.hooks?.modifyHit?.(sim.ctxs[j.owner]!, draft)
   let dmg: { nonCrit: number; crit: number; expected: number } | null = null
@@ -112,7 +112,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
   }
-  const { gains, full } = settleGains(sim, s, j, draft.energyScale)
+  const { gains, full } = settleGains(sim, s, j, draft.selfEnergyScale)
   log(s, {
     type: 'hit', char: m.def.name, action: j.action, judgment: d.name, id: j.id, tick: n,
     element: draft.element, tags: draft.tags, dmg, ...(factors ? { factors } : {}), buffs: used, gains,

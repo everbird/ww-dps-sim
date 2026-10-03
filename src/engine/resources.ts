@@ -121,17 +121,18 @@ export function castGainAt(sim: Sim, s: SimState, slot: Slot, src: EventSource, 
 /** 一次结算的资源：能量全队分配、协奏（onHit，或事件生成的判定）、核心资源（合并区每个动作实例只发一次）。
  *  不记 resource 事件：实际增减写进 hit 事件的 gains；达到上限的 resourceFull 返回给调用方，记在 hit 之后 */
 export function settleGains(
-  sim: Sim, s: SimState, j: JudgmentRuntime, energyScale: number,
+  sim: Sim, s: SimState, j: JudgmentRuntime, selfEnergyScale: number,
 ): { gains: HitEvent['gains']; full: FullEvent[] } {
   const d = j.def
   const rules = sim.r.rules
   const full: FullEvent[] = []
   const energy: Partial<Record<CharName, number>> = {}
   const put = (x: Slot, v: number) => { if (v !== 0) energy[s.chars[x].name] = v }
-  const base = d.gains.energy * energyScale
+  const base = d.gains.energy
   if (base > 0) {
     for (const x of SLOTS) {
-      const share = x === j.owner ? rules.energyShare.dealer : rules.energyShare.others
+      // 出伤者那份可被钩子放大 / 清零（椿：消耗红椿·蕊时 ×2.5、含苞时 ×0）；队友那 50% 不受影响（2026-10-03 实测）
+      const share = x === j.owner ? rules.energyShare.dealer * selfEnergyScale : rules.energyShare.others
       put(x, add(sim, s, x, 'energy', base * share * regenOf(sim, s, x), full))
     }
   } else if (base < 0) put(j.owner, add(sim, s, j.owner, 'energy', base, full))   // 消耗：只作用于出伤者，不乘效率
