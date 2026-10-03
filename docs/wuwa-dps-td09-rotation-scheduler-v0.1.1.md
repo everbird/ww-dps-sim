@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-09 排轴脚本与调度语义 v0.1
+# 鸣潮 DPS 引擎 · TD-09 排轴脚本与调度语义 v0.1.1
 
-> **状态**：草案 v0.1（2026-09-27）
+> **状态**：v0.1.1（2026-10-03），已实现（`src/engine/scheduler.ts`）。v0.1.1 并回 M2 / M3 实现时的决定（共用冷却、切人交给 TD-05、变奏与接续动作的指令出处、示意轴按现在的规则重算），见附录
 > **依据**：《技术总体设计 v0.1.3》（下称"总设计"）§3.3 第 7 步、§3.5、§4 T6 / T7、§5.3、§6.5、第 8 节；《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§1、§6、Q9、Q10；《TD-02 类型与 Schema v0.1.2》§6、§7；《TD-01 数据字典与抽取规格 v0.1.2》§13
 > **下游**：TD-05（切人之后的变奏 / 延奏接在本文的 `onSwitch` 上）、TD-06（资源检查接在 `canAfford` 上）、TD-08（角色钩子 `canStart`、角色技能的冷却数值）、TD-10（等待记录、轮次边界、"指令的完成时刻"用于统计窗口）
 > **验证**：TypeScript 原型 `src/engine/scheduler.ts`（约 280 行）跑通 11 组 33 个用例（§7）；TD-04 的 35 个用例改用本文的调度器后全部照旧通过；全量 119 条普攻连段按默认与强制各连按一遍（§8）；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与约 110 个数字（§7.4）
@@ -88,31 +88,33 @@ flowchart LR
 ### 2.5 例：M0 队伍的一条示意轴
 
 ```yaml
-initial: { onField: 1 }            # 散华先上场
+initial: { onField: 1 }            # 散华先上场；能量缺省满、协奏缺省 0
 rotation:
   - 散华 E A1 A2 A3 A4 A5 R        # 第 1 条：7 个动作
   - switch 椿
-  - 椿 E A1 A2 A3 A4 A5!           # A5 强制：不等 A4 的 20 段打完
+  - 椿 A1 A2 A3 A4 A5!             # A5 强制：不等 A4 的 20 段打完
   - wait 30
   - switch 维里奈
   - 维里奈 E R
-  - switch 散华                     # 循环的轴，末尾让前台回到开头的角色
-options: { repeat: 2 }
+  - switch 散华
 ```
 
-实跑（尚无变奏 / 延奏与能量，TD-05 / TD-06 接入后会变）：
+实跑（v0.1.1 按现在的规则重算：有冷却、能量、协奏与角色钩子）：
 
 | 条 | 开始（世界帧） | 主要的等待 |
 |---|---|---|
 | 1 | E 0、A1 60、A2 86、A3 121、A4 158、A5 196、大招 230 | A1 等 E 的优先级降下来 60 帧；A2–A5 等派生窗口；大招等 A5 出手 34 帧 |
 | 2 | 切人 341 | 散华大招的切人锁（局部第 91 帧前不能切人）：等了 111 世界帧，其中 90 帧在大招的全局时停里 |
-| 3 | E1 341、A1 427、A2 447、A3 481、A4 544、A5 596 | A5 强制，不等 A4 打完 |
-| 4 | 596 起等 30 帧 | —— |
-| 5 | 切人 626 | —— |
-| 6 | E 626、大招 652 | 大招等 E 出手 26 帧 |
-| 7 | 切人 792 | 切人冷却 140 世界帧：维里奈大招的全局时停里冷却不走 |
+| 3 | A1 341、A2 361、A3 395、A4 458、A5 510 | A5 强制，不等 A4 打完 |
+| 4 | 510 起等 30 帧 | —— |
+| 5 | 切人 540 | —— |
+| 6 | E 540、大招 566 | 大招等 E 出手 26 帧 |
+| 7 | 切人 706 | 切人冷却 140 世界帧：维里奈大招的全局时停里冷却不走 |
 
-第 2 轮从第 792 帧的散华 E 开始，形状与第 1 轮完全相同（这条轴每轮结束时一切都已落定），全程 1607 世界帧、1215 战斗帧。
+全程约 730 世界帧、534 战斗帧。三次都是普通切人：切出时协奏都没满（散华 75，椿 13，维里奈 68）。
+
+- v0.1 的这条轴在椿那行写的是 `椿 E A1 …`：现在 `E` 指一段（白椿→盛绽），盛绽状态下普攻换成盛绽版本，`A1` 会被角色钩子挡住直到超时（TD-08 §5.2），所以改成只打普攻。
+- 加上 `options: { repeat: 2 }` 时，第 2 轮的散华 E 要等冷却 90 帧，大招等冷却 394 帧之后还差能量（84.7 / 100），最终超时报错。循环的轴要按冷却与能量排；完整的三人轴见 `scenarios/m0-team.yaml`。
 
 ---
 
@@ -133,8 +135,8 @@ options: { repeat: 2 }
 | 2 | 连段前置 `comboFrom` | 窗口未开：等；已过或上一个不是前置：**报错** | `combo` / `comboBroken` | TD-04 §6.2 |
 | 3 | 输入锁 | 等 | `inputLock` | TD-04 §6.3 |
 | 4 | 优先级 / 派生窗口 | 等 | `priority` / `derive` | TD-04 §6.1 |
-| 5 | 技能冷却 | 等 | `cooldown` | 本节 |
-| 6 | 资源（大招能量、核心资源） | 等 | `resource` | TD-06 `canAfford` |
+| 5 | 技能冷却（含共用冷却组） | 等 | `cooldown` | 本节 |
+| 6 | 大招能量（`energyCost`） | 等 | `resource` | TD-06 §2.3 `canAfford` |
 | 7 | 角色钩子 `canStart` | 等 | `hook` | TD-08 |
 | 8 | 就绪（没写 `!` 时） | 等 | `settled` | TD-04 §6.4、本文 §3.4 |
 | 9 | 本 tick 还没开始过动作 | 等 1 帧 | `started` | TD-04 §1 |
@@ -144,7 +146,7 @@ options: { repeat: 2 }
 
 - **为什么第 9 条放在后面**：刚出了 E 的那一帧，下一条 A1 既"本 tick 已出过招"又"优先级不够"。它放在后面，等待记录里才是真正的原因（优先级），而不是先冒出一帧"本 tick 已出过招"。它只在当前动作此刻就已就绪时单独出现：强制打断（`散华 A1 E!`，E 在第 1 帧，记一段 1 帧的 `started`，T09-3），或者当前动作本来就没有要等的判定（`散华 跳跃 大招`，大招在第 1 帧）。为此 TD-04 的 `gate` 也把它挪到了最后（§9.1）。
 - **`+N` 放在最后**：它从"其余全部满足"的那个 tick 起算，所以必须排在第 9 条之后，否则会少等一帧（`散华 A1 E! +3`：E 最早第 1 帧，+3 后第 4 帧，T09-4）。
-- **冷却**：声骸技能的冷却来自 xlsx 声骸表（`ActionDef.cooldown`）；角色技能的冷却 xlsx 没有，写在角色模块的 `actionOverrides.<动作>.cooldown`（帧）。从动作开始时起算，被取消也照走；P6 按战斗速率递减，全局时停时不走（T09-7）。声骸技能共用一个冷却（键 `echo`），其余按动作 ID 分开。按次数充能的技能交给角色钩子。
+- **冷却**：声骸技能的冷却来自 xlsx 声骸表（`ActionDef.cooldown`）；角色技能的冷却 xlsx 没有，写在角色模块的 `actionOverrides.<动作>.cooldown`（帧）。从动作开始时起算，被取消也照走；P6 按战斗速率递减，全局时停时不走（T09-7）。声骸技能共用一个冷却（键 `echo`）；角色模块写了同一个 `cooldownGroup` 的几个动作共用一个冷却（椿 E1 / E2 共用 4 秒，一日花 E3 单独 25 秒）；其余按动作 ID 分开。按次数充能的技能交给角色钩子。
 - 冷却、资源、钩子都是"能等来的"：它们只让指令等待，不报错；真等不来时由 `maxWait` 兜底。
 
 ### 3.3 等待与报错
@@ -182,10 +184,12 @@ options: { repeat: 2 }
 | `timeout` | 不合法的等待超过 maxWait | 第 2 条等了 300 帧仍不能执行：X 冷却还剩 700 帧 |
 | `maxFrames` | 到帧数上限时还有指令没执行 | 超过 50 帧，第 3 轮第 1 条还没执行；调大 options.maxFrames |
 | `notOnField`、`switchSelf` | 编译期已查；运行期兜底 | 第 3 条：椿 不在前台 |
+| `chainDepth` | 一条事件引出的事件链超过 `rules.maxChainDepth`（TD-07 §5） | 事件连锁超过 16 层：起点是第 0 帧的 甲 concerto +1（cast） |
+| `invariant` | 不变量不成立（总设计 §11 第 4 条，是引擎的错） | 不变量不成立（第 5 帧）：甲 x 的伤害 … |
 
 ### 3.4 默认等就绪，`!` 强制（TD-04 Q9 定稿）
 
-**规则**：同一角色的出招指令，默认还要等当前动作**就绪**——此时打断不会丢掉判定、资源或延奏触发（TD-04 §6.4）。写 `!` 跳过这一条，按游戏规则的最早时刻打断。切人不取消动作，不受影响。
+**规则**：同一角色的出招指令，默认还要等当前动作**就绪**——此时打断不会丢掉判定或资源（没走到的延奏触发转尾部照常发生，不用等，TD-04 §6.4）。写 `!` 跳过这一条，按游戏规则的最早时刻打断。切人不取消动作，不受影响。
 
 **为什么默认等**：轴上写"A1 E"，意思是"A1 打出去再接 E"，不是"用 E 把 A1 抢掉"。按优先级 E 第 0 帧就能打断 A1，那样 A1 什么都没打出来。把"抢帧"写成显式的 `!`，轴的意思就不会被误读。
 
@@ -193,7 +197,7 @@ options: { repeat: 2 }
 |---|---|---|---|
 | 散华 `A1 E` | E 在第 14 帧 | E 在第 1 帧 | 强制时 A1 作废 |
 | 散华 `A5 R` | 大招在 A5 起手后第 34 帧（等 A5 命中） | 第 1 帧 | 强制时 A5 作废 |
-| 散华 `QTE` 接大招（第 42 帧起可被大招打断） | 第 56 帧（QTE 伤害第 55 帧出现） | 第 42 帧 | 强制时 QTE 伤害作废，上一位角色的延奏也不触发（Q1） |
+| 散华 `QTE` 接大招（第 42 帧起可被大招打断） | 第 56 帧（QTE 伤害第 55 帧出现） | 第 42 帧 | 强制时 QTE 伤害作废；上一位角色的延奏照常触发（Q1 已关闭） |
 | 椿 `A1 … A5`（A4 → A5） | A5 在第 265 帧（A4 的 20 段打完） | 第 169 帧 | 强制时 A4 只打出 5 段，少 15 段、快 96 帧 |
 
 哪种更好不是调度器该回答的：两种写法都跑一遍，比 DPS（TD-10）。
@@ -204,12 +208,11 @@ options: { repeat: 2 }
 
 - **条件**：目标不是当前前台（编译期已查）；切人冷却为 0（`rules.switchCooldown` = 60 帧，按战斗时钟走）；前台角色**上一个动作**的"第 nF 前不能切人"已过。
 - **切人锁可以越过结束帧**：按上一个动作的局部帧算，与派生窗口一样动作结束后照走（TD-04 §6.2）。散华 QTE 结束帧 63、备注"第70F前不能切人"，第 70 帧才能切（T09-6）。
-- **执行**：换前台、启动切人冷却、记 `switch` 事件（带 `cmd`），然后调用 `onSwitch`（TD-05：协奏满时的变奏 / 延奏）。切人本身不碰任何动作（总设计不变量 3）：被切下的角色在后台把动作走完（T09-6：A1 同帧切走，第 13 帧照常命中）。
-- 切人后同一 tick 就能让新前台出招。游戏里有没有"出场"的间隔，交给 TD-05（Q5）。
-- **待 TD-05 的两类备注**：
-  - 切人会结束、中断或让动作"消失"，或反过来"不离场 / 不消失"：全量 33 组。M0 队伍里有椿的两组：A4"第72F后切人立即结束技能"、盛绽·A3循环聚怪"第24F后切人结束技能"。其余如千咲电锯"第nF后切人消失"、炽霞 E"切人立即消失"、陆·赫斯"第nF前切人不消失"、赞妮 / 露帕"第nF前切人不离场"。
-  - 没有帧数的"不能切人"（多为"无敌期间不能切人"）：全量 118 组，大半是谐度破坏，三人的谐度破坏也在内。帧数不知道，现在不设切人锁。
-  - 这两类现在都按"切人不打断动作、没有锁"处理（Q6）。
+- **执行**：换前台、启动切人冷却，然后调用 `onSwitch`（TD-05 §2）：它先算出是不是变奏切人，再记 `switch` 事件（带 `cmd` 与 `intro`），处理切出与切入（清除 buff、挂起的 nextIn、变奏动作）。没接 `onSwitch` 时（测试台）调度器自己记 `switch`。切人本身不碰被切下角色的动作（总设计不变量 3）：它在后台把动作走完（T09-6：A1 同帧切走，第 13 帧照常命中）。例外见 TD-05：变奏切人时切入者在后台的动作被变奏动作取消；"第nF后切人结束技能"的动作在切出时按取消处理。
+- 切人后同一 tick 就能让新前台出招（变奏切人时要等变奏动作的优先级与输入锁）。游戏里有没有"出场"的间隔，见 TD-05 Q8（Q5）。
+- **切人会结束动作的备注**（TD-05 §5）：
+  - 已实现："第nF后切人（立即）结束技能 / 消失"与"切人立即结束 / 消失"由构建脚本抽成 `endOnSwitchOut`，切出时局部帧已过就按取消处理。M0 队伍里是椿 A4（72）与盛绽·A3循环聚怪（24）。
+  - 未实现："第nF前切人不消失 / 不离场"（陆·赫斯、赞妮、露帕）；没有帧数的"不能切人"（全量 118 组，大半是谐度破坏）——仍按"切人不打断动作、没有锁"处理（Q6）。
 
 ### 3.6 `+N` 与 `wait N`
 
@@ -235,11 +238,11 @@ options: { repeat: 2 }
 
 | 指令 | 开始 | 完成 |
 |---|---|---|
-| 出招 | `actionStart` 的帧 | 该动作实例自然结束（`actionEnd`）或被取消（`actionCancel`）的帧 |
-| 切人 | `switch` 的帧 | 同一帧 |
+| 出招 | `actionStart` 的帧 | 该动作实例自然结束（`actionEnd`）或被取消（`actionCancel`）的帧；有接续动作（TD-08 P10）时，按最后一个接续动作结束的帧 |
+| 切人 | `switch` 的帧 | 同一帧；变奏切人时变奏动作带这条指令的出处，按变奏动作（及其接续动作）结束的帧（TD-05 §2） |
 | `wait N` | 队首变成它的帧 | 等满的帧 |
 
-总设计 §3.5 的统计窗口"到最后一条指令对应动作的结束帧"，就是最后一条指令的完成时刻。循环时每轮的区间是 [本轮 `loop` 事件, 下一轮 `loop` 事件)；最后一轮没有下一轮的边界，稳态窗口怎么取留给 TD-10（Q10）。
+总设计 §3.5 的统计窗口"到最后一条指令对应动作的结束帧"，就是最后一条指令的完成时刻（实现：最后一个带指令出处的 `actionStart` 对应的结束 / 取消，与最后一次切人、`wait` 取晚的）。循环时每轮的区间是 [本轮 `loop` 事件, 下一轮 `loop` 事件)；最后一轮没有下一轮的边界，稳态窗口怎么取留给 TD-10（Q10）。
 
 ---
 
@@ -326,291 +329,27 @@ export interface CommandRef { line: number; item: number; loop: number }
 //   actionStart、switch：新增 cmd?: CommandRef（由指令触发时）
 //   wait：{ cmd, code, reason, from, frames, battleFrames }（取代 v0.1.2 的 { line, frames, reason }）
 //   新增 { type: 'loop'; loop: number }
-// Summary.waits：{ line, loop, code, frames, reason }[]
+// Summary.waits：{ line, item, loop, code, frames, reason }[]（v0.1.1：带 item）
 ```
 
 `src/engine/kernel.ts` 的改动（TD-04 v0.1.1）：`GateResult` 的失败分支带原因代码，连段已断单独是 `{ wait: false, code: 'comboBroken' }`；`gate` 把"本 tick 已开始过动作"放到最后判断；`startAction(s, k, slot, def, cmd?)` 记下指令出处并起算冷却；新增 `cooldownKey(def)`；P6 按战斗速率递减技能冷却。
 
-`src/data/define.ts`：`ActionOverride` 新增 `cooldown`（角色技能冷却）与 `comboFrom`（自动推断之外的连段前置，TD-04 Q8）。
+`src/data/define.ts`：`ActionOverride` 新增 `cooldown`（角色技能冷却）、`cooldownGroup`（v0.1.1：共用冷却的组名）与 `comboFrom`（自动推断之外的连段前置，TD-04 Q8）。
 
 ---
 
 ## 6. 代码 `src/engine/scheduler.ts`
 
-调度器只依赖内核的 `gate` / `settled` / `startAction` / `tick` 与类型；资源、角色条件、切人后续三件事通过 `SchedulerOptions` 的回调接入，没接时分别是"总是够""总是允许""只换前台"。
+v0.1.1 起本文不再内嵌代码，以仓库为准。调度器只依赖内核的 `gate` / `settled` / `startAction` / `tick` 与类型；资源、角色条件、切人后续三件事通过 `SchedulerOptions` 的回调接入（仿真里分别接 TD-06 `canAfford`、TD-08 `canStart`、TD-05 `onSwitch`），没接时分别是"总是够""总是允许""只换前台并记 `switch`"。导出：
 
-```ts
-// src/engine/scheduler.ts —— 排轴的编译与调度（TD-09）
-// compileRotation：场景的 rotation 行 → Command[]（总设计 §3.3 第 7 步）；静态能查出来的错一次报全。
-// createScheduler：每个 tick 的 P2"执行指令"（TD-04 §1）：按顺序、在最早合法帧执行；能等就等并记下原因，等不来就报错。
-import type { ActionId, Slot } from '../data/common'
-import type { ActionDef } from '../data/gamedata'
-import { parseRotationLine, type Command } from '../data/scenario.schema'
-import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
-import type { CommandRef, QueueState, SimState, WaitCode } from './types'
-
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf'
-
-/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限。cmd 指出第几轮第几条 */
-export class ScheduleError extends Error {
-  readonly code: ScheduleErrorCode
-  readonly cmd: CommandRef | null
-  readonly frame: number
-  constructor(code: ScheduleErrorCode, message: string, cmd: CommandRef | null, frame: number) {
-    super(message)
-    this.name = 'ScheduleError'
-    this.code = code
-    this.cmd = cmd
-    this.frame = frame
-  }
-}
-
-// ---------------------------------------------------------------------------
-// §4 编译
-
-export interface CompileMember { name: string; actions: Record<ActionId, ActionDef>; aliases: Record<string, ActionId> }
-export interface CompileIssue { line: number; item?: number; message: string }
-export type CompileResult = { ok: true; commands: Command[] } | { ok: false; issues: CompileIssue[] }
-
-/** rotation 的每一行 → 指令；line 从 1 起（= 场景里第几条），item 是行内第几个动作 */
-export function compileRotation(lines: string[], team: CompileMember[], onField: Slot, repeat = 1): CompileResult {
-  const issues: CompileIssue[] = []
-  const commands: Command[] = []
-  const slotOf = new Map(team.map((m, i) => [m.name, i as Slot]))
-  let switchFailed = false
-  lines.forEach((text, i) => {
-    const line = i + 1
-    const items = parseRotationLine(text)
-    if ('error' in items) { issues.push({ line, message: items.error }); return }
-    items.forEach((it, j) => {
-      const item = j + 1
-      if (it.kind === 'wait') { commands.push({ kind: 'wait', line, item, frames: it.frames }); return }
-      const slot = slotOf.get(it.char)
-      if (slot === undefined) {
-        issues.push({ line, item, message: `${it.char} 不在队伍里（队伍：${team.map(m => m.name).join('、')}）` })
-        if (it.kind === 'switch') switchFailed = true
-        return
-      }
-      if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot }); return }
-      const m = team[slot]!
-      const id = Object.hasOwn(m.actions, it.action) ? it.action : Object.hasOwn(m.aliases, it.action) ? m.aliases[it.action] : undefined
-      const def = id !== undefined && Object.hasOwn(m.actions, id) ? m.actions[id] : undefined
-      if (id === undefined || !def) {
-        issues.push({ line, item, message: `${m.name} 没有动作"${it.action}"（别名：${Object.keys(m.aliases).join('、') || '无'}）` })
-        return
-      }
-      if (def.kind === 'intro' || def.kind === 'outro') {
-        issues.push({ line, item, message: `${m.name} ${id} 是${def.kind === 'intro' ? '变奏' : '延奏'}，由切人自动触发（协奏满时），不能单独写` })
-        return
-      }
-      commands.push({ kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force })
-    })
-  })
-  if (issues.length === 0 && commands.length === 0) issues.push({ line: 0, message: '排轴里没有指令' })
-  // 有错的那一项已跳过，其余照查；切人写错时前台推不下去，不再查前台，免得连带报一串
-  if (!switchFailed) issues.push(...checkOnField(commands, team, onField, repeat))
-  issues.sort((a, b) => a.line - b.line || (a.item ?? 0) - (b.item ?? 0))
-  return issues.length > 0 ? { ok: false, issues } : { ok: true, commands }
-}
-
-/** 前台只由 switch 改变，"出招的人在不在前台"编译期就能查（§4.2）。循环时第 2 轮从第 1 轮结束时的前台开始，再查一遍，只报第一处 */
-function checkOnField(commands: Command[], team: CompileMember[], onField: Slot, repeat: number): CompileIssue[] {
-  const out: CompileIssue[] = []
-  let cur = onField
-  for (let pass = 1; pass <= Math.min(repeat, 2) && out.length === 0; pass++) {
-    const where = pass === 2 ? '循环第 2 轮：' : ''
-    for (const c of commands) {
-      if (pass === 2 && out.length > 0) break
-      if (c.kind === 'switch') {
-        if (c.to === cur) out.push({ line: c.line, item: c.item, message: `${where}switch ${team[c.to]!.name}：${team[c.to]!.name} 已经在前台` })
-        cur = c.to
-      } else if (c.kind === 'act' && c.slot !== cur) {
-        const hint = pass === 2 ? `；循环的轴，末尾要让前台回到 ${team[onField]!.name}` : `；先写 switch ${team[c.slot]!.name}`
-        out.push({ line: c.line, item: c.item, message: `${where}${team[c.slot]!.name} 不在前台（前台是 ${team[cur]!.name}）${hint}` })
-      }
-    }
-  }
-  return out
-}
-
-// ---------------------------------------------------------------------------
-// §3 调度
-
-export interface SchedulerOptions {
-  maxWait: number                           // 一条指令因"不合法"最多等多少世界帧（options.maxWait）
-  /** TD-06：资源够不够（大招能量、核心资源…）；返回字符串 = 不够及原因。缺省总是够 */
-  canAfford?(s: SimState, slot: Slot, def: ActionDef): true | string
-  /** TD-08：角色钩子 canStart（形态、层数之类的条件） */
-  canStart?(s: SimState, slot: Slot, def: ActionDef): true | string
-  /** TD-05：切人之后的事（变奏 / 延奏 / 协奏）。缺省只换前台、启动切人冷却 */
-  onSwitch?(s: SimState, k: Kernel, from: Slot, to: Slot, cmd: CommandRef): void
-}
-
-/** repeat = 整条轴执行几轮（options.repeat） */
-export function newQueue(commands: Command[], repeat = 1): QueueState {
-  return { commands, repeat, next: 0, loop: 1, loopBegun: false, waited: 0, readyAt: null, until: null, seg: null }
-}
-
-type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
-const GO: Verdict = { go: true }
-/** 写轴的人要求的等待：不计入 maxWait */
-const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
-
-/** 返回 P2 用的 schedule(s)：执行队首起能执行的指令（一个 tick 可以执行多条），返回"还有没有没执行完的指令" */
-export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions): (s: SimState) => boolean {
-  return (s: SimState): boolean => {
-    const q = s.queue
-    if (q.commands.length === 0) return false
-    for (;;) {
-      if (q.next >= q.commands.length) {
-        if (q.loop >= q.repeat) return false
-        q.loop += 1
-        q.next = 0
-        q.loopBegun = false
-      }
-      const c = q.commands[q.next]!
-      const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
-      const v = evaluate(s, actions, opts, c, ref)
-      if (!v.go) { hold(s, opts, v, ref); return true }
-      closeSeg(s, ref)
-      execute(s, k, actions, opts, c, ref)
-      q.next += 1
-      q.waited = 0
-      q.readyAt = null
-      q.until = null
-    }
-  }
-}
-
-/** 队首指令此刻能不能执行（§3.2 的检查顺序）；等不来的直接抛错 */
-function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): Verdict {
-  const q = s.queue
-  switch (c.kind) {
-    case 'wait':
-      if (q.until === null) { q.until = s.battleFrames + c.frames; if (!roundHasAction(q)) beginLoop(s) }
-      return s.battleFrames >= q.until ? GO : { go: false, code: 'wait', reason: `wait ${c.frames}` }
-    case 'at':
-      if (!roundHasAction(q)) beginLoop(s)
-      return s.frame >= c.frame ? GO : { go: false, code: 'at', reason: `等到第 ${c.frame} 帧` }
-    case 'switch': {
-      if (c.to === s.onField) throw fail(s, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
-      if (s.switchCd > 0) return { go: false, code: 'switchCd', reason: `切人冷却还剩 ${Math.ceil(s.switchCd)} 帧` }
-      // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
-      const last = s.chars[s.onField].last
-      const lock = last?.def.switchLockUntil
-      if (last && lock !== undefined && last.localFrame < lock) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
-      return GO
-    }
-    case 'act': {
-      const ch = s.chars[c.slot]
-      if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${ch.name} 不在前台`, ref)
-      const def = actions[c.slot]![c.action]!
-      const g = gate(ch, def)
-      const onlyStarted = !g.ok && g.code === 'started'               // "本 tick 已开始过动作"放到后面报（§3.2）
-      if (!g.ok && !onlyStarted) {
-        if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
-        return { go: false, code: g.code, reason: g.reason }
-      }
-      const cd = ch.cooldowns[cooldownKey(def)] ?? 0
-      if (cd > 0) return { go: false, code: 'cooldown', reason: `${def.id} 冷却还剩 ${Math.ceil(cd)} 帧` }
-      const res = opts.canAfford?.(s, c.slot, def) ?? true
-      if (res !== true) return { go: false, code: 'resource', reason: res }
-      const hook = opts.canStart?.(s, c.slot, def) ?? true
-      if (hook !== true) return { go: false, code: 'hook', reason: hook }
-      if (!c.force && !settled(s, c.slot))
-        return { go: false, code: 'settled', reason: `等 ${ch.action!.id} 出手（现在打断会丢判定或延奏）` }
-      if (!g.ok) return { go: false, code: 'started', reason: g.reason }
-      if (c.delay > 0) {                                              // +N 从"其余全部满足"的那个 tick 起算
-        q.readyAt ??= s.battleFrames
-        if (s.battleFrames < q.readyAt + c.delay) return { go: false, code: 'delay', reason: `+${c.delay}` }
-      }
-      return GO
-    }
-  }
-}
-
-function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): void {
-  switch (c.kind) {
-    case 'wait': case 'at': return                                   // 等完就算执行完
-    case 'switch': {
-      beginLoop(s)
-      const from = s.onField
-      s.onField = c.to
-      s.switchCd = k.rules.switchCooldown
-      log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
-      opts.onSwitch?.(s, k, from, c.to, ref)
-      return
-    }
-    case 'act':
-      beginLoop(s)
-      startAction(s, k, c.slot, actions[c.slot]![c.action]!, ref)
-  }
-}
-
-/** 每轮的边界（§3.7）：本轮第一次出招或切人时记一条 loop 事件；整轮只有等待时，记在开始等待时 */
-function beginLoop(s: SimState): void {
-  if (s.queue.loopBegun) return
-  s.queue.loopBegun = true
-  log(s, { type: 'loop', loop: s.queue.loop })
-}
-const roundHasAction = (q: QueueState): boolean => q.commands.some(c => c.kind === 'act' || c.kind === 'switch')
-
-/** 队首要等：原因变了就另起一段；"不合法"的等待累计超过 maxWait 就报错 */
-function hold(s: SimState, opts: SchedulerOptions, v: Extract<Verdict, { go: false }>, ref: CommandRef): void {
-  const q = s.queue
-  if (!q.seg || q.seg.code !== v.code) {
-    closeSeg(s, ref)
-    q.seg = { code: v.code, reason: v.reason, from: s.frame, battleFrom: s.battleFrames }
-  }
-  if (INTENDED.includes(v.code)) return
-  q.waited += 1
-  if (q.waited > opts.maxWait) throw fail(s, 'timeout', `${where(q, ref)}等了 ${opts.maxWait} 帧仍不能执行：${v.reason}`, ref)
-}
-
-/** 结束当前等待段，写一条 wait 事件（f = 结束的帧，from = 开始的帧） */
-function closeSeg(s: SimState, ref: CommandRef): void {
-  const g = s.queue.seg
-  if (!g) return
-  s.queue.seg = null
-  log(s, {
-    type: 'wait', cmd: ref, code: g.code, reason: g.reason, from: g.from,
-    frames: s.frame - g.from, battleFrames: s.battleFrames - g.battleFrom,
-  })
-}
-
-/** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到 */
-function fail(s: SimState, code: ScheduleErrorCode, message: string, ref: CommandRef): ScheduleError {
-  closeSeg(s, ref)
-  return new ScheduleError(code, message, ref, s.frame)
-}
-
-/** "第 k 条"；循环中加轮次，一行有几个动作时加"第 i 个" */
-function where(q: QueueState, ref: CommandRef): string {
-  const many = q.commands.some(c => c.line === ref.line && c.item > 1)
-  return `第 ${ref.loop > 1 ? `${ref.loop} 轮第 ` : ''}${ref.line} 条${many ? `第 ${ref.item} 个` : ''}`
-}
-
-// ---------------------------------------------------------------------------
-// §3.8 主循环
-
-/** 逐 tick 推进到结束。帧数上限时：还有指令没执行 → 报错；只剩判定没结算完 → 停下并记一条警告 */
-export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number): void {
-  while (tick(s, k, schedule)) {
-    if (s.frame < maxFrames) continue
-    const q = s.queue
-    if (q.next < q.commands.length || q.loop < q.repeat) {
-      const wrap = q.next >= q.commands.length
-      const c = q.commands[wrap ? 0 : q.next]!
-      const ref: CommandRef = { line: c.line, item: c.item, loop: wrap ? q.loop + 1 : q.loop }
-      throw fail(s, 'maxFrames', `超过 ${maxFrames} 帧，${where(q, ref)}还没执行；调大 options.maxFrames`, ref)
-    }
-    log(s, { type: 'warning', code: 'maxFrames', message: `到达帧数上限 ${maxFrames}，场上还有 ${s.judgments.length} 个判定、${s.tails.length} 条尾部没走完` })
-    return
-  }
-}
-```
-
----
+| 名字 | 作用 |
+|---|---|
+| `compileRotation(lines, team, onField, repeat?)` | rotation 行 → `Command[]`，静态错误一次报全（§4） |
+| `createScheduler(k, actions, opts)` | 返回 P2 用的 `schedule(s)`（§3） |
+| `newQueue(commands, repeat?)` | 初始队列状态 |
+| `runLoop(s, k, schedule, maxFrames)` | 主循环与帧数上限（§3.8） |
+| `ScheduleError` | 运行期报错：`comboBroken`、`timeout`、`maxFrames`、`notOnField`、`switchSelf`、`chainDepth`（TD-07 §5）、`invariant`（总设计 §11 第 4 条） |
+| `SchedulerOptions` | `maxWait`、`canAfford?`、`canStart?`、`onSwitch?` |
 
 ## 7. 测试用例
 
@@ -1001,15 +740,15 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 
 | # | 问题 | 当前做法 | 如何关闭 |
 |---|---|---|---|
-| Q1 | 在变奏的延奏触发帧（散华 QTE 第 53 帧）之前用大招强制打断，上一位角色的延奏还触不触发 | 不触发：动作被取消，没走到的时间线事件都不发生（TD-04 §4.2） | 游戏里试：QTE 第 42–52 帧开大，看延奏 buff 有没有上（TD-05） |
+| Q1 | 在变奏的延奏触发帧（散华 QTE 第 53 帧）之前用大招强制打断，上一位角色的延奏还触不触发 | **已关闭（2026-09-27 用户确认）**：照常触发——延奏是下场角色发出的，没走到的触发转为尾部（TD-04 §4.2、TD-05 §4.1） | —— |
 | Q2 | 默认等就绪是否贴近玩家的实际操作（椿 A4 → A5 默认慢 96 帧） | 默认等，`!` 抢 | 用户手感；M2 对轴时长 |
 | Q3 | 输入缓存（预输入） | 不模拟，窗口一开就执行（TD-04 Q10） | 实测轴时长系统性偏长时再引入 |
 | Q4 | `+N`、`wait` 用战斗帧：在全局时停里写 `wait` 会比直觉长 | 战斗帧 | 用户反馈；需要时加"世界帧"写法 |
-| Q5 | 切人后同一帧就能出招，游戏里有没有出场间隔 | 没有 | TD-05 |
-| Q6 | 切人会结束 / 消失 / 不离场的动作（33 组，含椿 A4、盛绽·A3循环聚怪）；没有帧数的"不能切人"（118 组，含三人的谐度破坏） | 未实现：切人不结束任何动作，这些动作也不设切人锁 | TD-05（M3 前，椿在 M0 队伍里） |
+| Q5 | 切人后同一帧就能出招，游戏里有没有出场间隔 | 没有 | 转 TD-05 Q8 |
+| Q6 | 切人会结束 / 消失 / 不离场的动作；没有帧数的"不能切人" | **部分关闭**："第nF后切人结束 / 消失"与"切人立即结束 / 消失"由 `endOnSwitchOut` 实现（TD-05 §5）；"第nF前切人不消失 / 不离场"与没有帧数的"不能切人"仍未实现 | 做到相关角色时（TD-05 Q6） |
 | Q7 | 自动推断之外的连段前置（E1 → E2、重击蓄力…）；`comboNoWindow` 的 7 组 | 角色模块 `actionOverrides.comboFrom` 手写 | 启用角色时补（TD-04 Q8） |
 | Q8 | 凌阳 A3 → A4：A4 起手优先级低于 A3 | 连段接不上 | 启用凌阳时修 |
-| Q9 | 角色技能的冷却不在 xlsx | 没写就不限 | M2 前为椿、散华、维里奈补上（TD-08） |
+| Q9 | 角色技能的冷却不在 xlsx | **已关闭**：写在角色模块 `actionOverrides.<动作>.cooldown`（共用的写 `cooldownGroup`），`check:data --flags` 拿 nanoka 核对；M0 三人已补 | —— |
 | Q10 | 稳态 DPS 的统计窗口：第 1 轮与稳态不同，最后一轮又没有下一轮的边界 | 本文只给边界（§3.7、§3.9） | TD-10 |
 
 ---
@@ -1017,3 +756,4 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 ## 附录：变更历史
 
 - **v0.1（2026-09-27）**：初版。定排轴语法（一行多个动作、`!` 强制、`+N`、中文关键词、注释与全角）；编译期的名字解析与静态检查（前台由 switch 静态推出，循环时查第 2 轮）；调度的检查顺序、原因代码、分段等待记录与超时；默认等就绪 / 强制（关闭 TD-04 Q9）；切人条件（切人锁越过结束帧）；技能冷却；`+N` 与 `wait` 按战斗帧；循环的边界与状态延续；帧数上限；指令的完成时刻。附 TypeScript 原型调度器与 27 个用例；TD-04 的测试台改用它；全量 119 条普攻连段各按默认与强制跑一遍，由此在装配里新增 `comboNoWindow`。同步提出 TD-01 v0.1.3、TD-02 v0.1.3、TD-04 v0.1.1、总设计 v0.1.4 的修订。
+- **v0.1.1（2026-10-03）**：并回 M2 / M3 实现时的决定（AGENTS.md 差异 1、2、3、7）。§2.5 示意轴按现在的规则重算（v0.1 的 `椿 E A1 …` 会被角色钩子挡住，改为只打普攻；循环两轮会卡在冷却与能量）；§3.2 共用冷却 `cooldownGroup`、资源检查指向 TD-06 §2.3；§3.3 新增报错代码 `chainDepth`、`invariant`；§3.4 延奏触发不挡就绪；§3.5 `switch` 事件改由 `onSwitch` 记，补 TD-05 的两个例外与 `endOnSwitchOut`；§3.9 接续动作与变奏动作带指令出处；Q1、Q9 关闭，Q6 部分关闭，Q5 转 TD-05 Q8；§6 不再内嵌代码，改为导出接口一览。
