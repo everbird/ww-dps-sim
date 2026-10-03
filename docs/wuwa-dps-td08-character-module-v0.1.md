@@ -1,6 +1,6 @@
 # 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1
 
-> **状态**：草案 v0.1（2026-09-28）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）
+> **状态**：草案 v0.1（2026-09-28）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§4 T8、§6.9、§3.3；《TD-01 数据字典 v0.1.3》§13.4；《TD-02 类型与 Schema v0.1.3》§5.2、§7.4、Q5；《TD-03 伤害公式规格 v0.1》§3.2、§3.4、§4、Q6、Q7、Q13；《TD-05 切人与变奏 / 延奏 v0.1》；《TD-06 资源 v0.1》；《TD-07 Buff 系统 v0.1》；`docs/m0-confirm.md`
 > **下游**：每个角色的 `data/curated/characters/<角色>.ts` 与它的测试
 > **验证**：§5 的机制逐条对照了 nanoka 3.7 技能描述、xlsx 动作表备注与「伤害计算」页的公式写法

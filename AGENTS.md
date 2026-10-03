@@ -51,7 +51,8 @@ pnpm check                                   # tsc 严格模式
 pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试
 pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.3）：改公式、改乘区拆分、换 xlsx 后跑一次，不进 CI
-pnpm sim scenarios/m0-散华单人.yaml          # 跑一个场景：终端打印汇总，事件日志写到 out/<场景名>.json
+pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总，事件日志写到 out/<场景名>.json
+pnpm test -- -u                              # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照
 ```
 
 **每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈 && pnpm check:data`。

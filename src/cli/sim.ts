@@ -51,8 +51,11 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   console.log(`场景 ${file} · 数据 ${r.data.version}`)
   r.team.forEach((m, i) => {
     const p = m.panel
+    // 共鸣效率：静态面板 + 常驻的共鸣效率 buff（千古洑流这类写成了 buff，TD-06 §2.1）
+    const regen = p.energyRegen + r.buffs
+      .filter(b => b.owner === m.slot && b.def.trigger === 'always' && b.def.zone === 'energyRegen').reduce((x, b) => x + b.value, 0)
     console.log(`${i === 0 ? '队伍' : '    '}  ${m.def.name} ${m.chain} 链 · ${m.weapon.def.key} R${m.weapon.rank}` +
-      `（攻击 ${composeStat(p.atk, 0, 0)}，暴击 ${pct(p.critRate)}，暴伤 ${pct(p.critDamage)}，共鸣效率 ${pct(p.energyRegen)}）`)
+      `（攻击 ${composeStat(p.atk, 0, 0)}，暴击 ${pct(p.critRate)}，暴伤 ${pct(p.critDamage)}，共鸣效率 ${pct(regen)}）`)
   })
   const e = r.enemy
   console.log(`敌人  ${e.id} · ${e.level} 级 · 防御 ${e.def} · 抗性 ${Object.entries(e.res).map(([k, v]) => `${k} ${pct(v)}`).join(' ')}`)
