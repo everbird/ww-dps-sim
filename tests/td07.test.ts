@@ -54,7 +54,7 @@ dataDescribe('TD-07 M0 队伍', () => {
   })
 
   test('散华 C6：同一帧引爆两块冰给 2 层（2026-10-03 实测，TD-07 Q3）', () => {
-    const data = structuredClone(gd)
+    const data = { ...gd, characters: { ...gd.characters } }   // 角色带钩子（函数），不能 structuredClone
     data.characters['散华'] = {      // 测试用钩子：E 命中时同时引爆冰棱与冰川（真正的引爆钩子见 TD-08 §5.1）
       ...gd.characters['散华']!,
       hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') { ctx.spawnJudgment('E-引爆冰棱'); ctx.spawnJudgment('大招-引爆冰川') } } },
@@ -74,7 +74,7 @@ dataDescribe('TD-07 M0 队伍', () => {
   })
 
   test('散华固有2：第 5 段普攻后冰绽伤害 +20%，只对三种引爆', () => {
-    const data = structuredClone(gd)
+    const data = { ...gd, characters: { ...gd.characters } }   // 角色带钩子（函数），不能 structuredClone
     data.characters['散华'] = {      // 测试用钩子：E 命中时引爆冰棱
       ...gd.characters['散华']!,
       hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } },
@@ -97,7 +97,7 @@ dataDescribe('TD-07 M0 队伍', () => {
   test('T07-7 trigger 数组：维里奈固有在大招开始与延奏时各施加一次（全队）；延奏的全伤害加深也给全队', () => {
     const out = m0Run(gd, { initial: { onField: 2, concerto: [0, 0, 100] }, rotation: ['维里奈 R', 'switch 椿'] })
     const outro = eventsOfLog(out.log, 'outro')[0]!.f
-    const apply = eventsOfLog(out.log, 'buffApply').filter(e => e.buff.startsWith('维里奈.'))
+    const apply = eventsOfLog(out.log, 'buffApply').filter(e => e.buff === '维里奈.固有1' || e.buff === '维里奈.延奏')
     expect(apply.map(e => [e.f, e.buff, e.target])).toEqual([
       [0, '维里奈.固有1', '椿'], [0, '维里奈.固有1', '散华'], [0, '维里奈.固有1', '维里奈'],
       [outro, '维里奈.固有1', '椿'], [outro, '维里奈.固有1', '散华'], [outro, '维里奈.固有1', '维里奈'],

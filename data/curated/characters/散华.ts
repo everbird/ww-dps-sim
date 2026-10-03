@@ -1,11 +1,28 @@
 // data/curated/characters/散华.ts —— 角色模块示例（格式以 TD-08 为准）
+import type { BuffDefInput } from '../../../src/data/buff.schema'
 import { defineCharacter } from '../../../src/data/define'
+
+/** 三种冰（TD-08 §5.1，m0-confirm §6 S3）：技能的伤害判定生成时出现（不看命中），存在时间按 xlsx，同一种只有 1 块（再放刷新）。
+ *  from = 生成它的判定名；boom = 引爆它的判定（冰绽） */
+const ICES = [
+  { buff: '散华.冰棱', from: 'E', boom: 'E-引爆冰棱', frames: 342, source: '共鸣技能：剑气会留下1道【冰棱】（xlsx：冰棱判定存在342F）' },
+  { buff: '散华.冰棘', from: 'QTE', boom: 'QTE-引爆冰棘', frames: 486, source: '变奏：留下1道【冰棘】（xlsx：冰棘判定存在486F）' },
+  { buff: '散华.冰川', from: '大招-伤害', boom: '大招-引爆冰川', frames: 390, source: '共鸣解放：形成1道【冰川】（xlsx：冰川判定存在390F）' },
+] as const
+const iceBuffs: BuffDefInput[] = ICES.map(x => ({ id: x.buff, source: x.source, target: 'enemy', duration: x.frames, trigger: 'hook' }))
 
 export default defineCharacter('散华', {
   weaponType: '迅刀',
   treeStats: { '冷凝伤害加成': 0.12, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E', R: '大招', QTE: 'QTE', A1: 'A1', A2: 'A2', A3: 'A3', A4: 'A4', A5: 'A5' },
   buffs: [
+    ...iceBuffs,
+    {
+      // 重击爆裂的引爆时刻：xlsx 重击居合-1"第29F～36F可引爆"，取起点，局部第 29 帧（m0-confirm §6 S4）。
+      // 钩子没有按帧回调，用一个 29 帧的标记计时，到期那一刻引爆（默认总能打中冰）
+      id: '散华.引爆计时', source: '重击居合-1：第29F～36F可引爆',
+      target: 'self', duration: 29, trigger: { on: 'actionStart', where: { actions: ['重击居合'] } },
+    },
     {
       id: '散华.固有1',
       source: '固有技能1：变奏后，获得持续时间为8秒的20%共鸣技能伤害提升buff',
@@ -68,6 +85,29 @@ export default defineCharacter('散华', {
       trigger: { on: 'actionStart', where: { actions: ['大招'] } },
     },
   ],
+  hooks: {
+    onEvent(ctx, ev) {
+      // 冰出现：对应的伤害判定生成时（不看命中）
+      if (ev.type === 'judgmentSpawn' && ev.char === '散华') {
+        const ice = ICES.find(x => x.from === ev.judgment)
+        if (ice) ctx.addBuff(ice.buff, { target: 'enemy' })
+        return
+      }
+      if (ev.type !== 'buffExpire') return
+      // 重击爆裂第 29 帧：引爆场上所有的冰
+      if (ev.buff === '散华.引爆计时' && ev.reason === 'timeout') {
+        for (const ice of ICES) {
+          if (ctx.buffStacks(ice.buff, 'enemy') === 0) continue
+          ctx.removeBuff(ice.buff, 'enemy')
+          ctx.spawnJudgment(ice.boom)
+        }
+        return
+      }
+      // 共鸣链5：没被引爆的冰在消失时直接爆炸
+      const ice = ICES.find(x => x.buff === ev.buff)
+      if (ice && ev.reason === 'timeout' && ctx.chain >= 5) ctx.spawnJudgment(ice.boom)
+    },
+  },
   actionOverrides: {
     谐度破坏: { accept: ['multiEnd'] },     // 两个结束帧是谐度破坏的两段，取第一个即可
     // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
