@@ -68,3 +68,15 @@ class T01_9b_敌人(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class 伤害表取哪一级(unittest.TestCase):
+    """TD-01 §4.3：角色技能取 10 级；只有第 1 级有倍率的（延奏等不随技能等级成长）取 1 级"""
+
+    def test_level(self):
+        from dmg import level_index
+        grow = [10000 + i * 500 for i in range(20)]
+        self.assertEqual(level_index('1603', 'A1', grow), 10)
+        self.assertEqual(level_index('1603', '延奏-C0普通', [32924] + [0] * 19), 1)
+        self.assertEqual(level_index('通用', '谐度破坏-迅刀1', grow), 1)
+        self.assertEqual(level_index('1603', '空', [0] * 20), 10)

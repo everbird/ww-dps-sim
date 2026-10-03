@@ -44,10 +44,13 @@ dataDescribe('TD-05 M0 队伍', () => {
     // 第 42、43 帧战斗时钟照走（尾部到局部 44），第 44–133 帧是大招的全局时停，第 134 帧起再走 9 帧 → 第 143 帧
     const outro = eventsOfLog(out.log, 'outro')
     expect(outro.map(e => [e.f, e.char, e.to])).toEqual([[143, '椿', '散华']])
-    // 椿有延奏动作：独立时间线，局部第 6 帧（第 149 帧）生成判定（三个版本要等 TD-08 的钩子挑，这里全生成，倍率都是 0）
+    // 椿有延奏动作：独立时间线，局部第 6 帧（第 149 帧）生成判定。三个版本要等 TD-08 的钩子挑，这里全生成；
+    // 倍率是伤害表的第 1 级（延奏不随技能等级成长）：3.2924 / 3.2924 / 4.5902，与 nanoka 3.7 一致
     expect(outro[0]!.instance).toBeTypeOf('number')
-    expect(eventsOfLog(out.log, 'hit').filter(h => h.char === '椿').map(h => [h.f, h.action, h.judgment, h.dmg]))
-      .toEqual([[149, '延奏', '延奏-C0普通', null], [149, '延奏', '延奏-C0含苞', null], [193, '延奏', '延奏-C0含苞追加', null]])
+    const outroHits = eventsOfLog(out.log, 'hit').filter(h => h.char === '椿')
+    expect(outroHits.map(h => [h.f, h.action, h.judgment])).toEqual([[149, '延奏', '延奏-C0普通'], [149, '延奏', '延奏-C0含苞'], [193, '延奏', '延奏-C0含苞追加']])
+    expect(outroHits.every(h => h.dmg !== null && h.dmg.expected > 0)).toBe(true)
+    expect(gd.characters['椿']!.actions['延奏']!.judgments.filter(j => j.chainRange?.max === 4).map(j => j.multiplier)).toEqual([3.2924, 3.2924, 4.5902])
   })
 
   test('T05-5 切人结束技能：切出时 A4 已过局部第 72 帧 → 按取消处理；没到则在后台打完', () => {

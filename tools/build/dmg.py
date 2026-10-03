@@ -36,9 +36,13 @@ def index_dmg(rows: list, issues: Issues) -> dict:
     return out
 
 
-def level_index(chara: str, name: str) -> int:
-    """§4.3：角色技能取 10 级；通用块的谐度破坏只有 1 级"""
+def level_index(chara: str, name: str, rates: list | None = None) -> int:
+    """§4.3：角色技能取 10 级；通用块的谐度破坏只有 1 级。
+    只有第 1 级有倍率、其余各级都是 0 的（延奏等不随技能等级成长的技能，全表 43 行）取 1 级——
+    原先一律取 10 级，这些行的倍率被读成 0（2026-10-03，椿延奏 3.2924 / 4.5902 与 nanoka 3.7 一致）"""
     if chara == '通用' and name.startswith('谐度破坏'):
+        return 1
+    if rates and rates[0] and not any(rates[1:]):
         return 1
     return 10
 
@@ -46,8 +50,8 @@ def level_index(chara: str, name: str) -> int:
 def dmg_view(entry: dict, via: str) -> dict:
     r = entry['cells']
     chara, name = str(r[D_CHARA]).strip(), str(r[D_NAME]).strip()
-    lv = level_index(chara, name)
     rates = [as_num(float(_v(x) or 0)) for x in r[D_RATE:D_RATE + 20]]
+    lv = level_index(chara, name, rates)
     calc_type = int(_v(r[D_CALC_TYPE]) or 0)
     formula_type = int(_v(r[D_FORMULA_TYPE]) or 0)
     out = {

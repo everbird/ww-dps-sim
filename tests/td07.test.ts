@@ -53,6 +53,47 @@ dataDescribe('TD-07 M0 队伍', () => {
     expect(eventsOfLog(out.log, 'hit')[0]!.buffs).toEqual(['椿.固有1', '椿.固有2', '千古洑流.共鸣效率', '千古洑流.攻击'])
   })
 
+  test('散华 C6：同一帧引爆两块冰给 2 层（2026-10-03 实测，TD-07 Q3）', () => {
+    const data = structuredClone(gd)
+    data.characters['散华'] = {      // 测试用钩子：E 命中时同时引爆冰棱与冰川（真正的引爆钩子见 TD-08 §5.1）
+      ...gd.characters['散华']!,
+      hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') { ctx.spawnJudgment('E-引爆冰棱'); ctx.spawnJudgment('大招-引爆冰川') } } },
+    }
+    const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 E'] })
+    const c6 = eventsOfLog(out.log, 'buffApply').filter(e => e.buff === '散华.共鸣链6' && e.target === '散华')
+    expect(c6.map(e => [e.f, e.stacks])).toEqual([[19, 1], [19, 2]])
+  })
+
+  test('散华 C4：大招后 5 秒内的下次重击爆裂，两段都吃 +120%，第二段后用掉（TD-07 Q5）', () => {
+    const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 R', '散华 重击居合', '散华 重击居合'] })
+    const hits = eventsOfLog(out.log, 'hit').filter(h => h.action === '重击居合')
+    expect(hits.map(h => h.buffs.includes('散华.共鸣链4'))).toEqual([true, true, false, false])
+    expect(hits[0]!.factors!.bonus).toBeCloseTo(1 + 0.12 + 1.2, 12)      // 冷凝加成 12% 与 120% 同区相加
+    const used = eventsOfLog(out.log, 'buffExpire').find(e => e.buff === '散华.共鸣链4')!
+    expect([used.f, used.reason]).toEqual([hits[1]!.f, 'removed'])
+  })
+
+  test('散华固有2：第 5 段普攻后冰绽伤害 +20%，只对三种引爆', () => {
+    const data = structuredClone(gd)
+    data.characters['散华'] = {      // 测试用钩子：E 命中时引爆冰棱
+      ...gd.characters['散华']!,
+      hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } },
+    }
+    const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 A1 A2 A3 A4 A5', '散华 E'] })
+    const hits = eventsOfLog(out.log, 'hit')
+    expect(hits.find(h => h.judgment === 'E-引爆冰棱')!.buffs).toContain('散华.固有2')
+    expect(hits.find(h => h.judgment === 'E')!.buffs).not.toContain('散华.固有2')
+  })
+
+  test('维里奈：强化重击只留一种起手（+12 协奏、−1 光合）；固有1 也由强化空中攻击触发（m0-confirm §6 V2、V5）', () => {
+    const 重击 = gd.characters['维里奈']!.actions['重击']!
+    expect(重击.judgments.map(j => j.name)).toEqual(['重击-强化冲'])
+    expect(重击.castGains).toEqual([{ atFrame: 0, resource: 'concerto', amount: 12 }])
+    expect(重击.judgments[0]!.gains.core[0]).toBe(-1)
+    const 固有1 = gd.characters['维里奈']!.buffs.find(b => b.id === '维里奈.固有1')!
+    expect(JSON.stringify(固有1.trigger)).toContain('强化空中A3')
+  })
+
   test('T07-7 trigger 数组：维里奈固有在大招开始与延奏时各施加一次（全队）；延奏的全伤害加深也给全队', () => {
     const out = m0Run(gd, { initial: { onField: 2, concerto: [0, 0, 100] }, rotation: ['维里奈 R', 'switch 椿'] })
     const outro = eventsOfLog(out.log, 'outro')[0]!.f
