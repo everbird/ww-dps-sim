@@ -102,7 +102,14 @@ export default defineCharacter('椿', {
     //   状态与协奏条件由角色钩子 canStart 判断（TD-08），协奏消耗归 TD-06，这里只写冷却
     E1: { cooldown: 240, cooldownGroup: 'E' },
     E2: { cooldown: 240, cooldownGroup: 'E' },
-    E3: { cooldown: 1500 },
+    // 一日花的优先级 [8, 5, 2] 没有变化帧：派生窗口 [78, 108) 要优先级降到 2 普攻才接得上，所以第 78 帧降到 2
+    // （2026-10-04 用户确认，m0-confirm §8）；中间的 5 从哪帧起不影响普攻，取命中帧 60。E3-C6永生花 6 链才有
+    E3: {
+      cooldown: 1500, accept: ['chainAdditive'],
+      priority: [{ fromFrame: 0, value: 8 }, { fromFrame: 60, value: 5 }, { fromFrame: 78, value: 2 }],
+    },
     大招: { cooldown: 1500 },             // 共鸣解放冷却 25 秒（nanoka 3.7）
+    QTE: { accept: ['priorityChangeGuess'] },       // 第 71 帧（输入锁结束）降到 1（2026-10-04 用户确认）
+    延奏: { accept: ['noEnd'] },                     // 延奏走独立时间线（TD-05 §4.3），结束帧用不到
   },
 })

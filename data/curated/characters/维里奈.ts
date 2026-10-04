@@ -94,7 +94,11 @@ export default defineCharacter('维里奈', {
     // 两行都算会变成 +24 / −2；先留与普通重击同样第 24 帧冲出的"强化冲"（连冲何时出现待查，m0-confirm §6 V2）
     重击: { dropRows: ['重击-强化连冲'], followUp: { after: '重击-强化冲', action: '重击-强化撞1' }, judgments: { '重击-强化冲': { heals: true } } },
     '重击-冲': { followUp: { after: '重击-冲', action: '重击-撞' } },
-    QTE: { followUp: { after: 'QTE-冲', action: 'QTE-撞' } },                // 冲刺总能撞到（m0-confirm §6 V1）
+    QTE: { followUp: { after: 'QTE-冲', action: 'QTE-撞' }, accept: ['priorityChangeGuess'] },   // 冲刺总能撞到（m0-confirm §6 V1）；第 53 帧（输入锁结束）降到 4
+    // 推断值的处理见 m0-confirm §8（2026-10-04）：派生帧降优先级，按默认规则接受
+    'QTE-撞': { accept: ['priorityChangeGuess'] },
+    '重击-强化撞1': { accept: ['priorityChangeGuess'] },
+    C6: { accept: ['noEnd', 'noPriority', 'kindGuess', 'chainAdditive'] },     // 6 链才有（维里奈 3 链）
     // 协同攻击不随大招自动出，由钩子在命中带光合标记的目标时生成（TD-08 P9）。
     // heals：动作表没有治疗判定，带治疗的这几段标出来，结算后记治疗事件（触发隐世回光等"提供治疗时"的效果）；治疗量不建模。
     // nanoka 3.7 写了回复生命 / 有治疗量的：草木生长、协同攻击、星星花绽放（重击 / 空中攻击）；延奏盛放与共鸣链1 的持续回复见钩子
