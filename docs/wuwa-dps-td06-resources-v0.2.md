@@ -324,7 +324,9 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 | Q13 | 偏移 / 干涉 / 响应、异常效应 | 不建（M0 三人用不到；数据里的响应、异常伤害仍记 0 并提示） | 加 3.0 以后的角色、带异常效应的角色时（m0-confirm §9 R1、R2） |
 | Q14 | 韧性（削韧值打空的硬直）、脆弱时长 | 不建（不影响伤害） | —— |
 
-## 17. 对其他文档的调整（v0.2，下次改这些文档时并回）
+## 17. 对其他文档的调整（v0.2）
+
+> **已并回**（2026-10-04）：TD-01 v0.1.6、TD-02 v0.1.6、TD-03 v0.1.2、TD-04 v0.1.4、TD-09 v0.1.3、TD-10 v0.1.1、总设计 v0.1.7（见各文档附录）。
 
 - **TD-01**：§9 敌人新增 `whiteBarTough`（prop RageMax ÷ 100 × PropExtraRate）；§9.2"削韧值削的是韧性，不是白条"改为"削韧值同时削韧性与白条（用户确认）"，Q16 关闭；§11.3 `tune-break.json` 已产出（变体倍率、结算次数、对照值、基础值、COST 系数）；§13.1 动作类别：dmg 技能归类 14 → `tuneBreak`，组名"谐度破坏"开头 → `tuneBreak`；谐度破坏组的判定按谐度破坏表的结算次数、`followHitstop`，`switchLockUntil = endFrame`；RelatedProperty 10000099（谐度破坏基础值）不再打 `relatedAttrOther`。
 - **TD-02**：`ActionKind` 加 `tuneBreak`；`EnemyPreset` 加 `whiteBarTough`、`paralysisFrames`；`EnemyRuntime` 加 `paralyzedUntil`、`tuneBreakBy`；`Rules` 加 `tuneBreakLock`；场景 `options.tuneBreak`，自定义敌人的 `whiteBar` 改按削韧值、加 `paralysisSec`；`RotationItem` / `Command` 加 `optional`；`SimEvent` 加 `skip`；`ENEMY_STATE_CHANGES` 加 `breakEnd`；`Summary.enemy`、`Summary.skipped`；`GenEnemy.whiteBarTough`。
