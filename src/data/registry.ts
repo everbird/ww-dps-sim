@@ -4,13 +4,14 @@
 // 没有模块的角色算不对（总设计 T10：一次一支队伍）。
 import { STAT_BY_PROP_ID, type BlockKey, type StatKey } from './common'
 import { assembleBlock } from './assemble-action'
+import { assembleEchoActions } from './assemble-echo'
 import {
   BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
 } from './buff.schema'
-import type { CharacterModuleDef, EchoSetModule, WeaponModule } from './define'
-import type { GenActionFile, GenCharacter, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
+import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
+import type { GenActionFile, GenCharacter, GenEcho, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
 import {
-  DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
+  DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
 import { parseOrThrow } from './validate'
 
@@ -19,12 +20,14 @@ export interface GeneratedFiles {
   characters: Record<string, GenCharacter>
   actions: Record<BlockKey, GenActionFile>          // 块键 → 动作文件（角色块与通用块）
   weapons: GenWeapon[]
+  echoes: GenEcho[]                                 // echoes.json（TD-01 §8）；没有时为空
   enemies: GenEnemy[]
 }
 
 export interface CuratedModules {
   characters: CharacterModuleDef[]
   weapons: WeaponModule[]
+  echoes: EchoModule[]                              // data/curated/echoes.ts
   echoSets: EchoSetModule[]
   envBuffs: BuffDefInput[]
 }
@@ -43,6 +46,13 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
   for (const w of gen.weapons) weapons[w.key] = buildWeapon(w, passives.get(w.key))
   for (const name of passives.keys())
     if (!weapons[name]) throw new Error(`data/curated/weapons 写了不存在的武器"${name}"`)
+
+  // 声骸：全部装配（不像角色那样要求有模块）；echoes.ts 只补首位加成、技能附带的效果与覆盖（TD-01 §13.3）
+  const echoMods = new Map(cur.echoes.map(m => [m.name, m]))
+  const echoes: Record<string, EchoDef> = {}
+  for (const e of gen.echoes) echoes[e.key] = buildEcho(e, echoMods.get(e.key))
+  for (const name of echoMods.keys())
+    if (!echoes[name]) throw new Error(`data/curated/echoes 写了不存在的声骸"${name}"（名字照声骸表 A 列写）`)
 
   const echoSets: Record<string, EchoSetDef> = {}
   for (const s of cur.echoSets) {
@@ -64,8 +74,7 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     version: /(\d{8})/.exec(gen.meta.xlsxFile)?.[1] ?? gen.meta.xlsxFile,
     meta: gen.meta,
     characters, commonActions, weapons,
-    echoes: {},                                     // echoes.json 在 M3（TD-01 §12.1）
-    echoSets, enemies,
+    echoes, echoSets, enemies,
     effects: {}, abnormalBaseByLevel: [],           // M4
     tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } },   // M4
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
@@ -127,6 +136,25 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     resourceEffects: (mod.resourceEffects ?? []).map(e => effect(e, mod.name)),
     ...(mod.hooks ? { hooks: mod.hooks } : {}),
     flags,
+  }
+}
+
+/** 一个声骸：装配动作、登记 echoes.ts 的效果；echoes.ts 处理过的声骸级 flag 去掉（check:data 也用它） */
+export function buildEcho(e: GenEcho, mod: EchoModule | undefined): EchoDef {
+  const { actions, q } = assembleEchoActions(e, mod?.actionOverrides)
+  // echoes.ts 写了的就算处理过：COST、Q 的冷却（cooldownText）、按次数充能（charges）
+  const ov = mod?.actionOverrides?.[q]
+  const handled = new Set([
+    ...(mod?.cost !== undefined ? ['costMissing'] : []),
+    ...(ov?.cooldown !== undefined ? ['cooldownText'] : []),
+    ...(ov?.charges !== undefined ? ['charges'] : []),
+  ])
+  return {
+    key: e.key, cost: mod?.cost ?? e.cost, actions, q, description: e.description,
+    mainSlotBuffs: (mod?.mainSlotBuffs ?? []).map(b => buff(b, `声骸 ${e.key}`)),
+    resourceEffects: (mod?.resourceEffects ?? []).map(x => effect(x, `声骸 ${e.key}`)),
+    curated: mod !== undefined,
+    flags: e.flags.filter(f => !handled.has(f)),
   }
 }
 

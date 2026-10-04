@@ -24,11 +24,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
+from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
 from enemies import build_enemies  # noqa: E402
 import golden  # noqa: E402
 import nanoka  # noqa: E402
 from parse import Issues, as_num  # noqa: E402
-from report import render, render_golden  # noqa: E402
+from report import render, render_echoes, render_golden  # noqa: E402
 from weapons import build_weapons  # noqa: E402
 from xlformula import Evaluator  # noqa: E402
 
@@ -110,6 +111,30 @@ def main() -> int:
     weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues)
     enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues)
 
+    # §8 声骸（倍率在 nanoka 之后连）
+    ws = wb['声骸']
+    costs = build_costs(list(wb['索引'].iter_rows(min_row=48, max_row=58, max_col=23, values_only=True)))
+    echoes, phantoms = drop_phantoms(parse_echo_sheet(
+        list(ws.iter_rows(min_row=1, max_col=34, values_only=True)),
+        list(wbf['声骸'].iter_rows(min_row=1, max_col=34, values_only=True)), merged_map(ws), costs, issues))
+
+    # nanoka：技能冷却、技能文本与声骸数据（m0-confirm §5）。取不到只提示，不阻断；声骸倍率沿用上次 nanoka.json 里的
+    out = Path(args.out)
+    nk, nk_note = None, ''
+    if args.nanoka != 'off':
+        try:
+            nk, notes = nanoka.build(list(characters), args.nanoka, nanoka.load_name_map(Path(args.curated)),
+                                     [e['key'] for e in echoes], nanoka.load_echo_name_map(Path(args.curated)))
+            nk_note = (f"\n## nanoka\n\n版本 {nk['version']}，{len(nk['characters'])} 个角色、{len(nk['echoes'])} 个声骸 → `nanoka.json`。\n"
+                       + ''.join(f'\n- {n}' for n in notes) + ('\n' if notes else ''))
+        except Exception as e:  # noqa: BLE001
+            print(f'nanoka 没取到（{e}）；沿用上次的 nanoka.json', file=sys.stderr)
+            nk_note = f'\n## nanoka\n\n没取到：{e}\n'
+    nk_echoes = (nk or _previous_nanoka(out)).get('echoes', {})
+    echo_gaps: list = []
+    for e in echoes:
+        join_echo(e, dmg, dmg_join, nk_echoes.get(e['key']), issues, echo_gaps)
+
     # §5.1 公式定义原文
     formula_ref = {}
     e4 = b['E4'].value
@@ -139,7 +164,6 @@ def main() -> int:
             blocking.append(f'严格名单：{name} 有 {len(strict[name])} 个伤害判定没连上 dmg（见下节）')
 
     # 写文件
-    out = Path(args.out)
     (out / 'actions').mkdir(parents=True, exist_ok=True)
     for old in (out / 'actions').glob('*.json'):
         old.unlink()
@@ -148,7 +172,10 @@ def main() -> int:
     _dump(out / 'characters.json', characters)
     _dump(out / 'formula-ref.json', formula_ref)
     _dump(out / 'weapons.json', weapons)
+    _dump(out / 'echoes.json', echoes)
     _dump_lines(out / 'enemies.json', enemies)
+    if nk is not None:
+        _dump(out / 'nanoka.json', nk)
     (out / 'fixtures').mkdir(exist_ok=True)
     _dump(out / 'fixtures' / 'golden-damage.json', golden.clean(golden_damage))
     _dump_lines(out / 'fixtures' / 'golden-zones.json', golden.clean(golden_zones))
@@ -168,6 +195,7 @@ def main() -> int:
         '出生帧': sum(1 for r in rows if r['birthFrame'] is not None),
         '角色（characters.json）': len(characters),
         '武器（weapons.json）': len(weapons),
+        '声骸（echoes.json）': len(echoes),
         '敌人（enemies.json）': len(enemies),
         'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
         'golden 乘区格': len(golden_zones),
@@ -178,24 +206,15 @@ def main() -> int:
         'settings': settings,
         'counts': {'blocks': len(blocks), 'groups': counts['动作组'], 'rows': len(rows), 'hitRows': kinds['hit'],
                    'joined': sum(1 for r in hit if 'dmg' in r), 'noDmg': flags['noDmg'],
-                   'characters': len(characters), 'weapons': len(weapons), 'enemies': len(enemies),
+                   'characters': len(characters), 'weapons': len(weapons), 'echoes': len(echoes), 'enemies': len(enemies),
                    'goldenEntries': len(golden_damage['entries']),
                    'goldenZones': len(golden_zones)},
     }
     _dump(out / 'meta.json', meta)
     report = render(meta, counts, blocking, strict, gaps, cross, issues, blocks, flags)
+    report += render_echoes(echoes, echo_gaps, bool(nk_echoes), phantoms)
     report += render_golden(golden_damage, golden_zones, golden_info)
-
-    # nanoka：技能冷却与技能文本（m0-confirm §5）。取不到只提示，不阻断
-    if args.nanoka != 'off':
-        try:
-            nk, notes = nanoka.build(list(characters), args.nanoka, nanoka.load_name_map(Path(args.curated)))
-            _dump(out / 'nanoka.json', nk)
-            report += f"\n## nanoka\n\n版本 {nk['version']}，{len(nk['characters'])} 个角色 → `nanoka.json`。\n"
-            report += ''.join(f'\n- {n}' for n in notes) + ('\n' if notes else '')
-        except Exception as e:  # noqa: BLE001
-            print(f'nanoka 没取到（{e}）；沿用上次的 nanoka.json', file=sys.stderr)
-            report += f'\n## nanoka\n\n没取到：{e}\n'
+    report += nk_note
     (out / 'build-report.md').write_text(report, 'utf-8')
 
     print(f"完成：{len(blocks)} 块、{counts['动作组']} 组、{len(rows)} 行；连上 {meta['counts']['joined']}，"
@@ -203,6 +222,12 @@ def main() -> int:
     for msg in blocking:
         print(f'阻断：{msg}', file=sys.stderr)
     return 1 if blocking else 0
+
+
+def _previous_nanoka(out: Path) -> dict:
+    """--nanoka off 或没取到时，沿用上次构建的 nanoka.json（声骸倍率要用）"""
+    p = out / 'nanoka.json'
+    return json.loads(p.read_text('utf-8')) if p.exists() else {}
 
 
 def _resource_version(wb) -> str | None:

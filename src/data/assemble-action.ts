@@ -14,6 +14,7 @@ const SIDES: DilationSide[] = ['self', 'enemy', 'ally']
 export interface AssembleOptions {
   element?: Element                         // 没连上 dmg 的判定用角色元素（TD-01 §13.2）；缺省物理
   charNames?: ReadonlySet<string>           // 命中类型写成角色名的判定算友方
+  kind?: ActionKind                         // 指定动作类别，不推断（声骸动作一律 'echo'，TD-01 §13.3）
 }
 
 /** 装配一个块。overrides = 角色模块的 actionOverrides；写了块里不存在的动作 / 行 / 判定直接报错 */
@@ -53,7 +54,10 @@ export function forChain(actions: Record<ActionId, ActionDef>, chain: number): R
   return out
 }
 
-function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, opts: AssembleOptions, dropRows: string[] = []): ActionDef {
+/** 一组 → 一个动作（TD-01 §13.1）。file 只用 key（报错与来源）；ids 是块内全部组名（推连段前置用） */
+export function assembleGroup(
+  file: Pick<GenActionFile, 'key'>, g: Pick<GenGroup, 'id' | 'rows'>, ids: ReadonlySet<string>, opts: AssembleOptions, dropRows: string[] = [],
+): ActionDef {
   const flags = new Set<string>()                           // 组级 flag，同名只记一次
   for (const n of dropRows)
     if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 dropRows 写了不存在的行"${n}"`)
@@ -84,7 +88,7 @@ function assembleGroup(file: GenActionFile, g: GenGroup, ids: Set<string>, opts:
   }))
 
   const priority = assemblePriority(rows, flags)
-  const kind = kindOfGroup(g.id, rows, flags)
+  const kind = opts.kind ?? kindOfGroup(g.id, rows, flags)
 
   // 连段前置：A{n} ← A{n−1}（同前缀、块内存在）；闪避反击 ← 极限闪避（TD-04 §6.2）
   let comboFrom: string[] | undefined
@@ -235,10 +239,10 @@ const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
 }
 const J_HANDLED: Record<string, string[]> = {
   lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
-  chainRange: ['chainAdditive'],
+  chainRange: ['chainAdditive'], relatedAttr: ['relatedAttrOther'],
 }
 
-function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
+export function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   const accepted = new Set(ov.accept ?? [])
   for (const [field, fl] of Object.entries(HANDLED)) if (ov[field as keyof ActionOverride] !== undefined) fl.forEach(f => accepted.add(f))
   const out: ActionDef = { ...def }
@@ -254,6 +258,8 @@ function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
   if (ov.cooldown !== undefined) out.cooldown = ov.cooldown
   if (ov.cooldownGroup !== undefined) out.cooldownGroup = ov.cooldownGroup
+  if (ov.charges !== undefined) out.charges = ov.charges
+  if (ov.summon !== undefined) out.summon = ov.summon
   const jov = ov.judgments ?? {}
   for (const n of Object.keys(jov))
     if (!def.judgments.some(j => j.name === n)) throw new Error(`${def.owner} ${def.id} 的 judgments 覆盖写了不存在的判定"${n}"`)
@@ -350,17 +356,19 @@ function judgmentDamage(r: GenRow, kind: ActionKind, opts: AssembleOptions, jf: 
   const damaging = d !== undefined && d.calcType === 0 && target === 'enemy' && !r.hints.noDamage
   const core = r.gains.core
   const shared = core.map(c => c?.sharedRows !== undefined) as [boolean, boolean, boolean]
+  // 连 nanoka 的声骸判定：能量、削韧也按 nanoka（xlsx 的声骸数值偏旧，两边不同时以 nanoka 为准，2026-10-04 用户确认）
+  const nk = d?.via === 'nanoka' ? d : undefined
   return {
     target, calc, relatedAttr,
     multiplier: damaging ? d.multiplier : 0,
     element: d ? ELEMENT_BY_CODE[d.element] ?? '物理' : opts.element ?? '物理',
     tags: [d ? DAMAGE_TAG_BY_TYPE[d.damageType] ?? '其他' : TAG_BY_KIND[kind]],
     gains: {
-      energy: perHit(r.gains.energy, r, jf),
+      energy: nk ? (nk.energy ?? 0) / 100 : perHit(r.gains.energy, r, jf),
       concerto: perHit(r.gains.concerto, r, jf),
       core: [perHit(core[0], r, jf), perHit(core[1], r, jf), perHit(core[2], r, jf)],
     },
-    gauges: { toughness: r.toughness ?? 0, tunability: r.tunability ?? 0 },
+    gauges: { toughness: nk ? (nk.toughLv ?? 0) / 100 : r.toughness ?? 0, tunability: r.tunability ?? 0 },
     ...(d && d.formulaType !== 0 ? { formula: { type: d.formulaType, rate: d.formulaRate ?? 0 } } : {}),
     ...(d?.cureBase !== undefined ? { cureBase: d.cureBase } : {}),
     ...(shared.some(Boolean) ? { coreOncePerAction: shared } : {}),

@@ -70,7 +70,7 @@ export function simulate(r: ResolvedScenario): SimResult {
 function initialState(r: ResolvedScenario): SimState {
   const chars = r.team.map((m): CharRuntime => ({
     slot: m.slot, name: m.def.name, action: null, last: null, startedThisTick: false,
-    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [0, 0, 0, 0, 0], cooldowns: {}, flags: {},
+    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [0, 0, 0, 0, 0], cooldowns: {}, charges: {}, flags: {},
   })) as SimState['chars']
   const e = r.enemy
   const enemy: EnemyRuntime = {
@@ -128,7 +128,8 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   })
   const link = sim.bus.spawned.get(j.id)                           // 钩子生成的判定：结算接在生成它的那条事件链上
   if (link) sim.bus.chain.set(s.log.length - 1, link)
-  for (const f of full) {
+  const after: Parameters<typeof log>[1][] = [...full, ...(d.heals ? [{ type: 'heal', char: m.def.name, source: d.name } as const] : [])]
+  for (const f of after) {
     log(s, f)
     if (link) sim.bus.chain.set(s.log.length - 1, link)
   }
@@ -190,6 +191,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     },
     setFlag: (key, value) => { s.chars[self].flags[key] = value },
     getFlag: key => s.chars[self].flags[key],
+    heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
   }
 }

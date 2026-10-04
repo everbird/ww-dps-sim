@@ -124,6 +124,20 @@ dataDescribe('M0 三人的钩子', () => {
     expect(eventsOfLog(strong.log, 'hit').find(h => h.judgment === '重击-强化冲')!.gains.core[0]).toBe(-1)
   })
 
+  test('T08-维里奈-4 治疗事件（nanoka 3.7 写了回复生命 / 有治疗量的）：星星花绽放、大招、协同攻击结算时各记一次；延奏盛放每秒一跳、共鸣链1 每 5 秒一跳，各 6 跳', () => {
+    const bf = (e: { t: number }) => Math.round(e.t * 60)
+    const out = m0Run(gd, { initial: { onField: 2, concerto: [0, 0, 100] }, rotation: ['维里奈 E', '维里奈 重击 R', 'switch 散华', 'wait 1900'], options: { maxWait: 2000 } })
+    expect(out.error).toBeUndefined()
+    const heals = eventsOfLog(out.log, 'heal')
+    expect(heals.every(h => h.char === '维里奈')).toBe(true)
+    expect(heals.filter(h => !['延奏-盛放', '共鸣链1'].includes(h.source)).map(h => h.source).slice(0, 3)).toEqual(['重击-强化冲', '大招-标记', '大招-协同伤害'])
+    expect(heals.find(h => h.source === '大招-标记')!.f).toBe(eventsOfLog(out.log, 'hit').find(h => h.judgment === '大招-标记')!.f)
+    // 计时 buff 施加那一帧算第 1 帧（TD-07），所以第一跳在延奏后第 59 帧，之后每 60 / 300 帧一跳
+    const o = bf(eventsOfLog(out.log, 'outro').find(e => e.char === '维里奈')!)
+    expect(heals.filter(h => h.source === '延奏-盛放').map(h => bf(h) - o)).toEqual([59, 119, 179, 239, 299, 359])
+    expect(heals.filter(h => h.source === '共鸣链1').map(h => bf(h) - o)).toEqual([299, 599, 899, 1199, 1499, 1799])
+  })
+
   test('T08-维里奈-3 光合标记 12 秒；任何人命中带标记的目标都触发协同攻击，全队共用 1 秒冷却', () => {
     const out = m0Run(gd, { initial: { onField: 2 }, rotation: ['维里奈 R', 'switch 散华', '散华 E A1 A2'] })
     const mark = eventsOfLog(out.log, 'buffApply').find(e => e.buff === '维里奈.光合标记')!

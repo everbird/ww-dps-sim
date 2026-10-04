@@ -65,6 +65,8 @@ export interface ActionDef {
   switchLockUntil?: Frame                           // 此帧前不能切人
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖
   cooldownGroup?: string                            // 共用冷却的组名（椿 E1 / E2 共用 'E'）；缺省按动作 ID
+  charges?: number                                  // 按次数充能：最多存几次（初始满），每 cooldown 帧回复 1 次（梦魇·无冠者 3 次 / 12 秒）
+  summon?: boolean                                  // 召唤类声骸（脱手）：判定走独立时间线，角色之后的动作、取消都不影响，也不挡"就绪"
   energyCost?: number                               // 开始时要有、并扣掉的大招能量：注册层给别名 R 的动作设（TD-06 §2.3）
   endOnSwitchOut?: Frame                            // 切出时局部帧 ≥ 它就结束（"第nF后切人结束技能"，TD-05 §5）
   followUp?: { after: string; action: ActionId }    // 该判定第一次结算后立刻开始 action（TD-08 P10）
@@ -112,6 +114,7 @@ export interface JudgmentDef {
   hitstop: DilationDef | null                       // 每次命中时登记的膨胀（anchor = 'hit'；膨胀发生为空的各侧，任何类型）
   formula?: { type: number; rate: number }          // dmg FormulaType ≠ 0：rate = FormulaParam5（已 × 0.0001），钩子据此算 Formula1
   cureBase?: number                                 // 治疗 / 护盾的固定值 CureBaseValue（calc = 'heal'）
+  heals?: boolean                                   // 这次结算同时为友方回复生命：结算后记一条 heal 事件（治疗量不建模，角色模块标）
   chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
   flags: string[]
 }
@@ -135,11 +138,15 @@ export interface WeaponDef {
 
 export interface EchoDef {
   key: string
-  cost: 1 | 3 | 4
-  kind: '召唤' | '变身' | null
-  actions: Record<ActionId, ActionDef>              // 按体型选好行之前的全部动作
+  cost: 1 | 3 | 4 | null                            // `索引` 页查不到、curated 也没补的为 null
+  /** 动作 ID 是 'Q·<组名>'（kind 'echo'）；按体型分组的（鸣钟之龟）带 '@<体型前缀>'，装配时只留匹配体型的一组并去掉后缀 */
+  actions: Record<ActionId, ActionDef>
+  q: ActionId                                       // 别名 Q：第一个技能版本的第一段
   description: string | null                        // 技能说明原文
-  mainSlotBuffs: BuffDef[]                          // "在首位装配该声骸技能时…"（curated）
+  mainSlotBuffs: BuffDef[]                          // 首位加成与技能附带的 buff（curated）
+  resourceEffects: ResourceEffect[]                 // 技能附带的资源型效果（curated）
+  curated: boolean                                  // data/curated/echoes.ts 有没有它
+  flags: string[]                                   // 声骸级的 flag（cooldownText、charges、stagesGuess…）
 }
 
 export interface EchoSetDef {

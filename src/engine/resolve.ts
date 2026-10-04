@@ -3,8 +3,9 @@
 // 纯函数：只读 GameData，不读文件。
 import { STAT_TO_ZONE, type ActionId, type Chain, type Element, type Rank, type Slot, type StatKey } from '../data/common'
 import { forChain } from '../data/assemble-action'
+import { echoActionsFor } from '../data/assemble-echo'
 import type { BuffDef } from '../data/buff.schema'
-import { DEFAULT_RULES, type ActionDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
+import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
 import type { RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
@@ -61,6 +62,16 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
 
   const buffs = [...members.flatMap(b => b.buffs), ...env]
   const effects = members.flatMap(b => b.effects)
+  // 触发条件 ownerHas 指向的 buff 要是同一持有者登记过的，否则永远不会触发（拼错了也不报）
+  for (const { def, owner } of [...buffs, ...effects]) {
+    if (typeof def.trigger === 'string') continue
+    for (const sp of Array.isArray(def.trigger) ? def.trigger : [def.trigger]) {
+      const need = sp.where?.ownerHas
+      if (need !== undefined && !buffs.some(b => b.def.id === need && b.owner === owner))
+        issues.push(`${def.id} 的触发条件 ownerHas 写的 buff "${need}"，同一持有者没有登记`)
+    }
+  }
+  if (issues.length > 0) throw new ResolveError(issues)
   // 共鸣效率不按伤害元素 / 标签过滤：写了 filter 的按无条件算（TD-06 §2.1）
   const regenFiltered = buffs.filter(b => b.def.zone === 'energyRegen' && b.def.filter).map(b => b.def.id)
   if (regenFiltered.length > 0) warnings.push(`共鸣效率 buff 不看 filter，按无条件算：${[...new Set(regenFiltered)].join('、')}`)
@@ -123,16 +134,18 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   for (const [k, v] of Object.entries(def.treeStats)) stat('技能树', k as StatKey, v)
   const echoes: ResolvedMember['echoes'] = []
   const sets = new Map<string, number>()
-  let echoMissing = false
-  for (const e of m.echoes) {
+  for (const [i, e] of m.echoes.entries()) {
+    // 首位声骸要放技能，必须在声骸表里；其余几件只计入词条与套装，表里没有（1C 小怪多半不在）也行
+    const edef = echoOf(data, e.name)
+    if (!edef && i === 0) {
+      const hint = Object.keys(data.echoes).length > 0 ? '名字照声骸表 A 列写，如"梦魇·无冠者"' : '没有 echoes.json，先 pnpm build:data'
+      issues.push(`${where}：首位声骸"${e.name}"不在声骸表里，放不了技能（${hint}）`)
+    }
     for (const [k, v] of Object.entries(e.main)) stat('声骸', k as StatKey, v!)
     for (const [k, v] of Object.entries(e.subs)) stat('声骸', k as StatKey, v!)
-    const edef = data.echoes[e.name] ?? null
-    if (!edef) echoMissing = true
     echoes.push({ def: edef, set: e.set, main: e.main as StatValues, subs: e.subs as StatValues })
     sets.set(e.set, (sets.get(e.set) ?? 0) + 1)
   }
-  if (echoMissing) warnings.push(`${m.char}：还没有声骸数据（echoes.json 在 M3），声骸技能与首位加成不计入，只计入主副词条`)
 
   // 常驻与触发型 buff：角色（按共鸣链过滤）、武器被动（按谐振阶取值）、套装件数效果
   for (const b of def.buffs)
@@ -143,6 +156,25 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   for (const e of def.resourceEffects)
     if (!e.requires || chain >= e.requires.chain) effects.push({ def: e, amount: pick(e.amount, rank), owner: slot })
   for (const e of weapon.resourceEffects) effects.push({ def: e, amount: pick(e.amount, rank), owner: slot })
+
+  // 首位声骸（总设计 §3.3 第 4 步、TD-01 §13.3）：技能动作按体型挑好并入动作表、别名 Q；首位加成与技能附带的效果
+  // 登记在武器之后、套装之前（TD-07 的登记顺序）
+  let echoActions: Record<ActionId, ActionDef> = {}
+  const aliases = { ...def.aliases }
+  const main = echoes[0]?.def
+  if (main) {
+    const picked = echoActionsFor(main, def.bodyType)
+    echoActions = picked.actions
+    if (aliases.Q !== undefined) issues.push(`${where}：角色模块的别名 Q 与首位声骸技能冲突`)
+    aliases.Q = picked.q
+    if (picked.note) warnings.push(`${m.char}：首位声骸 ${main.key} ${picked.note}`)
+    for (const b of main.mainSlotBuffs) buffs.push({ def: b, value: pick(b.value, 1), owner: slot })
+    for (const e of main.resourceEffects) effects.push({ def: e, amount: pick(e.amount, 1), owner: slot })
+    if (!main.curated)
+      warnings.push(`${m.char}：首位声骸 ${main.key} 没写进 data/curated/echoes.ts，首位加成与技能附带的效果不计入，只算技能伤害`)
+    const n = main.flags.length + Object.values(echoActions).reduce((a, x) => a + x.flags.length + x.judgments.reduce((b, j) => b + j.flags.length, 0), 0)
+    if (n > 0) warnings.push(`${m.char}：首位声骸 ${main.key} 有 ${n} 处要核对的数据（pnpm check:data -- --flags ${main.key} 查看）`)
+  }
   for (const [name, n] of sets) {
     const set = data.echoSets[name]
     if (!set) {
@@ -154,13 +186,18 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
     }
   }
 
-  // 动作表：体型通用动作 + 角色动作（按共鸣链挑判定）；声骸技能 Q 要到 M3
+  // 动作表：体型通用动作 + 角色动作（按共鸣链挑判定）+ 首位声骸动作（'Q·…'，不会与前两者重名）
   const common = def.commonBlock ? data.commonActions[def.commonBlock] ?? {} : {}
-  const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain) }
+  const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain), ...echoActions }
   return {
-    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, actions, aliases: def.aliases },
+    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, actions, aliases },
     buffs, effects,
   }
+}
+
+/** 声骸名 → 定义：异相只换了配色、数值与本体相同（2026-10-04 用户确认），"异相·X"取 X */
+function echoOf(data: GameData, name: string): EchoDef | null {
+  return data.echoes[name] ?? (name.startsWith('异相·') ? data.echoes[name.slice('异相·'.length)] : undefined) ?? null
 }
 
 /** 数组值 = 武器 R1–R5，按谐振阶取；标记型 buff 没有数值，记 0 */

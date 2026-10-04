@@ -42,6 +42,14 @@ export const WEAPON_TYPE_BY_CODE: Readonly<Record<number, WeaponType>> = {
 export const BODY_TYPES = ['女-大', '女-中', '女-中小', '女-小', '女-特殊', '男-大', '男-中', '男-小'] as const
 export type BodyType = (typeof BODY_TYPES)[number]
 
+/** 声骸表按体型分行时的行名前缀（只有鸣钟之龟，TD-01 §6） */
+export const ECHO_BODIES = ['成女', '少女', '萝莉', '男大', '男中', '男小'] as const
+export type EchoBody = (typeof ECHO_BODIES)[number]
+/** 体型 → 声骸行前缀：中小体型复用少女行（鸣钟之龟"少女-召唤"的备注）；女-特殊没有对应行 */
+export const ECHO_BODY_BY_TYPE: Readonly<Record<BodyType, EchoBody | null>> = {
+  '女-大': '成女', '女-中': '少女', '女-中小': '少女', '女-小': '萝莉', '女-特殊': null, '男-大': '男大', '男-中': '男中', '男-小': '男小',
+}
+
 export const DILATION_TYPES = ['攻击顿帧', '时停', '全局时停', '极限闪避顿帧', '弹反顿帧'] as const
 export type DilationType = (typeof DILATION_TYPES)[number]
 export type DilationSide = 'self' | 'enemy' | 'ally'

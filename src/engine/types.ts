@@ -29,7 +29,8 @@ export interface ResolvedMember {
   def: CharacterDef
   chain: Chain
   weapon: { def: WeaponDef; rank: Rank }
-  echoes: { def: EchoDef | null; set: string; main: StatValues; subs: StatValues }[]   // def 为 null：还没有声骸数据（echoes.json 在 M3），只计入词条
+  echoes: { def: EchoDef | null; set: string; main: StatValues; subs: StatValues }[]   // 第一个是首位声骸（技能 Q）；
+                                            // def 为 null：不在声骸表里的非首位声骸（只计入词条与套装）
   panel: StaticPanel
   actions: Record<ActionId, ActionDef>      // 角色动作 + 体型通用动作 + 首位声骸动作
   aliases: Record<string, ActionId>         // 角色别名 + 'Q'（首位声骸技能）
@@ -119,7 +120,8 @@ export interface CharRuntime {
   energy: number
   concerto: number
   core: [number, number, number, number, number]
-  cooldowns: Record<string, Frame>          // 键：动作 ID 或 'echo'
+  cooldowns: Record<string, Frame>          // 键：cooldownKey（动作 ID、cooldownGroup 或 'echo'）；按次数充能的是"下一次回复还要多久"
+  charges: Record<string, { spent: number; every: Frame }>   // 按次数充能的冷却键：已用掉几次、每次回复要多久（ActionDef.charges）
   flags: Record<string, number | boolean | string>   // 只由钩子读写
 }
 
@@ -129,7 +131,7 @@ export interface ActionRuntime {
   instance: number                          // 动作实例号，"每个实例只发一次"的依据
   localFrame: number                        // 局部帧，可为小数（总设计 T2）；每次推进后取整到 1e-4
   startedAt: number                         // 世界帧
-  cursor: number                            // 时间线（timelineOf(def)）上下一个待发生事件的下标
+  cursor: number                            // 时间线（actionTimeline(def)）上下一个待发生事件的下标
   ended: boolean                            // 已结束或被取消（此后只作为 CharRuntime.last 保留）
   coreGranted: [boolean, boolean, boolean]
   cmd?: CommandRef                          // 由哪条指令开始（接续动作继承，TD-08 P10）
@@ -151,7 +153,7 @@ export interface TailRuntime {
   instance: number
   localFrame: number                        // 沿用动作的局部坐标，改按战斗时钟推进
   events: TimelineEvent[]
-  detached?: true                           // 延奏动作的独立时间线：不受持有者之后的动作影响（TD-05 §4.3）
+  detached?: true                           // 独立时间线（延奏动作，TD-05 §4.3；召唤类声骸的判定）：不受持有者之后的动作影响
   skip?: string[]                           // 跳过的判定名（同 ActionRuntime.skip）
 }
 
@@ -164,7 +166,7 @@ export interface JudgmentRuntime {
   spawnedAt: number                         // 世界帧
   age: number                               // 判定时钟上的年龄（帧，可为小数）：生成时 0，每 tick 结算后推进（TD-04 §5.2）
   ticksDone: number
-  detached?: true                           // 由延奏动作的独立时间线生成：不随持有者之后的动作消失（TD-05 §4.3）
+  detached?: true                           // 由独立时间线生成（延奏动作、召唤类声骸）：不随持有者之后的动作消失（TD-05 §4.3）
 }
 
 export interface BuffRuntime {
@@ -250,6 +252,8 @@ export type SimEvent =
   | (EventBase & { type: 'buffExpire'; buff: string; target: CharName | 'enemy'; reason: 'timeout' | 'switchOut' | 'removed' })
   | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string })
   | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
+  // 治疗：char 提供了一次治疗（标了 heals 的判定结算、钩子记的持续回复每一跳）；治疗量不建模，只用来触发"提供治疗时"的效果
+  | (EventBase & { type: 'heal'; char: CharName; source: string })
   | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
   | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
@@ -304,6 +308,8 @@ export interface HookContext {
   skipJudgments(instance: number, names: string[]): void
   setFlag(key: string, value: number | boolean | string): void
   getFlag(key: string): number | boolean | string | undefined
+  /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
+  heal(source: string): void
   warn(message: string): void
 }
 

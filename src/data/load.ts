@@ -3,10 +3,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { z } from 'zod'
 import type { BuffDefInput } from './buff.schema'
-import type { CharacterModuleDef, EchoSetModule, WeaponModule } from './define'
+import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
 import type { GameData } from './gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema, type GenActionFile,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema, type GenActionFile,
 } from './generated.schema'
 import { buildGameData } from './registry'
 import { parseOrThrow } from './validate'
@@ -35,11 +35,13 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
     {
       meta: read(GenMetaSchema, 'meta.json'), characters: generatedChars, actions,
       weapons: read(z.array(GenWeaponSchema), 'weapons.json'),
+      echoes: existsSync(new URL('echoes.json', gen)) ? read(z.array(GenEchoSchema), 'echoes.json') : [],
       enemies: read(z.array(GenEnemySchema), 'enemies.json'),
     },
     {
       characters,
       weapons: await importList<WeaponModule>(new URL('weapons.ts', cur)),
+      echoes: await importList<EchoModule>(new URL('echoes.ts', cur)),
       echoSets: await importList<EchoSetModule>(new URL('echo-sets.ts', cur)),
       envBuffs: await importList<BuffDefInput>(new URL('env-buffs.ts', cur)),
     },

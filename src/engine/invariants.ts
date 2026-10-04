@@ -29,6 +29,7 @@ export function checkTick(sim: Sim, s: SimState, lastBattle: number): void {
       if (!ok(v, 0, cap)) throw bad(s, `${c.name} 的核心资源 ${i + 1} 为 ${v}，不在 [0, ${cap}]`)
     }
     for (const k in c.cooldowns) if (!(c.cooldowns[k]! >= 0)) throw bad(s, `${c.name} 的冷却 ${k} 为 ${c.cooldowns[k]}`)
+    for (const k in c.charges) if (!(c.charges[k]!.spent >= 0)) throw bad(s, `${c.name} 的充能 ${k} 用掉 ${c.charges[k]!.spent} 次`)
   }
   if (!(s.switchCd >= 0)) throw bad(s, `切人冷却为 ${s.switchCd}`)
   for (const b of s.buffs) {
