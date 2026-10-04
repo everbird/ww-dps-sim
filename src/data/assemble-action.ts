@@ -375,7 +375,10 @@ function judgmentDamage(r: GenRow, kind: ActionKind, opts: AssembleOptions, jf: 
       concerto: perHit(r.gains.concerto, r, jf),
       core: [perHit(core[0], r, jf), perHit(core[1], r, jf), perHit(core[2], r, jf)],
     },
-    gauges: { toughness: nk ? (nk.toughLv ?? 0) / 100 : r.toughness ?? 0, tunability: r.tunability ?? 0 },
+    gauges: {
+      toughness: nk ? (nk.toughLv ?? 0) / 100 : r.toughness ?? 0, tunability: r.tunability ?? 0,
+      ...(d?.whiteBarRatio ? { whiteBarRatio: d.whiteBarRatio } : {}),                 // 按比例削白条（m0-confirm §10 H3）
+    },
     ...(d && d.formulaType !== 0 ? { formula: { type: d.formulaType, rate: d.formulaRate ?? 0 } } : {}),
     ...(d?.cureBase !== undefined ? { cureBase: d.cureBase } : {}),
     ...(shared.some(Boolean) ? { coreOncePerAction: shared } : {}),

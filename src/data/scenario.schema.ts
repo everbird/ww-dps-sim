@@ -51,6 +51,8 @@ export const ScenarioSchema = z.strictObject({
     concerto: z.union([z.number().min(0).max(100), Trio]).default(0),
     onField: z.number().int().min(0).max(2).default(0),
   }).default({ energy: 'full', concerto: 0, onField: 0 }),
+  // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
+  opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
   rotation: z.array(z.string().nullable().transform(v => v ?? '')).min(1),   // 空行、YAML 里只有注释的项（null）不产生指令（TD-09 §2.3）
   options: z.strictObject({
     repeat: z.number().int().min(1).default(1),
@@ -67,15 +69,18 @@ export const ScenarioSchema = z.strictObject({
     if (names.indexOf(n) !== i) ctx.addIssue({ code: 'custom', path: ['team', i, 'char'], message: `角色重复：${n}` })
   })
   let items = 0
-  s.rotation.forEach((line, i) => {
+  const check = (part: 'opening' | 'rotation', lines: string[]) => lines.forEach((line, i) => {
+    const where = `${part === 'opening' ? '启动' : ''}第 ${i + 1} 条`
     const p = parseRotationLine(line)
-    if ('error' in p) { ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${p.error}` }); return }
-    items += p.length
+    if ('error' in p) { ctx.addIssue({ code: 'custom', path: [part, i], message: `${where}：${p.error}` }); return }
+    if (part === 'rotation') items += p.length
     for (const it of p) {
       if (it.kind !== 'wait' && !names.includes(it.char))
-        ctx.addIssue({ code: 'custom', path: ['rotation', i], message: `第 ${i + 1} 条：${it.char} 不在队伍里` })
+        ctx.addIssue({ code: 'custom', path: [part, i], message: `${where}：${it.char} 不在队伍里` })
     }
   })
+  check('opening', s.opening)
+  check('rotation', s.rotation)
   if (items === 0) ctx.addIssue({ code: 'custom', path: ['rotation'], message: '排轴里没有指令（只有空行或注释）' })
 })
 

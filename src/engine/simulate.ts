@@ -5,7 +5,7 @@ import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type Sim } from './context'
-import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionOf } from './enemy'
+import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { log, spawnJudgment, startAction, type Kernel } from './kernel'
@@ -46,7 +46,7 @@ export function simulate(r: ResolvedScenario): SimResult {
     r, k, book: makeBook(r.buffs), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
-  const tuneBreaks = r.team.map(m => tuneBreakActionOf(m.actions))
+  const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
     canAfford,
@@ -58,8 +58,10 @@ export function simulate(r: ResolvedScenario): SimResult {
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     interject: st => {
       if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null
-      const def = tuneBreaks[st.onField]
-      return def ? { slot: st.onField, def, why: '谐度破坏' } : null
+      // 有几种谐度破坏的（椿：常态 / 盛绽），挑角色钩子允许的那个（m0-confirm §10 H5）
+      const slot = st.onField
+      const def = tuneBreaks[slot]!.find(d => (r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
+      return def ? { slot, def, why: '谐度破坏' } : null
     },
   })
   let error: SimResult['error']
@@ -90,11 +92,11 @@ function initialState(r: ResolvedScenario): SimState {
   const e = r.enemy
   const enemy: EnemyRuntime = {
     preset: e, whiteBar: e.whiteBarTough, broken: false, paralyzedUntil: 0, poise: e.poise.max, tunability: 0, disharmony: false,
-    tunabilityLockedUntil: 0, effects: {}, responseCd: {},
+    tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {},
   }
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
-    enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat), log: [], nextId: 1,
+    enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
     outroLinks: [], pendingNextIn: [], lastTrigger: {},
   }
 }

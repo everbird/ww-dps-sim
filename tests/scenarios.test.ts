@@ -1,5 +1,5 @@
 // tests/scenarios.test.ts —— 场景回归快照（总设计 §11 第 5 条、TD-08 §6）
-// scenarios/ 下每个场景跑一遍，汇总存成快照。数据或引擎改动导致数值变化时，人工确认后用 `pnpm test -- -u` 更新快照。
+// scenarios/ 下每个场景跑一遍，汇总存成快照。数据或引擎改动导致数值变化时，人工确认后用 `pnpm test -u` 更新快照。
 // 依赖 data/generated（缺数据时跳过）。
 import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'

@@ -94,3 +94,14 @@ class 伤害表取哪一级(unittest.TestCase):
         self.assertEqual(level_index('1603', '延奏-C0普通', [32924] + [0] * 19), 1)
         self.assertEqual(level_index('通用', '谐度破坏-迅刀1', grow), 1)
         self.assertEqual(level_index('1603', '空', [0] * 20), 10)
+
+    def test_按比例削白条(self):
+        from dmg import D_PERCENT0, dmg_view
+        from openpyxl.utils import column_index_from_string as ci
+        self.assertEqual(D_PERCENT0, ci('CZ') - 1)
+        cells = ['通用', '谐度破坏-迅刀1'] + [None] * 108
+        cells[33] = 10000                                             # RateLv_1
+        cells[D_PERCENT0] = 78                                        # 每段 0.78%，结算 4 次
+        self.assertEqual(dmg_view({'row': 1, 'cells': cells}, 'alias')['whiteBarRatio'], 0.0078)
+        cells[D_PERCENT0] = None
+        self.assertNotIn('whiteBarRatio', dmg_view({'row': 1, 'cells': cells}, 'alias'))

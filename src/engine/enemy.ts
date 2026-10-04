@@ -1,6 +1,7 @@
 // src/engine/enemy.ts —— 敌人量表（TD-06 §13）：偏谐值与失谐、谐度破坏的消耗与真空期、白条与破盾回能、瘫痪
 // 每次结算的伤害（TD-03）与资源（§2–§4）之后、hit 事件记下之后调用 hitGauges；瘫痪的结束由 P6 的 enemyTimers 判断。
-// 计时一律按战斗帧：全局时停（大招、谐度破坏的演出）时战斗时钟停走，真空期与瘫痪也停（2026-10-04 用户确认，m0-confirm §9.2 测5）。
+// 计时一律按战斗帧：全局时停（大招、谐度破坏的演出）时战斗时钟停走，谐破冷却、按钮与瘫痪也停（2026-10-04 用户确认，m0-confirm §9.2 测5）。
+// 谐破冷却（按敌人 COST）与按钮时长取 xlsx 附页2 的偏谐通用规则（m0-confirm §10 H2、H4）。
 import type { Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { activeFor } from './buffs'
@@ -9,10 +10,11 @@ import { log, SLOTS } from './kernel'
 import { grant } from './resources'
 import type { JudgmentRuntime, SimState } from './types'
 
-/** 角色的谐度破坏动作：ID 为"谐度破坏"的，否则第一个谐度破坏类动作（椿另有"盛绽谐度破坏"一版，不用，TD-06 §13.3） */
-export function tuneBreakActionOf(actions: Readonly<Record<string, ActionDef>>): ActionDef | undefined {
-  const a = actions['谐度破坏']
-  return a?.kind === 'tuneBreak' ? a : Object.values(actions).find(x => x.kind === 'tuneBreak')
+/** 角色的谐度破坏动作，ID 为"谐度破坏"的排第一。椿另有盛绽版（组名"谐度破坏-时停"，结束帧与派生窗口不同）：
+ *  哪个能放由角色钩子 canStart 按形态判断，自动插的时候挑钩子允许的那个（m0-confirm §10 H5） */
+export function tuneBreakActionsOf(actions: Readonly<Record<string, ActionDef>>): ActionDef[] {
+  const all = Object.values(actions).filter(x => x.kind === 'tuneBreak')
+  return [...all.filter(x => x.id === '谐度破坏'), ...all.filter(x => x.id !== '谐度破坏')]
 }
 
 /** 正在放、还没命中的谐度破坏（它的动作或判定还在）：这段时间不再自动插一次 */
@@ -22,11 +24,14 @@ export function tuneBreakPending(s: SimState): boolean {
   return s.chars.some(c => c.action?.instance === by) || s.judgments.some(j => j.actionInstance === by) || s.tails.some(t => t.instance === by)
 }
 
-/** 现在能不能放谐度破坏（排轴里手写的、自动插的都按它）：目标失谐、且没有正在放的 */
+/** 现在能不能放谐度破坏（排轴里手写的、自动插的都按它）：目标失谐、按钮亮着、且没有正在放的 */
 export function canTuneBreak(sim: Sim, s: SimState): true | string {
   if (sim.r.options.tuneBreak === 'off') return '谐度破坏已关闭（options.tuneBreak: off）'
   if (!s.enemy.disharmony) return '目标没有失谐'
   if (tuneBreakPending(s)) return '正在放谐度破坏'
+  const button = sim.r.tuneBreakTiming.buttonFrames
+  if (button !== null && s.battleFrames >= s.enemy.tuneButtonUntil)
+    return `谐度破坏按钮没亮：要由前台角色对失谐目标打出偏谐值不为 0 的伤害，之后亮 ${button / 60} 秒`
   return true
 }
 
@@ -53,7 +58,8 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
   if (e.disharmony && e.tuneBreakBy === j.actionInstance && d.tags.includes('谐度破坏') && d.multiplier > 0) {
     e.tunability = 0
     e.disharmony = false
-    e.tunabilityLockedUntil = s.battleFrames + sim.r.rules.tuneBreakLock
+    e.tunabilityLockedUntil = s.battleFrames + sim.r.tuneBreakTiming.lockFrames    // 谐破冷却按敌人 COST（附页2）
+    e.tuneButtonUntil = 0
     log(s, { type: 'enemyState', change: 'harmonyBreak', detail: `${s.chars[j.owner].name} ${j.action}` })
   } else if (sim.r.options.tuneBreak !== 'off' && p.tunabilityMax > 0 && d.gauges.tunability > 0
     && !e.disharmony && s.battleFrames >= e.tunabilityLockedUntil) {
@@ -65,9 +71,15 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
       log(s, { type: 'enemyState', change: 'disharmony', detail: `${s.chars[j.owner].name} ${j.action}` })
     }
   }
-  // 白条：每段削韧值削一次（2026-10-04 用户确认"由削韧值决定"）；打空 → 破盾：全队每人 +3 × 各自共鸣效率，敌人瘫痪
-  if (p.whiteBarTough > 0 && !e.broken && d.gauges.toughness > 0) {
-    e.whiteBar = Math.max(0, e.whiteBar - d.gauges.toughness)
+  // 谐度破坏按钮（附页2："当前角色…造成偏谐值不为0的伤害后，可触发谐度破坏技交互，交互按键持续3秒"）：
+  // 前台角色对失谐目标打出偏谐值不为 0 的一段就亮（让目标失谐的那一段也算），后台的命中不算；按战斗帧计
+  const button = sim.r.tuneBreakTiming.buttonFrames
+  if (button !== null && e.disharmony && d.gauges.tunability > 0 && j.owner === s.onField) e.tuneButtonUntil = s.battleFrames + button
+  // 白条：每段削韧值削一次（2026-10-04 用户确认"由削韧值决定"），另有按白条上限比例削的（dmg Damage.Percent0：谐度破坏各段
+  // 合计 12.5%，m0-confirm §10 H3）；打空 → 破盾：全队每人 +3 × 各自共鸣效率，敌人瘫痪
+  const cut = d.gauges.toughness + (d.gauges.whiteBarRatio ?? 0) * p.whiteBarTough
+  if (p.whiteBarTough > 0 && !e.broken && cut > 0) {
+    e.whiteBar = Math.max(0, e.whiteBar - cut)
     if (e.whiteBar <= 1e-9) {
       e.whiteBar = 0
       e.broken = true

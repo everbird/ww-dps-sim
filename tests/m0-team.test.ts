@@ -162,6 +162,9 @@ dataDescribe('M0 三人的钩子', () => {
     const j = (a: typeof 散华, n: string) => a!.judgments.find(x => x.name === n)!
     expect([j(散华, '谐度破坏-1').multiplier, j(散华, '谐度破坏-1').ticks, j(散华, '谐度破坏-2').multiplier]).toEqual([1, 4, 12])
     expect([j(维里奈, '谐度破坏').multiplier, j(维里奈, '谐度破坏').ticks]).toEqual([16, 1])
+    // 按白条上限的比例削（dmg CZ 列 Damage.Percent0）：各段 × 结算次数合计 12.5%，椿的盛绽版也一样（m0-confirm §10 H3）
+    const ratio = (a: typeof 散华) => a!.judgments.reduce((x, k) => x + (k.gauges.whiteBarRatio ?? 0) * k.ticks, 0)
+    for (const a of [椿, 散华, 维里奈, r.team[0]!.actions['谐度破坏-时停']]) expect(ratio(a)).toBeCloseTo(0.125, 9)
   })
 
   test('T06-M0-2 散华的 E 打满偏谐值：A1 之前自动放谐度破坏，4 + 1 段，合计约 16 倍', () => {
@@ -174,5 +177,17 @@ dataDescribe('M0 三人的钩子', () => {
     expect(total / Math.ceil(10027 * 16 * (1520 / 3032) * 0.9)).toBeCloseTo(1, 3)   // 自定义敌人：90 级防御 1512、物理抗性 10%
     const starts = eventsOfLog(out.log, 'actionStart').map(e => e.action)
     expect(starts).toEqual(['E', '谐度破坏', 'A1'])
+  })
+
+  test('T06-M0-3 椿的谐度破坏分常态 / 盛绽两种：自动挑当前形态那种；手写时盛绽里要写"盛绽·谐度破坏"（m0-confirm §10 H5）', () => {
+    const run = (tunabilityMax: number, rotation: string[], tuneBreak = 'auto') => m0Run(gd, {
+      enemy: { custom: { level: 90, tunabilityMax } }, initial: { onField: 0 }, rotation, options: { tuneBreak },
+    } as never)
+    const starts = (out: ReturnType<typeof m0Run>) => eventsOfLog(out.log, 'actionStart').map(e => e.action)
+    expect(starts(run(25, ['椿 A1', '椿 E1']))).toEqual(['A1', '谐度破坏', 'E1'])                    // 白椿 A1（偏谐值 29.6）就满
+    expect(starts(run(50, ['椿 E1', '椿 盛绽·A1']))).toEqual(['E1', '谐度破坏-时停', '盛绽·A1'])     // E1 第一段（50.8）满时已在盛绽
+    const manual = run(50, ['椿 E1', '椿 盛绽·A1', '椿 谐度破坏?', '椿 盛绽·谐度破坏'], 'manual')
+    expect(eventsOfLog(manual.log, 'skip').map(e => e.reason)).toEqual(['盛绽状态下 谐度破坏 换成了盛绽版本'])
+    expect(starts(manual)).toEqual(['E1', '盛绽·A1', '谐度破坏-时停'])
   })
 })

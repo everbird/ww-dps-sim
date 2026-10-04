@@ -12,6 +12,7 @@ D_RATE = 33                 # RateLv_1…20：AH–BA
 D_HARDNESS, D_TOUGH, D_ENERGY = 53, 54, 55
 D_FORMULA_TYPE = 63         # BL
 D_FORMULA_P5 = 68           # FormulaParam5_1…20：BQ–CJ
+D_PERCENT0 = 103            # CZ：Damage.Percent0，按比例削白条（共振度）× 10000
 D_WEAKNESS = 107            # DD
 
 
@@ -68,6 +69,10 @@ def dmg_view(entry: dict, via: str, echo: bool = False) -> dict:
         'energy': _num(r[D_ENERGY]), 'toughLv': _num(r[D_TOUGH]), 'weaknessLvl': _num(r[D_WEAKNESS]),
         'hardnessLv': _num(r[D_HARDNESS]), 'formulaType': formula_type,
     }
+    # 按比例削白条（谐度破坏各段合计 12.5%，渊武"延奏-削白条"7.5%…，m0-confirm §10 H3）：只在不为 0 时写
+    pct = _num(r[D_PERCENT0])
+    if pct:
+        out['whiteBarRatio'] = pct / 10000
     if formula_type != 0:
         out['formulaRate'] = float(_v(r[D_FORMULA_P5 + lv - 1]) or 0) / 10000
     if calc_type == 1:

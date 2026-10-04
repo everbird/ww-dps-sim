@@ -9,6 +9,13 @@ import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
 
+/** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
+function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: number }): string {
+  const many = (c.loop === 0 ? r.opening : r.commands).some(x => x.line === c.line && x.item > 1)
+  const head = c.loop === 0 ? '启动' : c.loop > 1 ? `第 ${c.loop} 轮` : ''
+  return `${head}第 ${c.line} 条${many ? `第 ${c.item} 个` : ''}`
+}
+
 async function main(): Promise<number> {
   const args = process.argv.slice(2).filter(a => a !== '--')
   const oi = args.indexOf('--out')
@@ -54,14 +61,14 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   const en = s.enemy
   if (en.disharmony + en.breaks > 0)
     console.log(`敌人量表  失谐 ${en.disharmony} 次 · 谐度破坏 ${en.tuneBreaks} 次（${fmt(en.tuneBreakDamage)}，${pct(s.totalDamage > 0 ? en.tuneBreakDamage / s.totalDamage : 0)}）· 破盾 ${en.breaks} 次`)
-  if (s.perLoop && s.steady) {
+  if (s.perLoop) {
     const st = s.steady
-    console.log(`\n分轮（稳态 = 第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮：DPS ${fmt(st.dps)}）`)
+    console.log(`\n分轮${st ? `（稳态 = 第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮：DPS ${fmt(st.dps)}）` : ''}`)
     const names = r.team.map(m => m.def.name).join(' / ')
     const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}`
     console.log(`  轮  ${padStart('时长', 10)}${padStart('伤害', 12)}${padStart('DPS', 10)}   能量首尾差（${names}）   协奏首尾差`)
     for (const p of s.perLoop)
-      console.log(`  ${padEnd(String(p.loop), 4)}${padStart(`${(p.frames / 60).toFixed(2)} 秒`, 10)}${padStart(fmt(p.damage), 12)}${padStart(fmt(p.dps), 10)}` +
+      console.log(`  ${padEnd(p.loop === 0 ? '启动' : String(p.loop), 4)}${padStart(`${(p.frames / 60).toFixed(2)} 秒`, 10)}${padStart(fmt(p.damage), 12)}${padStart(fmt(p.dps), 10)}` +
         `   ${p.energyDelta.map(signed).join(' / ')}   ${p.concertoDelta.map(signed).join(' / ')}`)
   }
   console.log('\n分角色')
@@ -72,15 +79,11 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
     console.log(`  ${padEnd(`${a.char} ${a.action}`, 20)}${padStart(fmt(a.damage), 12)}  ${padStart(pct(a.share), 6)}  ${a.hits} 段`)
   if (s.waits.length > 0) {
     console.log('\n等待（不是写轴要求的）')
-    const many = new Set(r.commands.filter(c => c.item > 1).map(c => c.line))
-    for (const w of s.waits)
-      console.log(`  ${w.loop > 1 ? `第 ${w.loop} 轮` : ''}第 ${w.line} 条${many.has(w.line) ? `第 ${w.item} 个` : ''}  ${w.frames} 帧  ${w.reason}`)
+    for (const w of s.waits) console.log(`  ${cmdLabel(r, w)}  ${w.frames} 帧  ${w.reason}`)
   }
   if (s.skipped.length > 0) {
     console.log('\n跳过的可选指令（"?"）')
-    const many = new Set(r.commands.filter(c => c.item > 1).map(c => c.line))
-    for (const k of s.skipped)
-      console.log(`  ${k.loop > 1 ? `第 ${k.loop} 轮` : ''}第 ${k.line} 条${many.has(k.line) ? `第 ${k.item} 个` : ''}  ${k.reason}`)
+    for (const k of s.skipped) console.log(`  ${cmdLabel(r, k)}  ${k.reason}`)
   }
   if (s.warnings.length > 0) {
     console.log('\n提示')

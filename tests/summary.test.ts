@@ -30,4 +30,19 @@ describe('分轮与稳态', () => {
     const once = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X'] })
     expect([once.summary.perLoop, once.summary.steady]).toEqual([undefined, undefined])
   })
+
+  test('启动轴（opening）是第 0 轮，只跑一次；稳态只看循环轴的轮；报错写"启动第 k 条"', () => {
+    const out = synthRun([甲, idle('乙'), idle('丙')], { opening: ['甲 X', 'wait 40'], rotation: ['甲 X'], options: { repeat: 4 } })
+    expect(out.error).toBeUndefined()
+    const loops = out.summary.perLoop!
+    expect(loops.map(p => p.loop)).toEqual([0, 1, 2, 3, 4])
+    expect(loops[0]!.frames).toBe(40)                                         // wait 一成为队首就起算（与 X 同时），启动轴 40 帧
+    expect(out.summary.steady).toMatchObject({ from: 2, to: 3, frames: 60 })
+    const once = synthRun([甲, idle('乙'), idle('丙')], { opening: ['甲 X'], rotation: ['甲 X'] })
+    expect(once.summary.perLoop!.map(p => p.loop)).toEqual([0, 1])            // 循环轴只有 1 轮：有分轮，没有稳态
+    expect(once.summary.steady).toBeUndefined()
+    const bad = synthRun([甲, idle('乙'), idle('丙')], { opening: ['甲 X', 'wait 10', '甲 X'], rotation: ['甲 X'], options: { maxFrames: 20 } })
+    expect(bad.error?.message).toContain('启动第 3 条')
+  })
 })
+

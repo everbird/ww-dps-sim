@@ -113,11 +113,14 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
   const delta = (k: number, x: 'energy' | 'concerto') =>
     [0, 1, 2].map(i => Math.round((at[k + 1]![x][i]! - at[k]![x][i]!) * 1e6) / 1e6) as [number, number, number]
   const perLoop = starts.map((start, k) => ({
-    loop: k + 1, start, frames: ends[k]! - start, damage: damage[k]!, dps: dpsOf(damage[k]!, ends[k]! - start),
-    energyDelta: delta(k, 'energy'), concertoDelta: delta(k, 'concerto'),
+    loop: (marks[k] as Extract<SimEvent, { type: 'loop' }>).loop, start, frames: ends[k]! - start, damage: damage[k]!,
+    dps: dpsOf(damage[k]!, ends[k]! - start), energyDelta: delta(k, 'energy'), concertoDelta: delta(k, 'concerto'),
   }))
-  const from = 2, to = Math.max(2, perLoop.length - 1)
-  const part = perLoop.slice(from - 1, to)
+  // 稳态只看循环轴的轮（启动轴是第 0 轮，不算）：第 2 轮到倒数第 2 轮；只有 2 轮时取第 2 轮；不到 2 轮没有稳态
+  const rounds = perLoop.filter(p => p.loop >= 1)
+  if (rounds.length < 2) return { perLoop }
+  const from = 2, to = Math.max(2, rounds.length - 1)
+  const part = rounds.filter(p => p.loop >= from && p.loop <= to)
   const frames = part.reduce((x, p) => x + p.frames, 0), dmg = part.reduce((x, p) => x + p.damage, 0)
   return { perLoop, steady: { from, to, frames, damage: dmg, dps: dpsOf(dmg, frames) } }
 }

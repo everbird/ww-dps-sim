@@ -114,7 +114,7 @@ describe('T03-6 异常效应：光噪效应 1 层（伤害计算 E1040）', () =
 describe('T03-7 谐度破坏：对 COST4 通用（伤害计算 E1098 / F1098）', () => {
   const t: TuneBreakTable = {
     variants: [], baseByLevel: Array.from({ length: 100 }, (_, i) => (i === 89 ? 3865000 : 0)),
-    costFactor: { 1: 0.00018530030524049998, 3: 0.0005559214354978414, 4: 0.0025943077491359817 },
+    costFactor: { 1: 0.00018530030524049998, 3: 0.0005559214354978414, 4: 0.0025943077491359817 }, rules: null,
   }
   test('基础值 ROUND(3865000 × 系数, 2)', () => {
     expect(tuneBase(t, 90, 4)).toBe(10027)
@@ -136,6 +136,7 @@ describe.skipIf(!existsSync(tuneFile))('T03-7b 谐度破坏表（tune-break.json
     const t: TuneBreakTable = {
       variants: [], baseByLevel: g.baseByLevel,
       costFactor: { 1: g.costFactors.find(f => f.cost === 1)!.factor, 3: g.costFactors.find(f => f.cost === 3)!.factor, 4: g.costFactors.find(f => f.cost === 4)!.factor },
+      rules: null,
     }
     expect(tuneBase(t, 90, 4)).toBe(10027)
     for (const v of g.variants) {
