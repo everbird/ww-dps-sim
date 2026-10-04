@@ -1,4 +1,4 @@
-// src/cli/compare.ts —— pnpm compare <基准.yaml> <对比.yaml>：两套配装（或两条轴）比 DPS，拆开看差在哪（M5，AGENTS.md 差异 4）
+// src/cli/compare.ts —— pnpm compare <基准.yaml> <对比.yaml>：两套配装（或两条轴）比 DPS，拆开看差在哪（M5，TD-10 §3）
 // 口径：有分轮时比稳态（完整的轮），否则比整个窗口；分角色、分动作按窗口内的每秒伤害（加起来就是 DPS），buff 按覆盖率。
 // 退出码：0 成功；1 场景有错或运行期报错；2 用法错误。
 import { basename } from 'node:path'

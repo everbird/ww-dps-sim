@@ -1,4 +1,4 @@
-// tests/echoes.test.ts —— 声骸（TD-01 §8、§13.3；AGENTS.md 差异 1、2）：声骸动作的装配、按体型挑行、首位声骸并入动作表（别名 Q）、
+// tests/echoes.test.ts —— 声骸（TD-01 §8、§13.3；TD-04 §4.2、§6.5；TD-07 §4.1）：声骸动作的装配、按体型挑行、首位声骸并入动作表（别名 Q）、
 // 声骸冷却与按次数充能、多段声骸、触发条件 ownerHas / heals、M0 三人的首位声骸与套装（docs/test-echos-setup.md）。
 // 装配规则与引擎机制用人造数据，总能跑；其余依赖 data/generated（没有时跳过）。
 import { beforeAll, describe, expect, test } from 'vitest'

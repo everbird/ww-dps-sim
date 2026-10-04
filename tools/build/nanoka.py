@@ -1,4 +1,4 @@
-"""nanoka 静态数据：角色技能冷却、技能文本与技能树属性节点（m0-confirm §5；AGENTS.md 差异 4）。
+"""nanoka 静态数据：角色技能冷却、技能文本与技能树属性节点（m0-confirm §5、TD-01 §12.5）。
 
 来源 https://static.nanoka.cc：
   manifest.json                     → ww.live / ww.latest 版本号

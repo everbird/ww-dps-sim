@@ -1,4 +1,4 @@
-// src/cli/marginal.ts —— pnpm marginal <场景.yaml> [--char 椿] [--tier avg|max|min]：副词条边际（M5，AGENTS.md 差异 4）
+// src/cli/marginal.ts —— pnpm marginal <场景.yaml> [--char 椿] [--tier avg|max|min]：副词条边际（M5，TD-10 §4）
 // 给角色各加一档副词条（加在他最后一件声骸上），各重跑一次，比稳态（或整个窗口）的 DPS。档位来自 echo-stats.json。
 // 退出码：0 成功；1 场景有错；2 用法错误。
 import type { Slot } from '../data/common'

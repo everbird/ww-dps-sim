@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1
+# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1.1
 
-> **状态**：v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
+> **状态**：v0.1.1（2026-10-04；新增 `ctx.heal` 与写法 P12，维里奈补治疗）；v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§4 T8、§6.9、§3.3；《TD-01 数据字典 v0.1.3》§13.4；《TD-02 类型与 Schema v0.1.3》§5.2、§7.4、Q5；《TD-03 伤害公式规格 v0.1》§3.2、§3.4、§4、Q6、Q7、Q13；《TD-05 切人与变奏 / 延奏 v0.1》；《TD-06 资源 v0.1》；《TD-07 Buff 系统 v0.1》；`docs/m0-confirm.md`
 > **下游**：每个角色的 `data/curated/characters/<角色>.ts` 与它的测试
 > **验证**：§5 的机制逐条对照了 nanoka 3.7 技能描述、xlsx 动作表备注与「伤害计算」页的公式写法
@@ -100,6 +100,7 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | `addResource(resource, amount, slot?)` | 加减资源（TD-06 §5 的 `grant`，`cause: 'hook'`） |
 | `spawnJudgment(name, { action? })` | 生成自己的一个判定（事件生成的判定，如散华的引爆）；同一 tick 内结算 |
 | `skipJudgments(instance, names)` ★ | 在某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效。在 `actionStart` / `outro` 事件里调用，TD-06 的协奏汇总也会排除它们 |
+| `heal(source)` ★ | 记一次本角色提供的治疗（`heal` 事件，触发"提供治疗时"的效果，TD-07 §4.1）：给不在任何判定上的治疗用，如持续回复的每一跳；带治疗的判定改在 `actionOverrides` 里标 `heals`（v0.1.1） |
 | `warn(message)` | 记一条警告 |
 
 `HitDraft` 新增 `selfEnergyScale`（缺省 1）★：这次结算出伤者自己那份能量的倍率，队友那 50% 不受影响（TD-06 §2.1）。
@@ -127,6 +128,7 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | P8 | 伤害类型改写 | 静态：`actionOverrides.<动作>.judgments.<判定>.tags`；随状态：`modifyHit` 改 `draft.tags` | 椿 重击修枝视为普攻 |
 | P9 | 队友命中触发的追加攻击 | `onEvent` 看任何人的 `hit`（`dmg ≠ null`），敌人身上有标记且内置冷却已过 → `spawnJudgment`；冷却时刻存标记 | 维里奈 光合标记协同攻击（每秒 1 次） |
 | P10 | 命中后接下一个动作组 | `actionOverrides.<动作>.followUp`（数据，不写钩子） | 维里奈 QTE-冲 命中 → QTE-撞 |
+| P12 | 持续回复 / 周期效果（v0.1.1） | 标记型 buff 当计时器（`trigger: 'hook'`，时长 = 间隔）：开始时 `addBuff`，`onEvent` 收到它的 `buffExpire`（`timeout`）时做一跳（如 `ctx.heal`），没跳完再 `addBuff`；用 `setFlag` 计数 | 维里奈 延奏盛放每秒一跳共 6 跳、共鸣链1 每 5 秒一跳共 6 跳 |
 | P11 | 资源计数触发 | `onEvent` 看自己的 `hit.gains.core`，累计到阈值时 `addResource` / `addBuff` | 椿 每消耗 10 点红椿·蕊 → 协奏 +4、红椿·蕾 +1 |
 
 示意（P4，散华引爆；完整写法以实现为准）：
@@ -183,7 +185,8 @@ onEvent(ctx, ev) {
 | 光合能量（核心资源 1，上限 4）：第 5 段普攻命中、E、变奏 +1（数据） | 数据 | —— |
 | 大招"命中目标时给目标附加光合标记"（大招-标记，第 58 帧） | 大招-标记结算时给敌人施加标记型 buff `维里奈.光合标记` | ⑨ 已确认：12 秒（nanoka 3.7） |
 | 协同攻击：队伍中角色命中带光合标记的目标时，维里奈协同攻击，每秒 1 次（数据：大招组里的"大招-协同伤害"第 30 帧、备注"冷却1s"） | 覆盖 `大招-协同伤害` 为 `spawnFrame: null`（不随大招自动出）；P9：任何人的伤害 `hit` 且敌人有标记、距上次 ≥ 60 帧 → `spawnJudgment('大招-协同伤害')` | ⑩ 已确认：自己的命中也触发；全队共用 1 秒冷却，协同本身不再触发 |
-| 固有 1、延奏、C2 | 数据（TD-07 §12），已写；固有 1 暂不含空中攻击（TD-07 Q9）；治疗与护盾不建模 | —— |
+| 固有 1、延奏、C2 | 数据（TD-07 §12），已写；固有 1 含强化空中A1–A3（TD-07 Q9）；护盾不建模 | —— |
+| 治疗（nanoka 3.7：写了回复生命值、或倍率表里有治疗量的都算，2026-10-04 用户确认）：星星花绽放（强化重击 / 强化空中攻击）、大招草木生长、协同攻击；延奏盛放"每秒回复…持续6秒"、共鸣链1"每5秒回复…持续30秒" | 前三者在 `actionOverrides` 里给判定标 `heals`（重击-强化冲、强化空中A1–A3、大招-标记、大招-协同伤害）；持续回复用 P12，每跳 `ctx.heal`（计时 buff 施加那一帧算第 1 帧，第一跳在延奏后第 59 帧）。治疗量不建模，只为触发隐世回光等 | 已写（`tests/m0-team.test.ts` T08-维里奈-4） |
 
 ---
 
@@ -224,3 +227,4 @@ M0 三人的用例在实现时写进 `tests/m0-team.test.ts`，编号 T08-散华
 
 - **v0.1（2026-09-28）**：初版。
 - **v0.1（2026-09-30 修订，随实现）**：模块字段 `effects` 改名 `resourceEffects`；`followUp` 的开始时刻与注册层检查；§5 标出已写的数据。
+- **v0.1.1（2026-10-04）**：`ctx` 新增 `heal(source)`（AGENTS.md 差异 2），常见写法新增 P12（标记型 buff 当计时器做持续回复 / 周期效果）；§5.3 维里奈补治疗的写法（判定标 `heals` + 持续回复每跳记一次）。
