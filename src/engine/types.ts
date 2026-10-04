@@ -111,6 +111,7 @@ export type WaitCode =
   | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
   | 'switchCd' | 'switchLock'                                    // 切人
   | 'delay' | 'wait' | 'at'
+  | 'filler'                                                    // 补位 "~" 不需要了（只用于 skip 事件）
 
 /** 指令在事件里的出处 */
 export interface CommandRef { line: number; item: number; loop: number }
@@ -282,7 +283,7 @@ export interface Summary {
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
   waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
-  skipped: { line: number; item: number; loop: number; reason: string }[]   // 跳过的可选指令（"?"）
+  skipped: { line: number; item: number; loop: number; reason: string }[]   // 跳过的指令：可选 "?" 的条件不满足、补位 "~" 不需要
   warnings: { code: string; message: string; line?: number }[]
   /** 分轮（options.repeat ≥ 2 或有启动轴；总设计 §3.5、TD-09 §3.7 / §3.9）：第 k 轮 = [本轮 loop 事件, 下一轮 loop 事件)，最后一轮到窗口终点；启动轴是第 0 轮，
    *  按战斗帧。资源首尾差 = 下一轮开始时（最后一轮：窗口终点）− 本轮开始时，看这条轴能不能自给 */

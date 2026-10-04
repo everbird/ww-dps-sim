@@ -96,14 +96,14 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
-  | { kind: 'act'; char: string; action: string; delay: number; force: boolean; optional?: true }
+  | { kind: 'act'; char: string; action: string; delay: number; force: boolean; optional?: true; filler?: true }
   | { kind: 'switch'; char: string }
   | { kind: 'wait'; frames: number }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
 export function parseRotationLine(text: string): RotationItem[] | { error: string } {
   const s = text
-    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/？/g, '?').replace(/＋/g, '+').replace(/＃/g, '#')
+    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/？/g, '?').replace(/～/g, '~').replace(/＋/g, '+').replace(/＃/g, '#')
     .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
     .replace(/(^|\s)#.*$/, '').trim()
   if (s === '') return []
@@ -130,19 +130,23 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
       delayed = true
       continue
     }
-    if (t === '!' || t === '?') {
+    if (t === '!' || t === '?' || t === '~') {
       if (!prev) return { error: `"${t}" 前面要有动作` }
       if (t === '!') prev.force = true
-      else prev.optional = true
+      else if (t === '?') prev.optional = true
+      else prev.filler = true
+      if (prev.optional && prev.filler) return { error: `${prev.action}：? 与 ~ 不能一起写` }
       continue
     }
-    m = /^([^!?+]+)([!?]*)(?:\+(\d+))?$/.exec(t)
+    m = /^([^!?~+]+)([!?~]*)(?:\+(\d+))?$/.exec(t)
     if (!m || m[2]!.length > 2 || (m[2]!.length === 2 && m[2]![0] === m[2]![1]))
-      return { error: `无法识别"${t}"：动作写成 <动作>、<动作>!、<动作>? 或 <动作> +N` }
+      return { error: `无法识别"${t}"：动作写成 <动作>、<动作>!、<动作>?、<动作>~ 或 <动作> +N` }
+    if (m[2]!.includes('?') && m[2]!.includes('~')) return { error: `"${t}"：? 与 ~ 不能一起写` }
     if (/^\d+$/.test(m[1]!) && prev) return { error: `"${t}" 像是延迟，延迟要写成 +${m[1]}` }
     out.push({
       kind: 'act', char: head, action: m[1]!, delay: m[3] ? Number(m[3]) : 0, force: m[2]!.includes('!'),
       ...(m[2]!.includes('?') ? { optional: true as const } : {}),
+      ...(m[2]!.includes('~') ? { filler: true as const } : {}),
     })
     delayed = m[3] !== undefined
   }
@@ -151,7 +155,7 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
 
 /** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（TD-09 §4，总设计 §3.3 第 7 步）。line 从 1 起，item 是行内第几个（从 1 起） */
 export type Command =
-  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean; optional?: true }
+  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean; optional?: true; filler?: true }
   | { kind: 'switch'; line: number; item: number; to: Slot }
   | { kind: 'wait'; line: number; item: number; frames: Frame }
   | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来

@@ -46,6 +46,18 @@ export function compileRotation(lines: string[], team: CompileMember[], onField:
   return issues.length > 0 ? { ok: false, issues } : { ok: true, commands: rot.commands, opening: open.commands }
 }
 
+/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作；遇到切人、等待或别的角色就没有 */
+function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' }> | undefined {
+  const c = list[i]
+  if (c?.kind !== 'act') return undefined
+  for (let j = i + 1; j < list.length; j++) {
+    const n = list[j]!
+    if (n.kind !== 'act' || n.slot !== c.slot) return undefined
+    if (!n.filler) return n
+  }
+  return undefined
+}
+
 /** 指令跑完时谁在前台 */
 const endOnField = (commands: Command[], onField: Slot): Slot =>
   commands.reduce<Slot>((cur, c) => (c.kind === 'switch' ? c.to : cur), onField)
@@ -80,8 +92,16 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
         issues.push({ line, item, message: `${m.name} ${id} 是${def.kind === 'intro' ? '变奏' : '延奏'}，由切人自动触发（协奏满时），不能单独写` })
         return
       }
-      commands.push({ kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force, ...(it.optional ? { optional: true } : {}) })
+      commands.push({
+        kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force,
+        ...(it.optional ? { optional: true } : {}), ...(it.filler ? { filler: true } : {}),
+      })
     })
+  })
+  // 补位 "~" 后面（隔着同一角色的别的补位）要接同一角色的普通动作：它看的就是那一个（§3.2）
+  commands.forEach((c, i) => {
+    if (c.kind === 'act' && c.filler && !fillerTarget(commands, i))
+      issues.push({ line: c.line, item: c.item, message: `${team[c.slot]!.name} ${c.action}~：补位后面要接同一角色的动作（中间不能有切人、等待）` })
   })
   return { commands, issues, switchFailed }
 }
@@ -160,6 +180,19 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         startAction(s, k, ij.slot, ij.def)
         continue
       }
+      // 补位 "~"：后面那个动作的冷却、资源、角色条件都满足了，就不用补这一下（等着出手的时候也每 tick 看一次）
+      if (c.kind === 'act' && c.filler) {
+        const t = fillerTarget(listOf(q), q.next)
+        if (t && stateVerdict(s, opts, t.slot, actions[t.slot]![t.action]!).go) {
+          closeSeg(s, ref)
+          log(s, { type: 'skip', cmd: ref, code: 'filler', reason: `${t.action} 已经能放，不用补 ${c.action}` })
+          q.next += 1
+          q.waited = 0
+          q.readyAt = null
+          q.until = null
+          continue
+        }
+      }
       const v = evaluate(s, actions, opts, c, ref)
       if (!v.go && c.kind === 'act' && c.optional && SKIPPABLE.includes(v.code)) {
         // 可选指令（"?"）：冷却、资源、角色条件不满足就跳过，记一条 skip，接着看下一条（TD-06 §13.4）
@@ -218,6 +251,21 @@ function evaluateAct(s: SimState, opts: SchedulerOptions, slot: Slot, def: Actio
     if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
     return { go: false, code: g.code, reason: g.reason }
   }
+  const st = stateVerdict(s, opts, slot, def)
+  if (!st.go) return st
+  if (!force && !settled(s, slot))
+    return { go: false, code: 'settled', reason: `等 ${ch.action!.id} 出手（现在打断会丢判定或延奏）` }
+  if (!g.ok) return { go: false, code: 'started', reason: g.reason }
+  if (delay > 0) {                                                     // +N 从"其余全部满足"的那个 tick 起算
+    q.readyAt ??= s.battleFrames
+    if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
+  }
+  return GO
+}
+
+/** 状态条件（第 5–7 条）：冷却、资源、角色钩子。可选 "?" 不满足就跳过；补位 "~" 看后面那个动作满不满足 */
+function stateVerdict(s: SimState, opts: SchedulerOptions, slot: Slot, def: ActionDef): Verdict {
+  const ch = s.chars[slot]
   const key = cooldownKey(def)
   const cd = ch.cooldowns[key] ?? 0
   if (def.charges !== undefined && def.charges > 1) {                   // 按次数充能：还有次数就能放
@@ -231,13 +279,6 @@ function evaluateAct(s: SimState, opts: SchedulerOptions, slot: Slot, def: Actio
   if (res !== true) return { go: false, code: 'resource', reason: res }
   const hook = opts.canStart?.(s, slot, def) ?? true
   if (hook !== true) return { go: false, code: 'hook', reason: hook }
-  if (!force && !settled(s, slot))
-    return { go: false, code: 'settled', reason: `等 ${ch.action!.id} 出手（现在打断会丢判定或延奏）` }
-  if (!g.ok) return { go: false, code: 'started', reason: g.reason }
-  if (delay > 0) {                                                     // +N 从"其余全部满足"的那个 tick 起算
-    q.readyAt ??= s.battleFrames
-    if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
-  }
   return GO
 }
 

@@ -82,7 +82,7 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
     for (const w of s.waits) console.log(`  ${cmdLabel(r, w)}  ${w.frames} 帧  ${w.reason}`)
   }
   if (s.skipped.length > 0) {
-    console.log('\n跳过的可选指令（"?"）')
+    console.log('\n跳过的指令（可选 "?" 条件不满足、补位 "~" 不需要）')
     for (const k of s.skipped) console.log(`  ${cmdLabel(r, k)}  ${k.reason}`)
   }
   if (s.warnings.length > 0) {
