@@ -27,11 +27,30 @@ export class ScheduleError extends Error {
 // §4 编译
 
 export interface CompileMember { name: string; actions: Record<ActionId, ActionDef>; aliases: Record<string, ActionId> }
-export interface CompileIssue { line: number; item?: number; message: string }
-export type CompileResult = { ok: true; commands: Command[] } | { ok: false; issues: CompileIssue[] }
+export interface CompileIssue { line: number; item?: number; message: string; opening?: true }
+export type CompileResult = { ok: true; commands: Command[]; opening: Command[] } | { ok: false; issues: CompileIssue[] }
 
-/** rotation 的每一行 → 指令；line 从 1 起（= 场景里第几条），item 是行内第几个动作 */
-export function compileRotation(lines: string[], team: CompileMember[], onField: Slot, repeat = 1): CompileResult {
+/** rotation（与可选的启动轴 opening）的每一行 → 指令；line 从 1 起（= 场景里第几条），item 是行内第几个动作。
+ *  启动轴只跑一次，前台从 onField 推到它结束时，循环轴从那里开始（§3.7） */
+export function compileRotation(lines: string[], team: CompileMember[], onField: Slot, repeat = 1, openingLines: string[] = []): CompileResult {
+  const open = compileLines(openingLines, team)
+  const rot = compileLines(lines, team)
+  const issues = [...open.issues.map(i => ({ ...i, opening: true as const })), ...rot.issues]
+  if (rot.issues.length === 0 && rot.commands.length === 0) issues.push({ line: 0, message: '排轴里没有指令' })
+  // 有错的那一项已跳过，其余照查；切人写错时前台推不下去，不再查前台，免得连带报一串
+  if (!open.switchFailed && !rot.switchFailed) {
+    issues.push(...checkOnField(open.commands, team, onField, 1).map(i => ({ ...i, opening: true as const })))
+    issues.push(...checkOnField(rot.commands, team, endOnField(open.commands, onField), repeat))
+  }
+  issues.sort((a, b) => Number(!a.opening) - Number(!b.opening) || a.line - b.line || (a.item ?? 0) - (b.item ?? 0))
+  return issues.length > 0 ? { ok: false, issues } : { ok: true, commands: rot.commands, opening: open.commands }
+}
+
+/** 指令跑完时谁在前台 */
+const endOnField = (commands: Command[], onField: Slot): Slot =>
+  commands.reduce<Slot>((cur, c) => (c.kind === 'switch' ? c.to : cur), onField)
+
+function compileLines(lines: string[], team: CompileMember[]): { commands: Command[]; issues: CompileIssue[]; switchFailed: boolean } {
   const issues: CompileIssue[] = []
   const commands: Command[] = []
   const slotOf = new Map(team.map((m, i) => [m.name, i as Slot]))
@@ -64,11 +83,7 @@ export function compileRotation(lines: string[], team: CompileMember[], onField:
       commands.push({ kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force, ...(it.optional ? { optional: true } : {}) })
     })
   })
-  if (issues.length === 0 && commands.length === 0) issues.push({ line: 0, message: '排轴里没有指令' })
-  // 有错的那一项已跳过，其余照查；切人写错时前台推不下去，不再查前台，免得连带报一串
-  if (!switchFailed) issues.push(...checkOnField(commands, team, onField, repeat))
-  issues.sort((a, b) => a.line - b.line || (a.item ?? 0) - (b.item ?? 0))
-  return issues.length > 0 ? { ok: false, issues } : { ok: true, commands }
+  return { commands, issues, switchFailed }
 }
 
 /** 前台只由 switch 改变，"出招的人在不在前台"编译期就能查（§4.2）。循环时第 2 轮从第 1 轮结束时的前台开始，再查一遍，只报第一处 */
@@ -106,10 +121,12 @@ export interface SchedulerOptions {
   interject?(s: SimState): { slot: Slot; def: ActionDef; why: string } | null
 }
 
-/** repeat = 整条轴执行几轮（options.repeat） */
-export function newQueue(commands: Command[], repeat = 1): QueueState {
-  return { commands, repeat, next: 0, loop: 1, loopBegun: false, waited: 0, readyAt: null, until: null, seg: null }
+/** repeat = 循环轴执行几轮（options.repeat）；opening = 启动轴，先跑一次，记为第 0 轮（§3.7） */
+export function newQueue(commands: Command[], repeat = 1, opening: Command[] = []): QueueState {
+  return { commands, opening, repeat, next: 0, loop: opening.length > 0 ? 0 : 1, loopBegun: false, waited: 0, readyAt: null, until: null, seg: null }
 }
+/** 正在执行的那一段：第 0 轮是启动轴，其余是循环轴 */
+const listOf = (q: QueueState): Command[] => (q.loop === 0 ? q.opening : q.commands)
 
 type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
 const GO: Verdict = { go: true }
@@ -124,16 +141,18 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
     const q = s.queue
     if (q.commands.length === 0) return false
     for (;;) {
-      if (q.next >= q.commands.length) {
+      if (q.next >= listOf(q).length) {
         if (q.loop >= q.repeat) return false
         q.loop += 1
         q.next = 0
         q.loopBegun = false
       }
-      const c = q.commands[q.next]!
+      const c = listOf(q)[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
-      // 插在队首之前的动作：与出招指令同样的检查（不强制、不延迟）；等的时候记在队首指令名下。开始后不带指令出处，回到循环再看队首
-      const ij = opts.interject?.(s)
+      // 插在队首之前的动作：与出招指令同样的检查（不强制、不延迟）；等的时候记在队首指令名下。开始后不带指令出处，回到循环再看队首。
+      // 队首是连段的后续（comboFrom）时先不插：谐度破坏会打断当前角色的动作，插进去连段就断了，等这串连段打完再插
+      // （TD-09 §3.2 插队；m0-confirm §10 H1；AGENTS.md 差异 3）
+      const ij = c.kind === 'act' && actions[c.slot]![c.action]!.comboFrom?.length ? null : opts.interject?.(s)
       if (ij) {
         const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref)
         if (!w.go) { hold(s, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref); return true }
@@ -246,7 +265,7 @@ function beginLoop(s: SimState): void {
   s.queue.loopBegun = true
   log(s, { type: 'loop', loop: s.queue.loop })
 }
-const roundHasAction = (q: QueueState): boolean => q.commands.some(c => c.kind === 'act' || c.kind === 'switch')
+const roundHasAction = (q: QueueState): boolean => listOf(q).some(c => c.kind === 'act' || c.kind === 'switch')
 
 /** 队首要等：原因变了就另起一段；"不合法"的等待累计超过 maxWait 就报错 */
 function hold(s: SimState, opts: SchedulerOptions, v: Extract<Verdict, { go: false }>, ref: CommandRef): void {
@@ -277,10 +296,11 @@ function fail(s: SimState, code: ScheduleErrorCode, message: string, ref: Comman
   return new ScheduleError(code, message, ref, s.frame)
 }
 
-/** "第 k 条"；循环中加轮次，一行有几个动作时加"第 i 个" */
+/** "第 k 条"；启动轴写"启动第 k 条"，循环中加轮次，一行有几个动作时加"第 i 个" */
 function where(q: QueueState, ref: CommandRef): string {
-  const many = q.commands.some(c => c.line === ref.line && c.item > 1)
-  return `第 ${ref.loop > 1 ? `${ref.loop} 轮第 ` : ''}${ref.line} 条${many ? `第 ${ref.item} 个` : ''}`
+  const many = (ref.loop === 0 ? q.opening : q.commands).some(c => c.line === ref.line && c.item > 1)
+  const head = ref.loop === 0 ? '启动第 ' : `第 ${ref.loop > 1 ? `${ref.loop} 轮第 ` : ''}`
+  return `${head}${ref.line} 条${many ? `第 ${ref.item} 个` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -291,9 +311,9 @@ export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boole
   while (tick(s, k, schedule)) {
     if (s.frame < maxFrames) continue
     const q = s.queue
-    if (q.next < q.commands.length || q.loop < q.repeat) {
-      const wrap = q.next >= q.commands.length
-      const c = q.commands[wrap ? 0 : q.next]!
+    if (q.next < listOf(q).length || q.loop < q.repeat) {
+      const wrap = q.next >= listOf(q).length
+      const c = wrap ? q.commands[0]! : listOf(q)[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: wrap ? q.loop + 1 : q.loop }
       throw fail(s, 'maxFrames', `超过 ${maxFrames} 帧，${where(q, ref)}还没执行；调大 options.maxFrames`, ref)
     }

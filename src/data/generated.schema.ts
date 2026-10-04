@@ -74,6 +74,7 @@ export const GenDmgSchema = z.strictObject({
   formulaType: int().min(0),
   formulaRate: z.number().optional(),     // FormulaType ≠ 0 时：FormulaParam5 按同一技能等级取值 × 0.0001（TD-03 §3.2）
   cureBase: z.number().optional(),        // CalculateType = 1 时：CureBaseValue 按同一技能等级取值（TD-03 §7）
+  whiteBarRatio: z.number().positive().optional(),   // CZ 列 Damage.Percent0 ÷ 10000：每段按白条上限的比例削（谐度破坏合计 12.5%，m0-confirm §10 H3）
 })
 
 export const GenRowSchema = z.strictObject({
@@ -281,6 +282,13 @@ export const GenTuneBreakSchema = z.strictObject({
   costRows: z.array(z.strictObject({ label: z.string(), multiplier: z.number(), vsDisharmony: z.number(), vsNormal: z.number(), ticks: int() })),
   baseByLevel: z.array(z.number()),       // base AO 列 WeaknessDamageBaseValue，下标 = 等级 − 1
   costFactors: z.array(z.strictObject({ cost: z.union([z.literal(1), z.literal(3), z.literal(4)]), factor: z.number().positive() })),   // base R–U 列（TD-03 §6）
+  // 「附页2」"偏谐机制·通用"的说明文字：谐破冷却（秒，按敌人 COST 与红名）、谐度破坏按钮亮多久（秒）；认不出时为 null（m0-confirm §10 H2、H4）
+  rules: nullable(z.strictObject({
+    lockSec: z.strictObject({ 1: z.number().positive(), 3: z.number().positive(), 4: z.number().positive() }),
+    lockSecRedName: z.number().positive(),
+    buttonSec: z.number().positive(),
+    source: z.string(),
+  })),
 })
 
 export const GenBuffTextSchema = z.strictObject({

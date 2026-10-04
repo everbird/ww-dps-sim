@@ -28,6 +28,7 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     },
     concertoMax: r.rules.concertoMax,
     rotation: sc.rotation,
+    opening: sc.opening,
     options: { repeat: r.options.repeat, tuneBreak: r.options.tuneBreak },
     kinds: Object.fromEntries(r.team.map(m => [m.def.name, Object.fromEntries(Object.values(m.actions).map(a => [a.id, a.kind]))])),
     summary: res.summary,

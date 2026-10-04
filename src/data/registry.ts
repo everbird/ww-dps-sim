@@ -85,13 +85,19 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
   }
 }
 
-/** tune-break.json → 谐度破坏表（TD-03 §6）；没有文件时全 0：谐度破坏伤害为 0 */
+const frames = (sec: number): number => Math.round(sec * 60)
+
+/** tune-break.json → 谐度破坏表（TD-03 §6）与规则（谐破冷却、按钮，秒 → 战斗帧）；没有文件时全 0：谐度破坏伤害为 0 */
 function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
-  if (!t) return { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } }
+  if (!t) return { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 }, rules: null }
   const factor = (cost: 1 | 3 | 4) => t.costFactors.find(f => f.cost === cost)?.factor ?? 0
   return {
     variants: t.variants.map(v => ({ key: v.key, weaponType: v.weaponType, seq: v.seq, multiplier: v.multiplier, ticks: v.ticks })),
     baseByLevel: t.baseByLevel, costFactor: { 1: factor(1), 3: factor(3), 4: factor(4) },
+    rules: t.rules && {
+      lockFrames: { 1: frames(t.rules.lockSec[1]), 3: frames(t.rules.lockSec[3]), 4: frames(t.rules.lockSec[4]) },
+      buttonFrames: frames(t.rules.buttonSec),
+    },
   }
 }
 

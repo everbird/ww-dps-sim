@@ -1,9 +1,11 @@
 // data/curated/characters/椿.ts —— 角色模块（TD-08 §5.2；结论见 m0-confirm §6 C1–C3、G3）
 import { defineCharacter } from '../../../src/data/define'
 
-/** 白椿（不在盛绽）才能用的动作；盛绽状态下普攻 / 重击 / E 换成盛绽版本（"盛绽·"开头与 E2） */
-const WHITE = new Set(['A1', 'A2', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1'])
-const BLOOM = (id: string) => id.startsWith('盛绽·') || id === 'E2'
+/** 白椿（不在盛绽）才能用的动作；盛绽状态下普攻 / 重击 / E 换成盛绽版本（"盛绽·"开头与 E2）。
+ *  谐度破坏也分两种：常态（R1886–R1889）与盛绽（R1890–R1893，组名"谐度破坏-时停"，别名"盛绽·谐度破坏"），
+ *  伤害相同，结束帧与派生窗口不同（m0-confirm §10 H5） */
+const WHITE = new Set(['A1', 'A2', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1', '谐度破坏'])
+const BLOOM = (id: string) => id.startsWith('盛绽·') || id === 'E2' || id === '谐度破坏-时停'
 const OUTRO_PLAIN = ['延奏-C0普通', '延奏-C5普通']
 const OUTRO_BUD = ['延奏-C0含苞', '延奏-C0含苞追加', '延奏-C5含苞', '延奏-C5含苞追加']
 const snap = (x: number) => Math.round(x * 1e9) / 1e9
@@ -11,7 +13,7 @@ const snap = (x: number) => Math.round(x * 1e9) / 1e9
 export default defineCharacter('椿', {
   weaponType: '迅刀',
   treeStats: { '暴击伤害': 0.16, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
-  aliases: { E: 'E1', R: '大招', QTE: 'QTE' },
+  aliases: { E: 'E1', R: '大招', QTE: 'QTE', '盛绽·谐度破坏': '谐度破坏-时停' },
   buffs: [
     {
       // 一日花进入含苞，15 秒；切人或红椿·蕊耗完时提前结束（后者在钩子里）

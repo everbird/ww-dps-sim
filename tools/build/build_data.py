@@ -114,9 +114,10 @@ def main() -> int:
     rage = rage_index(list(wb['prop'].iter_rows(min_row=1, max_col=38, values_only=True)), base_rows)
     enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues, rage)
 
-    # §11.3 谐度破坏表（TD-03 §6）
+    # §11.3 谐度破坏表（TD-03 §6）；规则（谐破冷却、按钮时长）取「附页2」"偏谐机制·通用"的说明文字
+    notes = [(c.coordinate, c.value) for row in wb['附页2'].iter_rows() for c in row if isinstance(c.value, str)]
     tune = build_tune_break(dmg, list(wb['伤害计算'].iter_rows(min_row=TABLE_ROWS[0], max_row=TABLE_ROWS[1], max_col=7,
-                                                              values_only=True)), base_rows, issues)
+                                                              values_only=True)), base_rows, issues, notes)
 
     # §5.4 声骸属性：主词条满级值、固定副主属性、副词条各档
     echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=90, values_only=True)), issues)

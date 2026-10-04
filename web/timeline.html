@@ -227,6 +227,10 @@
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+  // 轮次与指令出处：启动轴是第 0 轮（只跑一次），循环轴从第 1 轮起
+  const loopName = k => (k === 0 ? '启动' : `第 ${k} 轮`)
+  const cmdWhere = c => `${c.loop === 0 ? '启动' : c.loop > 1 ? `第 ${c.loop} 轮` : ''}第 ${c.line} 条`
+  const cmdText = c => ((c.loop === 0 ? M.opening : M.rotation) || [])[c.line - 1] || ''
 
   let M = null            // 时间轴数据（见 normalize）
   let ppf = 0.5           // 每世界帧多少像素
@@ -247,7 +251,7 @@
     return {
       title, scenario: raw.scenario || '', data: raw.data || '', team,
       enemy: raw.enemy || null, concertoMax: raw.concertoMax || 100, rotation: raw.rotation || [],
-      options: raw.options || {}, kinds: raw.kinds || {}, summary: raw.summary, error: raw.error || null, log,
+      opening: raw.opening || [], options: raw.options || {}, kinds: raw.kinds || {}, summary: raw.summary, error: raw.error || null, log,
     }
   }
 
@@ -361,7 +365,7 @@
     ].filter(Boolean)
     $('stats').innerHTML = items.map(([k, v]) => `<div class="stat"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')
     const sel = $('loopSel')
-    sel.innerHTML = '<option value="all">全部</option>' + (s.perLoop || []).map(p => `<option value="${p.loop}">第 ${p.loop} 轮</option>`).join('')
+    sel.innerHTML = '<option value="all">全部</option>' + (s.perLoop || []).map(p => `<option value="${p.loop}">${loopName(p.loop)}</option>`).join('')
   }
 
   function renderTables(m) {
@@ -369,15 +373,15 @@
     const parts = []
     if (s.perLoop && s.perLoop.length) {
       parts.push(`<section class="card"><h2>分轮</h2><div class="tablebox"><table><thead><tr><th>轮</th><th class="r">时长（秒）</th><th class="r">伤害</th><th class="r">DPS</th><th>能量首尾差（${names.map(esc).join(' / ')}）</th></tr></thead><tbody>` +
-        s.perLoop.map(p => `<tr><td>${p.loop}${s.steady && p.loop >= s.steady.from && p.loop <= s.steady.to ? ' <small>稳态</small>' : ''}</td><td class="r">${(p.frames / 60).toFixed(2)}</td><td class="r">${fmt(p.damage)}</td><td class="r">${fmt(p.dps)}</td><td class="num">${p.energyDelta.map(d => (d > 0 ? '+' : '') + d.toFixed(1)).join(' / ')}</td></tr>`).join('') +
+        s.perLoop.map(p => `<tr><td>${p.loop === 0 ? '启动' : p.loop}${s.steady && p.loop >= s.steady.from && p.loop <= s.steady.to ? ' <small>稳态</small>' : ''}</td><td class="r">${(p.frames / 60).toFixed(2)}</td><td class="r">${fmt(p.damage)}</td><td class="r">${fmt(p.dps)}</td><td class="num">${p.energyDelta.map(d => (d > 0 ? '+' : '') + d.toFixed(1)).join(' / ')}</td></tr>`).join('') +
         '</tbody></table></div></section>')
     }
     const top = s.byAction.slice(0, 14)
     parts.push(`<section class="card"><h2>分动作（窗口内，前 ${top.length}）</h2><div class="tablebox"><table><thead><tr><th>动作</th><th class="r">伤害</th><th class="r">占比</th><th class="r">段数</th></tr></thead><tbody>` +
       top.map(a => `<tr><td><span class="who" style="--c: var(--c${names.indexOf(a.char)})"><i class="swatch"></i>${esc(a.char)} ${esc(a.action)}</span></td><td class="r">${fmt(a.damage)}</td><td class="r">${pct(a.share)}</td><td class="r">${a.hits}</td></tr>`).join('') +
       '</tbody></table></div></section>')
-    const where = c => `${c.loop > 1 ? `第 ${c.loop} 轮` : ''}第 ${c.line} 条`
-    const line = c => m.rotation[c.line - 1] ? `（${esc(m.rotation[c.line - 1])}）` : ''
+    const where = cmdWhere
+    const line = c => cmdText(c) ? `（${esc(cmdText(c))}）` : ''
     parts.push(`<section class="card"><h2>等待（不是写轴要求的）</h2>` + (s.waits.length
       ? `<ul class="list">${s.waits.map(w => `<li><span class="where">${where(w)}</span><span>${w.frames} 帧 · ${esc(w.reason)}${line(w)}</span></li>`).join('')}</ul>`
       : '<p class="none">没有。</p>') + '</section>')
@@ -434,7 +438,7 @@
     for (const l of D.loops) {
       const lx = x(l.f)
       out.push(`<line x1="${lx}" x2="${lx}" y1="${axis.y + 2}" y2="${height}" style="stroke: var(--faint); stroke-dasharray: 4 3"/>`)
-      out.push(`<text x="${lx + 3}" y="${axis.y + 13}" style="fill: var(--muted)">第 ${l.loop} 轮</text>`)
+      out.push(`<text x="${lx + 3}" y="${axis.y + 13}" style="fill: var(--muted)">${loopName(l.loop)}</text>`)
     }
     const wf = D.clock.frameAt(M.summary.windowFrames / 60)
     out.push(`<line x1="${x(wf)}" x2="${x(wf)}" y1="${axis.y + 2}" y2="${height}" style="stroke: var(--ink); stroke-width: 1.5"/>`)
@@ -449,7 +453,7 @@
           const kind = (M.kinds[a.char] || {})[a.id] || 'other'
           const w = Math.max(1.5, (a.end - a.start) * ppf)
           const bx = x(a.start), by = r.y + 11, bh = 20
-          const cmd = a.cmd ? `\n${a.cmd.loop > 1 ? `第 ${a.cmd.loop} 轮` : ''}第 ${a.cmd.line} 条${M.rotation[a.cmd.line - 1] ? `：${M.rotation[a.cmd.line - 1]}` : ''}` : '\n不是轴里写的（变奏、接续动作或自动插入的谐度破坏）'
+          const cmd = a.cmd ? `\n${cmdWhere(a.cmd)}${cmdText(a.cmd) ? `：${cmdText(a.cmd)}` : ''}` : '\n不是轴里写的（变奏、接续动作或自动插入的谐度破坏）'
           const t = tip(`<b>${esc(a.char)} ${esc(a.id)}</b>（${KIND_NAME[kind] || kind}）\n第 ${a.start}–${a.end} 帧，${a.end - a.start} 帧；战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒\n${a.how}${esc(cmd)}`)
           out.push(barShape(kind, bx, by, w, bh, c, t))
           if (w > 26) out.push(`<text x="${bx + 3}" y="${by + 14}" style="pointer-events: none">${esc(fit(a.id, w - 6))}</text>`)
@@ -466,11 +470,11 @@
         for (const w of D.waits) {
           const wx = x(w.from), ww = Math.max(1, (w.f - w.from) * ppf)
           const col = INTENDED.has(w.code) ? 'var(--calm)' : 'var(--wait)'
-          out.push(`<rect x="${wx}" y="${r.y + 5}" width="${ww}" height="8" rx="2" style="fill: ${col}; opacity: 0.85" data-t="${tip(`<b>等待</b> ${w.frames} 帧（战斗 ${w.battleFrames} 帧）\n${esc(w.reason)}\n${w.cmd.loop > 1 ? `第 ${w.cmd.loop} 轮` : ''}第 ${w.cmd.line} 条${M.rotation[w.cmd.line - 1] ? `：${esc(M.rotation[w.cmd.line - 1])}` : ''}`)}"/>`)
+          out.push(`<rect x="${wx}" y="${r.y + 5}" width="${ww}" height="8" rx="2" style="fill: ${col}; opacity: 0.85" data-t="${tip(`<b>等待</b> ${w.frames} 帧（战斗 ${w.battleFrames} 帧）\n${esc(w.reason)}\n${cmdWhere(w.cmd)}${cmdText(w.cmd) ? `：${esc(cmdText(w.cmd))}` : ''}`)}"/>`)
         }
         for (const k of D.skips) {
           const kx = x(k.f)
-          out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选指令 ?）\n${esc(k.reason)}\n${k.cmd.loop > 1 ? `第 ${k.cmd.loop} 轮` : ''}第 ${k.cmd.line} 条${M.rotation[k.cmd.line - 1] ? `：${esc(M.rotation[k.cmd.line - 1])}` : ''}`)}"/>`)
+          out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选指令 ?）\n${esc(k.reason)}\n${cmdWhere(k.cmd)}${cmdText(k.cmd) ? `：${esc(cmdText(k.cmd))}` : ''}`)}"/>`)
         }
       } else if (r.kind === 'enemy') {
         const en = M.enemy, top = r.y + 8, h = r.h - 16
@@ -619,7 +623,7 @@
     renderHeader(m)
     renderTables(m)
     renderLegend(m)
-    const first = m.D.loops.length > 1 ? '1' : 'all'
+    const first = m.D.loops.some(l => l.loop === 1) && m.D.loops.length > 1 ? '1' : 'all'
     $('loopSel').value = first
     showLoop(first)
   }

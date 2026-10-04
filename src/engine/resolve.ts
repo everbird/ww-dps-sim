@@ -41,19 +41,28 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     else issues.push(`environment 里的 ${id} 不存在（现有：${Object.keys(data.envBuffs).join('、') || '无'}）`)
   }
   const rules = resolveRules(sc.options.rules, issues)
+  // 谐破冷却按敌人 COST、按钮时长（xlsx 附页2，m0-confirm §10 H2、H4）；敌人表没有红名，不用红名那一档
+  const tr = data.tuneBreak.rules
+  const tuneBreakTiming = tr ? { lockFrames: tr.lockFrames[enemy.cost], buttonFrames: tr.buttonFrames } : { lockFrames: 300, buttonFrames: null }
+  if (!tr && sc.options.tuneBreak !== 'off' && enemy.tunabilityMax > 0)
+    warnings.push('数据里没有偏谐的通用规则（xlsx 附页2 的谐破冷却、按钮时长）：按 5 秒真空期、按钮不限时')
   // 三名角色都找得到时照样编译排轴，错一起报（总设计 §3.3 第 7 步：一次报全）
   const onField = sc.initial.onField as Slot
   let commands: ResolvedScenario['commands'] = []
+  let opening: ResolvedScenario['opening'] = []
   if (built.every(b => b !== null)) {
     const team = built.map(b => b.member)
     const compiled = compileRotation(
       sc.rotation, team.map((m): CompileMember => ({ name: m.def.name, actions: m.actions, aliases: m.aliases })), onField, sc.options.repeat,
+      sc.opening,
     )
-    if (compiled.ok) commands = compiled.commands
+    if (compiled.ok) { commands = compiled.commands; opening = compiled.opening }
     else {
-      const many = (line: number) => { const p = parseRotationLine(sc.rotation[line - 1] ?? ''); return Array.isArray(p) && p.length > 1 }
-      for (const i of compiled.issues)
-        issues.push(`rotation 第 ${i.line} 条${i.item !== undefined && many(i.line) ? `第 ${i.item} 个` : ''}：${i.message}`)
+      const many = (lines: string[], line: number) => { const p = parseRotationLine(lines[line - 1] ?? ''); return Array.isArray(p) && p.length > 1 }
+      for (const i of compiled.issues) {
+        const lines = i.opening ? sc.opening : sc.rotation
+        issues.push(`${i.opening ? 'opening' : 'rotation'} 第 ${i.line} 条${i.item !== undefined && many(lines, i.line) ? `第 ${i.item} 个` : ''}：${i.message}`)
+      }
     }
   }
   if (issues.length > 0) throw new ResolveError(issues)
@@ -84,13 +93,14 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     Array.isArray(x) ? x : (team.map(m => (x === 'full' || x === 'empty' ? f(m) : x)) as [number, number, number])
   const e = sc.initial.energy
   return {
-    data, team, enemy, buffs, effects, commands,
+    data, team, enemy, buffs, effects, commands, opening,
     initial: {
       energy: trio(e, m => (e === 'full' ? m.def.energyCost : 0)),
       concerto: trio(sc.initial.concerto, () => 0),
       onField,
     },
     rules,
+    tuneBreakTiming,
     options: {
       repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait, tuneBreak: sc.options.tuneBreak,
       ...(sc.options.endAt !== undefined ? { endAt: sc.options.endAt } : {}),

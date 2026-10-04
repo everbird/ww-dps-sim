@@ -111,7 +111,7 @@ export interface JudgmentDef {
   tags: DamageTag[]
   gains: { energy: number; concerto: number; core: [number, number, number] }   // 每次结算
   coreOncePerAction?: [boolean, boolean, boolean]   // 核心回收合并区：每个动作实例只发一次（TD-01 §1.5）
-  gauges: { toughness: number; tunability: number }
+  gauges: { toughness: number; tunability: number; whiteBarRatio?: number }   // whiteBarRatio：按白条上限的比例削（dmg Damage.Percent0）
   hitstop: DilationDef | null                       // 每次命中时登记的膨胀（anchor = 'hit'；膨胀发生为空的各侧，任何类型）
   formula?: { type: number; rate: number }          // dmg FormulaType ≠ 0：rate = FormulaParam5（已 × 0.0001），钩子据此算 Formula1
   cureBase?: number                                 // 治疗 / 护盾的固定值 CureBaseValue（calc = 'heal'）
@@ -188,6 +188,9 @@ export interface TuneBreakTable {
   variants: { key: string; weaponType: WeaponType | null; seq: number | null; multiplier: number; ticks: number | null }[]
   baseByLevel: number[]                             // WeaknessDamageBaseValue，下标 = 等级 − 1
   costFactor: Record<1 | 3 | 4, number>             // 按敌人 COST：base 表 WeaknessDamageMinus × WeaknessDamageMinusRatio（TD-03 §6）
+  /** xlsx「附页2」偏谐机制·通用（m0-confirm §10 H2、H4）：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按敌人 COST）、
+   *  按钮亮多久，都是战斗帧；认不出时为 null（仿真按 5 秒真空期、按钮不限时，并警告） */
+  rules: { lockFrames: Record<1 | 3 | 4, Frame>; buttonFrames: Frame } | null
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +204,6 @@ export interface Rules {
   concertoTiming: 'onCast' | 'onHit'
   energyShare: { dealer: number; others: number }
   breakEnergy: number
-  tuneBreakLock: Frame                              // 谐度破坏命中后不能累积偏谐值的时间（真空期，TD-06 §13.1）
   critRateCap: number
   defFactorCap: number
   highResThreshold: number
@@ -226,7 +228,6 @@ export const DEFAULT_RULES: Rules = {
   concertoTiming: 'onHit',                          // 逐段所得按命中给，"进入即得"仍在出手时（2026-10-03 用户实测，TD-06 Q1）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1
   breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
-  tuneBreakLock: 300,                               // 真空期 5 秒；带震谐·干涉时 8 秒（M0 用不到，2026-10-04 用户确认）
   critRateCap: 1,
   defFactorCap: 2,                                  // min(2, …)（TD-03 §3.2）
   highResThreshold: 0.8,                            // 总设计附录 A-5

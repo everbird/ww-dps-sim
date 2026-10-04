@@ -18,8 +18,11 @@ export interface ResolvedScenario {
   buffs: RegisteredBuff[]                   // 常驻实例 + 触发监听器，已按共鸣链过滤、按谐振阶取值
   effects: RegisteredEffect[]               // 资源型触发效果（TD-07 §9），同上
   commands: Command[]
+  opening: Command[]                        // 启动轴（TD-09 §3.7）
   initial: { energy: [number, number, number]; concerto: [number, number, number]; onField: Slot }
   rules: Rules
+  /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
+  tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }
   options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off' }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
 }
@@ -89,10 +92,11 @@ export interface SimState {
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
 export interface QueueState {
-  commands: Command[]
+  commands: Command[]                       // 循环轴
+  opening: Command[]                        // 启动轴（第 0 轮，只跑一次；没有为空）
   repeat: number                            // 整条轴执行几轮（options.repeat）
   next: number                              // 队首指令的下标
-  loop: number                              // 当前第几轮（从 1 起）
+  loop: number                              // 当前第几轮（从 1 起；启动轴是第 0 轮）
   loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
   waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
   readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
@@ -187,7 +191,8 @@ export interface EnemyRuntime {
   poise: number
   tunability: number
   disharmony: boolean                       // 偏谐值满（失谐）
-  tunabilityLockedUntil: number             // 战斗帧：谐度破坏后的真空期，此前不累积偏谐值
+  tunabilityLockedUntil: number             // 战斗帧：谐度破坏后的谐破冷却（真空期），此前不累积偏谐值
+  tuneButtonUntil: number                   // 战斗帧：谐度破坏按钮亮到这一帧（不含）；前台角色对失谐目标打出偏谐值不为 0 的伤害时点亮
   tuneBreakBy?: number                      // 消耗这次失谐的谐度破坏动作实例（它的各段伤害按对失谐算）
   shift?: 'zhenxie' | 'jixie'
   interference?: { kind: 'zhenxie' | 'jixie'; stacks: number; remaining: number }
@@ -279,7 +284,7 @@ export interface Summary {
   waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   skipped: { line: number; item: number; loop: number; reason: string }[]   // 跳过的可选指令（"?"）
   warnings: { code: string; message: string; line?: number }[]
-  /** 分轮（options.repeat ≥ 2；总设计 §3.5、TD-09 §3.7 / §3.9）：第 k 轮 = [本轮 loop 事件, 下一轮 loop 事件)，最后一轮到窗口终点，
+  /** 分轮（options.repeat ≥ 2 或有启动轴；总设计 §3.5、TD-09 §3.7 / §3.9）：第 k 轮 = [本轮 loop 事件, 下一轮 loop 事件)，最后一轮到窗口终点；启动轴是第 0 轮，
    *  按战斗帧。资源首尾差 = 下一轮开始时（最后一轮：窗口终点）− 本轮开始时，看这条轴能不能自给 */
   perLoop?: {
     loop: number; start: number; frames: number; damage: number; dps: number

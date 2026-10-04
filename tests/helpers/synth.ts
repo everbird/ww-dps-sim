@@ -47,7 +47,7 @@ export function synthData(chars: SynthChar[]): GameData {
       },
     },
     echoes: {}, echoSets: {}, echoStats: null, enemies: {}, effects: {}, abnormalBaseByLevel: [],
-    tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } },
+    tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 }, rules: null },
     envBuffs: {}, rules: DEFAULT_RULES,
   }
 }

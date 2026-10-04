@@ -60,7 +60,7 @@ describe('T09-2 编译：名字解析与静态检查（§4）', () => {
   test('别名、行号与行内序号', () => {
     const r = compileRotation(['甲 E R', 'switch 乙', '乙 A1 A2! +3', 'wait 10'], fake, 0)
     expect(r).toEqual({
-      ok: true, commands: [
+      ok: true, opening: [], commands: [
         { kind: 'act', line: 1, item: 1, slot: 0, action: 'E', delay: 0, force: false },
         { kind: 'act', line: 1, item: 2, slot: 0, action: '大招', delay: 0, force: false },
         { kind: 'switch', line: 2, item: 1, to: 1 },
@@ -323,3 +323,20 @@ describe('T09-可选 "?"：状态条件不满足就跳过（TD-06 §13.4）', ()
     expect(waits(r)).toEqual(['2:derive 0+30'])
   })
 })
+
+describe('T09-启动轴（§3.7）：先跑一次 opening（第 0 轮），之后 rotation 循环', () => {
+  test('编译：前台从启动轴结束时推起；循环轴回不到它的起点报错，指出是启动还是循环', () => {
+    // 启动轴结束时前台是乙；循环轴从乙开始、回到乙结束
+    const ok = compileRotation(['乙 E', 'switch 甲', '甲 E', 'switch 乙'], fake, 0, 2, ['甲 E', 'switch 乙'])
+    expect(ok.ok).toBe(true)
+    if (ok.ok) expect([ok.opening.length, ok.commands.length]).toEqual([2, 4])
+    // 循环轴从乙开始、以切到甲结束：第 2 轮起手时前台是甲，回不到起点
+    const bad = compileRotation(['乙 E', 'switch 甲'], fake, 0, 2, ['甲 E', 'switch 乙'])
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.issues.map(i => [i.opening ?? false, i.line, i.message.includes('循环第 2 轮')])).toEqual([[false, 1, true]])
+    const badOpen = compileRotation(['甲 E'], fake, 0, 1, ['乙 E'])
+    if (!badOpen.ok) expect(badOpen.issues[0]).toMatchObject({ opening: true, line: 1 })
+    else throw new Error('应当报错')
+  })
+})
+
