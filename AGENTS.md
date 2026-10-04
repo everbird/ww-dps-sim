@@ -55,6 +55,7 @@ pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
+pnpm timeline scenarios/m0-team.yaml        # 时间轴网页：结果嵌进 web/timeline.html，写到 out/<场景名>.html（浏览器直接打开）
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
@@ -73,4 +74,4 @@ pnpm test -u                                 # 场景汇总快照（tests/scenar
 
 M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下的 11 处已于 2026-10-03 并回总设计 v0.1.5 等；声骸与 M5 记下的 4 处已于 2026-10-04 并回总设计 v0.1.6 等，并新写 TD-10 v0.1；M4 敌人量表（TD-06 v0.2 §17）已于 2026-10-04 并回总设计 v0.1.7、TD-01 v0.1.6、TD-02 v0.1.6、TD-03 v0.1.2、TD-04 v0.1.4、TD-09 v0.1.3、TD-10 v0.1.1（各文档附录的变更历史逐条列出）。之后的新决定记在下面：
 
-（暂无）
+1. **时间轴网页（M6 第一步，2026-10-04）**：`web/timeline.html` 是模板（自带样式与脚本，不用构建），`pnpm timeline <场景>`（`src/cli/timeline.ts`）跑完仿真把结果和画图要的元数据（队伍、能量上限、敌人量表、排轴原文、各动作的类别）嵌进去，写 `out/<场景名>.html`；`--fragment` 不带 `<!doctype>` 与 `<head>`。模板也能直接打开，再选 `pnpm sim` / `pnpm timeline` 写出的 JSON。`HitEvent` 新增可选的 `enemy`（这次结算后的偏谐值与白条，画曲线用）。下次改 TD-02 §7、TD-10 §5 时并回；写 TD-12（网页）时并入。

@@ -232,6 +232,7 @@ export interface HitEvent extends EventBase {
   factors?: HitFactors
   buffs: string[]                           // 生效的 buff，"id×层数"
   gains: { energy: Partial<Record<CharName, number>>; concerto: number; core: number[] }
+  enemy?: { tunability: number; whiteBar: number }   // 这次结算之后敌人的偏谐值与白条（有量表的敌人才记，TD-06 §14；时间轴网页画曲线用）
 }
 
 /** 公式各项系数（TD-03 §8：非暴击分支的各项；critDamage 是暴击分支的暴伤） */

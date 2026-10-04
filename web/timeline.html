@@ -1,0 +1,654 @@
+<title>排轴时间轴</title>
+<meta name="description" content="鸣潮逐帧仿真的事件日志：动作、命中、buff、资源与敌人量表画在同一条时间轴上">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* web/timeline.html —— 时间轴网页（M6 第一步）：pnpm timeline <场景.yaml> 把仿真结果嵌进这个模板，写到 out/<场景名>.html。
+     也可以直接打开模板，再用"打开日志"选 pnpm sim / pnpm timeline 写出的 JSON。 */
+  :root {
+    --paper: #f3f5f8;
+    --panel: #ffffff;
+    --ink: #1a1f2b;
+    --muted: #5d6576;
+    --faint: #8a91a1;
+    --rule: #d8dce4;
+    --grid: #e8ebf0;
+    --stop: rgba(26, 31, 43, 0.07);
+    --alert: #c8323b;
+    --wait: #d9922b;
+    --calm: #9aa1b0;
+    --good: #2f8a5b;
+    --el-havoc: #a32f6c;
+    --el-glacio: #2a78bb;
+    --el-spectro: #a98410;
+    --el-fusion: #c9512a;
+    --el-electro: #7547cf;
+    --el-aero: #23977a;
+    --el-physical: #677084;
+    --sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    --label-w: 132px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #0f1218;
+      --panel: #161a22;
+      --ink: #e5e8ef;
+      --muted: #a2a9b8;
+      --faint: #737b8c;
+      --rule: #2a303c;
+      --grid: #1f242d;
+      --stop: rgba(229, 232, 239, 0.06);
+      --alert: #ef5a62;
+      --wait: #e7a443;
+      --calm: #6c7383;
+      --good: #4fb47f;
+      --el-havoc: #d6619e;
+      --el-glacio: #5aa5e8;
+      --el-spectro: #d9b443;
+      --el-fusion: #e9784f;
+      --el-electro: #a07df0;
+      --el-aero: #4cc3a2;
+      --el-physical: #98a1b5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0f1218;
+    --panel: #161a22;
+    --ink: #e5e8ef;
+    --muted: #a2a9b8;
+    --faint: #737b8c;
+    --rule: #2a303c;
+    --grid: #1f242d;
+    --stop: rgba(229, 232, 239, 0.06);
+    --alert: #ef5a62;
+    --wait: #e7a443;
+    --calm: #6c7383;
+    --good: #4fb47f;
+    --el-havoc: #d6619e;
+    --el-glacio: #5aa5e8;
+    --el-spectro: #d9b443;
+    --el-fusion: #e9784f;
+    --el-electro: #a07df0;
+    --el-aero: #4cc3a2;
+    --el-physical: #98a1b5;
+  }
+
+  [hidden] { display: none !important; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.55;
+    padding-inline: 16px;
+    padding-block: 20px 40px;
+  }
+  .wrap { max-width: 1440px; margin-inline: auto; display: grid; gap: 20px; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  header.top { display: grid; gap: 10px; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.08em; color: var(--muted); }
+  h1 { margin: 0; font-size: 24px; font-weight: 700; text-wrap: balance; }
+  .meta { margin: 0; color: var(--muted); max-width: 80ch; }
+  .team { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+  .who { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 4px 0 0; }
+  .stat { display: grid; gap: 0; }
+  .stat dt { font-size: 12px; color: var(--muted); }
+  .stat dd { margin: 0; font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 500; }
+  .stat dd small { font-size: 12px; color: var(--muted); font-weight: 400; }
+
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+  .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+  .toolbar .group { display: inline-flex; align-items: center; gap: 6px; }
+  .toolbar label { color: var(--muted); font-size: 13px; }
+  button, select {
+    font: inherit; font-size: 13px; color: var(--ink); background: var(--paper);
+    border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; cursor: pointer;
+  }
+  button:hover, select:hover { border-color: var(--faint); }
+  button:focus-visible, select:focus-visible, input:focus-visible, .scroller:focus-visible { outline: 2px solid var(--el-glacio); outline-offset: 1px; }
+  .check { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-size: 13px; cursor: pointer; }
+  .file { font-size: 13px; color: var(--muted); }
+  .file input { font-size: 12px; max-width: 220px; }
+
+  .tl { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); }
+  .labels { border-right: 1px solid var(--rule); position: relative; }
+  .label {
+    position: absolute; left: 0; right: 0; padding-inline: 10px 6px; display: flex; flex-direction: column; justify-content: center;
+    overflow: hidden; border-top: 1px solid var(--grid);
+  }
+  .label b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .label span { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .label.buff b { font-size: 11px; font-weight: 400; color: var(--muted); }
+  .label.section { border-top: 1px solid var(--rule); }
+  .label.section b { font-size: 11px; letter-spacing: 0.06em; color: var(--muted); }
+  .scroller { overflow-x: auto; overflow-y: hidden; position: relative; }
+  svg { display: block; }
+  svg text { font-family: var(--sans); font-size: 11px; fill: var(--ink); }
+  svg .mono { font-family: var(--mono); }
+  .empty { padding: 40px 20px; color: var(--muted); }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+
+  .tables { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 20px; }
+  .tables section { padding: 14px 16px; display: grid; gap: 8px; align-content: start; }
+  h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .tablebox { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th { font-weight: 500; color: var(--muted); font-size: 12px; }
+  td.r, th.r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
+  .list li { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
+  .list .where { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+  .none { color: var(--muted); font-size: 13px; margin: 0; }
+  footer { color: var(--muted); font-size: 12px; }
+  code { font-family: var(--mono); font-size: 12px; }
+
+  .tip {
+    position: fixed; z-index: 10; max-width: min(360px, calc(100vw - 32px)); pointer-events: none;
+    background: var(--panel); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18); padding: 8px 10px; font-size: 12px; line-height: 1.5; white-space: pre-line;
+  }
+  .tip b { font-weight: 700; }
+
+  @media (max-width: 640px) {
+    :root { --label-w: 92px; }
+    h1 { font-size: 20px; }
+    .stat dd { font-size: 16px; }
+  }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="eyebrow">鸣潮逐帧仿真 · 事件日志</div>
+    <h1 id="title">排轴时间轴</h1>
+    <p class="meta" id="meta">还没有载入数据。</p>
+    <div class="team" id="team"></div>
+    <dl class="stats" id="stats"></dl>
+  </header>
+
+  <section class="card" aria-label="时间轴">
+    <div class="toolbar">
+      <div class="group">
+        <label for="loopSel">范围</label>
+        <select id="loopSel"><option value="all">全部</option></select>
+      </div>
+      <div class="group" role="group" aria-label="缩放">
+        <button type="button" id="zoomOut" aria-label="缩小">−</button>
+        <button type="button" id="zoomIn" aria-label="放大">＋</button>
+        <button type="button" id="zoomFit">适应宽度</button>
+      </div>
+      <div class="group">
+        <label class="check"><input type="checkbox" id="showEnemy" checked> 敌人量表</label>
+        <label class="check"><input type="checkbox" id="showRes" checked> 能量与协奏</label>
+        <label class="check"><input type="checkbox" id="showBuffs" checked> buff</label>
+      </div>
+      <div class="group file">
+        <label for="fileIn">打开日志</label>
+        <input type="file" id="fileIn" accept="application/json,.json">
+      </div>
+    </div>
+    <div class="tl">
+      <div class="labels" id="labels"></div>
+      <div class="scroller" id="scroller" tabindex="0" aria-label="时间轴，可横向滚动"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <div class="tables" id="tables"></div>
+
+  <footer>
+    横轴按世界帧排布（60 帧 = 1 秒），刻度标的是战斗时间：大招、谐度破坏等全局时停时战斗时钟停走，图上画成灰色竖带。
+    重新生成：在仓库里运行 <code>pnpm timeline scenarios/&lt;场景&gt;.yaml</code>，输出到 <code>out/&lt;场景&gt;.html</code>。
+  </footer>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+
+<script id="timeline-data" type="application/json">null</script>
+<script>
+(() => {
+  'use strict'
+  const $ = id => document.getElementById(id)
+  const ELEMENT_VAR = { 湮灭: '--el-havoc', 冷凝: '--el-glacio', 衍射: '--el-spectro', 热熔: '--el-fusion', 导电: '--el-electro', 气动: '--el-aero', 物理: '--el-physical' }
+  const KIND_NAME = { normal: '普攻', heavy: '重击', skill: '共鸣技能', liberation: '共鸣解放', intro: '变奏', outro: '延奏', echo: '声骸技能', dodge: '闪避', tuneBreak: '谐度破坏', other: '其他' }
+  const INTENDED = new Set(['delay', 'wait', 'at'])
+  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束、白条回满', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
+  const fmt = x => Math.round(x).toLocaleString('en-US')
+  const pct = x => (x * 100).toFixed(1) + '%'
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+  let M = null            // 时间轴数据（见 normalize）
+  let ppf = 0.5           // 每世界帧多少像素
+  let tips = []           // 悬停提示：data-t 指向这里
+
+  // ---------------------------------------------------------------------------
+  // 数据：pnpm timeline 嵌入的模型；也接受 pnpm sim 写出的 { summary, log }（缺的元数据按日志推）
+
+  function normalize(raw) {
+    if (!raw || !Array.isArray(raw.log) || !raw.summary) throw new Error('不是事件日志：缺少 log 或 summary')
+    const log = raw.log.filter(e => e.type !== 'judgmentSpawn')
+    const names = raw.team ? raw.team.map(m => m.name) : [...new Set(log.filter(e => e.type === 'actionStart').map(e => e.char))].slice(0, 3)
+    const team = raw.team || names.map(name => ({ name, element: '物理', energyCap: null, chain: null, weapon: '', rank: null }))
+    for (const m of team) {
+      if (m.energyCap == null) m.energyCap = Math.max(1, ...raw.summary.resourceTimeline.map(s => s.energy[team.indexOf(m)] || 0))
+    }
+    const title = raw.title || String(raw.scenario || '').replace(/^.*[\\/]/, '').replace(/\.\w+$/, '') || '事件日志'
+    return {
+      title, scenario: raw.scenario || '', data: raw.data || '', team,
+      enemy: raw.enemy || null, concertoMax: raw.concertoMax || 100, rotation: raw.rotation || [],
+      options: raw.options || {}, kinds: raw.kinds || {}, summary: raw.summary, error: raw.error || null, log,
+    }
+  }
+
+  // 世界帧 ↔ 战斗时间：事件同时带世界帧 f 与战斗秒数 t；相邻两条事件的 t 相同而 f 不同，中间战斗时钟停着
+  function clockOf(log) {
+    const F = [0], T = [0]
+    for (const e of log) {
+      if (e.f < F[F.length - 1]) continue
+      if (e.f === F[F.length - 1]) { T[T.length - 1] = Math.max(T[T.length - 1], e.t); continue }
+      F.push(e.f); T.push(Math.max(e.t, T[T.length - 1]))
+    }
+    const stops = []
+    for (let i = 1; i < F.length; i++) {
+      if (T[i] === T[i - 1] && F[i] - F[i - 1] >= 2) {
+        const last = stops[stops.length - 1]
+        if (last && last[1] === F[i - 1]) last[1] = F[i]
+        else stops.push([F[i - 1], F[i]])
+      }
+    }
+    // 战斗秒 s 最早出现在哪个世界帧：找第一条 t ≥ s 的事件，往回按每帧 1/60 秒推
+    const frameAt = s => {
+      let lo = 0, hi = T.length - 1
+      if (s <= 0) return 0
+      if (s > T[hi]) return F[hi] + (s - T[hi]) * 60
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (T[mid] >= s) hi = mid; else lo = mid + 1 }
+      if (lo === 0) return F[0]
+      return Math.max(F[lo - 1], F[lo] - (T[lo] - s) * 60)
+    }
+    const secAt = f => {
+      let lo = 0, hi = F.length - 1
+      if (f >= F[hi]) return T[hi] + (f - F[hi]) / 60
+      while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (F[mid] <= f) lo = mid; else hi = mid - 1 }
+      return Math.min(T[lo + 1] ?? Infinity, T[lo] + (T[lo + 1] > T[lo] ? (f - F[lo]) / 60 : 0))
+    }
+    return { stops, frameAt, secAt, end: F[F.length - 1] }
+  }
+
+  function build(m) {
+    const slot = new Map(m.team.map((t, i) => [t.name, i]))
+    const actions = [], open = new Map(), hits = [], waits = [], skips = [], loops = [], enemy = [], switches = []
+    const buffRows = new Map(), always = new Set()
+    for (const e of m.log) {
+      switch (e.type) {
+        case 'actionStart': {
+          const a = { i: slot.get(e.char), char: e.char, id: e.action, start: e.f, end: null, how: '', cmd: e.cmd, t0: e.t }
+          open.set(e.instance, a); actions.push(a); break
+        }
+        case 'actionEnd': case 'actionCancel': {
+          const a = open.get(e.instance)
+          if (a) { a.end = e.f; a.t1 = e.t; a.how = e.type === 'actionCancel' ? `被 ${e.by} 取消` : '自然结束'; open.delete(e.instance) }
+          break
+        }
+        case 'hit': if (e.dmg || e.enemy) hits.push(e); break
+        case 'switch': switches.push(e); break
+        case 'wait': waits.push(e); break
+        case 'skip': skips.push(e); break
+        case 'loop': loops.push(e); break
+        case 'enemyState': enemy.push(e); break
+        case 'buffApply': case 'buffExpire': {
+          if (e.type === 'buffApply' && e.remaining === 'inf') { always.add(e.buff); break }
+          const key = `${e.buff}→${e.target}`
+          let row = buffRows.get(key)
+          if (e.type === 'buffApply') {
+            if (!row) { row = { key, buff: e.buff, target: e.target, spans: [], cur: null }; buffRows.set(key, row) }
+            if (!row.cur) { row.cur = { start: e.f, end: null, stacks: e.stacks }; row.spans.push(row.cur) } else row.cur.stacks = Math.max(row.cur.stacks, e.stacks)
+          } else if (row && row.cur) { row.cur.end = e.f; row.cur.reason = e.reason; row.cur = null }   // 常驻 buff 的移除没有对应的行
+          break
+        }
+      }
+    }
+    const clock = clockOf(m.log)
+    const lastF = Math.max(clock.end, ...m.summary.resourceTimeline.map(s => s.f))
+    for (const a of actions) if (a.end === null) { a.end = lastF; a.how = '日志结束时仍在进行' }
+    for (const r of buffRows.values()) for (const s of r.spans) if (s.end === null) { s.end = lastF; s.reason = '日志结束时仍在' }
+    // 前台：初始前台是第一条 switch 的 from（没有切人时是第一个出招的人）
+    const onField = []
+    let who = switches.length ? switches[0].from : (actions[0] ? actions[0].char : null), from = 0
+    for (const s of switches) { onField.push({ i: slot.get(who), start: from, end: s.f }); who = s.to; from = s.f }
+    if (who != null) onField.push({ i: slot.get(who), start: from, end: lastF })
+    const rows = [...buffRows.values()].sort((a, b) => {
+      const ta = slot.has(a.target) ? slot.get(a.target) : 9, tb = slot.has(b.target) ? slot.get(b.target) : 9
+      return ta - tb || a.spans[0].start - b.spans[0].start
+    })
+    return { slot, actions, hits, waits, skips, loops, enemy, onField, buffs: rows, always, clock, lastF, maxHit: Math.max(1, ...hits.map(h => h.dmg ? h.dmg.expected : 0)) }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 页头与表格
+
+  function renderHeader(m) {
+    const s = m.summary
+    document.title = `${m.team.map(t => t.name).join('·')} 时间轴`
+    $('title').textContent = `${m.team.map(t => t.name).join(' · ')}　${m.title}`
+    const en = m.enemy
+    $('meta').textContent = [
+      m.scenario && `场景 ${m.scenario}`, m.data && `数据 ${m.data}`,
+      en && `敌人 ${en.id}（${en.level} 级）`,
+      m.options.repeat > 1 && `循环 ${m.options.repeat} 轮`,
+      m.options.tuneBreak && `谐度破坏 ${{ auto: '自动', manual: '只按轴里写的', off: '关闭' }[m.options.tuneBreak] || m.options.tuneBreak}`,
+    ].filter(Boolean).join(' · ')
+    $('team').innerHTML = m.team.map((t, i) =>
+      `<span class="who" style="--c: var(--c${i})"><i class="swatch"></i>${esc(t.name)}${t.chain != null ? ` ${t.chain} 链` : ''}${t.weapon ? ` · ${esc(t.weapon)}${t.rank ? ` R${t.rank}` : ''}` : ''}${t.element ? ` · ${esc(t.element)}` : ''}</span>`).join('')
+    const st = s.steady
+    const items = [
+      ['窗口', `${(s.windowFrames / 60).toFixed(2)}<small> 秒</small>`],
+      ['总伤害', fmt(s.totalDamage)],
+      ['DPS', fmt(s.dps)],
+      st && [`稳态 DPS（第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮）`, fmt(st.dps)],
+      s.enemy && (s.enemy.disharmony + s.enemy.breaks > 0) && ['谐度破坏', `${s.enemy.tuneBreaks}<small> 次 · ${pct(s.totalDamage ? s.enemy.tuneBreakDamage / s.totalDamage : 0)}</small>`],
+      s.enemy && (s.enemy.disharmony + s.enemy.breaks > 0) && ['失谐 / 破盾', `${s.enemy.disharmony}<small> 次 / </small>${s.enemy.breaks}<small> 次</small>`],
+    ].filter(Boolean)
+    $('stats').innerHTML = items.map(([k, v]) => `<div class="stat"><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')
+    const sel = $('loopSel')
+    sel.innerHTML = '<option value="all">全部</option>' + (s.perLoop || []).map(p => `<option value="${p.loop}">第 ${p.loop} 轮</option>`).join('')
+  }
+
+  function renderTables(m) {
+    const s = m.summary, names = m.team.map(t => t.name)
+    const parts = []
+    if (s.perLoop && s.perLoop.length) {
+      parts.push(`<section class="card"><h2>分轮</h2><div class="tablebox"><table><thead><tr><th>轮</th><th class="r">时长（秒）</th><th class="r">伤害</th><th class="r">DPS</th><th>能量首尾差（${names.map(esc).join(' / ')}）</th></tr></thead><tbody>` +
+        s.perLoop.map(p => `<tr><td>${p.loop}${s.steady && p.loop >= s.steady.from && p.loop <= s.steady.to ? ' <small>稳态</small>' : ''}</td><td class="r">${(p.frames / 60).toFixed(2)}</td><td class="r">${fmt(p.damage)}</td><td class="r">${fmt(p.dps)}</td><td class="num">${p.energyDelta.map(d => (d > 0 ? '+' : '') + d.toFixed(1)).join(' / ')}</td></tr>`).join('') +
+        '</tbody></table></div></section>')
+    }
+    const top = s.byAction.slice(0, 14)
+    parts.push(`<section class="card"><h2>分动作（窗口内，前 ${top.length}）</h2><div class="tablebox"><table><thead><tr><th>动作</th><th class="r">伤害</th><th class="r">占比</th><th class="r">段数</th></tr></thead><tbody>` +
+      top.map(a => `<tr><td><span class="who" style="--c: var(--c${names.indexOf(a.char)})"><i class="swatch"></i>${esc(a.char)} ${esc(a.action)}</span></td><td class="r">${fmt(a.damage)}</td><td class="r">${pct(a.share)}</td><td class="r">${a.hits}</td></tr>`).join('') +
+      '</tbody></table></div></section>')
+    const where = c => `${c.loop > 1 ? `第 ${c.loop} 轮` : ''}第 ${c.line} 条`
+    const line = c => m.rotation[c.line - 1] ? `（${esc(m.rotation[c.line - 1])}）` : ''
+    parts.push(`<section class="card"><h2>等待（不是写轴要求的）</h2>` + (s.waits.length
+      ? `<ul class="list">${s.waits.map(w => `<li><span class="where">${where(w)}</span><span>${w.frames} 帧 · ${esc(w.reason)}${line(w)}</span></li>`).join('')}</ul>`
+      : '<p class="none">没有。</p>') + '</section>')
+    if ((s.skipped || []).length)
+      parts.push(`<section class="card"><h2>跳过的可选指令</h2><ul class="list">${s.skipped.map(k => `<li><span class="where">${where(k)}</span><span>${esc(k.reason)}${line(k)}</span></li>`).join('')}</ul></section>`)
+    if (m.error) parts.push(`<section class="card"><h2>运行报错</h2><p>${esc(m.error.message)}</p></section>`)
+    $('tables').innerHTML = parts.join('')
+  }
+
+  // ---------------------------------------------------------------------------
+  // 时间轴
+
+  function layout(m, D) {
+    const rows = [{ kind: 'axis', h: 34, label: '战斗时间', sub: '秒' }]
+    m.team.forEach((t, i) => rows.push({ kind: 'char', i, h: 50, label: t.name, sub: '动作 · 命中' }))
+    rows.push({ kind: 'waits', h: 18, label: '等待 / 跳过', sub: '' })
+    const hasEnemy = m.enemy && (m.enemy.tunabilityMax > 0 || m.enemy.whiteBarTough > 0)
+    if ($('showEnemy').checked && hasEnemy) rows.push({ kind: 'enemy', h: 58, label: '敌人', sub: '偏谐值 · 白条' })
+    if ($('showRes').checked) m.team.forEach((t, i) => rows.push({ kind: 'res', i, h: 30, label: t.name, sub: '能量 · 协奏' }))
+    if ($('showBuffs').checked && D.buffs.length) {
+      rows.push({ kind: 'section', h: 20, label: `buff（${D.buffs.length} 行；常驻 ${D.always.size} 个未画）` })
+      // 自己给自己的 buff 省掉前缀（"椿.含苞 → 椿" 写成 "含苞 → 椿"），其余写全名
+      for (const b of D.buffs) rows.push({ kind: 'buff', b, h: 13, label: `${b.buff.startsWith(b.target + '.') ? b.buff.slice(b.target.length + 1) : b.buff} → ${b.target}`, sub: b.buff })
+    }
+    let y = 0
+    for (const r of rows) { r.y = y; y += r.h }
+    return { rows, height: y }
+  }
+
+  function render() {
+    if (!M) return
+    const D = M.D
+    const { rows, height } = layout(M, D)
+    const W = Math.ceil(D.lastF * ppf) + 40
+    const x = f => 8 + f * ppf
+    tips = []
+    const tip = text => { tips.push(text); return tips.length - 1 }
+    const out = []
+    // 时停竖带
+    for (const [a, b] of D.clock.stops)
+      out.push(`<rect x="${x(a)}" y="0" width="${Math.max(1, (b - a) * ppf)}" height="${height}" style="fill: var(--stop)" data-t="${tip(`全局时停：第 ${a}–${b} 帧（${b - a} 帧），战斗时钟停走`)}"/>`)
+    // 行底线
+    for (const r of rows) out.push(`<line x1="0" x2="${W}" y1="${r.y + r.h}" y2="${r.y + r.h}" style="stroke: var(--grid)"/>`)
+    // 刻度（战斗秒）
+    const axis = rows[0]
+    const secStep = ppf >= 1.2 ? 1 : ppf >= 0.45 ? 2 : ppf >= 0.2 ? 5 : 10
+    const endSec = D.clock.secAt(D.lastF)
+    for (let s = 0; s <= endSec + 1e-9; s += secStep) {
+      const fx = x(D.clock.frameAt(s))
+      out.push(`<line x1="${fx}" x2="${fx}" y1="${axis.y + 22}" y2="${height}" style="stroke: var(--grid)"/>`)
+      out.push(`<text class="mono" x="${fx + 2}" y="${axis.y + 30}" style="fill: var(--muted)">${s}</text>`)
+    }
+    // 轮次与统计窗口
+    for (const l of D.loops) {
+      const lx = x(l.f)
+      out.push(`<line x1="${lx}" x2="${lx}" y1="${axis.y + 2}" y2="${height}" style="stroke: var(--faint); stroke-dasharray: 4 3"/>`)
+      out.push(`<text x="${lx + 3}" y="${axis.y + 13}" style="fill: var(--muted)">第 ${l.loop} 轮</text>`)
+    }
+    const wf = D.clock.frameAt(M.summary.windowFrames / 60)
+    out.push(`<line x1="${x(wf)}" x2="${x(wf)}" y1="${axis.y + 2}" y2="${height}" style="stroke: var(--ink); stroke-width: 1.5"/>`)
+    out.push(`<text x="${x(wf) - 4}" y="${axis.y + 13}" text-anchor="end" style="fill: var(--ink)">窗口终点</text>`)
+
+    for (const r of rows) {
+      if (r.kind === 'char') {
+        const c = `var(--c${r.i})`
+        for (const o of D.onField) if (o.i === r.i)
+          out.push(`<rect x="${x(o.start)}" y="${r.y + 3}" width="${Math.max(1, (o.end - o.start) * ppf)}" height="4" rx="1" style="fill: ${c}; opacity: 0.85" data-t="${tip(`${M.team[r.i].name} 在前台：第 ${o.start}–${o.end} 帧`)}"/>`)
+        for (const a of D.actions) if (a.i === r.i) {
+          const kind = (M.kinds[a.char] || {})[a.id] || 'other'
+          const w = Math.max(1.5, (a.end - a.start) * ppf)
+          const bx = x(a.start), by = r.y + 11, bh = 20
+          const cmd = a.cmd ? `\n${a.cmd.loop > 1 ? `第 ${a.cmd.loop} 轮` : ''}第 ${a.cmd.line} 条${M.rotation[a.cmd.line - 1] ? `：${M.rotation[a.cmd.line - 1]}` : ''}` : '\n不是轴里写的（变奏、接续动作或自动插入的谐度破坏）'
+          const t = tip(`<b>${esc(a.char)} ${esc(a.id)}</b>（${KIND_NAME[kind] || kind}）\n第 ${a.start}–${a.end} 帧，${a.end - a.start} 帧；战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒\n${a.how}${esc(cmd)}`)
+          out.push(barShape(kind, bx, by, w, bh, c, t))
+          if (w > 26) out.push(`<text x="${bx + 3}" y="${by + 14}" style="pointer-events: none">${esc(fit(a.id, w - 6))}</text>`)
+        }
+        for (const h of D.hits) if (D.slot.get(h.char) === r.i && h.dmg) {
+          const hx = x(h.f), hh = 3 + 13 * Math.sqrt(h.dmg.expected / D.maxHit)
+          const tb = h.tags.includes('谐度破坏')
+          const t = tip(`<b>${esc(h.char)} ${esc(h.judgment)}</b>（${esc(h.action)}）\n期望伤害 ${fmt(h.dmg.expected)}（不暴击 ${fmt(h.dmg.nonCrit)} / 暴击 ${fmt(h.dmg.crit)}）\n${esc(h.element)} · ${esc(h.tags.join('、'))}\n第 ${h.f} 帧 · 战斗 ${h.t.toFixed(2)} 秒${h.buffs.length ? `\nbuff：${esc(h.buffs.join('、'))}` : ''}`)
+          out.push(tb
+            ? `<path d="M${hx} ${r.y + 33} l4 6 l-4 6 l-4 -6 z" style="fill: var(--alert)" data-t="${t}"/>`
+            : `<rect x="${hx - 0.75}" y="${r.y + 33}" width="1.5" height="${hh}" style="fill: ${c}" data-t="${t}"/>`)
+        }
+      } else if (r.kind === 'waits') {
+        for (const w of D.waits) {
+          const wx = x(w.from), ww = Math.max(1, (w.f - w.from) * ppf)
+          const col = INTENDED.has(w.code) ? 'var(--calm)' : 'var(--wait)'
+          out.push(`<rect x="${wx}" y="${r.y + 5}" width="${ww}" height="8" rx="2" style="fill: ${col}; opacity: 0.85" data-t="${tip(`<b>等待</b> ${w.frames} 帧（战斗 ${w.battleFrames} 帧）\n${esc(w.reason)}\n${w.cmd.loop > 1 ? `第 ${w.cmd.loop} 轮` : ''}第 ${w.cmd.line} 条${M.rotation[w.cmd.line - 1] ? `：${esc(M.rotation[w.cmd.line - 1])}` : ''}`)}"/>`)
+        }
+        for (const k of D.skips) {
+          const kx = x(k.f)
+          out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选指令 ?）\n${esc(k.reason)}\n${k.cmd.loop > 1 ? `第 ${k.cmd.loop} 轮` : ''}第 ${k.cmd.line} 条${M.rotation[k.cmd.line - 1] ? `：${esc(M.rotation[k.cmd.line - 1])}` : ''}`)}"/>`)
+        }
+      } else if (r.kind === 'enemy') {
+        const en = M.enemy, top = r.y + 8, h = r.h - 16
+        // 瘫痪：破盾 → 瘫痪结束
+        let br = null
+        for (const e of D.enemy) {
+          if (e.change === 'break') br = e
+          else if (e.change === 'breakEnd' && br) {
+            out.push(`<rect x="${x(br.f)}" y="${r.y + 2}" width="${Math.max(1, (e.f - br.f) * ppf)}" height="${r.h - 4}" style="fill: var(--good); opacity: 0.12" data-t="${tip(`瘫痪：第 ${br.f}–${e.f} 帧`)}"/>`)
+            br = null
+          }
+        }
+        const step = (key, max) => {
+          let px = x(0), py = top + h - (key === 'whiteBar' ? h : 0), d = `M${px} ${py}`
+          for (const hit of D.hits) {
+            if (!hit.enemy) continue
+            const nx = x(hit.f), ny = top + h - h * Math.min(1, hit.enemy[key] / max)
+            d += ` H${nx} V${ny}`
+            px = nx; py = ny
+          }
+          return d + ` H${x(D.lastF)}`
+        }
+        if (en.whiteBarTough > 0) out.push(`<path d="${step('whiteBar', en.whiteBarTough)}" style="fill: none; stroke: var(--el-physical); stroke-width: 1.4; opacity: 0.8"/>`)
+        if (en.tunabilityMax > 0) out.push(`<path d="${step('tunability', en.tunabilityMax)}" style="fill: none; stroke: var(--alert); stroke-width: 1.6"/>`)
+        for (const e of D.enemy) {
+          const ex = x(e.f)
+          const t = tip(`<b>${ENEMY_CHANGE[e.change] || e.change}</b>${e.detail ? `（${esc(e.detail)}）` : ''}\n第 ${e.f} 帧 · 战斗 ${e.t.toFixed(2)} 秒`)
+          if (e.change === 'disharmony') out.push(`<circle cx="${ex}" cy="${top}" r="4.5" style="fill: var(--alert)" data-t="${t}"/>`)
+          else if (e.change === 'harmonyBreak') out.push(`<path d="M${ex} ${top - 5} l5 5 l-5 5 l-5 -5 z" style="fill: var(--panel); stroke: var(--alert); stroke-width: 1.6" data-t="${t}"/>`)
+          else if (e.change === 'break') out.push(`<rect x="${ex - 4}" y="${top + h - 8}" width="8" height="8" style="fill: var(--ink)" data-t="${t}"/>`)
+          else if (e.change === 'breakEnd') out.push(`<rect x="${ex - 3.5}" y="${top + h - 7.5}" width="7" height="7" style="fill: var(--panel); stroke: var(--ink)" data-t="${t}"/>`)
+        }
+      } else if (r.kind === 'res') {
+        const c = `var(--c${r.i})`, top = r.y + 4, h = r.h - 8, cap = M.team[r.i].energyCap
+        const line = (sel, max) => M.summary.resourceTimeline.map((s, k) => `${k ? 'L' : 'M'}${x(s.f)} ${top + h - h * Math.min(1, sel(s) / max)}`).join(' ')
+        out.push(`<path d="${line(s => s.energy[r.i], cap)}" style="fill: none; stroke: ${c}; stroke-width: 1.5"/>`)
+        out.push(`<path d="${line(s => s.concerto[r.i], M.concertoMax)}" style="fill: none; stroke: var(--faint); stroke-width: 1.2; stroke-dasharray: 3 2"/>`)
+        out.push(`<rect x="0" y="${r.y}" width="${W}" height="${r.h}" style="fill: transparent" data-res="${r.i}"/>`)
+      } else if (r.kind === 'buff') {
+        const ti = D.slot.has(r.b.target) ? D.slot.get(r.b.target) : null
+        const c = ti === null ? 'var(--faint)' : `var(--c${ti})`
+        for (const s of r.b.spans)
+          out.push(`<rect x="${x(s.start)}" y="${r.y + 3}" width="${Math.max(1, (s.end - s.start) * ppf)}" height="${r.h - 6}" rx="1.5" style="fill: ${c}; opacity: 0.55" data-t="${tip(`<b>${esc(r.b.buff)}</b> → ${esc(r.b.target)}\n第 ${s.start}–${s.end} 帧（${s.end - s.start} 帧）${s.stacks > 1 ? ` · 最多 ${s.stacks} 层` : ''}\n结束：${({ timeout: '到时', switchOut: '下场', removed: '移除' })[s.reason] || s.reason || ''}`)}"/>`)
+      }
+    }
+    $('scroller').innerHTML = `<svg width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" role="img" aria-label="时间轴">${out.join('')}</svg>`
+    $('labels').style.height = `${height}px`
+    $('labels').innerHTML = rows.map(r => {
+      const cls = r.kind === 'buff' ? 'label buff' : r.kind === 'section' ? 'label section' : 'label'
+      const sw = (r.kind === 'char' || r.kind === 'res') ? `<i class="swatch" style="--c: var(--c${r.i}); display: inline-block; margin-right: 5px"></i>` : ''
+      return `<div class="${cls}" style="top: ${r.y}px; height: ${r.h}px" title="${esc(r.sub || r.label)}"><b>${sw}${esc(r.label)}</b>${r.kind !== 'buff' && r.sub ? `<span>${esc(r.sub)}</span>` : ''}</div>`
+    }).join('')
+  }
+
+  function barShape(kind, bx, by, w, bh, c, t) {
+    const base = `x="${bx}" y="${by}" width="${w}" height="${bh}" rx="2" data-t="${t}"`
+    switch (kind) {
+      case 'liberation': return `<rect ${base} style="fill: ${c}; stroke: var(--ink); stroke-width: 1"/>`
+      case 'intro': case 'outro': return `<rect ${base} style="fill: var(--panel); stroke: ${c}; stroke-width: 1.5"/>`
+      case 'echo': return `<rect ${base} style="fill: ${c}; fill-opacity: 0.25; stroke: ${c}; stroke-dasharray: 3 2"/>`
+      case 'tuneBreak': return `<rect ${base} style="fill: var(--alert); fill-opacity: 0.85"/>`
+      case 'skill': return `<rect ${base} style="fill: ${c}; fill-opacity: 0.8"/>`
+      case 'heavy': return `<rect ${base} style="fill: ${c}; fill-opacity: 0.62"/>`
+      case 'normal': return `<rect ${base} style="fill: ${c}; fill-opacity: 0.42"/>`
+      default: return `<rect ${base} style="fill: ${c}; fill-opacity: 0.25"/>`
+    }
+  }
+  // 粗估文字宽度：中文 11px，其余 6.5px
+  function fit(text, w) {
+    let acc = 0, outText = ''
+    for (const ch of text) {
+      acc += /[⺀-￿]/.test(ch) ? 11 : 6.5
+      if (acc > w) return outText ? outText + '…' : ''
+      outText += ch
+    }
+    return outText
+  }
+
+  function renderLegend(m) {
+    $('legend').innerHTML = [
+      `<span><i style="background: var(--c0); opacity: 0.42"></i>普攻</span>`,
+      `<span><i style="background: var(--c0); opacity: 0.8"></i>共鸣技能</span>`,
+      `<span><i style="background: var(--c0); outline: 1px solid var(--ink)"></i>共鸣解放</span>`,
+      `<span><i style="background: var(--panel); outline: 1.5px solid var(--c0)"></i>变奏 / 延奏</span>`,
+      `<span><i style="background: var(--alert)"></i>谐度破坏</span>`,
+      `<span><i style="background: var(--stop); outline: 1px solid var(--rule)"></i>全局时停</span>`,
+      `<span><i style="background: var(--wait)"></i>等待</span>`,
+      m.enemy && m.enemy.tunabilityMax > 0 && `<span><i style="background: var(--alert); height: 2px; vertical-align: 3px"></i>偏谐值（上限 ${fmt(m.enemy.tunabilityMax)}）</span>`,
+      m.enemy && m.enemy.whiteBarTough > 0 && `<span><i style="background: var(--el-physical); height: 2px; vertical-align: 3px"></i>白条（${fmt(m.enemy.whiteBarTough)} 削韧值）</span>`,
+      `<span>命中：竖线高 ∝ √期望伤害</span>`,
+    ].filter(Boolean).join('')
+  }
+
+  // ---------------------------------------------------------------------------
+  // 交互
+
+  function setPpf(v, anchorFrame) {
+    const sc = $('scroller')
+    const keep = anchorFrame ?? (sc.scrollLeft + sc.clientWidth / 2 - 8) / ppf
+    ppf = Math.max(0.02, Math.min(8, v))
+    render()
+    sc.scrollLeft = Math.max(0, 8 + keep * ppf - sc.clientWidth / 2)
+  }
+  function fitRange(a, b) {
+    const sc = $('scroller')
+    ppf = Math.max(0.02, Math.min(8, (sc.clientWidth - 48) / Math.max(60, b - a)))
+    render()
+    sc.scrollLeft = Math.max(0, 8 + a * ppf - 12)
+  }
+  function showLoop(v) {
+    if (!M) return
+    if (v === 'all') return fitRange(0, M.D.lastF)
+    const loops = M.D.loops, k = loops.findIndex(l => String(l.loop) === v)
+    if (k < 0) return
+    fitRange(loops[k].f, k + 1 < loops.length ? loops[k + 1].f : M.D.lastF)
+  }
+
+  function onMove(ev) {
+    const tipEl = $('tip')
+    const el = ev.target.closest('[data-t], [data-res]')
+    if (!el || !M) { tipEl.hidden = true; return }
+    let html
+    if (el.hasAttribute('data-res')) {
+      const i = Number(el.getAttribute('data-res')), sc = $('scroller'), rect = sc.getBoundingClientRect()
+      const f = (ev.clientX - rect.left + sc.scrollLeft - 8) / ppf
+      const tl = M.summary.resourceTimeline
+      let s = tl[0]
+      for (const p of tl) { if (p.f <= f) s = p; else break }
+      html = `<b>${esc(M.team[i].name)}</b> 第 ${s.f} 帧\n大招能量 ${s.energy[i].toFixed(1)} / ${M.team[i].energyCap}\n协奏 ${s.concerto[i].toFixed(1)} / ${M.concertoMax}`
+    } else html = tips[Number(el.getAttribute('data-t'))]
+    tipEl.innerHTML = html
+    tipEl.hidden = false
+    const pad = 14, w = tipEl.offsetWidth, h = tipEl.offsetHeight
+    let left = ev.clientX + pad, top = ev.clientY + pad
+    if (left + w > window.innerWidth - 8) left = ev.clientX - w - pad
+    if (top + h > window.innerHeight - 8) top = ev.clientY - h - pad
+    tipEl.style.left = `${Math.max(8, left)}px`
+    tipEl.style.top = `${Math.max(8, top)}px`
+  }
+
+  function load(raw) {
+    const m = normalize(raw)
+    m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`))
+    m.D = build(m)
+    M = m
+    renderHeader(m)
+    renderTables(m)
+    renderLegend(m)
+    const first = m.D.loops.length > 1 ? '1' : 'all'
+    $('loopSel').value = first
+    showLoop(first)
+  }
+
+  function init() {
+    $('zoomIn').addEventListener('click', () => setPpf(ppf * 1.5))
+    $('zoomOut').addEventListener('click', () => setPpf(ppf / 1.5))
+    $('zoomFit').addEventListener('click', () => { $('loopSel').value = 'all'; showLoop('all') })
+    $('loopSel').addEventListener('change', e => showLoop(e.target.value))
+    for (const id of ['showEnemy', 'showRes', 'showBuffs']) $(id).addEventListener('change', () => setPpf(ppf))
+    const sc = $('scroller')
+    sc.addEventListener('mousemove', onMove)
+    sc.addEventListener('mouseleave', () => { $('tip').hidden = true })
+    sc.addEventListener('keydown', e => {
+      if (e.key === '+' || e.key === '=') { setPpf(ppf * 1.5); e.preventDefault() }
+      else if (e.key === '-') { setPpf(ppf / 1.5); e.preventDefault() }
+    })
+    $('fileIn').addEventListener('change', async e => {
+      const f = e.target.files && e.target.files[0]
+      if (!f) return
+      try { load(JSON.parse(await f.text())) } catch (err) {
+        $('meta').textContent = `打不开 ${f.name}：${err.message}。请选 pnpm sim 或 pnpm timeline 写出的 JSON。`
+      }
+    })
+    let raw = null
+    try { raw = JSON.parse($('timeline-data').textContent) } catch (_) { raw = null }
+    if (raw) load(raw)
+    else $('scroller').innerHTML = '<p class="empty">还没有数据。在仓库里运行 <code>pnpm timeline scenarios/m0-team.yaml</code> 生成带数据的页面，或用上面的"打开日志"选一个 <code>pnpm sim</code> 写出的 <code>out/*.json</code>。</p>'
+  }
+  init()
+})()
+</script>

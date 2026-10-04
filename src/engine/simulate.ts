@@ -15,7 +15,7 @@ import { summarize } from './summary'
 import { onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
-  CharRuntime, EnemyRuntime, HitDraft, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
+  CharRuntime, EnemyRuntime, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
 export function simulate(r: ResolvedScenario): SimResult {
@@ -147,6 +147,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
   }
   const { gains, full } = settleGains(sim, s, j, draft.selfEnergyScale)
+  const hitIndex = s.log.length
   log(s, {
     type: 'hit', char: m.def.name, action: j.action, judgment: d.name, id: j.id, tick: n,
     element: draft.element, tags: draft.tags, dmg, ...(factors ? { factors } : {}), buffs: used, gains,
@@ -159,6 +160,9 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     if (link) sim.bus.chain.set(s.log.length - 1, link)
   }
   hitGauges(sim, s, j)                                            // 敌人量表：偏谐值、失谐、谐度破坏命中、白条（TD-06 §13）
+  const e = s.enemy
+  if (d.target === 'enemy' && (e.preset.tunabilityMax > 0 || e.preset.whiteBarTough > 0))
+    (s.log[hitIndex] as HitEvent).enemy = { tunability: e.tunability, whiteBar: e.whiteBar }
   drain(sim, s)
   // 接续动作（TD-08 P10）：本动作的该判定第一次结算后立刻开始，继承指令出处
   const a = s.chars[j.owner].action

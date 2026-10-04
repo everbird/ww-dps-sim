@@ -16,6 +16,7 @@
     "sim": "tsx src/cli/sim.ts",
     "compare": "tsx src/cli/compare.ts",
     "marginal": "tsx src/cli/marginal.ts",
+    "timeline": "tsx src/cli/timeline.ts",
     "test": "vitest run",
     "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'"
   },
