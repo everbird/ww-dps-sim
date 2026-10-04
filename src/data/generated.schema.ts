@@ -1,7 +1,7 @@
 // src/data/generated.schema.ts —— data/generated/*.json 的 zod schema（TD-02 §3）
 // 构建脚本写文件前、注册层读文件后各校验一次；类型一律由 schema 推导（z.infer），不另写 interface。
 import { z } from 'zod'
-import { BODY_TYPES, DILATION_TYPES, EFFECT_NAMES, ELEMENTS, WEAPON_TYPES } from './common'
+import { BODY_TYPES, DILATION_TYPES, ECHO_BODIES, EFFECT_NAMES, ELEMENTS, WEAPON_TYPES } from './common'
 
 const int = () => z.number().int()
 /** 帧列：整数，允许 -1（持续帧 / 派生持续帧的"直到动作结束"） */
@@ -51,9 +51,10 @@ export const NameTagsSchema = z.strictObject({
   dir: z.enum(['前', '后']).optional(),
 })
 
-/** 判定行连上的 dmg 行（TD-01 §4） */
+/** 判定行连上的 dmg 行（TD-01 §4）。via = 'nanoka'：声骸行在 dmg 里没有，取 nanoka 声骸数据的伤害条目
+ *  （按削韧值、大招回收连，或 dmg-join.json 写 'nanoka::<条目 ID>'；skillId 是条目 ID，没有的字段记 null / 0） */
 export const GenDmgSchema = z.strictObject({
-  via: z.enum(['direct', 'alias']),
+  via: z.enum(['direct', 'alias', 'nanoka']),
   charaId: z.string(),
   skillName: z.string(),
   dmgCalc: nullable(z.string()),
@@ -188,16 +189,37 @@ export const GenWeaponSchema = z.strictObject({
   row: int().positive(),
 })
 
-export const GenEchoSchema = z.strictObject({
-  key: z.string().min(1),
-  cost: nullable(z.union([z.literal(1), z.literal(3), z.literal(4)])),   // 来自 `索引` 页，缺失时 curated 补
+/** 声骸的一组 = 一个动作（TD-01 §8）：「类型」列每个合并区是一个技能版本（无常凶鹭的点按 / 长按；鸣钟之龟每种体型一行），
+ *  版本里有「单段冷却 / 接续时限」的是多段声骸，按行名 "-" 前的前缀分段，每段一组 */
+export const GenEchoGroupSchema = z.strictObject({
+  id: z.string().min(1),                    // 组名：同动作表 §3.5（首行名去掉最后一个 -后缀）；分段时是前缀；体型前缀去掉
+  variant: int().min(1),                    // 第几个技能版本
+  stage: nullable(int().min(1)),            // 多段声骸的第几段；不分段为 null
+  body: nullable(z.enum(ECHO_BODIES)),      // 体型前缀（只有鸣钟之龟）
   kind: nullable(z.enum(['召唤', '变身'])),
-  cooldown: nullable(int().min(0)),
-  stageCooldown: nullable(int().min(0)),
-  stageWindow: nullable(int().min(0)),
-  description: nullable(z.string()),
+  cooldown: nullable(int().min(0)),         // 「冷却」列，秒 → 帧；只记在版本的第一组（后续段不另算冷却）
+  next: nullable(z.strictObject({ from: int().min(0), until: int().min(0) })),   // 单段冷却 / 接续时限（帧）：下一段在本段局部帧 [from, until) 接
   rows: z.array(GenRowSchema).min(1),
+})
+
+export const GenEchoSchema = z.strictObject({
+  key: z.string().min(1),                   // 声骸名（A 列）
   startRow: int().positive(),
+  cost: nullable(z.union([z.literal(1), z.literal(3), z.literal(4)])),   // 来自 `索引` 页，缺失时 curated 补
+  description: nullable(z.string()),        // 技能说明原文（X 列）
+  descCooldown: nullable(int().min(0)),     // 技能说明里"技能冷却：n秒"（帧）；与「冷却」列不同时打 cooldownText
+  textKind: nullable(z.enum(['召唤', '变身'])),   // 说明里先出现的"召唤"（脱手）/"幻形"（变身，不脱手）；与「类型」列不同时打 kindText
+  ignoredRows: int().min(0),
+  groups: z.array(GenEchoGroupSchema).min(1),
+  flags: z.array(z.string()),               // cooldownText、charges（"可使用次数"）、stagesGuess、costMissing、kindText
+}).superRefine((e, ctx) => {
+  // 组名在声骸内唯一（体型分组同名、体型不同）
+  const seen = new Set<string>()
+  e.groups.forEach((g, i) => {
+    const k = `${g.id}@${g.body ?? ''}`
+    if (seen.has(k)) ctx.addIssue({ code: 'custom', path: ['groups', i, 'id'], message: `组名重复：${g.id}` })
+    seen.add(k)
+  })
 })
 
 const Bar = z.strictObject({ max: z.number().min(0), recover: z.number().min(0), reduce: z.number() })
@@ -296,11 +318,34 @@ export const NanokaCharacterSchema = z.strictObject({
   chains: z.array(z.strictObject({ n: int().min(1).max(6), name: z.string(), desc: z.string() })),
   treeStats: z.record(z.string(), z.number()),      // 技能树属性节点：名字（"攻击提升"）→ 全部点亮的合计（小数）
 })
+/** nanoka 的声骸：技能说明、冷却、伤害条目（构建时给 dmg 里没有的声骸行连倍率，TD-01 §8）、所属套装 */
+export const NanokaEchoSchema = z.strictObject({
+  id: int().positive(),
+  name: z.string(),                                 // nanoka 的中文名（异相·X 取 X 的条目）
+  desc: z.string(),                                 // 技能说明，按 5 级填好参数
+  cooldown: nullable(z.number().min(0)),            // 秒：说明里"技能冷却：{n}秒"的参数
+  damage: z.array(z.strictObject({
+    id: z.string(),                                 // 伤害条目 ID（dmg-join.json 写 'nanoka::<ID>' 时用）
+    element: int().min(0).max(6),
+    relatedProperty: z.string(),                    // 攻击 / 防御 / 生命
+    type: int().min(0),                             // Damage.Type：5 声骸技能，4 共鸣技能…
+    rateLv: z.array(z.number()),                    // 各级倍率原值（× 10000，同 dmg RateLv）；声骸取 5 级
+    energy: z.number(),
+    toughLv: z.number(),
+    weaknessLvl: z.number(),
+    hardnessLv: z.number(),
+  })),
+  sets: z.array(z.string()),                        // 所属套装名
+})
 export const NanokaFileSchema = z.strictObject({
   source: z.string(),
   version: z.string(),
   skillLevel: int().positive(),
   characters: z.record(z.string(), NanokaCharacterSchema),   // 键是 xlsx 的角色块名
+  echoes: z.record(z.string(), NanokaEchoSchema).default({}),   // 键是 xlsx 的声骸名
+  echoSets: z.record(z.string(), z.strictObject({              // 套装名 → 件数 → 效果说明（填好参数）
+    id: int(), pieces: z.record(z.string(), z.string()),
+  })).default({}),
 })
 
 export const GoldenDamageSchema = z.strictObject({
@@ -344,6 +389,7 @@ export type GenActionFile = z.infer<typeof GenActionFileSchema>
 export type GenCharacter = z.infer<typeof GenCharacterSchema>
 export type GenWeapon = z.infer<typeof GenWeaponSchema>
 export type GenEcho = z.infer<typeof GenEchoSchema>
+export type GenEchoGroup = z.infer<typeof GenEchoGroupSchema>
 export type GenEnemy = z.infer<typeof GenEnemySchema>
 export type GenEffect = z.infer<typeof GenEffectSchema>
 export type GenEffectsFile = z.infer<typeof GenEffectsFileSchema>
@@ -353,4 +399,5 @@ export type GenMeta = z.infer<typeof GenMetaSchema>
 export type GoldenDamage = z.infer<typeof GoldenDamageSchema>
 export type GoldenZone = z.infer<typeof GoldenZoneSchema>
 export type NanokaCharacter = z.infer<typeof NanokaCharacterSchema>
+export type NanokaEcho = z.infer<typeof NanokaEchoSchema>
 export type NanokaFile = z.infer<typeof NanokaFileSchema>

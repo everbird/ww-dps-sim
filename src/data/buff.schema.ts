@@ -6,9 +6,9 @@ import { ACTION_KINDS, DAMAGE_TAGS, EFFECT_NAMES, ELEMENTS, RESOURCE_KINDS, ZONE
 export const BUFF_TARGETS = ['self', 'team', 'teamExceptSelf', 'onField', 'nextIn', 'enemy'] as const
 export type BuffTarget = (typeof BUFF_TARGETS)[number]
 
-/** 触发事件目录（总设计 §6.8），v0 固定这一组 */
+/** 触发事件目录（总设计 §6.8）。heal（2026-10-04 新增）：提供了一次治疗——标了 heals 的判定结算、钩子记的持续回复每一跳 */
 export const TRIGGER_EVENTS = [
-  'actionStart', 'judgmentSettle', 'intro', 'outro', 'switchIn', 'switchOut', 'enemyState', 'resourceFull',
+  'actionStart', 'judgmentSettle', 'intro', 'outro', 'switchIn', 'switchOut', 'enemyState', 'resourceFull', 'heal',
 ] as const
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 
@@ -43,6 +43,7 @@ export const TriggerFilterSchema = z.strictObject({
   enemyState: z.enum(ENEMY_STATE_CHANGES).optional(),
   effect: z.enum(EFFECT_NAMES).optional(),
   resource: z.enum(RESOURCE_KINDS).optional(),
+  ownerHas: z.string().min(1).optional(),         // 持有者身上有这个 buff 时才触发（无常凶鹭"幻形后 15 秒内若施放延奏…"，2026-10-04）
 })
 export type TriggerFilter = z.output<typeof TriggerFilterSchema>
 

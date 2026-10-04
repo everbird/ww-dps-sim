@@ -85,7 +85,8 @@ dataDescribe('M2 单人仿真', () => {
     expect(e!.dmg!.nonCrit).toBe(Math.ceil(3.5985 * atk * 1 * def * (1 + 0.12 + 0.3) * 0.9))          // 共鸣技能不吃普攻加成
     expect(a1!.dmg!.nonCrit).toBe(Math.ceil(0.4871 * atk * 1 * def * (1 + 0.12 + 0.3 + 0.1) * 0.9))
     expect(a1!.buffs).toEqual(['散华.技能树.冷凝伤害加成', '散华.声骸.冷凝伤害加成', '散华.声骸.普攻伤害加成'])
-    expect(res.summary.warnings.map(w => w.message).filter(m => m.includes('声骸') || m.includes('套装'))).toHaveLength(1)   // 只有"还没有声骸数据"；1 件不提示套装
+    // 无常凶鹭写进了 echoes.ts、倍率都连上了；1 件不提示套装：没有声骸 / 套装的提示
+    expect(res.summary.warnings.map(w => w.message).filter(m => m.includes('声骸') || m.includes('套装'))).toEqual([])
   })
 
   test('M2-4 场景里的错一次报全', () => {

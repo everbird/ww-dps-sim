@@ -1,5 +1,21 @@
 // data/curated/characters/维里奈.ts —— 角色模块（M0 只填 xlsx 没有的信息；buff 与钩子在 M2 / M3 按 TD-07 / TD-08 补）
 import { defineCharacter } from '../../../src/data/define'
+import type { HookContext } from '../../../src/engine/types'
+
+// 持续回复（nanoka 3.7，m0-confirm §7）：延奏盛放"每秒回复…持续6秒"，共鸣链1"每5秒回复…持续30秒"，各 6 跳。
+// 治疗量不建模；每跳记一次治疗事件（触发隐世回光等"提供治疗时"的效果）。计时用标记型 buff：到期记一跳，没跳完再挂上
+const HOT: Record<string, string> = { '维里奈.盛放计时': '延奏-盛放', '维里奈.共鸣链1计时': '共鸣链1' }
+const HOT_TICKS = 6
+function startHot(ctx: HookContext, id: string): void {
+  ctx.setFlag(`${id}.跳`, 0)
+  ctx.addBuff(id)                                              // 再次延奏时刷新、重新计数
+}
+function tickHot(ctx: HookContext, id: string): void {
+  ctx.heal(HOT[id]!)
+  const n = Number(ctx.getFlag(`${id}.跳`) ?? 0) + 1
+  ctx.setFlag(`${id}.跳`, n)
+  if (n < HOT_TICKS) ctx.addBuff(id)
+}
 
 export default defineCharacter('维里奈', {
   weaponType: '音感仪',
@@ -19,8 +35,16 @@ export default defineCharacter('维里奈', {
       trigger: [{ on: 'actionStart', where: { actions: ['重击', '强化空中A1', '强化空中A2', '强化空中A3', '大招'] } }, { on: 'outro' }],
     },
     {
+      id: '维里奈.盛放计时', source: '延奏技能盛放：持续为下一位登场角色回复生命值，每秒回复维里奈19%攻击的生命值，持续6秒',
+      target: 'self', duration: 60, trigger: 'hook',
+    },
+    {
+      id: '维里奈.共鸣链1计时', source: '共鸣链1：施放延奏技能盛放时，队伍中登场角色额外获得持续回复生命效果，每5秒回复维里奈20%攻击的生命值，持续30秒。',
+      target: 'self', duration: 300, trigger: 'hook', requires: { chain: 1 },
+    },
+    {
       id: '维里奈.延奏',
-      source: '延奏：持续为下一位登场角色回复生命值……附近队伍中所有角色全伤害加深15%，持续30秒。（治疗不建模）',
+      source: '延奏：持续为下一位登场角色回复生命值……附近队伍中所有角色全伤害加深15%，持续30秒。（回复量不建模，每跳记治疗事件，见钩子）',
       zone: 'DamageAmplify0', value: 0.15, target: 'team', duration: 1800,   // 不带类别的"全伤害加深"= 0 类（TD-03 §2）
       trigger: { on: 'outro' },
     },
@@ -42,8 +66,18 @@ export default defineCharacter('维里奈', {
       if (id === '重击-冲') return e < 1 ? true : '有光合能量时重击是强化重击（动作"重击"）'
       return true
     },
-    // 协同攻击（m0-confirm §6 V4）：任何人（含维里奈自己）的伤害命中带光合标记的目标时触发，全队共用 1 秒冷却；协同本身不再触发
     onEvent(ctx, ev) {
+      const me = ctx.state.chars[ctx.self].name
+      if (ev.type === 'outro' && ev.char === me) {
+        startHot(ctx, '维里奈.盛放计时')
+        if (ctx.chain >= 1) startHot(ctx, '维里奈.共鸣链1计时')
+        return
+      }
+      if (ev.type === 'buffExpire' && ev.reason === 'timeout' && ev.target === me && HOT[ev.buff]) {
+        tickHot(ctx, ev.buff)
+        return
+      }
+      // 协同攻击（m0-confirm §6 V4）：任何人（含维里奈自己）的伤害命中带光合标记的目标时触发，全队共用 1 秒冷却；协同本身不再触发
       if (ev.type !== 'hit' || ev.dmg === null || ev.judgment === '大招-协同伤害') return
       if (ctx.buffStacks('维里奈.光合标记', 'enemy') === 0) return
       const last = ctx.getFlag('协同上次')
@@ -58,11 +92,16 @@ export default defineCharacter('维里奈', {
     A3: { dropRows: ['A3-无目标/3m外', 'A3-地面出场技'] },
     // 强化重击的两行是两种起手，不是先后两段：一次强化重击只消耗 1 层光合能量、回 12 协奏（nanoka 3.7）。
     // 两行都算会变成 +24 / −2；先留与普通重击同样第 24 帧冲出的"强化冲"（连冲何时出现待查，m0-confirm §6 V2）
-    重击: { dropRows: ['重击-强化连冲'], followUp: { after: '重击-强化冲', action: '重击-强化撞1' } },
+    重击: { dropRows: ['重击-强化连冲'], followUp: { after: '重击-强化冲', action: '重击-强化撞1' }, judgments: { '重击-强化冲': { heals: true } } },
     '重击-冲': { followUp: { after: '重击-冲', action: '重击-撞' } },
     QTE: { followUp: { after: 'QTE-冲', action: 'QTE-撞' } },                // 冲刺总能撞到（m0-confirm §6 V1）
-    // 协同攻击不随大招自动出，由钩子在命中带光合标记的目标时生成（TD-08 P9）
-    大招: { cooldown: 1500, judgments: { '大招-协同伤害': { spawnFrame: null } } },
+    // 协同攻击不随大招自动出，由钩子在命中带光合标记的目标时生成（TD-08 P9）。
+    // heals：动作表没有治疗判定，带治疗的这几段标出来，结算后记治疗事件（触发隐世回光等"提供治疗时"的效果）；治疗量不建模。
+    // nanoka 3.7 写了回复生命 / 有治疗量的：草木生长、协同攻击、星星花绽放（重击 / 空中攻击）；延奏盛放与共鸣链1 的持续回复见钩子
+    大招: { cooldown: 1500, judgments: { '大招-标记': { heals: true }, '大招-协同伤害': { spawnFrame: null, heals: true } } },
+    强化空中A1: { judgments: { 强化空中A1: { heals: true } } },
+    强化空中A2: { judgments: { 强化空中A2: { heals: true } } },
+    强化空中A3: { judgments: { 强化空中A3: { heals: true } } },
     E: { cooldown: 720 },                  // 共鸣技能冷却 12 秒，不是按次数充能（2026-09-27 用户提供）
 
   },

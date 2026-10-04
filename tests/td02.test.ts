@@ -178,6 +178,7 @@ describe('T02-6 编译期约束（tsc 通过即成立）', () => {
         case 'buffApply': case 'buffExpire': return ev.buff
         case 'resource': return `${ev.char} ${ev.resource} ${ev.delta}`
         case 'resourceFull': return `${ev.char} ${ev.resource} 满`
+        case 'heal': return `${ev.char} 治疗（${ev.source}）`
         case 'enemyState': return ev.change
         case 'effectTick': return ev.effect
         case 'wait': return `等待 ${ev.frames}`

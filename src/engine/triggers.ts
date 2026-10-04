@@ -59,6 +59,7 @@ function describe(e: SimEvent): string {
     case 'actionStart': return ` ${e.char} 开始 ${e.action}`
     case 'resource': return ` ${e.char} ${e.resource} ${e.delta > 0 ? '+' : ''}${e.delta}（${e.cause}）`
     case 'buffApply': return ` ${e.buff} 施加到 ${e.target}`
+    case 'heal': return ` ${e.char} 的治疗（${e.source}）`
     default: return ` ${e.type} 事件`
   }
 }
@@ -92,6 +93,7 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     }
     case 'hit':
       return [{ on: 'judgmentSettle', by: slot(ev.char), action: ev.action, judgment: ev.judgment, tags: ev.tags, element: ev.element }]
+    case 'heal': return [{ on: 'heal', by: slot(ev.char) }]
     case 'intro': return [{ on: 'intro', by: slot(ev.char), action: ev.action }]
     case 'outro': return [{ on: 'outro', by: slot(ev.char), to: slot(ev.to) }]
     case 'switch': return [{ on: 'switchOut', by: slot(ev.from) }, { on: 'switchIn', by: slot(ev.to) }]
@@ -115,6 +117,7 @@ function matches(s: SimState, on: TriggerSpec['on'], where: TriggerFilter | unde
     && any(where.tags, o.tags)
     && any(where.elements, o.element ? [o.element] : undefined)
     && (where.resource === undefined || where.resource === o.resource)
+    && (where.ownerHas === undefined || (owner !== 'env' && s.buffs.some(b => b.defId === where.ownerHas && b.owner === owner && b.target === owner)))
     && where.enemyState === undefined && where.effect === undefined   // 敌人状态类在 M4
 }
 

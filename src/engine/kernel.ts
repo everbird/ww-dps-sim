@@ -56,6 +56,21 @@ export function timelineOf(def: ActionDef): TimelineEvent[] {
   return tl
 }
 
+const ownTimelines = new WeakMap<ActionDef, TimelineEvent[]>()
+/** 角色自己这个动作实例的时间线：召唤类（脱手）声骸的判定在开始时分到独立时间线上（startAction），这里不含；
+ *  持续帧 -1 的判定"直到动作结束"，仍跟着角色的动作 */
+export function actionTimeline(def: ActionDef): TimelineEvent[] {
+  if (!def.summon) return timelineOf(def)
+  let tl = ownTimelines.get(def)
+  if (!tl) {
+    tl = timelineOf(def).filter(e => !detachedSpawn(def, e))
+    ownTimelines.set(def, tl)
+  }
+  return tl
+}
+const detachedSpawn = (def: ActionDef, e: TimelineEvent): boolean =>
+  def.summon === true && e.kind === 'spawn' && def.judgments[e.index]!.lifeFrames !== -1
+
 // ---------------------------------------------------------------------------
 // §3 P1：速率表与膨胀窗口
 
@@ -125,7 +140,20 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   c.action = a
   c.last = a
   c.startedThisTick = true
-  if (def.cooldown) c.cooldowns[cooldownKey(def)] = def.cooldown
+  if (def.summon) {
+    // 召唤类声骸（脱手）：召唤物的判定走独立时间线（同延奏动作，TD-05 §4.3），角色之后的动作、取消都不影响它们，也不挡"就绪"；
+    // 实例号另取，召唤物命中的自身顿帧也就不落到角色身上
+    const events = timelineOf(def).filter(e => detachedSpawn(def, e))
+    if (events.length) s.tails.push({ owner: slot, action: def.id, def, instance: s.nextId++, localFrame: 0, events, detached: true })
+  }
+  if (def.cooldown) {
+    const key = cooldownKey(def)
+    if (def.charges !== undefined && def.charges > 1) {                // 按次数充能：用掉一次；满的时候才开始回复（已在回复就接着走）
+      const ch = (c.charges[key] ??= { spent: 0, every: def.cooldown })
+      if (ch.spent === 0) c.cooldowns[key] = def.cooldown
+      ch.spent += 1
+    } else c.cooldowns[key] = def.cooldown
+  }
   log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
   k.hooks.actionStarted?.(s, slot, a)
   return a
@@ -145,7 +173,7 @@ export function cancelAction(s: SimState, k: Kernel, slot: Slot, by: string): vo
   })
   // ② 未发生的事件：已出现且可脱手的判定转为尾部，按战斗时钟继续；延奏触发也转为尾部——延奏是下场角色发出的，
   //    上场角色的变奏被打断不影响它（2026-09-27 用户确认，见 AGENTS.md 差异 1）；其余（资源、膨胀、未出现的判定）作废
-  const rest = timelineOf(a.def).slice(a.cursor)
+  const rest = actionTimeline(a.def).slice(a.cursor)
   const keep = rest.filter(e => e.kind === 'outro'
     || (e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t)))
   for (const e of rest) if (e.kind === 'spawn' && !keep.includes(e) && !skipped(a, e)) dropped.push(a.def.judgments[e.index]!.name)
@@ -162,7 +190,7 @@ function endAction(s: SimState, slot: Slot): void {
   const c = s.chars[slot]
   const a = c.action!
   s.judgments = s.judgments.filter(j => !(j.actionInstance === a.instance && j.def.lifeFrames === -1))
-  const rest = timelineOf(a.def).slice(a.cursor).filter(e => !(e.kind === 'spawn' && a.def.judgments[e.index]!.lifeFrames === -1))
+  const rest = actionTimeline(a.def).slice(a.cursor).filter(e => !(e.kind === 'spawn' && a.def.judgments[e.index]!.lifeFrames === -1))
   if (rest.length) s.tails.push({ owner: slot, action: a.id, def: a.def, instance: a.instance, localFrame: a.localFrame, events: rest, ...(a.skip ? { skip: a.skip } : {}) })
   a.ended = true
   c.action = null
@@ -190,7 +218,7 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
     const r = rates.chars[slot]
     const a = c.action
     if (a) {
-      const tl = timelineOf(a.def)
+      const tl = actionTimeline(a.def)
       const until = Math.min(a.localFrame + r, a.def.endFrame)   // ≥ endFrame 的事件一律归尾部（§4.3）
       while (a.cursor < tl.length && tl[a.cursor]!.frame < until) fireEvent(s, k, slot, a, tl[a.cursor++]!)
       a.localFrame = snap(a.localFrame + r)
@@ -337,8 +365,9 @@ function gateRules(c: CharRuntime, def: ActionDef): GateResult {
     : { ok: false, wait: true, code: 'derive', reason: `等 ${a.id} 的派生窗口` }
 }
 
-/** 冷却按什么记：声骸技能共用一个冷却（'echo'）；共用冷却的技能按 cooldownGroup（椿的 E1 / E2 共用 'E'）；其余按动作 ID */
-export const cooldownKey = (def: ActionDef): string => (def.kind === 'echo' ? 'echo' : def.cooldownGroup ?? def.id)
+/** 冷却按什么记：写了 cooldownGroup 的按组名（椿的 E1 / E2 共用 'E'；多段声骸的后续段写自己的 ID，不受声骸冷却限制）；
+ *  声骸技能共用一个冷却（'echo'）；其余按动作 ID */
+export const cooldownKey = (def: ActionDef): string => def.cooldownGroup ?? (def.kind === 'echo' ? 'echo' : def.id)
 
 /** 现在取消当前动作会不会丢东西：还有未出现的判定、不可脱手且没结算完的判定、没发生的资源 / 膨胀 / 延奏触发 → 未就绪（§6.4）。
  *  角色空闲时恒为就绪：此前动作留下的不可脱手判定会在下一个动作开始时按"变更动作"消失（§4.2），默认调度不为它等待 */
@@ -346,7 +375,7 @@ export function settled(s: SimState, slot: Slot): boolean {
   const a = s.chars[slot].action
   if (!a || a.localFrame >= a.def.endFrame) return true
   const t = a.localFrame
-  const tl = timelineOf(a.def)
+  const tl = actionTimeline(a.def)
   for (let i = a.cursor; i < tl.length; i++) {
     const e = tl[i]!
     if (e.kind === 'outro' || skipped(a, e)) continue          // 延奏触发打断后照样发生（转尾部），不用等；跳过的判定不会出现
@@ -371,7 +400,17 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
   s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却、buff 都按战斗速率
-  for (const c of s.chars) for (const key of Object.keys(c.cooldowns)) c.cooldowns[key] = Math.max(0, c.cooldowns[key]! - rates.battle)
+  for (const c of s.chars) {
+    for (const key of Object.keys(c.cooldowns)) {
+      let left = c.cooldowns[key]! - rates.battle
+      const ch = c.charges[key]
+      if (ch && ch.spent > 0 && left <= 0) {                    // 按次数充能：回复一次，还没满就接着计下一次
+        ch.spent -= 1
+        if (ch.spent > 0) left += ch.every
+      }
+      c.cooldowns[key] = Math.max(0, left)
+    }
+  }
   k.hooks.timers?.(s, rates)
   s.battleFrames += rates.battle                                // P7
   s.frame += 1

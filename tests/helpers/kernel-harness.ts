@@ -24,7 +24,7 @@ export interface Hit { f: number; char: string; judgment: string; tick: number }
 export interface RunResult { s: SimState; hits: Hit[]; outros: { f: number; char: string }[]; frames: number; error?: ScheduleError }
 
 const char = (slot: Slot, name: string): CharRuntime => ({
-  slot, name, action: null, last: null, startedThisTick: false, energy: 0, concerto: 0, core: [0, 0, 0, 0, 0], cooldowns: {}, flags: {},
+  slot, name, action: null, last: null, startedThisTick: false, energy: 0, concerto: 0, core: [0, 0, 0, 0, 0], cooldowns: {}, charges: {}, flags: {},
 })
 
 export function newState(names: [string, string, string], onField: Slot = 0): SimState {

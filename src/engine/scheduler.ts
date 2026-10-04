@@ -169,8 +169,12 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
         if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
         return { go: false, code: g.code, reason: g.reason }
       }
-      const cd = ch.cooldowns[cooldownKey(def)] ?? 0
-      if (cd > 0) {
+      const key = cooldownKey(def)
+      const cd = ch.cooldowns[key] ?? 0
+      if (def.charges !== undefined && def.charges > 1) {                 // 按次数充能：还有次数就能放
+        if ((ch.charges[key]?.spent ?? 0) >= def.charges)
+          return { go: false, code: 'cooldown', reason: `${def.id} ${def.charges} 次都用掉了，下一次回复还要 ${Math.ceil(cd)} 帧` }
+      } else if (cd > 0) {
         const who = def.cooldownGroup ? `${def.id}（与同组共用冷却 ${def.cooldownGroup}）` : def.id
         return { go: false, code: 'cooldown', reason: `${who} 冷却还剩 ${Math.ceil(cd)} 帧` }
       }
