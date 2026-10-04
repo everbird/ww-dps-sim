@@ -6,7 +6,8 @@ import type { BuffDefInput } from './buff.schema'
 import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
 import type { GameData } from './gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema, type GenActionFile,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema,
+  type GenActionFile,
 } from './generated.schema'
 import { buildGameData } from './registry'
 import { parseOrThrow } from './validate'
@@ -36,6 +37,7 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
       meta: read(GenMetaSchema, 'meta.json'), characters: generatedChars, actions,
       weapons: read(z.array(GenWeaponSchema), 'weapons.json'),
       echoes: existsSync(new URL('echoes.json', gen)) ? read(z.array(GenEchoSchema), 'echoes.json') : [],
+      ...(existsSync(new URL('echo-stats.json', gen)) ? { echoStats: read(GenEchoStatsSchema, 'echo-stats.json') } : {}),
       enemies: read(z.array(GenEnemySchema), 'enemies.json'),
     },
     {

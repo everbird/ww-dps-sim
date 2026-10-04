@@ -16,7 +16,7 @@ const DIR = new URL('../scenarios/', import.meta.url)
 const files = readdirSync(DIR).filter(f => f.endsWith('.yaml')).sort()
 let gd: GameData
 
-/** 快照里只放看得懂的数：伤害取到 0.01，占比取到 0.01%，动作写成一行 */
+/** 快照里只放看得懂的数：伤害取到 0.01，占比取到 0.01%，动作、每一轮写成一行 */
 function view(s: Summary) {
   const r2 = (x: number) => Math.round(x * 100) / 100
   const pct = (x: number) => `${(x * 100).toFixed(2)}%`
@@ -25,6 +25,10 @@ function view(s: Summary) {
     totalDamage: r2(s.totalDamage),
     dps: r2(s.dps),
     overflowDamage: r2(s.overflowDamage),
+    ...(s.steady ? { steady: `第 ${s.steady.from}–${s.steady.to} 轮：${s.steady.frames} 帧，DPS ${r2(s.steady.dps)}` } : {}),
+    ...(s.perLoop ? {
+      perLoop: s.perLoop.map(p => `第 ${p.loop} 轮：第 ${p.start} 帧起 ${p.frames} 帧，DPS ${r2(p.dps)}，能量 ${p.energyDelta.join(' / ')}，协奏 ${p.concertoDelta.join(' / ')}`),
+    } : {}),
     byChar: Object.fromEntries(Object.entries(s.byChar).map(([k, v]) => [k, `${r2(v.damage)}（${pct(v.share)}）`])),
     byAction: s.byAction.map(a => `${a.char} ${a.action}：${r2(a.damage)}（${pct(a.share)}，${a.hits} 段）`),
     warnings: s.warnings.map(w => w.message),

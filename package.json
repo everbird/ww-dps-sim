@@ -14,6 +14,8 @@
     "check:data": "tsx src/data/check-generated.ts",
     "golden:perturb": "python3 tools/build/golden_perturb.py",
     "sim": "tsx src/cli/sim.ts",
+    "compare": "tsx src/cli/compare.ts",
+    "marginal": "tsx src/cli/marginal.ts",
     "test": "vitest run",
     "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'"
   },

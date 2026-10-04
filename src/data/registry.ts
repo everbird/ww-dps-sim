@@ -9,7 +9,7 @@ import {
   BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
 } from './buff.schema'
 import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
-import type { GenActionFile, GenCharacter, GenEcho, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
+import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
 import {
   DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
@@ -21,6 +21,7 @@ export interface GeneratedFiles {
   actions: Record<BlockKey, GenActionFile>          // 块键 → 动作文件（角色块与通用块）
   weapons: GenWeapon[]
   echoes: GenEcho[]                                 // echoes.json（TD-01 §8）；没有时为空
+  echoStats?: GenEchoStats                          // echo-stats.json（TD-01 §5.4）
   enemies: GenEnemy[]
 }
 
@@ -74,7 +75,7 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     version: /(\d{8})/.exec(gen.meta.xlsxFile)?.[1] ?? gen.meta.xlsxFile,
     meta: gen.meta,
     characters, commonActions, weapons,
-    echoes, echoSets, enemies,
+    echoes, echoSets, echoStats: gen.echoStats ?? null, enemies,
     effects: {}, abnormalBaseByLevel: [],           // M4
     tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } },   // M4
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),

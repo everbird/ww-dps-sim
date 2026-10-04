@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
+from echo_stats import build_echo_stats  # noqa: E402
 from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
 from enemies import build_enemies  # noqa: E402
 import golden  # noqa: E402
@@ -111,6 +112,9 @@ def main() -> int:
     weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues)
     enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues)
 
+    # §5.4 声骸属性：主词条满级值、固定副主属性、副词条各档
+    echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=90, values_only=True)), issues)
+
     # §8 声骸（倍率在 nanoka 之后连）
     ws = wb['声骸']
     costs = build_costs(list(wb['索引'].iter_rows(min_row=48, max_row=58, max_col=23, values_only=True)))
@@ -173,6 +177,7 @@ def main() -> int:
     _dump(out / 'formula-ref.json', formula_ref)
     _dump(out / 'weapons.json', weapons)
     _dump(out / 'echoes.json', echoes)
+    _dump(out / 'echo-stats.json', echo_stats)
     _dump_lines(out / 'enemies.json', enemies)
     if nk is not None:
         _dump(out / 'nanoka.json', nk)
@@ -196,6 +201,7 @@ def main() -> int:
         '角色（characters.json）': len(characters),
         '武器（weapons.json）': len(weapons),
         '声骸（echoes.json）': len(echoes),
+        '声骸副词条（echo-stats.json）': len(echo_stats['subTiers']),
         '敌人（enemies.json）': len(enemies),
         'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
         'golden 乘区格': len(golden_zones),

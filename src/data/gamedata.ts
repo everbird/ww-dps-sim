@@ -5,7 +5,7 @@ import type {
   Frame, ResourceKind, StatKey, WeaponType,
 } from './common'
 import type { BuffDef, ResourceEffect } from './buff.schema'
-import type { GenMeta, GenWeapon } from './generated.schema'
+import type { GenEchoStats, GenMeta, GenWeapon } from './generated.schema'
 import type { CharacterHooks } from '../engine/types'
 
 export interface GameData {
@@ -16,6 +16,7 @@ export interface GameData {
   weapons: Record<string, WeaponDef>
   echoes: Record<string, EchoDef>
   echoSets: Record<string, EchoSetDef>
+  echoStats: GenEchoStats | null                    // 声骸主词条满级值、副词条各档（echo-stats.json；副词条边际要用）
   enemies: Record<string, EnemyPreset>
   effects: Partial<Record<EffectName, EffectDef>>
   abnormalBaseByLevel: number[]                     // 异常伤害基础值 AbnomalDamage，下标 = 等级 − 1（TD-03 §5）
