@@ -109,7 +109,9 @@ export default defineCharacter('散华', {
     },
   },
   actionOverrides: {
-    谐度破坏: { accept: ['multiEnd'] },     // 两个结束帧是谐度破坏的两段，取第一个即可
+    // 两个结束帧是谐度破坏的两段，取第一个即可；组里的编号行（1、2、31…）是动画分段、没有伤害，谐度破坏优先级 11 不会被取消，
+    // 可不可脱手都一样（m0-confirm §8 A 类，TD-06 §13.3）
+    谐度破坏: { accept: ['multiEnd', 'persistsGuess'] },
     // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
     QTE: { priority: [{ fromFrame: 0, value: 11 }, { fromFrame: 42, value: 8 }] },
     // 推断值的处理见 m0-confirm §8（2026-10-04）

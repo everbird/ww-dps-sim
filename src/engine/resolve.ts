@@ -92,7 +92,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     },
     rules,
     options: {
-      repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait,
+      repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait, tuneBreak: sc.options.tuneBreak,
       ...(sc.options.endAt !== undefined ? { endAt: sc.options.endAt } : {}),
     },
     warnings,
@@ -248,7 +248,8 @@ function resolveEnemy(e: Scenario['enemy'], data: GameData, issues: string[]): E
   return {
     id: '自定义', name: '自定义', tag: '自定义', cost: c.cost, level: c.level, hp: c.hp ?? 1e12,   // 生命缺省不设上限
     def: c.def ?? enemyDefByLevel(c.level), res,
-    whiteBar: { max: c.whiteBar ?? 0, recover: 0, reduce: 0 }, poise: { max: 0, recover: 0, reduce: 0 },
+    whiteBar: { max: c.whiteBar ?? 0, recover: 0, reduce: 0 }, whiteBarTough: c.whiteBar ?? 0,
+    paralysisFrames: Math.round((c.paralysisSec ?? 0) * 60), poise: { max: 0, recover: 0, reduce: 0 },
     tunabilityMax: c.tunabilityMax ?? 0,
   }
 }

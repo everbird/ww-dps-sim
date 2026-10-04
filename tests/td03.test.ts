@@ -127,6 +127,28 @@ describe('T03-7 谐度破坏：对 COST4 通用（伤害计算 E1098 / F1098）'
   })
 })
 
+// 真实数据：tune-break.json 的各武器变体照 xlsx 谐度破坏表复算（伤害计算 R1099–R1106，对 COST4、90 级、防御 1593、物理抗性 20%）
+const tuneFile = new URL('../data/generated/tune-break.json', import.meta.url)
+describe.skipIf(!existsSync(tuneFile))('T03-7b 谐度破坏表（tune-break.json）', () => {
+  test('各变体的对失谐 / 对常态伤害与 xlsx 一致；迅刀第一段结算 4 次、总倍率都是 16', async () => {
+    const { GenTuneBreakSchema } = await import('../src/data/generated.schema')
+    const g = GenTuneBreakSchema.parse(JSON.parse(readFileSync(tuneFile, 'utf8')))
+    const t: TuneBreakTable = {
+      variants: [], baseByLevel: g.baseByLevel,
+      costFactor: { 1: g.costFactors.find(f => f.cost === 1)!.factor, 3: g.costFactors.find(f => f.cost === 3)!.factor, 4: g.costFactors.find(f => f.cost === 4)!.factor },
+    }
+    expect(tuneBase(t, 90, 4)).toBe(10027)
+    for (const v of g.variants) {
+      const ctx = { base: tuneBase(t, 90, 4), rate: v.multiplier, level: 90, enemy, harmonyBreakBoost: 0 }
+      expect([v.key, computeTuneBreak(ctx, emptyAccumulator(), R), computeTuneBreak({ ...ctx, vsNormal: true }, emptyAccumulator(), R)])
+        .toEqual([v.key, v.golden!.vsDisharmony, v.golden!.vsNormal])
+    }
+    const total = new Map<string, number>()
+    for (const v of g.variants) total.set(v.weaponType!, (total.get(v.weaponType!) ?? 0) + v.multiplier * (v.ticks ?? 1))
+    expect([...total.values()].map(x => Math.round(x * 1e4) / 1e4)).toEqual([16, 16, 16, 16, 16])
+  })
+})
+
 describe('T03-8 收集 buff', () => {
   const mk = (b: BuffDefInput, stacks = 1, owner: ActiveBuff['owner'] = 0): ActiveBuff =>
     ({ def: BuffDefSchema.parse(b), value: b.value as number, stacks, owner })

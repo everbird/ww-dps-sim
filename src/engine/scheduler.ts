@@ -61,7 +61,7 @@ export function compileRotation(lines: string[], team: CompileMember[], onField:
         issues.push({ line, item, message: `${m.name} ${id} 是${def.kind === 'intro' ? '变奏' : '延奏'}，由切人自动触发（协奏满时），不能单独写` })
         return
       }
-      commands.push({ kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force })
+      commands.push({ kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force, ...(it.optional ? { optional: true } : {}) })
     })
   })
   if (issues.length === 0 && commands.length === 0) issues.push({ line: 0, message: '排轴里没有指令' })
@@ -102,6 +102,8 @@ export interface SchedulerOptions {
   canStart?(s: SimState, slot: Slot, def: ActionDef): true | string
   /** TD-05：切人之后的事（变奏 / 延奏 / 协奏），switch 事件由它记（要先算出是不是变奏切人）。缺省只换前台、启动切人冷却、记 switch */
   onSwitch?(s: SimState, k: Kernel, from: Slot, to: Slot, cmd: CommandRef): void
+  /** TD-06 §13.4：要插在队首指令之前的动作（目标失谐时前台角色的谐度破坏）；why 写进等待原因。缺省不插 */
+  interject?(s: SimState): { slot: Slot; def: ActionDef; why: string } | null
 }
 
 /** repeat = 整条轴执行几轮（options.repeat） */
@@ -113,6 +115,8 @@ type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
 const GO: Verdict = { go: true }
 /** 写轴的人要求的等待：不计入 maxWait */
 const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
+/** 可选指令遇到这几种"状态条件"不满足时跳过；门（优先级、输入锁、派生）与"等出手"照常等 */
+const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook']
 
 /** 返回 P2 用的 schedule(s)：执行队首起能执行的指令（一个 tick 可以执行多条），返回"还有没有没执行完的指令" */
 export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions): (s: SimState) => boolean {
@@ -128,7 +132,26 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       }
       const c = q.commands[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
+      // 插在队首之前的动作：与出招指令同样的检查（不强制、不延迟）；等的时候记在队首指令名下。开始后不带指令出处，回到循环再看队首
+      const ij = opts.interject?.(s)
+      if (ij) {
+        const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref)
+        if (!w.go) { hold(s, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref); return true }
+        closeSeg(s, ref)
+        startAction(s, k, ij.slot, ij.def)
+        continue
+      }
       const v = evaluate(s, actions, opts, c, ref)
+      if (!v.go && c.kind === 'act' && c.optional && SKIPPABLE.includes(v.code)) {
+        // 可选指令（"?"）：冷却、资源、角色条件不满足就跳过，记一条 skip，接着看下一条（TD-06 §13.4）
+        closeSeg(s, ref)
+        log(s, { type: 'skip', cmd: ref, code: v.code, reason: v.reason })
+        q.next += 1
+        q.waited = 0
+        q.readyAt = null
+        q.until = null
+        continue
+      }
       if (!v.go) { hold(s, opts, v, ref); return true }
       closeSeg(s, ref)
       execute(s, k, actions, opts, c, ref)
@@ -160,38 +183,43 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
       return GO
     }
     case 'act': {
-      const ch = s.chars[c.slot]
-      if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${ch.name} 不在前台`, ref)
-      const def = actions[c.slot]![c.action]!
-      const g = gate(ch, def)
-      const onlyStarted = !g.ok && g.code === 'started'               // "本 tick 已开始过动作"放到后面报（§3.2）
-      if (!g.ok && !onlyStarted) {
-        if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
-        return { go: false, code: g.code, reason: g.reason }
-      }
-      const key = cooldownKey(def)
-      const cd = ch.cooldowns[key] ?? 0
-      if (def.charges !== undefined && def.charges > 1) {                 // 按次数充能：还有次数就能放
-        if ((ch.charges[key]?.spent ?? 0) >= def.charges)
-          return { go: false, code: 'cooldown', reason: `${def.id} ${def.charges} 次都用掉了，下一次回复还要 ${Math.ceil(cd)} 帧` }
-      } else if (cd > 0) {
-        const who = def.cooldownGroup ? `${def.id}（与同组共用冷却 ${def.cooldownGroup}）` : def.id
-        return { go: false, code: 'cooldown', reason: `${who} 冷却还剩 ${Math.ceil(cd)} 帧` }
-      }
-      const res = opts.canAfford?.(s, c.slot, def) ?? true
-      if (res !== true) return { go: false, code: 'resource', reason: res }
-      const hook = opts.canStart?.(s, c.slot, def) ?? true
-      if (hook !== true) return { go: false, code: 'hook', reason: hook }
-      if (!c.force && !settled(s, c.slot))
-        return { go: false, code: 'settled', reason: `等 ${ch.action!.id} 出手（现在打断会丢判定或延奏）` }
-      if (!g.ok) return { go: false, code: 'started', reason: g.reason }
-      if (c.delay > 0) {                                              // +N 从"其余全部满足"的那个 tick 起算
-        q.readyAt ??= s.battleFrames
-        if (s.battleFrames < q.readyAt + c.delay) return { go: false, code: 'delay', reason: `+${c.delay}` }
-      }
-      return GO
+      if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${s.chars[c.slot].name} 不在前台`, ref)
+      return evaluateAct(s, opts, c.slot, actions[c.slot]![c.action]!, c.force, c.delay, ref)
     }
   }
+}
+
+/** 出招此刻能不能开始（§3.2 的检查顺序，前台已查过）；插队的动作（opts.interject）也走这里 */
+function evaluateAct(s: SimState, opts: SchedulerOptions, slot: Slot, def: ActionDef, force: boolean, delay: number, ref: CommandRef): Verdict {
+  const q = s.queue
+  const ch = s.chars[slot]
+  const g = gate(ch, def)
+  const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
+  if (!g.ok && !onlyStarted) {
+    if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
+    return { go: false, code: g.code, reason: g.reason }
+  }
+  const key = cooldownKey(def)
+  const cd = ch.cooldowns[key] ?? 0
+  if (def.charges !== undefined && def.charges > 1) {                   // 按次数充能：还有次数就能放
+    if ((ch.charges[key]?.spent ?? 0) >= def.charges)
+      return { go: false, code: 'cooldown', reason: `${def.id} ${def.charges} 次都用掉了，下一次回复还要 ${Math.ceil(cd)} 帧` }
+  } else if (cd > 0) {
+    const who = def.cooldownGroup ? `${def.id}（与同组共用冷却 ${def.cooldownGroup}）` : def.id
+    return { go: false, code: 'cooldown', reason: `${who} 冷却还剩 ${Math.ceil(cd)} 帧` }
+  }
+  const res = opts.canAfford?.(s, slot, def) ?? true
+  if (res !== true) return { go: false, code: 'resource', reason: res }
+  const hook = opts.canStart?.(s, slot, def) ?? true
+  if (hook !== true) return { go: false, code: 'hook', reason: hook }
+  if (!force && !settled(s, slot))
+    return { go: false, code: 'settled', reason: `等 ${ch.action!.id} 出手（现在打断会丢判定或延奏）` }
+  if (!g.ok) return { go: false, code: 'started', reason: g.reason }
+  if (delay > 0) {                                                     // +N 从"其余全部满足"的那个 tick 起算
+    q.readyAt ??= s.battleFrames
+    if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
+  }
+  return GO
 }
 
 function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): void {

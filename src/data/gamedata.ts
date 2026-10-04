@@ -167,7 +167,9 @@ export interface EnemyPreset {
   hp: number
   def: number
   res: Record<Element, number>
-  whiteBar: { max: number; recover: number; reduce: number }   // 白条（游戏字段 Rage）
+  whiteBar: { max: number; recover: number; reduce: number }   // 白条（游戏字段 Rage），敌人表原值（按生命值成长放大过），只作展示
+  whiteBarTough: number                             // 白条按削韧值计（prop RageMax ÷ 100，TD-06 §13.2）；0 = 没有白条
+  paralysisFrames: Frame                            // 白条打空后瘫痪多久（敌人表"瘫痪时长"）；0 = 不瘫痪
   poise: { max: number; recover: number; reduce: number }      // 韧性（Tough），削韧值作用于它
   tunabilityMax: number
 }
@@ -199,6 +201,7 @@ export interface Rules {
   concertoTiming: 'onCast' | 'onHit'
   energyShare: { dealer: number; others: number }
   breakEnergy: number
+  tuneBreakLock: Frame                              // 谐度破坏命中后不能累积偏谐值的时间（真空期，TD-06 §13.1）
   critRateCap: number
   defFactorCap: number
   highResThreshold: number
@@ -222,7 +225,8 @@ export const DEFAULT_RULES: Rules = {
   concertoMax: 100,
   concertoTiming: 'onHit',                          // 逐段所得按命中给，"进入即得"仍在出手时（2026-10-03 用户实测，TD-06 Q1）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1
-  breakEnergy: 3,                                   // 破白条全队 +3；触发条件待 TD-06（TD-01 Q16）
+  breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
+  tuneBreakLock: 300,                               // 真空期 5 秒；带震谐·干涉时 8 秒（M0 用不到，2026-10-04 用户确认）
   critRateCap: 1,
   defFactorCap: 2,                                  // min(2, …)（TD-03 §3.2）
   highResThreshold: 0.8,                            // 总设计附录 A-5

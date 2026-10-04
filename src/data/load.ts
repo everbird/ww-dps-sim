@@ -6,8 +6,8 @@ import type { BuffDefInput } from './buff.schema'
 import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
 import type { GameData } from './gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema,
-  type GenActionFile,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema,
+  GenWeaponSchema, type GenActionFile,
 } from './generated.schema'
 import { buildGameData } from './registry'
 import { parseOrThrow } from './validate'
@@ -39,6 +39,7 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
       echoes: existsSync(new URL('echoes.json', gen)) ? read(z.array(GenEchoSchema), 'echoes.json') : [],
       ...(existsSync(new URL('echo-stats.json', gen)) ? { echoStats: read(GenEchoStatsSchema, 'echo-stats.json') } : {}),
       enemies: read(z.array(GenEnemySchema), 'enemies.json'),
+      ...(existsSync(new URL('tune-break.json', gen)) ? { tuneBreak: read(GenTuneBreakSchema, 'tune-break.json') } : {}),
     },
     {
       characters,

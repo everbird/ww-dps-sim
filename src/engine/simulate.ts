@@ -1,11 +1,12 @@
 // src/engine/simulate.ts —— simulate(ResolvedScenario) → { 事件日志, 汇总 }（总设计 §3.4、§6）
-// 把内核（TD-04）、调度器（TD-09）、伤害公式（TD-03）、切人（TD-05）、资源（TD-06）、buff 与触发（TD-07）、角色钩子（TD-08）接在一起：
+// 把内核（TD-04）、调度器（TD-09）、伤害公式（TD-03）、切人（TD-05）、资源与敌人量表（TD-06）、buff 与触发（TD-07）、角色钩子（TD-08）接在一起：
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type Sim } from './context'
-import { accumulate, computeHit, hitView, matchesFilter } from './formula'
+import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionOf } from './enemy'
+import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
@@ -24,11 +25,15 @@ export function simulate(r: ResolvedScenario): SimResult {
     rules: r.rules,
     hooks: {
       settle: (st, j, n) => settle(sim, st, j, n),
-      // 开始动作时的顺序（TD-06 §7）：扣大招能量 → actionStart 的触发与钩子 → 施放资源
-      actionStarted: (st, slot, a) => { payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st) },
+      // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
+      actionStarted: (st, slot, a) => {
+        onTuneBreakStart(st, a.def, a.instance)
+        payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st)
+      },
       castGain: (st, slot, src, i) => { castGainAt(sim, st, slot, src, i); drain(sim, st) },
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
       timers: (st, rates) => {
+        enemyTimers(st)                                           // 瘫痪结束、白条回满（TD-06 §13.2）
         tickBuffs(st, rates)
         drain(sim, st)
         sim.bus.spawned.clear()
@@ -41,11 +46,21 @@ export function simulate(r: ResolvedScenario): SimResult {
     r, k, book: makeBook(r.buffs), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
+  const tuneBreaks = r.team.map(m => tuneBreakActionOf(m.actions))
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
     canAfford,
-    canStart: (_st, slot, def) => r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, def.id) ?? true,
+    canStart: (st, slot, def) => {
+      if (def.kind === 'tuneBreak') { const ok = canTuneBreak(sim, st); if (ok !== true) return ok }
+      return r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
+    },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
+    // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
+    interject: st => {
+      if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null
+      const def = tuneBreaks[st.onField]
+      return def ? { slot: st.onField, def, why: '谐度破坏' } : null
+    },
   })
   let error: SimResult['error']
   try {
@@ -74,7 +89,7 @@ function initialState(r: ResolvedScenario): SimState {
   })) as SimState['chars']
   const e = r.enemy
   const enemy: EnemyRuntime = {
-    preset: e, whiteBar: e.whiteBar.max, broken: false, poise: e.poise.max, tunability: 0, disharmony: false,
+    preset: e, whiteBar: e.whiteBarTough, broken: false, paralyzedUntil: 0, poise: e.poise.max, tunability: 0, disharmony: false,
     tunabilityLockedUntil: 0, effects: {}, responseCd: {},
   }
   return {
@@ -87,8 +102,8 @@ function initialState(r: ResolvedScenario): SimState {
 // ---------------------------------------------------------------------------
 // P4 一次结算（TD-03 §4、TD-06 §7）：草稿 → modifyHit → 收集 buff → computeHit → 资源 → hit 事件 → 触发 → 接续动作
 
-/** 这几类伤害走另外的公式（TD-03 §5、§6）与触发时机（TD-06），M4 接上；在那之前不按直接伤害算，只提示一次 */
-const LATER: readonly DamageTag[] = ['异常效应', '谐度破坏', '震谐响应', '骇破响应']
+/** 这几类伤害走另外的公式（TD-03 §5、§6）与触发时机（TD-06 v0.2 之后），还没接上；不按直接伤害算，只提示一次 */
+const LATER: readonly DamageTag[] = ['异常效应', '震谐响应', '骇破响应']
 
 function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   const r = sim.r
@@ -111,13 +126,23 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     const view = hitView(draft, j.action, new Set(Object.keys(s.enemy.effects) as EffectName[]))
     const active = activeFor(s, sim.book, j.owner)
     const acc = accumulate(view, active, draft)
-    const res = computeHit({
-      rate: draft.multiplier, attr: d.relatedAttr, panel: m.panel, extraFlat: draft.extraFlat, level: r.rules.charLevel,
-      enemy: { def: r.enemy.def, res: r.enemy.res[draft.element] },
-    }, acc, r.rules)
-    dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
+    if (draft.tags.includes('谐度破坏')) {
+      // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001
+      const v = computeTuneBreak({
+        base: tuneBase(r.data.tuneBreak, r.rules.charLevel, r.enemy.cost), rate: draft.multiplier, level: r.rules.charLevel,
+        enemy: { def: r.enemy.def, res: r.enemy.res['物理'] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
+        ...(s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
+      }, acc, r.rules)
+      dmg = { nonCrit: v, crit: v, expected: v }
+    } else {
+      const res = computeHit({
+        rate: draft.multiplier, attr: d.relatedAttr, panel: m.panel, extraFlat: draft.extraFlat, level: r.rules.charLevel,
+        enemy: { def: r.enemy.def, res: r.enemy.res[draft.element] },
+      }, acc, r.rules)
+      dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
+      factors = res.factors
+    }
     checkHit(s, dmg, m.def.name, d.name)
-    factors = res.factors
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
   }
@@ -133,6 +158,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     log(s, f)
     if (link) sim.bus.chain.set(s.log.length - 1, link)
   }
+  hitGauges(sim, s, j)                                            // 敌人量表：偏谐值、失谐、谐度破坏命中、白条（TD-06 §13）
   drain(sim, s)
   // 接续动作（TD-08 P10）：本动作的该判定第一次结算后立刻开始，继承指令出处
   const a = s.chars[j.owner].action

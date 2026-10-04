@@ -9,7 +9,8 @@ import { assembleBlock } from './assemble-action'
 import type { CharacterModuleDef, EchoModule } from './define'
 import type { ActionDef } from './gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenWeaponSchema, GoldenDamageSchema,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema, GenWeaponSchema,
+  GoldenDamageSchema,
   GoldenZonesSchema, NanokaFileSchema, type GenEcho, type NanokaFile,
 } from './generated.schema'
 import { checkCooldowns, checkTreeStats } from './nanoka-check'
@@ -39,6 +40,8 @@ if (hasEchoes) check(z.array(GenEchoSchema), 'echoes.json')
 const hasEchoStats = existsSync(new URL('echo-stats.json', root))
 if (hasEchoStats) check(GenEchoStatsSchema, 'echo-stats.json')
 check(z.array(GenEnemySchema), 'enemies.json')
+const hasTune = existsSync(new URL('tune-break.json', root))
+if (hasTune) check(GenTuneBreakSchema, 'tune-break.json')
 const actions = readdirSync(new URL('actions/', root)).filter(f => f.endsWith('.json'))
 for (const f of actions) check(GenActionFileSchema, `actions/${f}`)
 const hasNanoka = existsSync(new URL('nanoka.json', root))
@@ -53,7 +56,7 @@ if (failed > 0) {
   console.error(`${failed} 个文件未通过 schema 校验`)
   process.exit(1)
 }
-console.log(`schema 校验通过：meta、characters、formula-ref、weapons${hasEchoes ? '、echoes' : ''}${hasEchoStats ? '、echo-stats' : ''}、enemies${hasNanoka ? '、nanoka' : ''}${hasGolden ? '、golden 两个夹具' : ''} 与 ${actions.length} 个动作文件`)
+console.log(`schema 校验通过：meta、characters、formula-ref、weapons${hasEchoes ? '、echoes' : ''}${hasEchoStats ? '、echo-stats' : ''}、enemies${hasTune ? '、tune-break' : ''}${hasNanoka ? '、nanoka' : ''}${hasGolden ? '、golden 两个夹具' : ''} 与 ${actions.length} 个动作文件`)
 const nanoka: NanokaFile | undefined = hasNanoka ? NanokaFileSchema.parse(read('nanoka.json')) : undefined
 
 const fi = process.argv.indexOf('--flags')

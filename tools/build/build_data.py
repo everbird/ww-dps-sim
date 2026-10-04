@@ -25,8 +25,9 @@ from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
 from echo_stats import build_echo_stats  # noqa: E402
+from tune_break import TABLE_ROWS, build_tune_break  # noqa: E402
 from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
-from enemies import build_enemies  # noqa: E402
+from enemies import build_enemies, rage_index  # noqa: E402
 import golden  # noqa: E402
 import nanoka  # noqa: E402
 from parse import Issues, as_num  # noqa: E402
@@ -110,7 +111,12 @@ def main() -> int:
 
     # §7 武器、§9 敌人
     weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues)
-    enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues)
+    rage = rage_index(list(wb['prop'].iter_rows(min_row=1, max_col=38, values_only=True)), base_rows)
+    enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues, rage)
+
+    # §11.3 谐度破坏表（TD-03 §6）
+    tune = build_tune_break(dmg, list(wb['伤害计算'].iter_rows(min_row=TABLE_ROWS[0], max_row=TABLE_ROWS[1], max_col=7,
+                                                              values_only=True)), base_rows, issues)
 
     # §5.4 声骸属性：主词条满级值、固定副主属性、副词条各档
     echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=90, values_only=True)), issues)
@@ -179,6 +185,7 @@ def main() -> int:
     _dump(out / 'echoes.json', echoes)
     _dump(out / 'echo-stats.json', echo_stats)
     _dump_lines(out / 'enemies.json', enemies)
+    _dump(out / 'tune-break.json', tune)
     if nk is not None:
         _dump(out / 'nanoka.json', nk)
     (out / 'fixtures').mkdir(exist_ok=True)
@@ -203,6 +210,7 @@ def main() -> int:
         '声骸（echoes.json）': len(echoes),
         '声骸副词条（echo-stats.json）': len(echo_stats['subTiers']),
         '敌人（enemies.json）': len(enemies),
+        '谐度破坏变体（tune-break.json）': len(tune['variants']),
         'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
         'golden 乘区格': len(golden_zones),
     }

@@ -14,7 +14,7 @@
 | `wuwa-dps-td03-damage-formula-v0.1.1.md` | 伤害公式与乘区、golden 抽取 |
 | `wuwa-dps-td04-sim-kernel-v0.1.3.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定、尾部与独立时间线、冷却与充能 |
 | `wuwa-dps-td05-switch-concerto-v0.1.1.md` | 切人、变奏 / 延奏、协奏清零、切人结束技能 |
-| `wuwa-dps-td06-resources-v0.1.md` | 角色资源：大招能量分配与门槛、协奏时机、核心资源（敌人量表在 v0.2） |
+| `wuwa-dps-td06-resources-v0.2.md` | 角色资源：大招能量分配与门槛、协奏时机、核心资源；敌人量表：偏谐与失谐、谐度破坏（自动 / 手写 / 关闭）、白条与破盾回能、瘫痪（偏移 / 干涉 / 响应、异常效应以后） |
 | `wuwa-dps-td07-buff-system-v0.1.1.md` | buff 实例、作用对象、触发与事件队列（含治疗事件、`ownerHas`）、消耗型 / 标记型、资源型效果、原文起草 |
 | `wuwa-dps-td08-character-module-v0.1.1.md` | 角色模块怎么写：钩子、写法模式、M0 三人的模块 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.2.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、循环 |
@@ -55,7 +55,7 @@ pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
-pnpm test -- -u                              # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照
+pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
 **每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈 && pnpm check:data`。
@@ -73,4 +73,4 @@ pnpm test -- -u                              # 场景汇总快照（tests/scenar
 
 M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下的 11 处已于 2026-10-03 并回总设计 v0.1.5 等；声骸与 M5 记下的 4 处已于 2026-10-04 并回总设计 v0.1.6、TD-01 v0.1.5、TD-02 v0.1.5、TD-04 v0.1.3、TD-05 v0.1.1、TD-07 v0.1.1、TD-08 v0.1.1、TD-09 v0.1.2，并新写 TD-10 v0.1（各文档附录的变更历史逐条列出）。之后的新决定记在下面：
 
-（暂无）
+1. **M4 敌人量表（TD-06 v0.2，2026-10-04）**：偏谐值与失谐、谐度破坏、白条与破盾回能按 TD-06 §12–§16 实现；它对 TD-01 / 02 / 03 / 04 / 09 / 10 与总设计的调整列在 TD-06 §17，下次改这些文档时并回。

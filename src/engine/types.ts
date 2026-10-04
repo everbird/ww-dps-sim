@@ -20,7 +20,7 @@ export interface ResolvedScenario {
   commands: Command[]
   initial: { energy: [number, number, number]; concerto: [number, number, number]; onField: Slot }
   rules: Rules
-  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame }
+  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off' }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
 }
 
@@ -181,12 +181,14 @@ export interface BuffRuntime {
 
 export interface EnemyRuntime {
   preset: EnemyPreset
-  whiteBar: number
-  broken: boolean
+  whiteBar: number                          // 按削韧值计（TD-06 §13.2）
+  broken: boolean                           // 白条打空、瘫痪中
+  paralyzedUntil: number                    // 战斗帧：瘫痪到这一帧结束、白条回满
   poise: number
   tunability: number
-  disharmony: boolean
-  tunabilityLockedUntil: number
+  disharmony: boolean                       // 偏谐值满（失谐）
+  tunabilityLockedUntil: number             // 战斗帧：谐度破坏后的真空期，此前不累积偏谐值
+  tuneBreakBy?: number                      // 消耗这次失谐的谐度破坏动作实例（它的各段伤害按对失谐算）
   shift?: 'zhenxie' | 'jixie'
   interference?: { kind: 'zhenxie' | 'jixie'; stacks: number; remaining: number }
   effects: Partial<Record<EffectName, { stacks: number; remaining: number; nextTick: number; source: Slot }>>
@@ -257,6 +259,8 @@ export type SimEvent =
   | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
   | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
+  // 可选指令（排轴里写 "?"）的条件不满足，跳过了（TD-06 §13.4）
+  | (EventBase & { type: 'skip'; cmd: CommandRef; code: WaitCode; reason: string })
   | (EventBase & { type: 'loop'; loop: number })
   | (EventBase & { type: 'warning'; code: string; message: string; line?: number })
 
@@ -272,6 +276,7 @@ export interface Summary {
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
   waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
+  skipped: { line: number; item: number; loop: number; reason: string }[]   // 跳过的可选指令（"?"）
   warnings: { code: string; message: string; line?: number }[]
   /** 分轮（options.repeat ≥ 2；总设计 §3.5、TD-09 §3.7 / §3.9）：第 k 轮 = [本轮 loop 事件, 下一轮 loop 事件)，最后一轮到窗口终点，
    *  按战斗帧。资源首尾差 = 下一轮开始时（最后一轮：窗口终点）− 本轮开始时，看这条轴能不能自给 */
@@ -282,6 +287,8 @@ export interface Summary {
   /** 稳态：完整的轮合起来的 DPS——第 2 轮到倒数第 2 轮（第 1 轮受开局资源影响；最后一轮没有下一轮的边界，
    *  等下一轮起手的时间算不进来，偏高）；只有 2 轮时取第 2 轮 */
   steady?: { from: number; to: number; frames: number; damage: number; dps: number }
+  /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
+  enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
 }
 
 export interface SimResult {

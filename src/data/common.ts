@@ -60,7 +60,7 @@ export const EFFECT_NAMES = [
 export type EffectName = (typeof EFFECT_NAMES)[number]
 
 export const ACTION_KINDS = [
-  'normal', 'heavy', 'skill', 'liberation', 'intro', 'outro', 'echo', 'dodge', 'other',
+  'normal', 'heavy', 'skill', 'liberation', 'intro', 'outro', 'echo', 'dodge', 'tuneBreak', 'other',
 ] as const
 export type ActionKind = (typeof ACTION_KINDS)[number]
 

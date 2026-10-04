@@ -15,6 +15,7 @@ export interface AssembleOptions {
   element?: Element                         // 没连上 dmg 的判定用角色元素（TD-01 §13.2）；缺省物理
   charNames?: ReadonlySet<string>           // 命中类型写成角色名的判定算友方
   kind?: ActionKind                         // 指定动作类别，不推断（声骸动作一律 'echo'，TD-01 §13.3）
+  tuneTicks?: Readonly<Record<string, number>>   // 谐度破坏变体的结算次数（tune-break.json：'谐度破坏-迅刀1' → 4，TD-06 §13.3）
 }
 
 /** 装配一个块。overrides = 角色模块的 actionOverrides；写了块里不存在的动作 / 行 / 判定直接报错 */
@@ -139,7 +140,9 @@ export function assembleGroup(
     names.set(r.name, n)
     const life = r.lifeFrames ?? 1
     const iv = r.hints.tickInterval ?? null
-    const ticks = r.hints.maxTicks ?? (iv !== null && life > 0 ? Math.ceil(life / iv) : 1)
+    // 谐度破坏：连到通用块变体的判定按谐度破坏表的结算次数（迅刀第一段 × 4），在寿命内均分（TD-06 §13.3）
+    const tuneTicks = r.dmg?.charaId === '通用' ? opts.tuneTicks?.[r.dmg.skillName] : undefined
+    const ticks = tuneTicks !== undefined && tuneTicks > 1 ? tuneTicks : r.hints.maxTicks ?? (iv !== null && life > 0 ? Math.ceil(life / iv) : 1)
     const jf: string[] = []
     if (r.lifeFrames === null) jf.push('noLife')
     if (r.hints.maxTicks === undefined && iv !== null) jf.push('ticksGuess')
@@ -157,7 +160,8 @@ export function assembleGroup(
       ticks,
       tickInterval: iv,
       persistsOnCancel: life === -1 ? false : (r.persists ?? true),
-      followHitstop: r.followHitstop === true,
+      // 谐度破坏在自己的全局时停里打完：判定随施放者的时钟走（战斗时钟停着，迅刀第一段的 4 次结算也在演出里，TD-06 §13.3）
+      followHitstop: r.followHitstop === true || kind === 'tuneBreak',
       ...dmgFields,
       hitstop: hitstopOf.get(r) ?? null,
       ...(ch ? { chainRange: ch.range } : {}),
@@ -170,7 +174,8 @@ export function assembleGroup(
   const outroRow = rows.find(r => r.hints.outroTriggerFrame !== undefined)
   const outro = outroRow?.hints.outroTriggerFrame
   if (outroRow?.hints.outroRange) flags.add('outroRange')        // 区间写法取了起点（TD-05 §4.1）
-  const switchLock = maxHint('noSwitchBefore')
+  // 谐度破坏的备注"无敌期间不能切人"：按整个动作算（TD-06 §13.3）
+  const switchLock = maxHint('noSwitchBefore') ?? (kind === 'tuneBreak' ? endFrame : null)
   const endOnSwitch = rows.find(r => r.hints.endOnSwitchAfter !== undefined)?.hints.endOnSwitchAfter
   return {
     id: g.id, owner: file.key, kind, endFrame, cancelWindows, priority,
@@ -281,16 +286,17 @@ export function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
  *  椿的 E1 / E2 / E3 是共鸣技能（2），伤害类型却是普攻（0）。其余代码不决定类别、按组名推：延奏组散在 8 / 9 / 12 / 13 里，
  *  而 12 里也有赞妮"E1-精准反击前置"、丽贝卡"待机"这类非延奏的组 */
 const KIND_BY_SKILL_TYPE: Readonly<Record<number, ActionKind>> = {
-  0: 'normal', 1: 'heavy', 2: 'skill', 3: 'liberation', 4: 'intro', 5: 'normal',
+  0: 'normal', 1: 'heavy', 2: 'skill', 3: 'liberation', 4: 'intro', 5: 'normal', 14: 'tuneBreak',
 }
 /** 没连上 dmg 的判定按动作类别推标签 */
 const TAG_BY_KIND: Readonly<Record<ActionKind, DamageTag>> = {
   normal: '普攻', heavy: '重击', skill: '共鸣技能', liberation: '共鸣解放', intro: '变奏', outro: '延奏', echo: '声骸技能',
-  dodge: '其他', other: '其他',
+  dodge: '其他', tuneBreak: '谐度破坏', other: '其他',
 }
 const ENEMY_TARGETS = new Set(['目标', '目标子弹', '指定目标', '弹刀目标'])
 const ALLY_TARGETS = new Set(['友方', '队伍', '目标队友'])
 const ATTR_BY_PROP: Readonly<Record<number, JudgmentDef['relatedAttr']>> = { 7: 'atk', 2: 'hp', 10: 'def', 11: 'energyRegen' }
+const TUNE_BASE_PROP = 10000099                   // dmg RelatedProperty：谐度破坏基础值（TD-01 §4.1）
 const CALC_BY_TYPE = ['damage', 'heal', 'hpCost'] as const
 
 /** 组内第一个连上 dmg 的判定的技能归类决定类别；都没有则按组名前缀；再没有 → other，打 kindGuess */
@@ -307,6 +313,7 @@ function kindOfGroup(id: string, rows: GenRow[], flags: Set<string>): ActionKind
 
 /** 按组名推类别（没有 dmg 可看时） */
 function kindOf(id: string): ActionKind {
+  if (id.startsWith('谐度破坏')) return 'tuneBreak'
   if (id.includes('闪避反击')) return 'normal'
   if (id.includes('闪避')) return 'dodge'
   if (id.startsWith('QTE')) return 'intro'
@@ -350,7 +357,7 @@ function judgmentDamage(r: GenRow, kind: ActionKind, opts: AssembleOptions, jf: 
   if (d) {
     const a = ATTR_BY_PROP[d.relatedProperty]
     if (a) relatedAttr = a
-    else jf.push('relatedAttrOther')
+    else if (d.relatedProperty !== TUNE_BASE_PROP) jf.push('relatedAttrOther')   // 谐度破坏基础值：走谐度破坏公式（TD-03 §6），不看属性
   }
   const calc = d ? CALC_BY_TYPE[d.calcType] : 'damage'
   const damaging = d !== undefined && d.calcType === 0 && target === 'enemy' && !r.hints.noDamage
