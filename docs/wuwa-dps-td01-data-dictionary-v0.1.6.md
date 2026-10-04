@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.5
+# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.6
 
-> **状态**：v0.1.5（2026-10-04，已实现；v0.1.5 并回声骸接入与 `echo-stats.json`，见附录。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
+> **状态**：v0.1.6（2026-10-04，已实现；v0.1.6 并回 M4 敌人量表：`tune-break.json`、白条按削韧值、谐度破坏的装配，见附录。v0.1.5 并回声骸接入与 `echo-stats.json`。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§3.1–3.2、§5.1、§7、§11、§12（M0）、§13、附录 A-7；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、4C、4D、5.1、6、7；xlsx 自带的 `附页1`（数据作者写的列说明，下称"作者说明"）
 > **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测
 > **下游**：构建脚本 `tools/build/`（Python，v0.1.3，见 0.2）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
@@ -572,16 +572,19 @@ Curve1 / Curve2 取 `WeaponGrowth` 里 Lv = 90 的一行（125000 / 45000）。�
 | D | 等级 | `level` | |
 | E–G | 生命、攻击、防御 | `hp`、`atk`、`def` | |
 | H–N | 物抗 … 暗抗 | `res` | 以元素名为键：`{ 物理, 冷凝, 热熔, 导电, 气动, 衍射, 湮灭 }` |
-| O–Q | 白条、白条恢复、削条减免 | `whiteBar` | `{ max, recover, reduce }` |
+| O–Q | 白条、白条恢复、削条减免 | `whiteBar` | `{ max, recover, reduce }`；按生命值的等级成长放大过，只作展示（9.2） |
+| （prop） | RageMax、PropExtraRateId | `whiteBarTough` | 白条按削韧值计 = prop RageMax ÷ 100 × base 页 PropExtraRate.Tough&Rage（v0.1.6，9.2）；prop 按（名称，类型）对上，1402 行全部对上，对不上为 `null` 并警告 |
 | R–T | 韧性、韧性恢复、削韧减免 | `poise` | `{ max, recover, reduce }` |
 | U | 偏谐值 | `tunabilityMax` | 偏谐阈值 |
-| V、W | 脆弱时长、瘫痪时长 | `vulnerableSec`、`paralysisSec` | 秒，原样保留（机制 TD-06 定） |
+| V、W | 脆弱时长、瘫痪时长 | `vulnerableSec`、`paralysisSec` | 秒。脆弱时长 = prop WeakTime（角色也有，0.1 秒），韧性打空后的硬直，不用；瘫痪时长 = prop ParalysisTimeMax，白条打空后的瘫痪（TD-06 §13.2） |
 
 `id` = `类型/名称`（例：`索拉1/朔雷之鳞`），重复的 57 组按出现顺序加 `#2`。
 
 ### 9.2 白条 ≠ 韧性（已据此更正总设计 §6.7）
 
-对照 `prop`（游戏原型）验证：**白条 = 生命 × RageMax / LifeMax / 100**（1290 / 1291 行吻合），即游戏字段 **Rage**；**韧性 = ToughMax / 100**（1291 / 1291），即 **Tough**。而动作表的削韧值 = dmg `ToughLv`，按 `CalculateTough` 作用于 **Tough（韧性）**。也就是说，**削韧值削的是韧性，不是白条**；白条由什么削减、破盾回能何时触发，现有公式定义里找不到直接答案（`CalculateHardness` 以伤害与削韧组合计算的是 Hardness），留给 TD-06 核定（Q16）。本文只把两套量表如实分开存。
+对照 `prop`（游戏原型）验证：**白条 = 生命 × RageMax / LifeMax / 100**（1290 / 1291 行吻合），即游戏字段 **Rage**；**韧性 = ToughMax / 100**（1291 / 1291），即 **Tough**。动作表的削韧值 = dmg `ToughLv`，按 `CalculateTough` 作用于韧性。
+
+**v0.1.6 修订**：削韧值**同时**削韧性与白条——白条（共振度）的削减由各段攻击的削韧值决定，破盾时全队回 3 点能量（2026-10-04 用户确认，m0-confirm §9 W1；xlsx「伤害计算」的"共振度"格也取 RageMax）。xlsx 没有一般攻击削白条的公式，而敌人表的"白条"按生命值的等级成长放大过（全息 6 朔雷之鳞 2,626,056，比生命值还大），不能直接拿削韧值去减，所以另存 `whiteBarTough` = RageMax ÷ 100（与韧性同单位，等级成长对上限与每段削减同比例，抵消；推断，TD-06 Q9）× PropExtraRate.Tough&Rage（base 页把韧性与白条放在同一个系数下）。Q16 关闭；怎么削、破盾回能与瘫痪见 TD-06 §13.2。另有一套 Hardness（`CalculateHardness` 由伤害与削韧合算），不是白条，不读。
 
 ---
 
@@ -644,7 +647,7 @@ R1028–R1034 是 7 种效应的文字说明（持续时间、层数规则），
 
 表头：`谐度破坏 | 倍率 | 对失谐伤害 | 对常态伤害 | 结算次数`；行：`对COST1/3/4通用`、`长刃-1/2/3`、`佩枪`、`臂铠`、`迅刀-1/2`、`音感仪`。**倍率主数据取 dmg `通用` 的 `谐度破坏*` 行**（4.3）；结算次数只有这张表有，按变体名对上（`长刃-1` ↔ `谐度破坏-长刃1`）后并入。
 
-`tune-break.json`：`{ variants: [{ key, weaponType, seq, multiplier, ticks, golden: { vsDisharmony, vsNormal } }], costRows: [...], baseByLevel, costFactors: [{ cost, factor }] }`。伤害公式见 TD-03 §6；何时触发由 TD-06 定。
+`tune-break.json`（v0.1.6 起由 `tools/build/tune_break.py` 产出）：`{ variants: [{ key, weaponType, seq, multiplier, ticks, golden: { vsDisharmony, vsNormal } }], costRows: [{ label, multiplier, vsDisharmony, vsNormal, ticks }], baseByLevel, costFactors: [{ cost, factor }] }`。8 个变体（长刃三段 1.7334 / 2.2666 / 12，迅刀两段 1 × 4 次 / 12，佩枪、臂铠、音感仪 16），各武器总倍率都是 16；按 TD-03 §6 复算与表里的对失谐 / 对常态伤害逐个一致（`tests/td03.test.ts` T03-7b）。基础值按**角色**等级取（xlsx 公式用「伤害配置」C3）。伤害公式见 TD-03 §6；什么时候放、真空期见 TD-06 §13。
 
 ---
 
@@ -663,7 +666,8 @@ R1028–R1034 是 7 种效应的文字说明（持续时间、层数规则），
 | `generated/weapons.json` | 第 7 节 | M2 |
 | `generated/echoes.json` | 第 8 节 | 声骸接入（v0.1.5） |
 | `generated/nanoka.json` | nanoka 的技能冷却、技能文本、技能树属性（12.5，v0.1.4） | M0 起 |
-| `generated/effects.json`、`tune-break.json` | 11.2、11.3 | M4 |
+| `generated/tune-break.json` | 11.3（v0.1.6 已产出） | M4 |
+| `generated/effects.json` | 11.2（未产出，加带异常效应的角色时） | M4 |
 | `generated/echo-stats.json` | 声骸主词条满级值、固定副主属性、副词条各档（5.4、12.6） | M5（v0.1.5） |
 | `generated/build-report.md` | 12.4 | M0 |
 | `fixtures/golden-damage.json` | 11.1 | M1 |
@@ -790,7 +794,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 |---|---|---|
 | （行筛选） | 先去掉角色模块 `dropRows` 列出的行（13.4，v0.1.3）；组内同时有 `-前` / `-后` 方向变体行时只取 `-前` 行（二选一的变体，TD-04 §7 ⑤） | `dirVariant`（47 组） |
 | `id` | 组名（3.5） | |
-| `kind` | v0.1.4：取组内第一个连上 dmg 的判定的 **Skill.Type**（技能归类）：0 普攻 → `normal`，1 重击 → `heavy`，2 共鸣技能 → `skill`，3 共鸣解放 → `liberation`，4 变奏 → `intro`，5 闪避反击 → `normal`；其余代码（6、8、9、11、12、13、14）不决定类别。都没有则按组名前缀（`A`/`普攻` → normal，`重击` → heavy，`E` → skill，`大招` → liberation，`QTE` → intro，`延奏` → outro，含"闪避" → dodge），再没有 → `other`。施放什么技能看技能归类，伤害标签仍看 Damage.Type（13.2）：椿 E1 / E2 / E3 技能归类是共鸣技能、伤害类型是普攻（TD-07 §4.3）。v0.1.3 用 Damage.Type 决定类别 | 两者都推不出、退到 `other` 时 `kindGuess` |
+| `kind` | v0.1.4：取组内第一个连上 dmg 的判定的 **Skill.Type**（技能归类）：0 普攻 → `normal`，1 重击 → `heavy`，2 共鸣技能 → `skill`，3 共鸣解放 → `liberation`，4 变奏 → `intro`，5 闪避反击 → `normal`；14 谐度破坏 → `tuneBreak`（v0.1.6）；其余代码（6、8、9、11、12、13）不决定类别。都没有则按组名前缀（`谐度破坏` → tuneBreak（v0.1.6），`A`/`普攻` → normal，`重击` → heavy，`E` → skill，`大招` → liberation，`QTE` → intro，`延奏` → outro，含"闪避" → dodge），再没有 → `other`。施放什么技能看技能归类，伤害标签仍看 Damage.Type（13.2）：椿 E1 / E2 / E3 技能归类是共鸣技能、伤害类型是普攻（TD-07 §4.3）。v0.1.3 用 Damage.Type 决定类别 | 两者都推不出、退到 `other` 时 `kindGuess` |
 | `endFrame` | 组内第一个有动作结束帧的行；多行时取第一个，全部候选记入 `endFrameCandidates` | 几行的结束帧取值不同时 `multiEnd`（v0.1.3：156 组；取值都相同的 32 组不再标，如椿大招三行都是 264） |
 | （无结束帧时） | max(各判定行 发生帧 + 持续帧，派生帧) | `noEnd`（167 组） |
 | `cancelWindows` | 每个有派生帧的行给一个窗口：`from = 派生帧`，`until = 派生帧 + 派生持续帧`；派生持续帧为空或 -1 → `until = endFrame`。窗口左闭右开，可以超过 `endFrame`（散华 A1：派生 21 + 29 = 50 > 结束 41），表示回到空闲后仍可接连段（TD-04 §6.1–§6.2） | `deriveMinus1` |
@@ -802,7 +806,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `outroTriggerFrame` | 组内任一行 `hints.outroTriggerFrame` | QTE 组缺失时 `noOutroFrame`；区间写法取起点时 `outroRange`（v0.1.4） |
 | `endOnSwitchOut`（v0.1.4） | 组内任一行 `hints.endOnSwitchAfter`（TD-05 §5） | |
 | `energyCost`（v0.1.4） | 注册层给角色模块别名 `R` 指向的动作设为角色的大招所需能量（> 0 时）；`actionOverrides` 写了的以它为准（写 0 取消，TD-06 §2.3） | |
-| `switchLockUntil` | 组内 `hints.noSwitchBefore` 的最大值 | |
+| `switchLockUntil` | 组内 `hints.noSwitchBefore` 的最大值；没有时 `tuneBreak` 类取 `endFrame`（谐度破坏的备注"无敌期间不能切人"，v0.1.6） | |
 | （组级检查） | 有持续帧 -1 的判定在结束帧或之后才生成——动作停了它不可能存在，TD-04 不生成它；多为把"下落""落地"写进同一组的空中攻击，curated 拆组 | `minusOneAfterEnd`（22 组） |
 | （组级检查，v0.1.3） | 带 `C\d` 标记的非判定行（膨胀 / 资源 / 标记）暂不按链数筛（13.2 只筛判定），交给 TD-06 / TD-08 | `chainNonHit`（7 组 9 行） |
 
@@ -814,13 +818,13 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `spawnFrame` | 发生帧；空 → `null`（事件生成，由钩子 `spawnJudgment`） | |
 | `birthFrame` | 行的 `birthFrame`（3.11）；没有 → `null`（= 发生帧） | |
 | `lifeFrames` | 持续帧；-1 保持 -1（直到动作结束）；空 → 1 | `noLife` |
-| `ticks` | `hints.maxTicks`；只有间隔时 = ceil(持续帧 / 间隔)（实测与"最多 n 次"只有 60% 吻合，所以要标）；都没有 → 1。寿命内放不下全部次数的，仿真时按寿命截断（TD-04 §5.2） | `ticksGuess`；放不下时 `ticksCapped`（40 个） |
+| `ticks` | `hints.maxTicks`；只有间隔时 = ceil(持续帧 / 间隔)（实测与"最多 n 次"只有 60% 吻合，所以要标）；都没有 → 1。寿命内放不下全部次数的，仿真时按寿命截断（TD-04 §5.2）。v0.1.6：连到通用块谐度破坏变体的判定取 `tune-break.json` 的结算次数（迅刀第一段 4） | `ticksGuess`；放不下时 `ticksCapped`（40 个） |
 | `tickInterval` | `hints.tickInterval`；没有则在寿命内均分（TD-04 §5.2） | |
 | `persistsOnCancel` | 可脱手 √ → true，× → false；持续帧 -1 → 强制 false；空 → true（有标注的行里 √ 占 85%） | 空时 `persistsGuess` |
-| `followHitstop` | 跟随顿帧 √ → true，否则 false | |
+| `followHitstop` | 跟随顿帧 √ → true，否则 false；`tuneBreak` 类动作的判定一律 true（在自己的全局时停里打完，v0.1.6） | |
 | `target` | 命中类型：目标 / 目标子弹 / 指定目标 / 弹刀目标 / 空 → `enemy`；友方 / 队伍 / 目标队友 / 具体角色名 → `ally`；无 → `none`；其他 → `other` | `other` 时 `targetOther` |
 | `multiplier` | dmg `multiplier`；`calcType ≠ 0`、`hints.noDamage`、`target ≠ enemy`、`dmgJoin` 为 `null` → 0；伤害型判定没连上 → 0 | 最后一种 `noDmg` |
-| `relatedAttr` | RelatedProperty：7 → atk，2 → hp，10 → def，11 → energyRegen；其他 → atk | 其他时 `relatedAttrOther` |
+| `relatedAttr` | RelatedProperty：7 → atk，2 → hp，10 → def，11 → energyRegen；其他 → atk | 其他时 `relatedAttrOther`；10000099（谐度破坏基础值，走 TD-03 §6）不打（v0.1.6） |
 | `element`、`tags` | Element 代码 → 元素名；Damage.Type → `[标签]`；没连上 dmg → 角色元素、按 `kind` 推标签 | 推断时并入 `noDmg` |
 | `gains.energy` / `concerto` / `core[k]` | `GainCell`：普通数字 → `total`；多项公式 → `perHit` 只有一项时取它，多项时取平均（报告列出）；`sharedRows` → 该值每个动作实例只发一次（由 TD-06 实现"只发一次"） | 多项取平均时 `gainTermsMulti` |
 | `gauges` | 削韧值、偏谐值；空 → 0 | |
@@ -1057,7 +1061,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | Q13 | RelatedProperty = 11（布兰特治疗） | **已关闭**：共鸣效率（TD-03 §3.2） | TD-03 |
 | Q14 | Damage.Type 14"骇破响应"（露西 / 丽贝卡）、网格代码 W12 / W13 / W14 | **部分关闭**：W12 = 震谐响应、W14 = 骇破响应，公式见 TD-03 §6；W13 仍待定（TD-03 Q8）；骇破何时触发归 TD-06 | TD-03 / TD-06 |
 | Q15 | 声骸倍率：dmg 只覆盖 27 个判定行，其余靠技能说明手录；个别不一致（梦魇·哀声鸷 dmg `RateLv_5` 273.6% vs 技能说明 412.80%） | 有 dmg 用 dmg，没有用 curated；不一致进报告 | TD-07 / 逐个核对 |
-| Q16 | 白条（Rage）由什么削减、破盾回能何时触发；削韧值只作用于韧性 | 两套量表分开存 | TD-06 |
+| Q16 | 白条（Rage）由什么削减、破盾回能何时触发；削韧值只作用于韧性 | **已关闭（v0.1.6）**：削韧值同时削白条（用户确认）；`whiteBarTough` 见 9.1、9.2，规则见 TD-06 §13.2 | —— |
 | Q17 | `BreakWeaknessRatio`、`WeaknessMastery` 是否就是偏谐效率、谐破增幅的基础值 | 按推定存 | TD-06 |
 | Q18 | 角色武器类型不在 xlsx | curated 手填：M0 队伍已补（椿、散华 迅刀，维里奈 音感仪） | 其余角色启用时补 |
 | Q19 | golden 全部用"当前配置"的一套面板计算——确认各角色块确实没有用各自面板 | **已关闭**：确认（TD-03 §1.2，3190 格按 R3 这一套面板与目标全部复算吻合） | TD-03 |
@@ -1077,3 +1081,4 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **v0.1.3（2026-09-27）**：按 TD-09 §9.3 与 M0 确认修订，并并回 M0 实现时的 5 处决定。0.2 构建脚本改用 Python + openpyxl（`tools/build/`）；3.7 查表公式 `INDEX(dmg!…)` 按普通数字、带常数项的拆成逐段 + 进入动作即得；4.4 别名文件改为 `data/curated/dmg-join.json`，`noDmg` 在构建时打；13.1 `multiEnd` 只在取值不同时标（188 → 156 组）、`comboNoWindow`（7 组）、`kind` 回退加"延奏 → outro"、`dropRows` 先于方向变体筛选、`chainNonHit`；13.2 新增 `chainRange`（共鸣链版本，41 组多版本、84 行 `chainAdditive`）；13.4 定下 `actionOverrides` 的字段与"覆盖即处理"；14 `pnpm check:data -- --flags`；新增用例 T01-13 至 T01-15；Q4、Q18 更新，新增 Q23、Q24。（`positionChange` 列早已在 3.1 列字典里，M0 的实现现已抽取。）
 - **v0.1.4（2026-10-03）**：并回 M1–M3 实现时的决定（AGENTS.md 差异 2、4、6、7、9）。0.2 模块清单补 M1–M3 的脚本；3.8 新增提示：延奏触发帧的区间写法（取起点、`outroRange`，3 组）与"立即触发"（0）、`endOnSwitchAfter`（13 组）；4.3 只有第 1 级有倍率的技能取 1 级（43 行，原先读成 0）；12.1 / 12.5 新增 `nanoka.json`；13.1 `kind` 改按 dmg 的技能归类（伤害标签仍按 Damage.Type）、`castGains` 跟随判定行的共鸣链版本、新增 `endOnSwitchOut`、`energyCost`；13.4 新增覆盖字段 `cooldownGroup`、`energyCost`、`endOnSwitchOut`、`followUp`；Q8、Q24 关闭，Q7 补实测结论。
 - **v0.1.5（2026-10-04）**：并回声骸接入与 `echo-stats.json`（AGENTS.md 差异 1、4）。4.3 声骸也适用"只有第 1 级有倍率取 1 级"，各级全 0 的占位行不算连上；5.4 / 12.1 / 新增 12.6：`echo-stats.json`（主词条满级值、固定副主属性、副词条各档）；第 8 节按实现改写：分组（技能版本、多段、体型、组名取公共前缀）、异相取本体、脱手与否（`textKind` / `kindText`）、倍率按 dmg-join → dmg → nanoka 连（两边不同以 nanoka 为准）、产出字段；12.5 `nanoka.json` 新增 `echoes` / `echoSets`；13.3 按实现改写（`Q·<组名>`、体型、冷却与多段、`summon`、nanoka 的能量与削韧、`echoes.ts`）；13.4 新增覆盖字段 `charges`、`summon`，`judgments` 新增 `element`、`relatedAttr`、`heals`。
+- **v0.1.6（2026-10-04）**：并回 M4 敌人量表（TD-06 v0.2 §17、AGENTS.md 差异 1）。9.1 新增 `whiteBarTough`（prop RageMax ÷ 100 × PropExtraRate），写明脆弱时长、瘫痪时长对应的原型字段；9.2 修订为"削韧值同时削韧性与白条"，Q16 关闭；11.3 `tune-break.json` 已产出（结算次数、对照值、基础值按角色等级）；12.1 拆开 `tune-break.json`（已产出）与 `effects.json`（未产出）；13.1 技能归类 14 与组名"谐度破坏"→ `tuneBreak`，`tuneBreak` 类没有切人锁时取结束帧；13.2 谐度破坏变体的结算次数、`followHitstop`，RelatedProperty 10000099 不打 `relatedAttrOther`。
