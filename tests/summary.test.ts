@@ -1,4 +1,4 @@
-// tests/summary.test.ts —— 汇总（总设计 §3.5）：分轮与稳态（TD-09 §3.7 / §3.9 的边界、Q10 的稳态口径；AGENTS.md 差异 3）
+// tests/summary.test.ts —— 汇总（总设计 §3.5）：分轮与稳态（TD-09 §3.7 / §3.9 的边界、TD-10 §2 的稳态口径）
 import { describe, expect, test } from 'vitest'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthRun } from './helpers/synth'

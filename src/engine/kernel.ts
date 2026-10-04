@@ -172,7 +172,7 @@ export function cancelAction(s: SimState, k: Kernel, slot: Slot, by: string): vo
     return false
   })
   // ② 未发生的事件：已出现且可脱手的判定转为尾部，按战斗时钟继续；延奏触发也转为尾部——延奏是下场角色发出的，
-  //    上场角色的变奏被打断不影响它（2026-09-27 用户确认，见 AGENTS.md 差异 1）；其余（资源、膨胀、未出现的判定）作废
+  //    上场角色的变奏被打断不影响它（2026-09-27 用户确认，TD-04 §4.2）；其余（资源、膨胀、未出现的判定）作废
   const rest = actionTimeline(a.def).slice(a.cursor)
   const keep = rest.filter(e => e.kind === 'outro'
     || (e.kind === 'spawn' && survives(a.def.judgments[e.index]!) && bornBy(a.def.judgments[e.index]!, t)))

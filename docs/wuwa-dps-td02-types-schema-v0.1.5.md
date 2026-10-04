@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.4
+# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.5
 
-> **状态**：v0.1.4（2026-10-03），已实现。v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准），见附录
+> **状态**：v0.1.5（2026-10-04），已实现。v0.1.5 并回声骸与 M5 新增的类型与字段（新增字段在表里以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订；v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》（下称"TD-09"）§9.2 与 M0 确认（`docs/m0-confirm.md`）修订
 > **下游**：全部模块的代码；TD-03（伤害公式，已据其定稿乘区清单）、TD-04（仿真内核，已据其定稿运行时字段）、TD-07 定 BuffDef 语义、TD-09 定排轴语义、TD-10 定事件与汇总字段
 > **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-01 的 14 个、TD-03 的 20 个、TD-04 的 35 个、TD-09 的 33 个用例也全部通过）；构建脚本在 20260707 全量数据上产出的生成文件，逐一用本文的 schema 校验通过（9.2）
@@ -137,12 +137,13 @@ flowchart LR
 | `GenActionFileSchema`（组 `GenGroupSchema` → 行 `GenRowSchema`） | `actions/<块键>.json` | 行：row、name、kind、eventSpawned、spawnFrame、birthFrame、lifeFrames、hitstop、派生帧与持续、endFrame、priority / priorityChange、parry、persists、followHitstop、toughness、tunability、gains（`GainCellSchema`：total / perHit / onAction / sharedRows）、position、dilation（`DilationWindowSchema`）、hitTarget、note / noteMerged、hints（`HintsSchema`；**`outroRange`、`endOnSwitchAfter`**，TD-01 §3.8）、nameTags、flags、dmg（`GenDmgSchema`：via、skillType、damageType、multiplier、rates、energy、formulaType / formulaRate、cureBase…；multiplier 的取级见 TD-01 §4.3） |
 | `GenCharactersSchema` | `characters.json` | 主表、90 级三维、体型、通用块、大招所需能量、核心资源槽、文本 |
 | `GenWeaponSchema` | `weapons.json` | 主副属性、被动文本与 R1–R5 数值 |
-| `GenEchoSchema` | `echoes.json` | M3 尚未产出 |
+| `GenEchoSchema`（组 `GenEchoGroupSchema` → 行 `GenRowSchema`） | `echoes.json` | v0.1.5：key、startRow、cost、description、descCooldown、textKind、ignoredRows、groups（id、variant、stage、body、kind、cooldown、next、rows）、flags（TD-01 §8） |
+| `GenEchoStatsSchema` | `echo-stats.json` | v0.1.5：mains、fixedSubs（`{ cost, stat, value }`）、subTiers（属性 → 各档，从低到高）（TD-01 §12.6） |
 | `GenEnemySchema` | `enemies.json` | 防御、抗性、白条、韧性、偏谐上限 |
 | `GenEffectsFileSchema`、`GenTuneBreakSchema` | 异常效应、谐度破坏 | M4 |
 | `GenBuffTextSchema` | `buff-texts.json` | 按需 |
 | `GenMetaSchema` | `meta.json` | xlsx 文件、sha256、资源版本、设置区、计数 |
-| **`NanokaFileSchema`** | `nanoka.json` | 技能冷却、技能文本、共鸣链、技能树属性（TD-01 §12.5） |
+| **`NanokaFileSchema`** | `nanoka.json` | 技能冷却、技能文本、共鸣链、技能树属性（TD-01 §12.5）；v0.1.5 新增 `echoes`（`NanokaEchoSchema`：id、name、desc、cooldown、damage（id、element、relatedProperty、type、rateLv、energy、toughLv、weaknessLvl、hardnessLv）、sets）与 `echoSets` |
 | `GoldenDamageSchema`、`GoldenZonesSchema` | `fixtures/` | TD-01 §11.1、TD-03 §10 |
 
 ---
@@ -155,13 +156,14 @@ flowchart LR
 
 | 类型 | 主要字段 |
 |---|---|
-| `GameData` | version、meta、characters、commonActions、weapons、echoes（声骸接入前为空）、echoSets、enemies、effects / abnormalBaseByLevel / tuneBreak（M4）、envBuffs、rules |
+| `GameData` | version、meta、characters、commonActions、weapons、echoes、echoSets、echoStats（v0.1.5，可为 null）、enemies、effects / abnormalBaseByLevel / tuneBreak（M4）、envBuffs、rules |
 | `CharacterDef` | name、element、weaponType、bodyType、commonBlock、base、energyCost、coreResources、tunabilityRate、harmonyBreakBoost、**treeStats**、actions、aliases、buffs、**resourceEffects**、hooks?、flags |
-| `ActionDef` | id、owner、kind、endFrame、cancelWindows、priority、comboFrom?、inputLocks、judgments、dilations、castGains、outroTriggerFrame?、switchLockUntil?、cooldown?、**cooldownGroup?**、**energyCost?**、**endOnSwitchOut?**、**followUp?**、source、flags |
+| `ActionDef` | id、owner、kind、endFrame、cancelWindows、priority、comboFrom?、inputLocks、judgments、dilations、castGains、outroTriggerFrame?、switchLockUntil?、cooldown?、**cooldownGroup?**、charges?（v0.1.5）、**energyCost?**、**endOnSwitchOut?**、**followUp?**、summon?（v0.1.5）、source、flags |
 | `CastGain` | atFrame、resource、amount、**chainRange?** |
-| `JudgmentDef` | name、row、spawnFrame、birthFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、followHitstop、target、calc、multiplier、relatedAttr、element、tags、gains、coreOncePerAction?、gauges、hitstop、formula?、cureBase?、chainRange?、flags |
+| `JudgmentDef` | name、row、spawnFrame、birthFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、followHitstop、target、calc、multiplier、relatedAttr、element、tags、gains、coreOncePerAction?、gauges、hitstop、formula?、cureBase?、chainRange?、heals?（v0.1.5）、flags |
 | `WeaponDef` | key、rarity、type、main、sub、effects（原始被动文本）、passives（BuffDef[]）、**resourceEffects** |
-| `EchoDef`、`EchoSetDef`、`EnemyPreset`、`EffectDef`、`TuneBreakTable`、`InputLock`、`DilationDef`、`DilationRule`、`ChainRange` | 同 v0.1.3 |
+| `EchoDef` | v0.1.5：key、cost（可为 null）、actions（`Q·<组名>`，按体型分组的带 `@体型`）、q（别名 Q 指向的动作）、description、mainSlotBuffs、resourceEffects、curated、flags |
+| `EchoSetDef`、`EnemyPreset`、`EffectDef`、`TuneBreakTable`、`InputLock`、`DilationDef`、`DilationRule`、`ChainRange` | 同 v0.1.3 |
 | `Rules` / `DEFAULT_RULES` | 见 4.2 |
 
 ### 4.1 要点
@@ -179,6 +181,7 @@ flowchart LR
 - `abnormalBaseByLevel`、`TuneBreakTable.baseByLevel` 的下标 = 等级 − 1；`costFactor` 按敌人 COST 取（TD-03 §5、§6）。
 - `JudgmentDef.chainRange`（v0.1.3）：这个判定只在哪些共鸣链数下存在，两端都含。装配时由行名的 `C\d` 推出（TD-01 §13.2：椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]）；场景装配按队员的链数用 `forChain` 挑掉不在范围里的判定（总设计 §3.3 第 4 步）。动作的时间字段不按链数变。
 - `ActionDef.cooldown`：声骸技能来自 xlsx；角色技能的冷却 xlsx 没有，由角色模块覆盖（v0.1.3）。计时在内核（TD-04 §6.5），判断在调度器（TD-09 §3.2）。
+- v0.1.5 新增：`ActionDef.charges`（按次数充能：最多存几次，每 `cooldown` 帧回复 1 次）、`summon`（召唤类声骸：判定走独立时间线，TD-04 §4）；`JudgmentDef.heals`（这段同时治疗，结算后记 `heal` 事件；治疗量不建模）；`EchoDef` 按声骸接入重写（TD-01 §13.3）；`GameData.echoStats`。
 
 ### 4.2 Rules 默认值
 
@@ -215,7 +218,7 @@ flowchart LR
 | filter? | `BuffFilterSchema`：元素、标签、动作、判定、目标身上的效应、效应自身伤害、只进暴击分支 |
 | target | self / team / teamExceptSelf / onField / nextIn / enemy |
 | maxStacks、stackGain、duration、onSwitchOut、refresh、icd? | 层数、时长（帧或 'inf'）、切人清除、刷新、内置冷却 |
-| trigger | `'always'`（常驻）/ **`'hook'`（只由钩子施加）** / `{ on, where? }`（`TriggerSpecSchema`）/ **它的数组（任一事件）** |
+| trigger | `'always'`（常驻）/ **`'hook'`（只由钩子施加）** / `{ on, where? }`（`TriggerSpecSchema`）/ **它的数组（任一事件）**。v0.1.5：事件目录新增 `heal`，`where` 新增 `ownerHas`（持有者身上有这个 buff 时才触发，TD-07 §4） |
 | **consume?** | "下次…"：`{ on, where?, stacks }`（TD-07 §6） |
 | requires? | `{ chain }` 共鸣链门槛 |
 
@@ -236,11 +239,12 @@ flowchart LR
 
 | 类型 | 字段 |
 |---|---|
-| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、**energyCost**、**endOnSwitchOut**、**followUp**、judgments（`JudgmentOverride`）、accept |
-| `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange |
+| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、judgments（`JudgmentOverride`）、accept |
+| `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange；v0.1.5 新增 element、relatedAttr、heals |
 | `CharacterModule` | weaponType、bodyType?、mergeBlocks?、coreCaps?、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides? |
 | `WeaponModule` | name、passives、**resourceEffects?** |
-| `EchoSetModule`、`EchoModule`、`DmgJoinMap` | 同 v0.1.3 |
+| `EchoModule` | v0.1.5：name、cost?、mainSlotBuffs?、resourceEffects?、actionOverrides?（键是声骸动作 ID；去掉了 v0.1.3 的 `multipliers`，倍率改在 `judgments` 里写或连 nanoka，TD-01 §13.3） |
+| `EchoSetModule`、`DmgJoinMap` | 同 v0.1.3 |
 
 
 `define*` 只做类型约束、原样返回；真正的校验（buff 用 zod、`actionOverrides` 的键必须是存在的动作）在注册层装载时做，报错指到模块文件与字段。
@@ -315,19 +319,19 @@ rotation:
 | 类型 | 主要字段 |
 |---|---|
 | `ResolvedScenario` | data、team、enemy、buffs、**effects**、commands、initial、rules、options、warnings |
-| `ResolvedMember`、`StaticPanel`、`StatParts` | 队员：def、chain、weapon、echoes、静态面板、动作表、别名 |
+| `ResolvedMember`、`StaticPanel`、`StatParts` | 队员：def、chain、weapon、echoes（v0.1.5：`def` 可为 null——不在声骸表里的非首位声骸，只计入词条与套装）、静态面板、动作表（含首位声骸的 `Q·…`）、别名（含 `Q`） |
 | `RegisteredBuff` / **`RegisteredEffect`** | def、value / amount（已按谐振阶取值）、owner |
 | `SimState` | frame、battleFrames、onField、switchCd、chars、judgments、tails、buffs、enemy、dilations、queue、log、nextId、**outroLinks**、**pendingNextIn**、**lastTrigger** |
-| `CharRuntime` | slot、name、action、last、startedThisTick、energy、concerto、core、cooldowns、flags |
+| `CharRuntime` | slot、name、action、last、startedThisTick、energy、concerto、core、cooldowns、charges（v0.1.5：按次数充能的冷却键 → 已用几次、每次回复多久）、flags |
 | `ActionRuntime` | id、def、instance、localFrame、startedAt、cursor、ended、coreGranted、**cmd?**、**skip?** |
 | `TailRuntime` | owner、action、def、instance、localFrame、events、**detached?**、**skip?** |
 | `JudgmentRuntime` | id、owner、action、actionInstance、def、spawnedAt、age、ticksDone、**detached?** |
 | `BuffRuntime`、`EnemyRuntime`、`DilationRuntime`、`Rates`、`QueueState`、`WaitSegment`、`WaitCode`、`CommandRef`、`TimelineEvent` | 同 v0.1.3 |
-| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn / hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource / **resourceFull** / enemyState / effectTick / wait / loop / warning |
-| `Summary` | totalDamage、windowFrames、dps、overflowDamage、byChar、byAction、resourceTimeline、buffUptime、waits、warnings、perLoop?（TD-10） |
+| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn / hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource / **resourceFull** / heal（v0.1.5：char、source）/ enemyState / effectTick / wait / loop / warning |
+| `Summary` | totalDamage、windowFrames、dps、overflowDamage、byChar、byAction、resourceTimeline、buffUptime、waits、warnings、perLoop?（v0.1.5：loop、start、frames、damage、dps、energyDelta、concertoDelta）、steady?（v0.1.5：from、to、frames、damage、dps）（TD-10） |
 | `SimResult` | log、summary、error?（code：comboBroken / timeout / maxFrames / notOnField / switchSelf / **chainDepth** / **invariant**） |
 | `CharacterHooks` | onResolve?、canStart?、onEvent?、modifyHit? |
-| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource、spawnJudgment、**skipJudgments**、setFlag、getFlag、warn |
+| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource、spawnJudgment、**skipJudgments**、setFlag、getFlag、heal（v0.1.5：记一次本角色提供的治疗）、warn |
 | `HitDraft` | judgment、char、multiplier、extraFlat、element、tags、effect?、**selfEnergyScale**、zones、critOnly |
 | `ZoneAccumulator` | zones、critOnly |
 
@@ -349,7 +353,7 @@ rotation:
 - `DilationRuntime` 登记时已按侧展开到具体单位（`target`），`hitstop` 标记是否按攻击顿帧处理（TD-04 §3.2）。
 - `CharRuntime.flags` 只由钩子读写，引擎本身不看。
 - `SimState.queue` 是调度器的状态（v0.1.3，TD-09 §5）：指令表与轮数、队首下标、当前轮次、累计的不合法等待、`+N` 的起算点、`wait` 的结束点、正在累计的等待段。放在 `SimState` 里，随状态一起 `structuredClone`。
-- `CharRuntime.cooldowns` 的键是动作 ID，声骸技能共用 `echo`，写了 `cooldownGroup` 的按组名（TD-04 `cooldownKey`）。
+- `CharRuntime.cooldowns` 的键是 `cooldownKey`：写了 `cooldownGroup` 的按组名（v0.1.5 起先看它：多段声骸的后续段写自己的 ID，不受声骸冷却限制），否则声骸技能共用 `echo`，其余按动作 ID（TD-04 §6.5）。按次数充能的键另在 `charges` 里记用掉几次，`cooldowns` 是下一次回复还要多久。
 - v0.1.4：`outroLinks` 记"哪次变奏 → 由谁发延奏"（TD-05 §3）；`pendingNextIn` 是挂起到下一次切入的 nextIn buff（TD-07 §3）；`lastTrigger` 记触发型 buff 与资源型效果的内置冷却（键"持有者|定义 id"，TD-07 §4.4）；`ActionRuntime.cmd` 是指令出处（接续动作继承），`skip` 是钩子跳过的判定；`TailRuntime.detached` / `JudgmentRuntime.detached` 标记延奏动作的独立时间线（TD-05 §4.3）。
 
 ### 7.3 事件与汇总
@@ -437,7 +441,7 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 | Q1 | 公式类乘区清单：`RateBonus` 是否单列；"防御降低 x%"记 `RoleIgnoreDefRate` 还是另设乘区 | **已关闭**：`RateBonus` 保留；减防记 `TargetDefRate`（写负数），无视防御记 `RoleIgnoreDefRate` | TD-03 §2 |
 | Q2 | 文本里的"8 类加深""6 类最终伤害"对应 `ampClass` 几号 | **已关闭**：取消 `ampClass`，写成 `DamageAmplify8` / `FinalDamage6`；不带类别的加深是 0 类 | TD-03 §2 |
 | Q3 | 各类时间膨胀除战斗时钟外还影响谁（时停冻结队友？） | **已关闭**：`Rules.dilation` 改为 `DilationRule`，作用对象由 xlsx 的自 / 敌 / 友三侧决定；实测项转为 TD-04 Q1–Q6 | TD-04 §3 |
-| Q4 | 声骸固定副主属性是否由装配自动补 | 场景里写全 | M5 有 `echo-stats.json` 后再定 |
+| Q4 | 声骸固定副主属性是否由装配自动补 | 场景里写全；`echo-stats.json` 已有（v0.1.5，TD-01 §12.6），自动补要先知道每件声骸的 COST（非首位的 1C 小怪多半不在声骸表里） | 有需要时 |
 | Q5 | `HookContext` 是否需要更多能力 | **已关闭**（v0.1.4）：按 TD-08 §3.2 的清单扩充（`skipJudgments`、`chain`、`HitDraft.selfEnergyScale`），以后再加一项记一次附录 | TD-08 |
 | Q6 | `全属性伤害加成` 是否也作用于物理伤害 | **已关闭**：不作用（xlsx 的全属伤只并入六个元素） | TD-03 §3.2 |
 | Q7 | `EffectDef.duration` / `tickInterval` 的来源（说明文本 curated） | 可为 `null` | TD-06 |
@@ -451,3 +455,4 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1.2（2026-09-27）**：按 TD-04 §12.2 修订。生成 schema 的行新增 `birthFrame`；`ActionDef` 新增 `comboFrom`、`inputLocks`（新类型 `InputLock`），`JudgmentDef` 新增 `birthFrame`，`hitstop` 不再限定攻击顿帧类；`Rules.dilation` 改为 `DilationRule`（`stopsBattleClock`、`hitstopSides`、`clearSelfOnCancel`）；运行时 `SimState.tails`、`CharRuntime.last` / `startedThisTick`、`ActionRuntime` 改为时间线游标（`def`、`cursor`、`ended`）、新增 `TimelineEvent` / `TailRuntime`、`JudgmentRuntime` 改用 `spawnedAt` / `age`、`DilationRuntime` 展开到 `target` 并带 `hitstop` / `instance`；`actionStart` 事件新增可选 `dropped`；新文件 `engine/kernel.ts`（代码在 TD-04 §9）。待定问题 Q3 关闭。
 - **v0.1.3（2026-09-27）**：按 TD-09 §9.2 与 M0 确认修订。排轴行语法（一行多个动作、`!`、`+N`、中文关键词、注释与全角），`parseRotationLine` 返回 `RotationItem[]`，场景的 `rotation` 接受空行与 null；`Command` 加 `item`、`force` 与测试专用的 `at`；`SimState.queue` 定型为 `QueueState`，新增 `WaitSegment`、`WaitCode`、`CommandRef`；`wait` 事件改为分段记录（`cmd`、`code`、`from`、`frames`、`battleFrames`），新增 `loop` 事件，`actionStart` / `switch` 带 `cmd`，`Summary.waits` 带轮次与原因代码。`JudgmentDef.chainRange` 与 `ChainRange`；`ActionOverride` 新增 `dropRows`、`comboFrom`、`cooldown`，`JudgmentOverride` 可改 `chainRange`。新文件 `engine/scheduler.ts`（代码在 TD-09 §6）。
 - **v0.1.4（2026-10-03）**：并回 M1–M3 新增的类型与字段（AGENTS.md 差异 2、4、6、7、10）。生成 schema：`HintsSchema` 新增 `outroRange`、`endOnSwitchAfter`，新增 `NanokaFileSchema`；`ActionDef` 新增 `cooldownGroup`、`energyCost`、`endOnSwitchOut`、`followUp`，`CastGain` 新增 `chainRange`；`CharacterDef` 新增 `treeStats`、`resourceEffects`，`WeaponDef` 新增 `resourceEffects`；BuffDef 的 `zone` / `value` 可省（标记型）、`trigger` 可为数组或 `'hook'`、新增 `consume`，新增 `ResourceEffectSchema`；`ActionOverride` / `CharacterModule` / `WeaponModule` 同步；引擎类型新增 `ResolvedScenario.effects`、`RegisteredEffect`、`SimState.outroLinks` / `pendingNextIn` / `lastTrigger`、`ActionRuntime.cmd` / `skip`、`TailRuntime.detached` / `skip`、`JudgmentRuntime.detached`、`hit` 的 `element` / `tags`、`outro` 的 `to` / `instance`、`resourceFull` 事件、`HookContext.chain` / `skipJudgments`、`HitDraft.selfEnergyScale`、报错代码 `chainDepth` / `invariant`；`Rules.concertoTiming` 默认改为 `'onHit'`。各节的代码块改为类型一览（代码以仓库为准）；§1 文件表补齐；Q5 关闭。
+- **v0.1.5（2026-10-04）**：并回声骸与 M5 新增的类型与字段（AGENTS.md 差异 1–4）。生成 schema：`GenEchoSchema` / `GenEchoGroupSchema` 按实现定型（技能版本、多段、体型、`textKind`、flags），新增 `GenEchoStatsSchema`；`GenDmgSchema.via` 新增 `'nanoka'`；`NanokaFileSchema` 新增 `echoes` / `echoSets`；`common.ts` 新增 `ECHO_BODIES`、`ECHO_BODY_BY_TYPE`。静态数据：`EchoDef` 重写、`GameData.echoStats`、`ActionDef.charges` / `summon`、`JudgmentDef.heals`。手写数据：`EchoModule` 新增 `resourceEffects`、`actionOverrides`，去掉 `multipliers`；`ActionOverride` 新增 `charges`、`summon`；`JudgmentOverride` 新增 `element`、`relatedAttr`、`heals`；BuffDef 的触发事件新增 `heal`、`where.ownerHas`。引擎：`ResolvedMember.echoes[].def` 可为 null、`CharRuntime.charges`、`SimEvent` 新增 `heal`、`HookContext.heal`、`Summary.perLoop` 定型与 `steady`。Q4 更新。

@@ -1,4 +1,4 @@
-// src/data/nanoka-check.ts —— 拿 nanoka 核对角色模块手填的冷却与技能树属性（m0-confirm §5；AGENTS.md 差异 4）
+// src/data/nanoka-check.ts —— 拿 nanoka 核对角色模块手填的冷却与技能树属性（m0-confirm §5、TD-01 §12.5）
 // 只提示、不自动填：共用冷却（椿 E1 / E2）、跟随动作（散华 大招-引爆冰川）这些没法从 nanoka 推出来，由人写进角色模块。
 import { STAT_KEYS, type ActionId, type StatKey } from './common'
 import type { ActionDef } from './gamedata'

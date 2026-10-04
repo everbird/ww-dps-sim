@@ -1,4 +1,4 @@
-// tests/analysis.test.ts —— 配装对比与副词条边际（总设计 §3.5"对比"、M5；AGENTS.md 差异 4）
+// tests/analysis.test.ts —— 配装对比与副词条边际（总设计 §3.5"对比"、M5；TD-10 §3、§4）
 import { beforeAll, describe, expect, test } from 'vitest'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'

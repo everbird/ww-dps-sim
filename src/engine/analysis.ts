@@ -1,4 +1,4 @@
-// src/engine/analysis.ts —— 配装对比与副词条边际（总设计 §3.5"对比"，M5；AGENTS.md 差异 4）
+// src/engine/analysis.ts —— 配装对比与副词条边际（总设计 §3.5"对比"，M5；TD-10 §3、§4）
 // 做法就是把场景改几处、各跑一次 simulate 再做差。比较的口径：有分轮时取稳态（完整的轮），否则取整个统计窗口；
 // "差在哪"按这个窗口里各角色、各动作的每秒伤害（加起来就是 DPS）与 buff 覆盖率来拆，面板另列。
 // 纯函数：输入 Scenario 与 GameData，不读文件（命令行在 src/cli/compare.ts、marginal.ts）。

@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.4
+# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.5
 
-> **状态**：v0.1.4（2026-10-03，已实现；v0.1.4 并回 M1–M3 实现时的决定，见附录。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
+> **状态**：v0.1.5（2026-10-04，已实现；v0.1.5 并回声骸接入与 `echo-stats.json`，见附录。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§3.1–3.2、§5.1、§7、§11、§12（M0）、§13、附录 A-7；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、4C、4D、5.1、6、7；xlsx 自带的 `附页1`（数据作者写的列说明，下称"作者说明"）
 > **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测
 > **下游**：构建脚本 `tools/build/`（Python，v0.1.3，见 0.2）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
@@ -383,7 +383,7 @@ dmg 是游戏技能伤害配置的导出：第 1–2 行表头（第 2 行是 `_
 |---|---|---|
 | 角色技能 | `RateLv_10` × 0.0001 | 技能等级永久锁 10（总设计第 7 节）；散华 E：35985 → 3.5985 |
 | 只有第 1 级有倍率、其余各级都是 0 的（v0.1.4） | `RateLv_1` × 0.0001 | 不随技能等级成长的技能，全表 43 行（21 个角色，多为延奏，也有卡卡罗死告、丽贝卡强化重击、凌阳大招等）。v0.1.3 一律取 10 级，这些行被读成 0；椿延奏 32924 / 32924 / 45902 → 3.2924 / 3.2924 / 4.5902，与 nanoka 3.7 的伤害表一致 |
-| 声骸技能 | `RateLv_5` × 0.0001 | 满级声骸技能等级为 5；芬莱克"教律龙爪" 27360 → 273.60%，与声骸表技能说明一致；`RateLv_6` 起为 0 |
+| 声骸技能 | `RateLv_5` × 0.0001 | 满级声骸技能等级为 5；芬莱克"教律龙爪" 27360 → 273.60%，与声骸表技能说明一致；`RateLv_6` 起为 0。只有第 1 级有倍率的同上取 1 级（利维亚坦"附加伤害"）；各级全是 0 的是占位行（梦魇·辉萤军势、荣光节使…），不算连上，转去连 nanoka（第 8 节，v0.1.5） |
 | 通用 · 谐度破坏* | `RateLv_1` × 0.0001 | 只有 `_1` 有值（长刃1：17334 → 1.7334） |
 | 异常伤害 · 各效应 | `RateLv_k` × 0.0001 = k 层时的倍率 | 光噪 `_1…_5` = 0.3 / 0.5439 / 0.7878 / 1.0317 / 1.2756，与伤害计算 R1040–R1044 一致；最后一个非零的 k 即层数上限 |
 
@@ -445,7 +445,7 @@ def90 = floor(baseL1.def × DefRatio     / 10000)
 | 表（列） | 用途 | 需要于 |
 |---|---|---|
 | WeaponGrowth（CL–CO：Lv、Curve1.Ratio、Curve2.Ratio、BreachLevel） | 武器 90 级数值（第 7 节） | M2 |
-| PhantomGrowth、PhantomBase.MainProp / SubProp、PhantomModel.SubAttribute（AW–CK） | 声骸主词条满级值、副词条档位 → `echo-stats.json` | M5（副词条边际） |
+| PhantomGrowth、PhantomBase.MainProp / SubProp、PhantomModel.SubAttribute（AW–CK） | 声骸主词条满级值、副词条档位 → `echo-stats.json`（v0.1.5 已抽，见 12.6） | M5（副词条边际） |
 | AbnormalDamageLv / AbnomalDamage（AM–AN）、WeaknessDamageBaseValue（AO） | 异常伤害基础值、谐度破坏基础值，按等级存成数组（下标 = 等级 − 1，第 56–155 行 = 1–100 级），并入 `effects.json` 的 `abnormalBaseByLevel` / `tune-break.json` 的 `baseByLevel`；公式见 TD-03 §5、§6 | M4 |
 | WeaknessDamageMonsterCost / TypeRate / Minus / MinusRatio（R–U，第 56–58 行） | 按敌人 COST（1 / 3 / 4）的谐度破坏系数：`factor = T × U`，写入 `tune-break.json` 的 `costFactors`（TD-03 §6） | M4 |
 | HardnessMode（AD–AJ）、AttrTransfer（AK–AL）、WorldLevelBonus（Z–AC）、MonsterPropertyGrowth（B–C）、PropExtraRate（O）、Shield（CP–EL） | 暂不读；TD-06 核定白条 / 韧性机制时再定 | — |
@@ -500,30 +500,61 @@ Curve1 / Curve2 取 `WeaponGrowth` 里 Lv = 90 的一行（125000 / 45000）。�
 
 ## 8. 声骸表 → `echoes.json`
 
-第 1 行表头，34 列；A 列非空开始一个声骸块（83 个），块内每行一个动作（共 287 行）。**没有 ID 列**，动作行就是 B 列。
+第 1 行表头，34 列；A 列非空开始一个声骸块（83 个），B 列（动作名）为空的行不是数据行（有数据的计入 `ignoredRows`）。**没有 ID 列**，一块怎么分成动作见 8.2。v0.1.5 起已实现（`tools/build/echoes.py`）。
+
+### 8.1 列字典
 
 | 列 | 表头 | 字段 | 说明 |
 |---|---|---|---|
-| A | 名称 | 块键 | 合并区；`cost` 从 `索引` 页查（第 6 节） |
+| A | 名称 | 块键 | 合并区；`cost` 从 `索引` 页查（第 6 节），查不到打 `costMissing` |
 | B | 动作 | `name` | 带体型前缀（`成女-召唤`）的只有鸣钟之龟（6 种前缀，见第 6 节） |
 | C、D | 发生帧、持续帧 | `spawnFrame`、`lifeFrames` | 同动作表 |
 | E、F | 顿帧-自 / 敌 | `hitstop` | "自"指声骸本身 |
 | G、H | 无敌 | — | 不读 |
-| I | 结束帧 | `endFrame` | 变身类：从变身状态变回人的时间点 |
+| I | 结束帧 | `endFrame` | 变身类：从变身状态变回人的时间点；召唤类多是召唤物结束的时间，不是角色收手的时间（8.4） |
 | J、K | 可弹刀、可脱手 | `parry`、`persists` | |
-| L、M、N | 削韧值、大招回收、协奏回收 | `toughness`、`gains` | 没有偏谐值列 |
+| L、M、N | 削韧值、大招回收、协奏回收 | `toughness`、`gains` | 没有偏谐值、核心回收、命中类型、派生帧列 |
 | O、P | 受击韧性系数、中断优先级 | —、`priority` | |
-| Q | 类型 | `kind` | 召唤 / 变身（合并区） |
-| R | 冷却 | `cooldown` | 秒 → 帧（1.6），合并区 |
-| S、T | 单段冷却、接续时限 | `stageCooldown`、`stageWindow` | 多段声骸；秒 → 帧 |
+| Q | 类型 | 组的 `kind` | 召唤 / 变身（合并区）：每个合并区是一个技能版本（8.2） |
+| R | 冷却 | 组的 `cooldown` | 秒 → 帧（1.6），0 秒就是没有冷却；合并区可跨版本（无常凶鹭两个版本共用） |
+| S、T | 单段冷却、接续时限 | 组的 `next` | 多段声骸；秒 → 帧（8.2） |
 | U、V | 位置状态、状态转换时间 | 同动作表 | |
-| W | 备注 | `note`（+ `hints`） | |
-| X | 技能说明 | `description` | 官方原文，合并区；含满级倍率与"首位装配"加成 |
+| W | 备注 | `note`（+ `hints`） | 合并区复制到每一行 |
+| X | 技能说明 | `description` | 官方原文，合并区；含满级倍率与"首位装配"加成；"技能冷却：n秒"抽成 `descCooldown`，先出现的"召唤 / 幻形"抽成 `textKind` |
 | Y–AH | 时间膨胀 | `dilation` | 同动作表 AC–AL |
 
-- 行分类、资源、提示的规则同第 3 节（资源列无公式，直接读缓存值）。
-- **倍率**：按 (声骸名, 动作名) 连 dmg，取 `RateLv_5`（4.3）。现状只有 27 个判定行连得上（dmg 只收录约 22 个新声骸），25 行是 dmg 有该声骸但名字不同（"转圈-1…4" ↔ "转圈"），179 行 dmg 里没有该声骸。**其余倍率从技能说明手工录入 curated**（Q15）。
-- **不读** 声骸表以外的"声骸套装"信息：套装效果来自 buff 库（10.2）+ curated。
+- 行的解析同动作表（字段与 `GenRowSchema` 一致），没有的列记空。行分类（3.6）：没有命中类型列，**有持续帧的行就是判定**，发生帧为空 = 事件生成（梦魇·云闪之鳞"标枪爆炸"）；有发生帧和资源 / 削韧、没有持续帧的也算判定。资源列无公式，直接读缓存值。
+
+### 8.2 分组：一组 = 一个动作
+
+- **技能版本**：「类型」列每个合并区是一个技能版本——无常凶鹭的点按（砸地）/ 长按（喷火）、鸣钟之龟每种体型一行、凯尔匹的延奏版、神王的变奏版；「类型」为空的行（合并区外的追加判定，如辉萤军势"A1-融冰"）归前一个版本。
+- **多段**：版本里有「单段冷却 / 接续时限」的是多段声骸，按行名 "-" 前的前缀分段（无冠者 A1、A2、A3-1/A3-2、A4-1…），每段一组，`stage` 记第几段；本段的 S / T 记成下一段可接的窗口 `next = { from, until }`（本段局部帧）。分段是按名字猜的，打 `stagesGuess`（燎照之骑的"刹车"其实是长按版，用到时再改）。
+- **体型**：鸣钟之龟的行名带体型前缀，组上记 `body`、组名去掉前缀；装配时按角色体型挑一组（13.3）。
+- **组名**：各行名的公共前缀去掉末尾的 - 与数字（无妄者 斩击1…斩击6 → 斩击，转圈-1…4 → 转圈）；没有公共前缀时同 3.5（首行名去掉最后一个 -后缀）；冲突用首行全名、再加 #n。
+- **冷却**：只记在版本的第一组（后续段不另算冷却，13.3）。
+
+### 8.3 异相
+
+异相·X 只是换了配色，数值与 X 相同（2026-10-04 用户确认）。本体也在表里的 5 个异相块（哀声鸷、飞廉之猩、云闪之鳞、无常凶鹭、磐石守卫）不单独产出，构建报告列出；其中异相·无常凶鹭在表里的数值与本体不同（240.96% 对 310.56%），不用。场景里写"异相·X"装配时取 X。
+
+### 8.4 脱手与否
+
+技能说明里是"召唤…"的脱手释放（召唤物自己打，角色之后做什么都不影响），"幻形…"的不脱手（角色要把变身动作做完，切人合轴时在后台打完）（2026-10-04 用户说明）。第一个技能版本以说明里先出现的那个词（`textKind`）为准，其余版本看「类型」列；两者对不上的打 `kindText`（角鳄、封庭械囿：列写变身、说明写召唤；金庭候：列写召唤、说明写幻形）。说明里两个词都没有的（鸣钟之龟）看「类型」列。仿真里怎么处理见 13.3、TD-04 §4。
+
+### 8.5 倍率
+
+按顺序找，找到就停：
+
+1. `dmg-join.json`：外层键是声骸名，值是 dmg 行名、`'角色::行名'`、`null`（明确无伤害），或 **`'nanoka::<条目 ID>'`**（nanoka 声骸数据的伤害条目）；
+2. dmg 同名行（`RateLv_5`，4.3）；各级全是 0 的占位行不算；
+3. **nanoka 声骸数据的伤害条目**（12.5）：削韧值、大招回收 × 100 都对得上（容差 1，空值按 0、两者都是 0 的行不连），且候选的倍率都相同才连（`via: 'nanoka'`，`skillId` 记条目 ID）。
+
+都没有的伤害型判定打 `noDmg`，构建报告"声骸"一节列出并附 nanoka 的候选。**xlsx 与 nanoka 不同时以 nanoka 为准**（2026-10-04 用户确认）：几个梦魇声骸的 xlsx 数值与 nanoka 3.7 不同、没有自动连上的，在 `dmg-join.json` 写 `nanoka::<条目>`（梦魇·无冠者、梦魇·朔雷之鳞、梦魇·无常凶鹭、梦魇·云闪之鳞、迷胧幻蛾、游鳞机枢）；连 nanoka 的判定，能量与削韧也取 nanoka（13.3）。现状（20260707 + nanoka 3.7）：78 个声骸、107 组、231 个判定行，dmg 直接连上 24、nanoka 170，没连上 33（多是无伤害的功能行）。
+
+### 8.6 产出与其他
+
+- `echoes.json` 每个声骸一项：`key`、`startRow`、`cost`、`description`、`descCooldown`、`textKind`、`ignoredRows`、`groups`（`id`、`variant`、`stage`、`body`、`kind`、`cooldown`、`next`、`rows`）、`flags`（`cooldownText`：「冷却」列与说明不同；`charges`：说明里有"可使用次数"；`stagesGuess`；`costMissing`；`kindText`）。schema 见 TD-02 的 `GenEchoSchema`。
+- **不读** 声骸表以外的"声骸套装"信息：套装效果来自 buff 库（10.2）的分区与 nanoka 的文本 + curated（`echo-sets.ts`）。
 
 ---
 
@@ -630,10 +661,10 @@ R1028–R1034 是 7 种效应的文字说明（持续时间、层数规则），
 | `generated/enemies.json` | 第 9 节 | M2 |
 | `generated/buff-texts.json` | 第 10.2 节 | M2 起按需 |
 | `generated/weapons.json` | 第 7 节 | M2 |
-| `generated/echoes.json` | 第 8 节 | M3（未做，留到声骸接入时） |
+| `generated/echoes.json` | 第 8 节 | 声骸接入（v0.1.5） |
 | `generated/nanoka.json` | nanoka 的技能冷却、技能文本、技能树属性（12.5，v0.1.4） | M0 起 |
 | `generated/effects.json`、`tune-break.json` | 11.2、11.3 | M4 |
-| `generated/echo-stats.json` | 声骸主词条满级值、副词条档位（5.4） | M5 |
+| `generated/echo-stats.json` | 声骸主词条满级值、固定副主属性、副词条各档（5.4、12.6） | M5（v0.1.5） |
 | `generated/build-report.md` | 12.4 | M0 |
 | `fixtures/golden-damage.json` | 11.1 | M1 |
 | `fixtures/golden-zones.json` | TD-03 §10 | M1 |
@@ -733,9 +764,19 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 
 - **来源**：`https://static.nanoka.cc/manifest.json` 给出版本（取 `ww.live`），`/ww/<版本>/character.json` 是角色 ID 表，`/ww/<版本>/zh/character/<ID>.json` 是角色详情（技能树、共鸣链、各级参数）。
 - **构建**：`pnpm build:data` 顺带抓取（`tools/build/nanoka.py`），缓存在 `data/raw/nanoka/<版本>/`；`--nanoka off` 跳过，`--nanoka 3.6` 指定版本。xlsx 角色名与 nanoka 名不同的（漂泊者各形态）写在 `data/curated/nanoka-names.json`。
-- **产出**：`generated/nanoka.json`（schema `NanokaFileSchema`）：每个角色的技能（类别、名称、文本、冷却）、共鸣链文本、技能树属性节点合计 `treeStats`。
-- **用途**：只用来核对，不自动填。`pnpm check:data -- --flags <角色>` 拿它核对角色模块手填的冷却（`actionOverrides.<动作>.cooldown`）与技能树属性（`treeStats`），对不上的列出来；起草 buff 时作原文出处（TD-07 §11）。
-- **版本**：xlsx 固定在 20260707 版（资源 3.4.17），nanoka 用线上版本，两者不一致没关系；文本以 nanoka 为准，帧数据以 xlsx 为准（规则改过的以较新的 nanoka 为准，如椿的红椿·蕾，m0-confirm §6 C2）。
+- **产出**：`generated/nanoka.json`（schema `NanokaFileSchema`）：每个角色的技能（类别、名称、文本、冷却）、共鸣链文本、技能树属性节点合计 `treeStats`；v0.1.5 新增 `echoes`（xlsx 声骸表里每个声骸的说明、冷却、伤害条目、所属套装；来自 `/ww/<版本>/echo.json` 与 `/zh/echo/<ID>.json`，异相·X 取 X，名字对不上的写在 `nanoka-names.json` 的"声骸"一节）与 `echoSets`（套装件数效果说明）。构建时 nanoka 在声骸连倍率之前取；`--nanoka off` 或没取到时沿用上次的 `nanoka.json`。
+- **用途**：角色部分只用来核对，不自动填；声骸的伤害条目给 dmg 里没有的声骸行连倍率（第 8 节）。`pnpm check:data -- --flags <角色>` 拿它核对角色模块手填的冷却（`actionOverrides.<动作>.cooldown`）与技能树属性（`treeStats`），对不上的列出来；起草 buff 时作原文出处（TD-07 §11）。
+- **版本**：xlsx 固定在 20260707 版（资源 3.4.17），nanoka 用线上版本，两者不一致没关系；文本以 nanoka 为准，帧数据以 xlsx 为准（规则改过的以较新的 nanoka 为准，如椿的红椿·蕾，m0-confirm §6 C2；声骸数值两边不同时也以 nanoka 为准，8.5）。
+
+### 12.6 `echo-stats.json`（v0.1.5）
+
+`base` 表 AY–CK 列（5.4），第 55 行表头、56 行起数据（`tools/build/echo_stats.py`）：
+
+- `mains`：AY–BC（PhantomBase.MainProp）各 COST 可选的主词条与满级值，按说明文字解析（"暴击22%" → 暴击率 0.22，"冷凝30%" → 冷凝伤害加成 0.3）；
+- `fixedSubs`：BD–BH（PhantomBase.SubProp）固定副主属性（4C 攻击 150、3C 攻击 100、1C 生命 2280）；
+- `subTiers`：BR 起的 PhantomModel.SubAttribute.Rand… 每种两列（显示值、精确值 .Calcu），取显示值（游戏里看到的、场景里写的都是它），从低到高：暴击 6.3%–10.5%、暴伤 12.6%–21%、攻击% / 生命% / 四种技能伤害加成 6.4%–11.6%、防御% 8.1%–14.7%、共鸣效率 6.8%–12.4%、攻击 / 防御 30–70、生命 320–580。表头不全可靠（暴击、暴伤两列都写 Rand901），按列写死，表头只用来核对。
+
+用途：副词条边际（TD-10）。场景里的固定副主属性仍要写全（TD-02 Q4）。
 
 ---
 
@@ -786,9 +827,16 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `hitstop` | 该行膨胀里"膨胀发生"为空的各侧（不限类型），`anchor: 'hit'`、`start: 0`：该判定每次命中时登记（TD-04 §3.2） | |
 | `chainRange`（v0.1.3） | 共鸣链版本：组内判定行的行名去掉 `C\d` 后相同的，是同一判定在不同链数下的版本（无标记算 0）；各版本的范围 = [本版标记, 下一个标记 − 1]，最后一个到 6。链数 c 时只留范围包含 c 的版本（场景装配的 `forChain`，总设计 §3.3 第 4 步）。例：椿 大招-C0 / C3 / C5 伤害 → [0, 2]、[3, 4]、[5, 6]；E3-一日花 / E3-C2一日花 → [0, 1]、[2, 6]。只有一种标记 n > 0、没有别的版本 → [n, 6]，从 n 链起额外出现。同一版本重复多行（夏空 A4-C6伤害 × 3）是多段，范围相同。只有 C0 一种标记的不设（= 任何链数）。现状：两个以上版本的 41 组 | 额外出现的 `chainAdditive`（84 行）：要人确认它不是替换别的判定（如椿 E3-C6永生花） |
 
-### 13.3 声骸动作
+### 13.3 声骸动作（v0.1.5）
 
-同 13.1 / 13.2，另加：`cooldown`（声骸冷却，帧）、`kind: 'echo'`、`multiplier` 取 `RateLv_5`；没连上 dmg 的倍率从 curated 取（技能说明录入），没有则 0 + `noDmg`。按角色体型选行只对鸣钟之龟生效。
+`src/data/assemble-echo.ts`：每组按 13.1 / 13.2 装配，另加：
+
+- **ID 与类别**：动作 ID 是 `Q·<组名>`（与角色动作不会重名），`kind: 'echo'`（没连上倍率的判定标签缺省"声骸技能"）；`owner` 是 `声骸:<名>`。别名 `Q` 指向第一组。按体型分组的（鸣钟之龟）ID 带 `@<体型前缀>`，装配进角色时只留匹配体型的一组并去掉后缀（中小体型用少女行；女-特殊没有对应行时用第一组并提示）。
+- **冷却**：版本第一组的 `cooldown`；声骸技能共用冷却键 `echo`。多段声骸的后续段 `comboFrom` 上一段，`cooldownGroup` 写自己的 ID——冷却键先看 `cooldownGroup`（TD-04 `cooldownKey`），后续段不受声骸冷却限制；本段的 `next` 成为它的派生窗口。
+- **脱手**：第一个技能版本按 `textKind`、其余版本按「类型」列（8.4），召唤类设 `summon: true`：判定在开始时分到独立时间线（TD-04 §4、TD-05 §4.3）。
+- **倍率**：连 dmg 的取 `RateLv_5`（4.3）；连 nanoka 的（8.5）倍率、元素、相关属性、伤害类型取 nanoka，**能量与削韧也取 nanoka**（`energy / 100`、`toughLv / 100`）。都没连上的倍率 0 + `noDmg`，在 `echoes.ts` 的 `actionOverrides.judgments` 里写 `multiplier` / `element` / `relatedAttr`。
+- **curated**（`data/curated/echoes.ts`，`EchoModule`）：`cost`（`索引` 页缺的）、`mainSlotBuffs`（首位加成与技能附带的 buff）、`resourceEffects`（技能附带的资源型效果）、`actionOverrides`（键是声骸动作 ID）。只在该声骸装在首位时登记，持有者是装备它的角色，登记顺序在武器之后、套装之前（TD-07 §5）。`echoes.ts` 写了 Q 的 `cooldown` / `charges`、`cost` 的，对应的 `cooldownText`、`charges`、`costMissing` 视为已处理。
+- `pnpm check:data -- --flags <声骸名>` 列出声骸动作的 flag、各判定的倍率来源与 nanoka 说明。
 
 ### 13.4 curated 覆盖点
 
@@ -818,7 +866,9 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `energyCost`（v0.1.4） | 开始时要有、并扣掉的大招能量；别名 `R` 的动作自动设，写 0 取消（TD-06 §2.3） | —— |
 | `endOnSwitchOut`（v0.1.4） | 切出时局部帧 ≥ 它就结束；构建脚本从备注抽，这里可改（TD-05 §5） | —— |
 | `followUp`（v0.1.4） | `{ after: 判定名, action: 动作 ID }`：该判定第一次结算后立刻开始 `action`（维里奈 QTE-冲 → QTE-撞，TD-08 P10）；注册层检查动作与判定都存在 | —— |
-| `judgments` | 按判定名（组内重名带 `#n`）改 `spawnFrame`、`lifeFrames`、`ticks`、`tickInterval`、`persistsOnCancel`、`multiplier`、`tags`、`target`、`chainRange` | `noLife`、`ticksGuess`、`ticksCapped`、`persistsGuess`、`noDmg`、`chainAdditive` |
+| `charges`（v0.1.5） | 按次数充能：最多存几次（初始满），每 `cooldown` 帧回复 1 次（梦魇·无冠者 3 次 / 12 秒，以 nanoka 为准）；TD-09 §3.2 | `charges`（声骸级） |
+| `summon`（v0.1.5） | 召唤类（脱手）：缺省按 8.4 定，这里可改 | `kindText`（声骸级，需要时） |
+| `judgments` | 按判定名（组内重名带 `#n`）改 `spawnFrame`、`lifeFrames`、`ticks`、`tickInterval`、`persistsOnCancel`、`multiplier`、`tags`、`target`、`chainRange`；v0.1.5 新增 `element`、`relatedAttr`（倍率连不上、手写 multiplier 时一并写）、`heals`（这段同时治疗，结算后记治疗事件，TD-07 §4） | `noLife`、`ticksGuess`、`ticksCapped`、`persistsGuess`、`noDmg`、`chainAdditive`、`relatedAttrOther` |
 | `accept` | 明确接受、不再提示的 flag（动作级与该动作的判定级都算） | 列出的 |
 
 - 覆盖只改装配结果，不回写生成数据；除 `dropRows` 外都在装配之后应用。
@@ -1026,3 +1076,4 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **v0.1.2（2026-09-27）**：按 TD-04 §12.1 修订。新增 3.11 出生帧 `extractBirthFrame`（发生帧公式 P + f(Q) 的 P，445 行）与 `GenRow.birthFrame`；3.8 备注提示的并列写法拆开逐项匹配（补回 23 个切人、5 个输入限制）；13.1 新增方向变体行筛选、`comboFrom`、`inputLocks`、组级检查 `minusOneAfterEnd`，`dilations` 改为逐侧按锚点拆分，`priority` 凑不齐时截断，`castGains` 默认帧改为 0；13.2 新增 `birthFrame`，`hitstop` 改为"膨胀发生为空的各侧、不限类型"，新 flag `ticksCapped`；新增用例 T01-11、T01-12。待定问题 Q6、Q10、Q11 关闭，Q5 部分关闭，Q4 补方向变体处理。
 - **v0.1.3（2026-09-27）**：按 TD-09 §9.3 与 M0 确认修订，并并回 M0 实现时的 5 处决定。0.2 构建脚本改用 Python + openpyxl（`tools/build/`）；3.7 查表公式 `INDEX(dmg!…)` 按普通数字、带常数项的拆成逐段 + 进入动作即得；4.4 别名文件改为 `data/curated/dmg-join.json`，`noDmg` 在构建时打；13.1 `multiEnd` 只在取值不同时标（188 → 156 组）、`comboNoWindow`（7 组）、`kind` 回退加"延奏 → outro"、`dropRows` 先于方向变体筛选、`chainNonHit`；13.2 新增 `chainRange`（共鸣链版本，41 组多版本、84 行 `chainAdditive`）；13.4 定下 `actionOverrides` 的字段与"覆盖即处理"；14 `pnpm check:data -- --flags`；新增用例 T01-13 至 T01-15；Q4、Q18 更新，新增 Q23、Q24。（`positionChange` 列早已在 3.1 列字典里，M0 的实现现已抽取。）
 - **v0.1.4（2026-10-03）**：并回 M1–M3 实现时的决定（AGENTS.md 差异 2、4、6、7、9）。0.2 模块清单补 M1–M3 的脚本；3.8 新增提示：延奏触发帧的区间写法（取起点、`outroRange`，3 组）与"立即触发"（0）、`endOnSwitchAfter`（13 组）；4.3 只有第 1 级有倍率的技能取 1 级（43 行，原先读成 0）；12.1 / 12.5 新增 `nanoka.json`；13.1 `kind` 改按 dmg 的技能归类（伤害标签仍按 Damage.Type）、`castGains` 跟随判定行的共鸣链版本、新增 `endOnSwitchOut`、`energyCost`；13.4 新增覆盖字段 `cooldownGroup`、`energyCost`、`endOnSwitchOut`、`followUp`；Q8、Q24 关闭，Q7 补实测结论。
+- **v0.1.5（2026-10-04）**：并回声骸接入与 `echo-stats.json`（AGENTS.md 差异 1、4）。4.3 声骸也适用"只有第 1 级有倍率取 1 级"，各级全 0 的占位行不算连上；5.4 / 12.1 / 新增 12.6：`echo-stats.json`（主词条满级值、固定副主属性、副词条各档）；第 8 节按实现改写：分组（技能版本、多段、体型、组名取公共前缀）、异相取本体、脱手与否（`textKind` / `kindText`）、倍率按 dmg-join → dmg → nanoka 连（两边不同以 nanoka 为准）、产出字段；12.5 `nanoka.json` 新增 `echoes` / `echoSets`；13.3 按实现改写（`Q·<组名>`、体型、冷却与多段、`summon`、nanoka 的能量与削韧、`echoes.ts`）；13.4 新增覆盖字段 `charges`、`summon`，`judgments` 新增 `element`、`relatedAttr`、`heals`。
