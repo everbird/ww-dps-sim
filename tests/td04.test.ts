@@ -1,5 +1,5 @@
 // tests/td04.test.ts —— TD-04 仿真内核的用例（§10）
-// 真实数据来自 20260707 版的散华、仇远与"通用-中@女"块（按 assembleBlock 装配）；其余为人造动作。
+// 真实数据来自当前数据版本（data/generated）的散华、仇远与"通用-中@女"块（按 assembleBlock 装配）；其余为人造动作。
 // 期望值里的 f 都是世界帧：动作在 f = s 开始，局部帧 F 的事件在 f = s + F 发生（没有膨胀时）。
 import { readdirSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
@@ -234,7 +234,7 @@ dataDescribe('T04-13 极限闪避 → 闪避反击（连段前置 + 减速随取
   test('闪避反击不再受减速：第 49 帧命中', () => expect(brief(r.hits)).toEqual(['闪避反击@49']))
 })
 
-dataDescribe('T04-14 全量：70 个块 1598 个动作组，单独出招、连按两次', () => {
+dataDescribe('T04-14 全量：74 个块 1721 个动作组（20261003 版），单独出招、连按两次', () => {
   const keys = readdirSync(new URL('../data/generated/actions', import.meta.url)).map(f => f.replace(/\.json$/, ''))
   let groups = 0, spawnMismatch = 0, tickMismatch = 0, errors = 0, minusOneAfterEnd = 0
   for (const key of keys) {
@@ -257,10 +257,10 @@ dataDescribe('T04-14 全量：70 个块 1598 个动作组，单独出招、连�
       } catch { errors++ }
     }
   }
-  test('全部跑完、无异常', () => { expect(groups).toBe(1598); expect(errors).toBe(0) })
-  test('生成数 = 有发生帧的判定数（持续帧 -1 且发生帧 ≥ 结束帧的除外，22 组）', () => {
+  test('全部跑完、无异常', () => { expect(groups).toBe(1721); expect(errors).toBe(0) })
+  test('生成数 = 有发生帧的判定数（持续帧 -1 且发生帧 ≥ 结束帧的除外，23 组）', () => {
     expect(spawnMismatch).toBe(0)
-    expect(minusOneAfterEnd).toBe(22)
+    expect(minusOneAfterEnd).toBe(23)                                       // 20261003 版（20260707 版 22）
   })
   test('结算次数 = 寿命内放得下的次数', () => expect(tickMismatch).toBe(0))
 })

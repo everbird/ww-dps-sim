@@ -1,10 +1,9 @@
-"""base 表角色主表 + 成长表 + 索引页体型 → characters.json（TD-01 §5.2、§5.3、第 6 节）。"""
+"""base 表角色主表 + 成长表 + 索引页体型 → characters.json（TD-01 §5.2、§5.3、第 6 节）。
+base 表的列按第 55 行表头名找（base_cols.py）。"""
 from __future__ import annotations
 
 import math
 import re
-
-from openpyxl.utils import column_index_from_string as ci
 
 from parse import Issues, as_num, blank
 
@@ -12,11 +11,6 @@ ELEMENTS = {0: '物理', 1: '冷凝', 2: '热熔', 3: '导电', 4: '气动', 5: 
 COMMON_BLOCK = {'女-大': '通用-大@女', '女-中': '通用-中@女', '女-中小': '通用-中小@女', '女-小': '通用-小@女',
                 '女-特殊': None, '男-大': '通用-大@男', '男-中': '通用-中@男', '男-小': '通用-小@男'}
 ROVERS = {'光主', '暗主', '风主', '雷主'}
-
-
-def _c(col: str) -> int:
-    """列字母 → 0 起下标"""
-    return ci(col) - 1
 
 
 def body_types(index_rows: list) -> dict[str, str]:
@@ -39,27 +33,29 @@ def body_types(index_rows: list) -> dict[str, str]:
     return out
 
 
-def growth90(base_rows: list) -> tuple[int, int, int]:
-    """成长表 AP–AT：Level = 90 且 BreachLevel 最大的一行"""
+def growth90(base_rows: list, col) -> tuple[int, int, int]:
+    """成长表 RolePropertyGrowth（20260707 版 AP–AT）：Level = 90 且 BreachLevel 最大的一行"""
+    i_lv, i_br = col('RolePropertyGrowth.Level'), col('RolePropertyGrowth.BreachLevel')
+    i_hp, i_atk, i_def = (col(f'RolePropertyGrowth.{k}Ratio') for k in ('LifeMax', 'Atk', 'Def'))
     best = None
     for r in base_rows:
-        lv, br = r[_c('AP')], r[_c('AQ')]
+        lv, br = r[i_lv], r[i_br]
         if lv == 90 or (isinstance(lv, str) and lv.strip() == '90'):
             if best is None or (br or 0) > (best[0] or 0):
-                best = (br, r[_c('AR')], r[_c('AS')], r[_c('AT')])
+                best = (br, r[i_hp], r[i_atk], r[i_def])
     if best is None:
         raise ValueError('成长表里没有 90 级')
     return int(best[1]), int(best[2]), int(best[3])
 
 
-def build_characters(base_rows: list, index_rows: list, blocks: dict[str, dict], issues: Issues) -> dict:
-    """base_rows：base 表第 56 行起的行（0 起下标对应 A 列起）；blocks：块键 → 动作块"""
-    hp_r, atk_r, def_r = growth90(base_rows)
+def build_characters(base_rows: list, index_rows: list, blocks: dict[str, dict], issues: Issues, col) -> dict:
+    """base_rows：base 表第 56 行起的行（0 起下标对应 A 列起）；blocks：块键 → 动作块；col：base 表的列（BaseCols）"""
+    hp_r, atk_r, def_r = growth90(base_rows, col)
     bodies = body_types(index_rows)
     out: dict = {}
     for n, r in enumerate(base_rows, start=56):
         r = list(r) + [None] * 200
-        name = r[_c('EM')]
+        name = r[col('Char.Proto_Id')]
         if blank(name) or isinstance(name, (int, float)) or str(name).strip().startswith('——'):
             continue
         key = str(name).strip()
@@ -67,13 +63,15 @@ def build_characters(base_rows: list, index_rows: list, blocks: dict[str, dict],
         if blk is None:
             issues.add('warn', '主表角色没有动作块', f'base R{n}: {key}')
             continue
-        l1 = {'hp': int(r[_c('EN')]), 'atk': int(r[_c('EO')]), 'def': int(r[_c('EP')])}
+        l1 = {'hp': int(r[col('Char.Proto_LifeMax')]), 'atk': int(r[col('Char.Proto_Atk')]), 'def': int(r[col('Char.Proto_Def')])}
+        if 0 in l1.values():
+            issues.add('warn', '主表三维有 0', f'base R{n}: {key} {l1}')
         cores = []
         for k in range(5):
-            cap = r[_c('ER') + k]
+            cap = r[col(f'Char.Proto_SpecialEnergy{k + 1}Max')]
             if blank(cap) or float(cap) <= 0:
                 continue
-            nm = r[_c('EZ') + k]
+            nm = r[col(f'Char.Proto_SpecialEnergy{k + 1}Max.Desc')]
             cores.append({'slot': k + 1, 'name': '' if blank(nm) else str(nm).strip(), 'cap': as_num(float(cap))})
             if float(cap) >= 1000:
                 issues.add('warn', '核心资源上限 ≥ 1000（单位待确认，Q22）', f'{key} 槽 {k + 1}: {cap}')
@@ -82,25 +80,25 @@ def build_characters(base_rows: list, index_rows: list, blocks: dict[str, dict],
             issues.add('warn', '索引页没有体型', key)
         texts = {'chain': {}, 'passive': {}}
         for k in range(6):
-            t = r[_c('FE') + k]
+            t = r[col(f'Char.Chain{k + 1}')]
             if not blank(t):
                 texts['chain'][str(k + 1)] = str(t).strip()
         for k in range(2):
-            t = r[_c('FK') + k]
+            t = r[col(f'Char.passive{k + 1}')]
             if not blank(t):
                 texts['passive'][str(k + 1)] = str(t).strip()
         out[key] = {
             'key': key, 'sheet': blk['sheet'], 'sheetName': blk['sheetName'],
             'dmgCharaId': blk['sheetName'],                          # 漂泊者不分性别（§2）；陆·赫斯这类名字本身带点
-            'element': ELEMENTS[int(r[_c('EW')])],
+            'element': ELEMENTS[int(r[col('Char.Proto_ElementPropertyType')])],
             'bodyType': body, 'commonBlock': COMMON_BLOCK.get(body) if body else None,
             'baseL1': l1,
             'base90': {'hp': math.floor(l1['hp'] * hp_r / 10000), 'atk': math.floor(l1['atk'] * atk_r / 10000),
                        'def': math.floor(l1['def'] * def_r / 10000)},
-            'energyCost': as_num(float(r[_c('EQ')] or 0) / 100),
+            'energyCost': as_num(float(r[col('Char.Proto_EnergyMax')] or 0) / 100),
             'coreResources': cores,
-            'tunabilityRate': as_num(float(r[_c('EX')] or 0) / 10000),
-            'harmonyBreakBoost': as_num(float(r[_c('EY')] or 0)),
+            'tunabilityRate': as_num(float(r[col('Char.Proto_BreakWeaknessRatio')] or 0) / 10000),
+            'harmonyBreakBoost': as_num(float(r[col('Char.Proto_WeaknessMastery')] or 0)),
             'texts': texts,
             'actionsFile': f'actions/{key}.json',
         }

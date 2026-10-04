@@ -3,7 +3,8 @@
 用法：
   python3 tools/build/build_data.py [xlsx 路径] [--strict 椿,散华,维里奈]
 
-xlsx 缺省取 data/raw/ 里唯一的 .xlsx。只有 TD-01 §12.4 的阻断项会让退出码非零：
+xlsx 缺省取 data/xlsx-versions.json 的 current（在 data/raw/ 或其子目录里按文件名找，核对 sha256，见 versions.py）。
+只有 TD-01 §12.4 的阻断项会让退出码非零：
 设置区不符合期望、--strict 名单内角色有未解决的伤害判定。zod 校验由 `pnpm check:data` 负责。
 """
 from __future__ import annotations
@@ -25,7 +26,9 @@ from actions import parse_action_sheet  # noqa: E402
 from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
 from echo_stats import build_echo_stats  # noqa: E402
-from tune_break import TABLE_ROWS, build_tune_break  # noqa: E402
+from tune_break import build_tune_break  # noqa: E402
+from versions import pick_xlsx  # noqa: E402
+from base_cols import BaseCols  # noqa: E402
 from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
 from enemies import build_enemies, rage_index  # noqa: E402
 import golden  # noqa: E402
@@ -63,14 +66,11 @@ def main() -> int:
         argv = argv[1:]
     args = ap.parse_args(argv)
 
-    if args.xlsx:
-        xlsx = Path(args.xlsx)
-    else:
-        found = sorted((ROOT / 'data' / 'raw').glob('*.xlsx'))
-        if len(found) != 1:
-            print(f'data/raw/ 里应当恰好有一个 .xlsx，现在有 {len(found)} 个；也可以直接传路径', file=sys.stderr)
-            return 2
-        xlsx = found[0]
+    xlsx, _, problems = pick_xlsx(args.xlsx, ROOT / 'data' / 'raw', ROOT / 'data' / 'xlsx-versions.json')
+    for level, msg in problems:
+        print(f"{'错误' if level == 'error' else '注意'}：{msg}", file=sys.stderr)
+    if xlsx is None:
+        return 2
     t0 = time.time()
     warnings.filterwarnings('ignore')
     print(f'读取 {xlsx.name} …', file=sys.stderr)
@@ -105,22 +105,23 @@ def main() -> int:
         join_block(blk, dmg, dmg_join, issues, gaps, cross)
 
     # §5 / §6 角色
-    base_rows = list(b.iter_rows(min_row=56, max_col=180, values_only=True))
+    bcol = BaseCols(next(b.iter_rows(min_row=55, max_row=55, max_col=240, values_only=True)))   # base 页的列按表头名找
+    base_rows = list(b.iter_rows(min_row=56, max_col=240, values_only=True))
     index_rows = list(wb['索引'].iter_rows(min_row=1, max_row=47, max_col=23, values_only=True))
-    characters = build_characters(base_rows, index_rows, {blk['key']: blk for blk in blocks}, issues)
+    characters = build_characters(base_rows, index_rows, {blk['key']: blk for blk in blocks}, issues, bcol)
 
     # §7 武器、§9 敌人
-    weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues)
-    rage = rage_index(list(wb['prop'].iter_rows(min_row=1, max_col=38, values_only=True)), base_rows)
+    weapons = build_weapons(list(wb['weapon'].iter_rows(min_row=4, max_col=61, values_only=True)), base_rows, issues, bcol)
+    rage = rage_index(list(wb['prop'].iter_rows(min_row=1, max_col=38, values_only=True)), base_rows, bcol)
     enemies = build_enemies(list(wb['敌对属性列表'].iter_rows(min_row=2, max_col=23, values_only=True)), issues, rage)
 
     # §11.3 谐度破坏表（TD-03 §6）；规则（谐破冷却、按钮时长）取「附页2」"偏谐机制·通用"的说明文字
     notes = [(c.coordinate, c.value) for row in wb['附页2'].iter_rows() for c in row if isinstance(c.value, str)]
-    tune = build_tune_break(dmg, list(wb['伤害计算'].iter_rows(min_row=TABLE_ROWS[0], max_row=TABLE_ROWS[1], max_col=7,
-                                                              values_only=True)), base_rows, issues, notes)
+    tune = build_tune_break(dmg, list(wb['伤害计算'].iter_rows(min_row=1, max_col=7, values_only=True)), base_rows, bcol,
+                            issues, notes)
 
     # §5.4 声骸属性：主词条满级值、固定副主属性、副词条各档
-    echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=90, values_only=True)), issues)
+    echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=240, values_only=True)), issues)
 
     # §8 声骸（倍率在 nanoka 之后连）
     ws = wb['声骸']

@@ -5,7 +5,7 @@ import { AMPLIFY_ZONES, FINAL_ZONES } from '../src/data/common'
 import type { ZoneId } from '../src/data/common'
 import { BuffDefSchema } from '../src/data/buff.schema'
 import type { BuffDefInput } from '../src/data/buff.schema'
-import { GoldenZonesSchema } from '../src/data/generated.schema'
+import { GoldenDamageSchema, GoldenZonesSchema } from '../src/data/generated.schema'
 import type { GoldenZone } from '../src/data/generated.schema'
 import { DEFAULT_RULES } from '../src/data/gamedata'
 import type { TuneBreakTable } from '../src/data/gamedata'
@@ -139,8 +139,11 @@ describe.skipIf(!existsSync(tuneFile))('T03-7b 谐度破坏表（tune-break.json
       rules: null,
     }
     expect(tuneBase(t, 90, 4)).toBe(10027)
+    // 对照值按 xlsx 计算器当时的配置算：目标防御与物抗、角色的谐破增幅（20260707 版 0，20261003 版清宵 10）
+    const c = GoldenDamageSchema.parse(JSON.parse(readFileSync(new URL('../data/generated/fixtures/golden-damage.json', import.meta.url), 'utf8'))).context
+    const target = { def: Number(c.target['防御']), res: Number(c.target['物抗']) }
     for (const v of g.variants) {
-      const ctx = { base: tuneBase(t, 90, 4), rate: v.multiplier, level: 90, enemy, harmonyBreakBoost: 0 }
+      const ctx = { base: tuneBase(t, 90, 4), rate: v.multiplier, level: 90, enemy: target, harmonyBreakBoost: Number(c.panel['谐破增幅'] ?? 0) }
       expect([v.key, computeTuneBreak(ctx, emptyAccumulator(), R), computeTuneBreak({ ...ctx, vsNormal: true }, emptyAccumulator(), R)])
         .toEqual([v.key, v.golden!.vsDisharmony, v.golden!.vsNormal])
     }
@@ -232,7 +235,7 @@ const GOLDEN = new URL('../data/generated/fixtures/golden-zones.json', import.me
   })
   test('按公式分类计数', () => {
     const n = (f: GoldenZone['formula']) => all.filter(g => g.formula === f).length
-    // TD-03 §1.2 记为 2940 / 47：鉴心"护盾回复生命值"（J558）按公式形状是治疗，这里算进治疗
-    expect([n('hurt'), n('abnormal'), n('tune'), n('heal')]).toEqual([2939, 173, 30, 48])
+    // 20261003 版（20260707 版是 2939 / 173 / 30 / 48；TD-03 §1.2 记为 2940 / 47：鉴心"护盾回复生命值"按公式形状是治疗，这里算进治疗）
+    expect([n('hurt'), n('abnormal'), n('tune'), n('heal')]).toEqual([3163, 173, 30, 52])
   })
 })

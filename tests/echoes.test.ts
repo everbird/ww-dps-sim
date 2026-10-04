@@ -157,7 +157,7 @@ dataDescribe('首位声骸（M0 队伍）', () => {
   beforeAll(async () => { gd = await loadGameData() })
 
   test('声骸表进 GameData（异相不单独产出）；倍率取 5 级，dmg 里没有的从 nanoka 连上，能量与削韧也按 nanoka', () => {
-    expect(Object.keys(gd.echoes)).toHaveLength(78)
+    expect(Object.keys(gd.echoes)).toHaveLength(85)                        // 20261003 版（20260707 版 78）
     expect(gd.echoes['异相·无常凶鹭']).toBeUndefined()
     const e = gd.echoes['梦魇·无冠者']!
     const a = e.actions['Q·斩击']!

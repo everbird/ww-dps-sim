@@ -27,9 +27,10 @@ def _int(v) -> int | None:
     return None if x is None else int(x)
 
 
-def weapon_growth90(base_rows: list) -> tuple[int, int]:
-    """base 表 WeaponGrowth（CL–CO）：Lv = 90 的一行的 Curve1 / Curve2（125000 / 45000）；base_rows 从第 56 行起"""
-    lv, c1, c2 = ci('CL') - 1, ci('CM') - 1, ci('CN') - 1
+def weapon_growth90(base_rows: list, col) -> tuple[int, int]:
+    """base 表 WeaponGrowth（20260707 版 CL–CO，按表头名找）：Lv = 90 的一行的 Curve1 / Curve2（125000 / 45000）；
+    base_rows 从第 56 行起"""
+    lv, c1, c2 = col('WeaponGrowth.Lv'), col('WeaponGrowth.Curve1.Ratio'), col('WeaponGrowth.Curve2.Ratio')
     for r in base_rows:
         if len(r) > c2 and r[lv] == 90:
             return int(r[c1]), int(r[c2])
@@ -75,9 +76,9 @@ def parse_weapon(row: list, n: int, curve1: int, curve2: int, issues: Issues) ->
     }
 
 
-def build_weapons(rows: list, base_rows: list, issues: Issues) -> list[dict]:
+def build_weapons(rows: list, base_rows: list, issues: Issues, col) -> list[dict]:
     """rows：weapon 表第 4 行起（第 2、3 行是作者的辅助行）"""
-    curve1, curve2 = weapon_growth90(base_rows)
+    curve1, curve2 = weapon_growth90(base_rows, col)
     out, seen = [], set()
     for n, row in enumerate(rows, start=4):
         w = parse_weapon(list(row), n, curve1, curve2, issues)

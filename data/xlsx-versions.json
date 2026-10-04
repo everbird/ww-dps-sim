@@ -1,0 +1,19 @@
+{
+ "current": "20261003",
+ "versions": [
+  {
+   "version": "20260707",
+   "file": "鸣潮动作数据汇总-20260707.xlsx",
+   "sha256": "f2735d01afa22525562895bdabfb910868b0eacf1d6f4892033a117e0c5a222d",
+   "resourceVersion": "3.4.17",
+   "note": "M0–M6 用的版本（2026-10-04 起不再是 current）"
+  },
+  {
+   "version": "20261003",
+   "file": "鸣潮动作数据汇总-20261003.xlsx",
+   "sha256": "58c2d9a4ca4d64586cd70f5cce6fcb59989536a5033e8f1e4c12b2f2e5d48b7f",
+   "resourceVersion": "3.6.13",
+   "note": "2026-10-04 起为 current"
+  }
+ ]
+}
