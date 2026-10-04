@@ -31,7 +31,8 @@ const EnemyCustomSchema = z.strictObject({
   res: z.partialRecord(z.enum(ELEMENTS), z.number().min(-1).max(1)).default({}),
   cost: z.union([z.literal(1), z.literal(3), z.literal(4)]).default(4),
   hp: z.number().positive().optional(),
-  whiteBar: z.number().min(0).optional(),
+  whiteBar: z.number().min(0).optional(),                 // 按削韧值计（TD-06 §13.2）；缺省没有白条
+  paralysisSec: z.number().min(0).optional(),             // 白条打空后瘫痪几秒
   tunabilityMax: z.number().min(0).optional(),
 })
 
@@ -57,7 +58,9 @@ export const ScenarioSchema = z.strictObject({
     maxWait: z.number().int().min(1).default(600),
     endAt: z.number().int().min(1).optional(),            // 覆盖 DPS 统计窗口终点（总设计 §3.5）
     rules: z.record(z.string(), z.unknown()).optional(),  // Partial<Rules>，resolve 时逐项校验
-  }).default({ repeat: 1, maxFrames: 3600, maxWait: 600 }),
+    // 谐度破坏（TD-06 §13.4）：auto = 目标失谐后前台角色在下一条指令前自动放；manual = 只按轴里写的放；off = 不累积偏谐值
+    tuneBreak: z.enum(['auto', 'manual', 'off']).default('auto'),
+  }).default({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto' }),
 }).superRefine((s, ctx) => {
   const names = s.team.map(m => m.char)
   names.forEach((n, i) => {
@@ -81,20 +84,21 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 
 // ---------------------------------------------------------------------------
 // 排轴行语法（TD-09 §2）：
-//   <角色> <动作>[!] [+N] [<动作>[!] [+N] …]   依次出招；! = 强制（不等"取消不丢东西"）；+N = 最早合法之后再等 N 帧（战斗帧）
+//   <角色> <动作>[!][?] [+N] [<动作>[!][?] [+N] …]   依次出招；! = 强制（不等"取消不丢东西"）；+N = 最早合法之后再等 N 帧（战斗帧）；
+//                                                ? = 可选：冷却、资源、角色条件（含谐度破坏要的失谐）不满足就跳过，不等（TD-06 §13.4）
 //   switch <角色>   或  切人 <角色>          切人
 //   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
-//   空格后的 # 起是注释；全角的 ！＋＃、全角数字和全角空格按半角处理
+//   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
-  | { kind: 'act'; char: string; action: string; delay: number; force: boolean }
+  | { kind: 'act'; char: string; action: string; delay: number; force: boolean; optional?: true }
   | { kind: 'switch'; char: string }
   | { kind: 'wait'; frames: number }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
 export function parseRotationLine(text: string): RotationItem[] | { error: string } {
   const s = text
-    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/＋/g, '+').replace(/＃/g, '#')
+    .replace(/\u3000/g, ' ').replace(/！/g, '!').replace(/？/g, '?').replace(/＋/g, '+').replace(/＃/g, '#')
     .replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
     .replace(/(^|\s)#.*$/, '').trim()
   if (s === '') return []
@@ -121,15 +125,20 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
       delayed = true
       continue
     }
-    if (t === '!') {
-      if (!prev) return { error: '"!" 前面要有动作' }
-      prev.force = true
+    if (t === '!' || t === '?') {
+      if (!prev) return { error: `"${t}" 前面要有动作` }
+      if (t === '!') prev.force = true
+      else prev.optional = true
       continue
     }
-    m = /^([^!+]+)(!?)(?:\+(\d+))?$/.exec(t)
-    if (!m) return { error: `无法识别"${t}"：动作写成 <动作>、<动作>! 或 <动作> +N` }
+    m = /^([^!?+]+)([!?]*)(?:\+(\d+))?$/.exec(t)
+    if (!m || m[2]!.length > 2 || (m[2]!.length === 2 && m[2]![0] === m[2]![1]))
+      return { error: `无法识别"${t}"：动作写成 <动作>、<动作>!、<动作>? 或 <动作> +N` }
     if (/^\d+$/.test(m[1]!) && prev) return { error: `"${t}" 像是延迟，延迟要写成 +${m[1]}` }
-    out.push({ kind: 'act', char: head, action: m[1]!, delay: m[3] ? Number(m[3]) : 0, force: m[2] === '!' })
+    out.push({
+      kind: 'act', char: head, action: m[1]!, delay: m[3] ? Number(m[3]) : 0, force: m[2]!.includes('!'),
+      ...(m[2]!.includes('?') ? { optional: true as const } : {}),
+    })
     delayed = m[3] !== undefined
   }
   return out
@@ -137,7 +146,7 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
 
 /** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（TD-09 §4，总设计 §3.3 第 7 步）。line 从 1 起，item 是行内第几个（从 1 起） */
 export type Command =
-  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean }
+  | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean; optional?: true }
   | { kind: 'switch'; line: number; item: number; to: Slot }
   | { kind: 'wait'; line: number; item: number; frames: Frame }
   | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来

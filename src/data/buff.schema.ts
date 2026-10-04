@@ -12,8 +12,9 @@ export const TRIGGER_EVENTS = [
 ] as const
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 
+// break = 白条打空（破盾），breakEnd = 瘫痪结束、白条回满；disharmony = 偏谐值满（失谐），harmonyBreak = 谐度破坏命中（TD-06 §13）
 export const ENEMY_STATE_CHANGES = [
-  'break', 'poiseBreak', 'disharmony', 'harmonyBreak', 'shift', 'interference', 'effectApplied',
+  'break', 'breakEnd', 'poiseBreak', 'disharmony', 'harmonyBreak', 'shift', 'interference', 'effectApplied',
 ] as const
 export type EnemyStateChange = (typeof ENEMY_STATE_CHANGES)[number]
 

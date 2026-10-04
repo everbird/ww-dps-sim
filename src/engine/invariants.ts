@@ -37,6 +37,10 @@ export function checkTick(sim: Sim, s: SimState, lastBattle: number): void {
     if (!(b.stacks >= 1)) throw bad(s, `buff ${b.defId} 的层数 ${b.stacks}`)
   }
   for (const d of s.dilations) if (!(d.remaining > 0)) throw bad(s, `膨胀窗口剩余 ${d.remaining} 应已移除`)
+  const e = s.enemy                                               // 敌人量表（TD-06 §13）
+  if (!ok(e.tunability, 0, e.preset.tunabilityMax)) throw bad(s, `偏谐值 ${e.tunability} 不在 [0, ${e.preset.tunabilityMax}]`)
+  if (e.disharmony && e.tunability < e.preset.tunabilityMax - EPS) throw bad(s, `失谐时偏谐值 ${e.tunability} 未满`)
+  if (!ok(e.whiteBar, 0, e.preset.whiteBarTough)) throw bad(s, `白条 ${e.whiteBar} 不在 [0, ${e.preset.whiteBarTough}]`)
 }
 
 /** 每次结算：伤害有限且不为负 */

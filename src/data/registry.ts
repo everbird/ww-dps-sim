@@ -9,7 +9,7 @@ import {
   BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
 } from './buff.schema'
 import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
-import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEnemy, GenMeta, GenWeapon } from './generated.schema'
+import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEnemy, GenMeta, GenTuneBreak, GenWeapon } from './generated.schema'
 import {
   DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
@@ -23,6 +23,7 @@ export interface GeneratedFiles {
   echoes: GenEcho[]                                 // echoes.json（TD-01 §8）；没有时为空
   echoStats?: GenEchoStats                          // echo-stats.json（TD-01 §5.4）
   enemies: GenEnemy[]
+  tuneBreak?: GenTuneBreak                          // tune-break.json（TD-01 §11.3）；没有时谐度破坏伤害为 0
 }
 
 export interface CuratedModules {
@@ -67,7 +68,8 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
   for (const e of gen.enemies) {
     enemies[e.id] = {
       id: e.id, name: e.name, tag: e.tag, cost: e.cost, level: e.level, hp: e.hp, def: e.def, res: e.res,
-      whiteBar: e.whiteBar, poise: e.poise, tunabilityMax: e.tunabilityMax,
+      whiteBar: e.whiteBar, whiteBarTough: e.whiteBarTough ?? 0, paralysisFrames: Math.round((e.paralysisSec ?? 0) * 60),
+      poise: e.poise, tunabilityMax: e.tunabilityMax,
     }
   }
 
@@ -77,9 +79,19 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     characters, commonActions, weapons,
     echoes, echoSets, echoStats: gen.echoStats ?? null, enemies,
     effects: {}, abnormalBaseByLevel: [],           // M4
-    tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } },   // M4
+    tuneBreak: tuneBreakTable(gen.tuneBreak),
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
     rules: DEFAULT_RULES,
+  }
+}
+
+/** tune-break.json → 谐度破坏表（TD-03 §6）；没有文件时全 0：谐度破坏伤害为 0 */
+function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
+  if (!t) return { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 } }
+  const factor = (cost: 1 | 3 | 4) => t.costFactors.find(f => f.cost === cost)?.factor ?? 0
+  return {
+    variants: t.variants.map(v => ({ key: v.key, weaponType: v.weaponType, seq: v.seq, multiplier: v.multiplier, ticks: v.ticks })),
+    baseByLevel: t.baseByLevel, costFactor: { 1: factor(1), 3: factor(3), 4: factor(4) },
   }
 }
 
@@ -98,7 +110,8 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
   if (!g) throw new Error(`角色模块 ${mod.name} 在 characters.json 里找不到（名字要与动作表块名一致）`)
   const file = gen.actions[mod.name]
   if (!file) throw new Error(`没有 ${mod.name} 的动作文件`)
-  const opts = { element: g.element, charNames }
+  const tuneTicks = Object.fromEntries((gen.tuneBreak?.variants ?? []).filter(v => v.ticks !== null).map(v => [v.key, v.ticks!]))
+  const opts = { element: g.element, charNames, tuneTicks }
   let actions = assembleBlock(file, mod.actionOverrides, opts)
   for (const key of mod.mergeBlocks ?? []) {                  // 并入其他动作块（TD-01 Q2）
     const extra = gen.actions[key]

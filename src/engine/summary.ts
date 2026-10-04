@@ -52,10 +52,11 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   return {
     totalDamage, windowFrames, dps: windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0, overflowDamage,
     ...loops(log, r, hits, windowFrames),
-    byChar, byAction: actions,
+    byChar, byAction: actions, enemy: enemyStats(log, windowFrames),
     resourceTimeline: resourceTimeline(log, r, s), buffUptime: buffUptime(log, 0, windowFrames),
     waits: log.flatMap(e => (e.type === 'wait' && !INTENDED.includes(e.code)
       ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, code: e.code, frames: e.frames, reason: e.reason }] : [])),
+    skipped: log.flatMap(e => (e.type === 'skip' ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, reason: e.reason }] : [])),
     warnings: [
       ...r.warnings.map(message => ({ code: 'resolve', message })),
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
@@ -64,6 +65,20 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
 }
 
 const dpsOf = (damage: number, frames: number): number => (frames > 0 ? damage / (frames / 60) : 0)
+
+/** Summary.enemy：窗口内的敌人量表事件与谐度破坏伤害（TD-06 §13） */
+function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {
+  const out = { disharmony: 0, tuneBreaks: 0, tuneBreakDamage: 0, breaks: 0 }
+  for (const e of log) {
+    if (battleFrameOf(e) >= W) break                                  // 日志按世界帧记，战斗帧不减
+    if (e.type === 'enemyState') {
+      if (e.change === 'disharmony') out.disharmony++
+      else if (e.change === 'harmonyBreak') out.tuneBreaks++
+      else if (e.change === 'break') out.breaks++
+    } else if (e.type === 'hit' && e.dmg && e.tags.includes('谐度破坏')) out.tuneBreakDamage += e.dmg.expected
+  }
+  return out
+}
 
 /** 分轮与稳态（Summary.perLoop / steady 的注释）。不到 2 轮（没循环、或第 2 轮还没开始就停了）时没有 */
 function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly HitEvent[], W: number): Pick<Summary, 'perLoop' | 'steady'> {

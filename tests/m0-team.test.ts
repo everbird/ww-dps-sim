@@ -148,4 +148,31 @@ dataDescribe('M0 三人的钩子', () => {
     const gaps = coord.slice(1).map((h, i) => Math.round(h.t * 60) - Math.round(coord[i]!.t * 60))
     expect(gaps.every(g => g >= 60)).toBe(true)
   })
+
+  // ---------------------------------------------------------------------------
+  // 谐度破坏（TD-06 §13.3、§13.4）
+
+  test('T06-M0-1 谐度破坏的装配：类别、迅刀第一段结算 4 次、整个动作不能切人', () => {
+    const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation: ['散华 A1'] }), gd)
+    const [椿, 散华, 维里奈] = [0, 1, 2].map(i => r.team[i]!.actions['谐度破坏']!)
+    for (const a of [椿, 散华, 维里奈]) {
+      expect(a!.kind).toBe('tuneBreak')
+      expect(a!.switchLockUntil).toBe(a!.endFrame)
+    }
+    const j = (a: typeof 散华, n: string) => a!.judgments.find(x => x.name === n)!
+    expect([j(散华, '谐度破坏-1').multiplier, j(散华, '谐度破坏-1').ticks, j(散华, '谐度破坏-2').multiplier]).toEqual([1, 4, 12])
+    expect([j(维里奈, '谐度破坏').multiplier, j(维里奈, '谐度破坏').ticks]).toEqual([16, 1])
+  })
+
+  test('T06-M0-2 散华的 E 打满偏谐值：A1 之前自动放谐度破坏，4 + 1 段，合计约 16 倍', () => {
+    const out = m0Run(gd, {
+      enemy: { custom: { level: 90, tunabilityMax: 50 } }, initial: { onField: 1 }, rotation: ['散华 E', '散华 A1'],   // E 偏谐值 80 → 失谐
+    } as never)
+    const hits = eventsOfLog(out.log, 'hit').filter(h => h.tags.includes('谐度破坏') && h.dmg)   // 编号行（动画分段）倍率 0，没有伤害
+    expect(hits.map(h => h.judgment)).toEqual(['谐度破坏-1', '谐度破坏-1', '谐度破坏-1', '谐度破坏-1', '谐度破坏-2'])
+    const total = hits.reduce((x, h) => x + h.dmg!.expected, 0)
+    expect(total / Math.ceil(10027 * 16 * (1520 / 3032) * 0.9)).toBeCloseTo(1, 3)   // 自定义敌人：90 级防御 1512、物理抗性 10%
+    const starts = eventsOfLog(out.log, 'actionStart').map(e => e.action)
+    expect(starts).toEqual(['E', '谐度破坏', 'A1'])
+  })
 })

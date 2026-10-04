@@ -65,6 +65,20 @@ class T01_9b_敌人(unittest.TestCase):
         self.assertEqual((e['whiteBar'], e['poise'], e['tunabilityMax']),
                          ({'max': 18097, 'recover': 0, 'reduce': 0}, {'max': 150, 'recover': 5, 'reduce': 0}, 3920))
 
+    def test_白条按削韧值(self):
+        """TD-06 §13.2：prop 的 RageMax ÷ 100 × PropExtraRate.Tough&Rage；（名称，类型）对上，名称带 *N 的按去掉后缀的名字"""
+        from enemies import rage_index
+        prop = [['Proto_Id', 'Proto_Type', 'Proto_RageMax', 'Entity_PropExtraRateId'],
+                ['朔雷之鳞', '全息6', 999999, 0], ['无冠者', '塔', 400000, 7], ['云海妖精', '海墟', 0, 0]]
+        base = [[None] * 12 + [7, 15000, 15000]]                      # base 第 56 行起：M 列 id、N 生命、O 韧性与白条
+        rage = rage_index(prop, base)
+        self.assertEqual(rage, {('朔雷之鳞', '全息6'): 9999.99, ('无冠者', '塔'): 6000, ('云海妖精', '海墟'): 0})
+        head = [4, 90, 100000, 800, 1512, 0.1, 0.1, 0.1, 0.4, 0.1, 0.1, 0.1, 18097, 0, 0, 150, 5, 0, 3920, 1.5, 8.87]
+        issues = Issues()
+        es = build_enemies([['朔雷之鳞', '全息6', *head], ['云海妖精 *21', '海墟', *head], ['不存在', '全息6', *head]], issues, rage)
+        self.assertEqual([e['whiteBarTough'] for e in es], [9999.99, 0, None])
+        self.assertEqual(issues.count('warn'), 1)
+
 
 if __name__ == '__main__':
     unittest.main()

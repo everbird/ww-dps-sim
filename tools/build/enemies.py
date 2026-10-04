@@ -1,4 +1,8 @@
-"""敌对属性列表 → enemies.json（TD-01 §9）。白条（Rage）与韧性（Tough）分开存（§9.2）。"""
+"""敌对属性列表 → enemies.json（TD-01 §9）。白条（Rage）与韧性（Tough）分开存（§9.2）。
+
+白条另存一份按削韧值计的 whiteBarTough（TD-06 §13.2）：敌人表的"白条"按生命值的等级成长放大过，不能直接拿削韧值去减；
+取 prop（游戏原型）的 RageMax ÷ 100（与韧性 = ToughMax ÷ 100 同单位）× base 页 PropExtraRate.Tough&Rage（按原型的
+PropExtraRateId，缺省 1）。prop 按（名称，类型）对上敌人表的行（20260707 版 1402 行全部对上）。"""
 from __future__ import annotations
 
 import re
@@ -18,10 +22,37 @@ def _num(v, default=None):
         return default
 
 
-def build_enemies(rows: list, issues: Issues) -> list[dict]:
-    """rows：第 2 行起（第 1 行表头）；A 列为空的行跳过。id = 类型/名称，重名按出现顺序加 #2、#3…"""
+def rage_index(prop_rows: list, base_rows: list) -> dict:
+    """prop 第 1 行表头起 → {(名称, 类型): 白条（削韧值）}；base_rows：base 页第 56 行起（M–O 列是 PropExtraRate 表）"""
+    extra = {}
+    for r in base_rows:
+        r = list(r) + [None] * 15
+        if r[12] is not None and isinstance(r[14], (int, float)):
+            extra[r[12]] = r[14] / 10000
+    if not prop_rows:
+        return {}
+    head = [str(h).strip() if h is not None else '' for h in prop_rows[0]]
+    col = {h: i for i, h in enumerate(head)}
+    i_rage, i_rate = col.get('Proto_RageMax'), col.get('Entity_PropExtraRateId')
+    if i_rage is None:
+        return {}
+    out = {}
+    for r in prop_rows[1:]:
+        if blank(r[0]):
+            continue
+        key = (str(r[0]).strip(), '' if blank(r[1]) else str(r[1]).strip())
+        rage = _num(r[i_rage], 0)
+        rate = extra.get(r[i_rate], 1) if i_rate is not None and r[i_rate] not in (0, None) else 1
+        out.setdefault(key, as_num(rage / 100 * rate))
+    return out
+
+
+def build_enemies(rows: list, issues: Issues, rage: dict | None = None) -> list[dict]:
+    """rows：第 2 行起（第 1 行表头）；A 列为空的行跳过。id = 类型/名称，重名按出现顺序加 #2、#3…
+    rage：rage_index 的结果（缺省不算 whiteBarTough）"""
     out: list[dict] = []
     ids: dict[str, int] = {}
+    rage = rage or {}
     for n, r in enumerate(rows, start=2):
         r = list(r) + [None] * 24
         if blank(r[0]):
@@ -39,6 +70,9 @@ def build_enemies(rows: list, issues: Issues) -> list[dict]:
             issues.add('warn', '敌人没有生命值', f'敌对属性列表 R{n} {raw}')
             continue
         base_id = f'{tag}/{name}'
+        tough = rage.get((raw, tag), rage.get((name, tag)))
+        if rage and tough is None:
+            issues.add('warn', '敌人在 prop 里找不到', f'敌对属性列表 R{n} {raw}（{tag}）')
         ids[base_id] = ids.get(base_id, 0) + 1
         eid = base_id if ids[base_id] == 1 else f'{base_id}#{ids[base_id]}'
         out.append({
@@ -46,6 +80,7 @@ def build_enemies(rows: list, issues: Issues) -> list[dict]:
             'hp': hp, 'atk': _num(r[5], 0), 'def': _num(r[6], 0),
             'res': {e: _num(r[7 + i], 0) for i, e in enumerate(RES_ORDER)},
             'whiteBar': {'max': _num(r[14], 0), 'recover': _num(r[15], 0), 'reduce': _num(r[16], 0)},
+            'whiteBarTough': tough,
             'poise': {'max': _num(r[17], 0), 'recover': _num(r[18], 0), 'reduce': _num(r[19], 0)},
             'tunabilityMax': _num(r[20], 0),
             'vulnerableSec': _num(r[21]), 'paralysisSec': _num(r[22]),

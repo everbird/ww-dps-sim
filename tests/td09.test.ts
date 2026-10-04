@@ -303,3 +303,23 @@ dataDescribe('T09-11 全量：每条普攻连段按默认与强制各连按一�
   })
   test('默认比强制慢的 7 条，最多慢 96 帧（椿 A4 → A5）', () => { expect([slower, maxGap]).toEqual([7, 96]) })
 })
+
+describe('T09-可选 "?"：状态条件不满足就跳过（TD-06 §13.4）', () => {
+  test('解析：? 与 ! 可以一起写，可以分开写，全角？也认；?? 报错', () => {
+    expect(parseRotationLine('甲 A1? E!? R ? +5')).toEqual([
+      { kind: 'act', char: '甲', action: 'A1', delay: 0, force: false, optional: true },
+      { kind: 'act', char: '甲', action: 'E', delay: 0, force: true, optional: true },
+      { kind: 'act', char: '甲', action: 'R', delay: 5, force: false, optional: true },
+    ])
+    expect(parseRotationLine('甲 谐度破坏？')).toEqual([{ kind: 'act', char: '甲', action: '谐度破坏', delay: 0, force: false, optional: true }])
+    expect(parseRotationLine('甲 E??')).toHaveProperty('error')
+  })
+  test('冷却中就跳过、记 skip；门（这里是"等派生"）照常等完再判断', () => {
+    const Y = A('Y', { cooldown: 600, priority: [{ fromFrame: 0, value: 4 }] })
+    const team = [{ ...acts, Y }, acts, acts]
+    const r = run(team, [{ act: 0, action: 'Y' }, { act: 0, action: 'Y', optional: true }, { act: 0, action: 'A1' }])
+    expect(starts(r)).toEqual(['Y@0', 'A1@30'])
+    expect(eventsOf(r, 'skip').map(e => [e.f, e.cmd.line, e.code])).toEqual([[30, 2, 'cooldown']])
+    expect(waits(r)).toEqual(['2:derive 0+30'])
+  })
+})

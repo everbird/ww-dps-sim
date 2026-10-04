@@ -244,6 +244,7 @@ export const GenEnemySchema = z.strictObject({
   def: z.number().min(0),
   res: z.strictObject(Object.fromEntries(ELEMENTS.map(e => [e, z.number()])) as Record<(typeof ELEMENTS)[number], z.ZodNumber>),
   whiteBar: Bar,
+  whiteBarTough: nullable(z.number().min(0)),       // 白条按削韧值计：prop RageMax ÷ 100 × PropExtraRate（TD-06 §13.2）；prop 里找不到为 null
   poise: Bar,
   tunabilityMax: z.number().min(0),
   vulnerableSec: nullable(z.number()),

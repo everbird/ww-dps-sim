@@ -48,7 +48,12 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   })
   const e = r.enemy
   console.log(`敌人  ${e.id} · ${e.level} 级 · 防御 ${e.def} · 抗性 ${Object.entries(e.res).map(([k, v]) => `${k} ${pct(v)}`).join(' ')}`)
+  console.log(`      偏谐值上限 ${fmt(e.tunabilityMax)} · 白条 ${e.whiteBarTough > 0 ? `${fmt(e.whiteBarTough)}（削韧值）、瘫痪 ${(e.paralysisFrames / 60).toFixed(2)} 秒` : '无'}` +
+    ` · 谐度破坏 ${r.options.tuneBreak === 'auto' ? '自动' : r.options.tuneBreak === 'manual' ? '只按轴里写的' : '关闭'}`)
   console.log(`\n窗口 ${sec(s.windowFrames)}  总伤害 ${fmt(s.totalDamage)}  DPS ${fmt(s.dps)}${s.overflowDamage > 0 ? `  窗口外 ${fmt(s.overflowDamage)}` : ''}`)
+  const en = s.enemy
+  if (en.disharmony + en.breaks > 0)
+    console.log(`敌人量表  失谐 ${en.disharmony} 次 · 谐度破坏 ${en.tuneBreaks} 次（${fmt(en.tuneBreakDamage)}，${pct(s.totalDamage > 0 ? en.tuneBreakDamage / s.totalDamage : 0)}）· 破盾 ${en.breaks} 次`)
   if (s.perLoop && s.steady) {
     const st = s.steady
     console.log(`\n分轮（稳态 = 第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮：DPS ${fmt(st.dps)}）`)
@@ -70,6 +75,12 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
     const many = new Set(r.commands.filter(c => c.item > 1).map(c => c.line))
     for (const w of s.waits)
       console.log(`  ${w.loop > 1 ? `第 ${w.loop} 轮` : ''}第 ${w.line} 条${many.has(w.line) ? `第 ${w.item} 个` : ''}  ${w.frames} 帧  ${w.reason}`)
+  }
+  if (s.skipped.length > 0) {
+    console.log('\n跳过的可选指令（"?"）')
+    const many = new Set(r.commands.filter(c => c.item > 1).map(c => c.line))
+    for (const k of s.skipped)
+      console.log(`  ${k.loop > 1 ? `第 ${k.loop} 轮` : ''}第 ${k.line} 条${many.has(k.line) ? `第 ${k.item} 个` : ''}  ${k.reason}`)
   }
   if (s.warnings.length > 0) {
     console.log('\n提示')
