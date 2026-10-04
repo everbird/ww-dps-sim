@@ -112,7 +112,15 @@ export default defineCharacter('散华', {
     谐度破坏: { accept: ['multiEnd'] },     // 两个结束帧是谐度破坏的两段，取第一个即可
     // 备注"第42F可响应大招"，数据没给优先级变化帧，默认回退到派生帧 61；按手感改成 42（m0-confirm 2.3，2026-09-27 确认）
     QTE: { priority: [{ fromFrame: 0, value: 11 }, { fromFrame: 42, value: 8 }] },
-    E: { cooldown: 600 },                  // 共鸣技能冷却 10 秒（2026-09-27 用户提供）
-    大招: { cooldown: 960 },               // 共鸣解放冷却 16 秒（nanoka 3.7）；大招-引爆冰川是跟随判定的动作，不设冷却
+    // 推断值的处理见 m0-confirm §8（2026-10-04）
+    E: { cooldown: 600, accept: ['priorityChangeGuess'] },   // 共鸣技能冷却 10 秒（2026-09-27 用户提供）；第 60 帧（派生帧）降到 2
+    // 共鸣解放冷却 16 秒（nanoka 3.7）；第 98 帧（派生帧）降到 2、可接重击居合（2026-10-04 用户确认）
+    大招: { cooldown: 960, accept: ['priorityChangeGuess'] },
+    // A5 的优先级 [2, 4, 2]：备注"第6F～33F不能派生重击"（重击优先级 3）= 第 6 帧升到 4、第 33 帧降回 2
+    A5: { priority: [{ fromFrame: 0, value: 2 }, { fromFrame: 6, value: 4 }, { fromFrame: 33, value: 2 }] },
+    // 钩子生成的引爆判定所在的组（不设冷却），不会被当成动作放
+    '大招-引爆冰川': { accept: ['noEnd', 'noPriority'] },
+    // 6 链"引爆后攻击提升"已写成 buff 散华.共鸣链6，这一组标记行不会被当成动作放
+    'C6-引爆触发器': { accept: ['noEnd', 'noPriority', 'kindGuess', 'chainAdditive'] },
   },
 })
