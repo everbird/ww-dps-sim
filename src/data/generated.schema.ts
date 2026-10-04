@@ -1,7 +1,7 @@
 // src/data/generated.schema.ts —— data/generated/*.json 的 zod schema（TD-02 §3）
 // 构建脚本写文件前、注册层读文件后各校验一次；类型一律由 schema 推导（z.infer），不另写 interface。
 import { z } from 'zod'
-import { BODY_TYPES, DILATION_TYPES, ECHO_BODIES, EFFECT_NAMES, ELEMENTS, WEAPON_TYPES } from './common'
+import { BODY_TYPES, DILATION_TYPES, ECHO_BODIES, EFFECT_NAMES, ELEMENTS, STAT_KEYS, WEAPON_TYPES } from './common'
 
 const int = () => z.number().int()
 /** 帧列：整数，允许 -1（持续帧 / 派生持续帧的"直到动作结束"） */
@@ -222,6 +222,15 @@ export const GenEchoSchema = z.strictObject({
   })
 })
 
+/** echo-stats.json：base 表的声骸属性（TD-01 §5.4）——主词条满级值、固定副主属性、副词条各档（显示值，比例写小数） */
+const EchoCost = z.union([z.literal(1), z.literal(3), z.literal(4)])
+const EchoStat = z.strictObject({ cost: EchoCost, stat: z.enum(STAT_KEYS), value: z.number().positive() })
+export const GenEchoStatsSchema = z.strictObject({
+  mains: z.array(EchoStat),                         // 各 COST 可选的主词条与满级值
+  fixedSubs: z.array(EchoStat),                     // 固定副主属性：4C 攻击 150、3C 攻击 100、1C 生命 2280
+  subTiers: z.partialRecord(z.enum(STAT_KEYS), z.array(z.number().positive()).min(1)),   // 副词条各档，从低到高
+})
+
 const Bar = z.strictObject({ max: z.number().min(0), recover: z.number().min(0), reduce: z.number() })
 export const GenEnemySchema = z.strictObject({
   id: z.string().min(1),
@@ -390,6 +399,7 @@ export type GenCharacter = z.infer<typeof GenCharacterSchema>
 export type GenWeapon = z.infer<typeof GenWeaponSchema>
 export type GenEcho = z.infer<typeof GenEchoSchema>
 export type GenEchoGroup = z.infer<typeof GenEchoGroupSchema>
+export type GenEchoStats = z.infer<typeof GenEchoStatsSchema>
 export type GenEnemy = z.infer<typeof GenEnemySchema>
 export type GenEffect = z.infer<typeof GenEffectSchema>
 export type GenEffectsFile = z.infer<typeof GenEffectsFileSchema>

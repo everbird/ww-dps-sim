@@ -273,7 +273,15 @@ export interface Summary {
   buffUptime: Record<string, number>        // 0–1，按战斗时钟
   waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   warnings: { code: string; message: string; line?: number }[]
-  perLoop?: { loop: number; dps: number; energyDelta: [number, number, number]; concertoDelta: [number, number, number] }[]
+  /** 分轮（options.repeat ≥ 2；总设计 §3.5、TD-09 §3.7 / §3.9）：第 k 轮 = [本轮 loop 事件, 下一轮 loop 事件)，最后一轮到窗口终点，
+   *  按战斗帧。资源首尾差 = 下一轮开始时（最后一轮：窗口终点）− 本轮开始时，看这条轴能不能自给 */
+  perLoop?: {
+    loop: number; start: number; frames: number; damage: number; dps: number
+    energyDelta: [number, number, number]; concertoDelta: [number, number, number]
+  }[]
+  /** 稳态：完整的轮合起来的 DPS——第 2 轮到倒数第 2 轮（第 1 轮受开局资源影响；最后一轮没有下一轮的边界，
+   *  等下一轮起手的时间算不进来，偏高）；只有 2 轮时取第 2 轮 */
+  steady?: { from: number; to: number; frames: number; damage: number; dps: number }
 }
 
 export interface SimResult {
