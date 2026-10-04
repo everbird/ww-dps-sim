@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from echo_stats import SUB_COLS, build_echo_stats, stat_of_desc  # noqa: E402
+from base_cols import REFERENCE  # noqa: E402
+from echo_stats import build_echo_stats, stat_of_desc  # noqa: E402
 from parse import Issues  # noqa: E402
 
 
@@ -28,7 +29,7 @@ class 声骸属性(unittest.TestCase):
                           ('共鸣效率', 0.32), ('攻击', 150), ('生命', 2280), None, None])
 
     def test_主词条_固定副主属性_副词条各档(self):
-        head = row(**{c: f'PhantomModel.SubAttribute.Rand{c}' for c in SUB_COLS})
+        head = row(**{c: n for c, n in REFERENCE.items() if c in ('BB', 'BC', 'BG', 'BH') or n.startswith('PhantomModel')})
         rows = [head,
                 row(BB='暴击22%', BC=4, BG='攻击150', BH=4, BR=30, CF=0.063, CD=0.064),
                 row(BB='冷凝30%', BC=3, BG='攻击100', BH=3, BR=40, CF=0.069, CD=0.071),

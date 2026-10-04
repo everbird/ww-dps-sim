@@ -28,7 +28,8 @@
 
 ```text
 tools/build/        ① 数据构建（Python + openpyxl）：xlsx → data/generated/
-data/raw/           xlsx（不进 git）
+data/raw/           xlsx（不进 git；可以同时放几个版本，子目录如 archive/ 也行）
+data/xlsx-versions.json  xlsx 版本清单（进 git）：各版本的文件名、sha256、资源版本，current 是构建缺省用的那份
 data/generated/     构建产物（不进 git，公开仓库不发布原作者的数据）；fixtures/ 下是 golden 夹具
 data/curated/       手写数据（进 git）：dmg-join.json、characters/<角色>.ts、weapons.ts …
 src/data/           ② schema、动作装配、注册层（registry.ts 纯函数；load.ts 是 Node 侧读盘）
@@ -44,7 +45,8 @@ docs/               设计文档
 
 ```bash
 pnpm install
-pnpm build:data -- --strict 椿,散华,维里奈   # 读 data/raw/*.xlsx；--strict 名单有未连上的伤害判定时退出码 1
+pnpm build:data -- --strict 椿,散华,维里奈   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
+                                             # --strict 名单有未连上的伤害判定时退出码 1
                                              # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
 pnpm check:data -- --flags 椿,散华,维里奈    # 另外列出这些角色装配后还没处理的 flag（TD-01 §14），以及手填冷却与 nanoka 对不上的地方
@@ -79,3 +81,5 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 3. **自动谐度破坏不拆连段（2026-10-04）**：`options.tuneBreak: auto` 时，队首指令是连段的后续（动作有 `comboFrom`）就先不插，等这串连段打完、队首不是连段后续时再插。谐度破坏会打断当前角色的任何动作（m0-confirm §10 H1），插在连段中间时后面的连段接不上，轴报"只能接在 … 之后"（视频轴第 2 轮的"闪AAAEQ"）。下次改 TD-09 §3.2（插队）、TD-06 §13.4 时并回。
 4. **偏谐通用规则按 xlsx 附页2；椿的两种谐度破坏（2026-10-04）**：构建从「附页2」"偏谐机制·通用"的说明文字（20260707 版 B227）抽出谐破冷却（按敌人 COST：1C / 3C 6 秒、4C 3 秒；红名 3 秒，敌人表里没有红名，不用）与谐度破坏按钮时长（3 秒），写进 `tune-break.json` 的 `rules`（认不出时 null 并警告，仿真按 5 秒、按钮不限时）。真空期改按敌人 COST（去掉 `rules.tuneBreakLock`，改为 `ResolvedScenario.tuneBreakTiming`）；新增按钮：前台角色对失谐目标打出偏谐值不为 0 的一段（让目标失谐的那段也算）后亮 3 秒（战斗帧），亮着才能放谐度破坏，后台的命中不点亮。椿在盛绽里放盛绽谐度破坏（`谐度破坏-时停`，别名 `盛绽·谐度破坏`），白椿放常态的，由钩子 `canStart` 判断，自动插的时候挑钩子允许的那个。m0-confirm §10 H2、H4、H5。下次改 TD-01 §11.3（附页2 不再是"不读"）、TD-02、TD-06 §13 时并回。
 5. **按比例削白条（2026-10-04）**：构建读 dmg CZ 列 `Damage.Percent0`（TD-01 §4 原为"v0 不读，留给 TD-06"），÷ 10000 记在判定的 `dmg.whiteBarRatio`（只在不为 0 时写），装配进 `gauges.whiteBarRatio`；仿真每段按白条上限的这个比例削，与削韧值相加。谐度破坏各段合计 12.5%（附页2 原文同），另有卜灵"重击-震艮"2%、渊武"延奏-削白条"7.5%、釉瑚"诗中物-飞白"0.5%。m0-confirm §10 H3。下次改 TD-01 §4、§11、TD-02、TD-06 §13.2 时并回。
+6. **xlsx 版本清单；构建不怕插行（2026-10-04）**：`data/xlsx-versions.json` 记各版本 xlsx 的文件名、sha256、资源版本与 `current`，构建缺省用 current（在 `data/raw/` 及子目录里按文件名找、核对哈希，`tools/build/versions.py`），换版本只改 current（总设计 T15）。20261003 版在 base 页插了一列、「伤害计算」「伤害配置」整段下移，所以构建不再写死位置：base 页的列按第 55 行表头名找（`base_cols.py`）；「伤害计算」的角色块、两张表按标记行找（A 列"其他"、"光噪效应（对目标）"、谐度破坏表头）；golden 拆乘区时「伤害配置」的行号按段名（A 列 def、dmgchg、dmgampl1-9…、面板、聚爆效应121）平移，谐度破坏 / 异常效应按 base 表头认。20260707 版的产出逐字节不变。另：角色三维的 schema 允许防御为 0（20261003 版景燃就是 0，构建警告）；T03-7b、M2-6 按 golden 夹具里计算器的配置算（不再写死秧秧·玄翎）。下次改 TD-01 §1、§5、§11 与总设计 T15 时并回。
+7. **数据切到 20261003 版（2026-10-04）**：`data/xlsx-versions.json` 的 current 改为 20261003（资源版本 3.6.13），nanoka 仍按 3.7 构建。对 M0 三人只有两处变化：散华"大招-引爆冰川"协奏 0 → 15（视频轴里散华切维里奈从隔轮变奏变成每轮变奏）、谐度破坏按钮 3 → 5 秒（附页2）；M0 代表轴稳态 DPS 不变（29,368），场景快照不变。写死旧版数字的全量用例改成新版的（声骸 85、动作组 1721、例外组 23、连段 130、golden 分类 3163 / 173 / 30 / 52），场景的 `data` 改为 "20261003"。设计文档里写的 20260707 与 xlsx 行号（如椿 R1792，新版 R2014）下次并回时改；m0-confirm 开头注明了新旧行号的换算。

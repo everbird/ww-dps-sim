@@ -1,11 +1,13 @@
 """谐度破坏表 → tune-break.json（TD-01 §5.4、§11.3；公式见 TD-03 §6）。
 
 - 变体：dmg「通用」块的"谐度破坏-<武器><段>"行，倍率取 RateLv_1 × 0.0001（TD-01 §4.3：谐度破坏只有 1 级）。
-- 结算次数与对照值：「伤害计算」谐度破坏表（R1095 表头起，B 名称、D 倍率、E 对失谐伤害、F 对常态伤害、G 结算次数），
+- 结算次数与对照值：「伤害计算」谐度破坏表（B 列"谐度破坏"、D 列"倍率"的表头起；20260707 版 R1095，20261003 版 R1183；
+  B 名称、D 倍率、E 对失谐伤害、F 对常态伤害、G 结算次数），
   按名字对上变体（"迅刀-1" ↔ "谐度破坏-迅刀1"、"佩枪" ↔ "谐度破坏-佩枪"）；"对COST1/3/4通用"三行原样存 costRows。
-- 基础值：base 页 AO 列 WeaknessDamageBaseValue，按 AM 列等级（第 56–155 行），下标 = 等级 − 1。基础值按**角色**等级取
+- 基础值：base 页 WeaknessDamageBaseValue 列（20260707 版 AO），按 AbnormalDamageLv 列的等级（AM，第 56–155 行），下标 = 等级 − 1。基础值按**角色**等级取
   （xlsx 公式用「伤害配置」C3 的角色等级，2026-10-04 核对，m0-confirm §9.1）。
-- COST 系数：base 页第 56–58 行 R 列 COST、T 列 WeaknessDamageMinus、U 列 WeaknessDamageMinusRatio，系数 = T × U。
+- COST 系数：base 页第 56–58 行 WeaknessDamageMonsterCost、WeaknessDamageMinus、WeaknessDamageMinusRatio（20260707 版 R、T、U），
+  系数 = Minus × MinusRatio。base 页的列都按第 55 行表头名找（base_cols.py）。
 - 规则：「附页2」"偏谐机制·通用"那段文字（20260707 版在 B227）里的谐破冷却（按 COST1/3/4/红名，秒）与谐度破坏
   按钮亮多久（"交互按键持续n秒"）。只有说明文字，没有数表，按原句抽；写法变了认不出就警告、记 null（m0-confirm §10 H2、H4）。
 """
@@ -13,12 +15,9 @@ from __future__ import annotations
 
 import re
 
-from openpyxl.utils import column_index_from_string as ci
-
 from parse import Issues, as_num, blank
 
 WEAPONS = ('长刃', '迅刀', '佩枪', '臂铠', '音感仪')
-TABLE_ROWS = (1095, 1106)                     # 「伤害计算」谐度破坏表：表头 + 3 行 COST 通用 + 8 行武器
 _VARIANT = re.compile(r'^谐度破坏-(长刃|迅刀|佩枪|臂铠|音感仪)(\d*)$')
 _TABLE_NAME = re.compile(r'^(长刃|迅刀|佩枪|臂铠|音感仪)(?:-(\d+))?$')
 _LOCK = re.compile(r'COST1/3/4/红名目标分别冷却([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+)秒')
@@ -45,12 +44,31 @@ def parse_tune_rules(notes: list, issues: Issues) -> dict | None:
     return None
 
 
-def build_tune_break(dmg: dict, table_rows: list, base_rows: list, issues: Issues, notes: list = ()) -> dict:
-    """dmg：index_dmg 的结果；table_rows：「伤害计算」R1095–R1106 的 A–G 列（values_only）；base_rows：base 页第 56 行起；
-    notes：「附页2」的 (坐标, 文本)，抽规则用"""
+def find_table(calc_rows: list) -> tuple[int, list]:
+    """「伤害计算」里的谐度破坏表：B 列"谐度破坏"、D 列"倍率"的表头起，到 B 列为空的前一行（表头 + 3 行 COST 通用 + 8 行武器）。
+    calc_rows：第 1 行起的 A–G 列；返回 (表头行号, 表头起的各行)，找不到为 (0, [])"""
+    for i, r in enumerate(calc_rows):
+        r = list(r) + [None] * 7
+        if isinstance(r[1], str) and r[1].strip() == '谐度破坏' and r[3] == '倍率':
+            out = [r]
+            for x in calc_rows[i + 1:]:
+                x = list(x) + [None] * 7
+                if blank(x[1]):
+                    break
+                out.append(x)
+            return i + 1, out
+    return 0, []
+
+
+def build_tune_break(dmg: dict, calc_rows: list, base_rows: list, col, issues: Issues, notes: list = ()) -> dict:
+    """dmg：index_dmg 的结果；calc_rows：「伤害计算」第 1 行起的 A–G 列（values_only），从中找谐度破坏表；
+    base_rows：base 页第 56 行起；col：base 页的列（BaseCols）；notes：「附页2」的 (坐标, 文本)，抽规则用"""
     table = {}
     cost_rows = []
-    for n, r in enumerate(table_rows, start=TABLE_ROWS[0]):
+    start, table_rows = find_table(calc_rows)
+    if not table_rows:
+        issues.add('warn', '「伤害计算」里找不到谐度破坏表', '伤害计算')
+    for n, r in enumerate(table_rows, start=start):
         r = list(r) + [None] * 7
         name = r[1]
         if not isinstance(name, str) or name.strip() == '谐度破坏':
@@ -91,20 +109,22 @@ def build_tune_break(dmg: dict, table_rows: list, base_rows: list, issues: Issue
         if not any(v['weaponType'] == w for v in variants):
             issues.add('warn', '谐度破坏缺武器类型', w)
 
-    def cell(r, col):
-        i = ci(col) - 1
+    def cell(r, i):
         return r[i] if i < len(r) else None
+
+    i_lv, i_base = col('AbnormalDamageLv'), col('WeaknessDamageBaseValue')
+    i_cost, i_minus, i_ratio = col('WeaknessDamageMonsterCost'), col('WeaknessDamageMinus'), col('WeaknessDamageMinusRatio')
 
     base = [0.0] * 100
     for r in base_rows[:100]:
-        lv, v = cell(r, 'AM'), cell(r, 'AO')
+        lv, v = cell(r, i_lv), cell(r, i_base)
         if isinstance(lv, (int, float)) and 1 <= lv <= 100 and isinstance(v, (int, float)):
             base[int(lv) - 1] = as_num(float(v))
     if not all(base):
         issues.add('warn', '谐度破坏基础值缺等级', f'{sum(1 for x in base if not x)} 级没有值')
     factors = []
     for r in base_rows[:3]:
-        cost, t, u = cell(r, 'R'), cell(r, 'T'), cell(r, 'U')
+        cost, t, u = cell(r, i_cost), cell(r, i_minus), cell(r, i_ratio)
         if cost in (1, 3, 4) and isinstance(t, (int, float)) and isinstance(u, (int, float)):
             factors.append({'cost': int(cost), 'factor': float(t) * float(u)})
     if sorted(f['cost'] for f in factors) != [1, 3, 4]:

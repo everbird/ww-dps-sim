@@ -145,7 +145,8 @@ export const GenActionFileSchema = z.strictObject({
 // ---------------------------------------------------------------------------
 // 角色（TD-01 §5.2、§12.3）
 
-const Stat3 = z.strictObject({ hp: z.number().positive(), atk: z.number().positive(), def: z.number().positive() })
+// 防御可以是 0：20261003 版主表里景燃的防御就是 0（构建会警告"主表三维有 0"）
+const Stat3 = z.strictObject({ hp: z.number().positive(), atk: z.number().positive(), def: z.number().min(0) })
 
 export const GenCharacterSchema = z.strictObject({
   key: z.string().min(1),

@@ -8,6 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from openpyxl.utils import column_index_from_string as ci  # noqa: E402
+from base_cols import BaseCols  # noqa: E402
 from parse import Issues  # noqa: E402
 from tune_break import build_tune_break, parse_tune_rules  # noqa: E402
 
@@ -51,7 +52,7 @@ class 谐度破坏表(unittest.TestCase):
                 base_row(R=4, T=0.00258745874782178, U=1.00264699923041, AM=3, AO=30000)]
         base += [base_row(AM=lv, AO=1000 * lv) for lv in range(4, 101)]
         issues = Issues()
-        t = build_tune_break(dmg, table, base, issues, [('A1', '偏谐机制·通用'), ('B227', RULES_TEXT)])
+        t = build_tune_break(dmg, table, base, BaseCols.reference(), issues, [('A1', '偏谐机制·通用'), ('B227', RULES_TEXT)])
         self.assertEqual([(v['key'], v['weaponType'], v['seq'], v['multiplier'], v['ticks']) for v in t['variants']], [
             ('谐度破坏-迅刀1', '迅刀', 1, 1, 4), ('谐度破坏-迅刀2', '迅刀', 2, 12, 1), ('谐度破坏-音感仪', '音感仪', None, 16, 1)])
         self.assertEqual(t['variants'][0]['golden'], {'vsDisharmony': 3917, 'vsNormal': 1})

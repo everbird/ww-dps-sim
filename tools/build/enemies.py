@@ -22,13 +22,15 @@ def _num(v, default=None):
         return default
 
 
-def rage_index(prop_rows: list, base_rows: list) -> dict:
-    """prop 第 1 行表头起 → {(名称, 类型): 白条（削韧值）}；base_rows：base 页第 56 行起（M–O 列是 PropExtraRate 表）"""
+def rage_index(prop_rows: list, base_rows: list, col) -> dict:
+    """prop 第 1 行表头起 → {(名称, 类型): 白条（削韧值）}；base_rows：base 页第 56 行起，col：base 页的列（BaseCols）
+    （PropExtraRateId 与 PropExtraRate.Tough&Rage 两列）"""
+    i_id, i_rate = col('PropExtraRateId'), col('PropExtraRate.Tough&Rage')
     extra = {}
     for r in base_rows:
-        r = list(r) + [None] * 15
-        if r[12] is not None and isinstance(r[14], (int, float)):
-            extra[r[12]] = r[14] / 10000
+        r = list(r) + [None] * (i_rate + 1)
+        if r[i_id] is not None and isinstance(r[i_rate], (int, float)):
+            extra[r[i_id]] = r[i_rate] / 10000
     if not prop_rows:
         return {}
     head = [str(h).strip() if h is not None else '' for h in prop_rows[0]]

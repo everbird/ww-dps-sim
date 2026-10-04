@@ -1,6 +1,6 @@
 # M2 单人轴示例：只有散华出招（M0 队伍的配置见 docs/m0-confirm.md 第 4 节）。
 # 声骸还没接（echoes.json 在 M3），这里不写；共鸣链与武器精炼按 m0-confirm 填。
-data: "20260707"
+data: "20261003"
 team:
   - char: 椿
     chain: 0

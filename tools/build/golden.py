@@ -18,9 +18,40 @@ CALC = '伤害计算'
 CFG = '伤害配置'
 SHEETS = (CALC, CFG, 'dmg', 'base', 'prop')        # 标准答案公式引用到的表
 GROUP_STARTS = ('B', 'H', 'N', 'T', 'Z')          # 列组起点：名称 | 空 | 未暴击 | 暴击 | 结算次数
-FIRST_ROW, LAST_ROW = 4, 1026                     # 角色块（TD-01 §11.1）
-TABLE_ROWS = (1039, 1106)                         # 异常效应逐层表、谐度破坏表（TD-03 §9.1）
+FIRST_ROW, LAST_ROW = 4, 1026                     # 角色块（TD-01 §11.1）；末行按 A 列"其他"定位，这里是 20260707 版的值
+TABLE_ROWS = (1039, 1106)                         # 异常效应逐层表、谐度破坏表（TD-03 §9.1）；按表头定位，同上
+# 「伤害配置」各段：A 列段名 → 20260707 版段首的行。下文写的「伤害配置」行号都是 20260707 版的，用时按所在段的段首平移
+# （Classifier.r）：xlsx 插行不影响。20261003 版整体下移 117 行，面板之后又多 2 行
+CFG_SECTIONS = {'def': 1792, 'def99': 1817, 'dmgchg': 1867, 'dmgrd': 1892, 'dmgampl1-9(37&38)': 1917,
+                'dmgpost0_6(127&128)': 2025, 'dmgampl0(37&38)': 2114, 'dmgamplxxxx(37&38)': 2139, '面板': 2147,
+                '聚爆效应121': 2621}
 SECTION_TAIL = re.compile(r'(\d+级|已激活|未激活|技能)$')
+
+
+def calc_layout(values: dict) -> tuple[int, int, int]:
+    """「伤害计算」各段的行：(角色块末行, 两张表的首行, 末行)。角色块到 A 列"其他"的上一行；表从 B 列"光噪效应（对目标）"起，
+    到谐度破坏表（B 列"谐度破坏"、D 列"倍率"的表头）连续有行名的最后一行。找不到的按 20260707 版"""
+    text = lambda c: str(values.get(c) or '').strip()          # noqa: E731
+    rows = sorted({split_coord(k)[1] for k in values})
+    other = next((r for r in rows if text(f'A{r}') == '其他'), None)
+    lo = next((r for r in rows if text(f'B{r}') == '光噪效应（对目标）'), TABLE_ROWS[0])
+    hi = next((r for r in rows if text(f'B{r}') == '谐度破坏' and values.get(f'D{r}') == '倍率'), None)
+    if hi is None:
+        hi = TABLE_ROWS[1]
+    else:
+        while text(f'B{hi + 1}'):
+            hi += 1
+    return (other - 1 if other else LAST_ROW), lo, hi
+
+
+def cfg_shifts(cfg: dict) -> dict[int, int]:
+    """「伤害配置」各段段首比 20260707 版下移了几行：{20260707 版段首: 下移行数}；A 列找不到段名的不在里面"""
+    out = {}
+    for coord, v in cfg.items():
+        if coord[0] == 'A' and coord[1:].isdigit() and isinstance(v, str) and v.strip() in CFG_SECTIONS:
+            old = CFG_SECTIONS[v.strip()]
+            out[old] = int(coord[1:]) - old
+    return out
 
 
 def _cols(start: str) -> tuple[str, str, str]:
@@ -44,7 +75,8 @@ def golden_damage(values: dict, current_char: str | None, dmg_by_calc: dict[tupl
     entries = []
     char = None
     sections: dict[str, str | None] = {}
-    for r in range(FIRST_ROW, LAST_ROW + 1):
+    last, _, _ = calc_layout(values)
+    for r in range(FIRST_ROW, last + 1):
         a = values.get(f'A{r}')
         if isinstance(a, str) and a.strip():
             char, sections = a.strip(), {}
@@ -207,6 +239,19 @@ class Classifier:
     def __init__(self, ev: Evaluator) -> None:
         self.ev = ev
         self.cfg = ev.values.get(CFG, {})
+        self.shift = cfg_shifts(self.cfg)
+        # base 页的列按第 55 行表头认（xlsx 会插列）；没有表头的（测试的迷你工作簿）按 20260707 版：AO 谐度破坏、AN 异常效应
+        hdr = {}
+        for coord, v in ev.values.get('base', {}).items():
+            c, r = split_coord(coord)
+            if r == 55 and isinstance(v, str):
+                hdr[c] = v.strip()
+        self.base_names = hdr or {col_index('AO'): 'WeaknessDamageBaseValue', col_index('AN'): 'AbnomalDamage'}
+
+    def r(self, row: int) -> int:
+        """20260707 版「伤害配置」的行号 → 这份 xlsx 的行号：按所在段的段首平移（找不到段名就不动）"""
+        head = max((v for v in CFG_SECTIONS.values() if v <= row), default=None)
+        return row + self.shift.get(head, 0) if head is not None else row
 
     def val(self, n: Node, here: str) -> float:
         return self.ev.number(n, here)
@@ -317,7 +362,8 @@ class Classifier:
                 self.base_info(f, here, g)
                 refs = [x.value for x in _walk(f) if x.kind == 'ref' and x.value.sheet in ('dmg', 'base')]
                 cols = {(r.sheet, col_letter(r.c1)) for r in refs}
-                kind = 'tune' if ('base', 'AO') in cols else 'abnormal' if ('base', 'AN') in cols \
+                names = {self.base_names.get(r.c1) for r in refs if r.sheet == 'base'}
+                kind = 'tune' if 'WeaknessDamageBaseValue' in names else 'abnormal' if 'AbnomalDamage' in names \
                     else 'whitebar' if ('dmg', 'CZ') in cols else None
                 continue
             if _is_num(s):
@@ -347,7 +393,7 @@ class Classifier:
             # 直接引用预先算好的格：R1792–R1815 防御 / 抗性系数，R2139–R2142 霜冻 1002 类，暴伤格
             if s.kind == 'ref' and first:
                 c, rw = first
-                if 1792 <= rw <= 1815:
+                if self.r(1792) <= rw <= self.r(1815):
                     inner = self.cell_formula(c, rw)
                     ref_txt = f'{CFG}!{col_letter(c)}{rw}'
                     if c <= col_index('L'):
@@ -360,7 +406,7 @@ class Classifier:
                             z['res'] = rr
                             g['resRef'] = ref_txt
                             continue
-                if 2139 <= rw <= 2142:
+                if self.r(2139) <= rw <= self.r(2142):
                     z['amp1002'] = self.val(f, here) - 1
                     continue
             # MAX(…, 0)：加深 / 最终伤害
@@ -370,12 +416,13 @@ class Classifier:
             # (1 + …)
             ok, sign = _one_plus(f) if f.kind == 'paren' else (False, 0)
             if ok and sign > 0:
-                if any(r == 2622 for _, r in cfg):
+                if any(r == self.r(2622) for _, r in cfg):
                     notes.append('「聚爆效应121」因子按 0 类加深并入（TD-06 再定）')
                 self.put(z, self.plus_slot(f, here), self.plus_x(f, here), notes)
                 continue
             # 暴伤：R1867–R1890 右半，或面板暴伤 F2148
-            if first and ((1867 <= first[1] <= 1890 and first[0] >= col_index('M')) or first == (col_index('F'), 2148)):
+            if first and ((self.r(1867) <= first[1] <= self.r(1890) and first[0] >= col_index('M'))
+                          or first == (col_index('F'), self.r(2148))):
                 z['crit'] = self.val(f, here)
                 continue
             other = (other or 1.0) * self.val(f, here)
@@ -427,15 +474,15 @@ class Classifier:
 
     def plus_slot(self, f: Node, here: str) -> str:
         cells = set(_cfg_cells(f, here))
-        if any(r == 2622 for _, r in cells):
+        if any(r == self.r(2622) for _, r in cells):
             return 'amp0'          # 「聚爆效应121」：乘在聚爆效应伤害上的独立因子，按效应加深并入 0 类（TD-03 §9.4 漏记，TD-06 再定）
-        if (col_index('I'), 2150) in cells:
+        if (col_index('I'), self.r(2150)) in cells:
             return 'special'
-        if (col_index('C'), 2162) in cells:
+        if (col_index('C'), self.r(2162)) in cells:
             return 'breakBoost'
-        if (col_index('S'), 2148) in cells or (col_index('Q'), 2150) in cells:
+        if (col_index('S'), self.r(2148)) in cells or (col_index('Q'), self.r(2150)) in cells:
             return 'heal'
-        if (col_index('B'), 2164) in cells:
+        if (col_index('B'), self.r(2164)) in cells:
             return 'fin1001'
         return 'bonus'
 
@@ -468,19 +515,19 @@ class Classifier:
                 self.put(z, 'amp0', v, notes)
                 return True
             c, r = cells[0]
-            if 1917 <= r <= 2023:
+            if self.r(1917) <= r <= self.r(2023):
                 k = _grid_class(self.cfg, c, r)
                 if k is None or not 1 <= k <= 9:
                     notes.append(f'加深类别不认识：{col_letter(c)}{r}')
                     return False
                 self.put_class(z, 'amp', 9, k - 1, v, notes)
-            elif 2025 <= r <= 2112:
+            elif self.r(2025) <= r <= self.r(2112):
                 k = _grid_class(self.cfg, c, r)
                 if k is None or not 0 <= k <= 7:
                     notes.append(f'最终伤害类别不认识：{col_letter(c)}{r}')
                     return False
                 self.put_class(z, 'fin', 8, k, v, notes)
-            elif (2114 <= r <= 2137 and c >= col_index('M')) or (c, r) == (col_index('B'), 2164):
+            elif (self.r(2114) <= r <= self.r(2137) and c >= col_index('M')) or (c, r) == (col_index('B'), self.r(2164)):
                 self.put(z, 'fin1001', v, notes)
             else:
                 self.put(z, 'amp0', v, notes)
@@ -503,17 +550,17 @@ class Classifier:
 
 
 def golden_cells(calc_values: dict, calc_formulas: dict) -> list[tuple[str, str, str]]:
-    """标准答案格：R4–R1026 各列组的未暴击 / 暴击格，R1039–R1106 两张表里以 CEILING 开头的格。
+    """标准答案格：角色块（20260707 版 R4–R1026）各列组的未暴击 / 暴击格，两张表（R1039–R1106）里以 CEILING 开头的格。
     返回 [(坐标, 条目名, 'nc' | 'cr')]"""
     out = []
-    for r in range(FIRST_ROW, LAST_ROW + 1):
+    last, lo, hi = calc_layout(calc_values)
+    for r in range(FIRST_ROW, last + 1):
         for start in GROUP_STARTS:
             nc_col, cr_col, _ = _cols(start)
             for col, br in ((nc_col, 'nc'), (cr_col, 'cr')):
                 src = calc_formulas.get(f'{col}{r}')
                 if isinstance(src, str) and src.startswith('=CEILING'):
                     out.append((f'{col}{r}', str(calc_values.get(f'{start}{r}') or '').strip(), br))
-    lo, hi = TABLE_ROWS
     for coord, src in calc_formulas.items():
         c, r = split_coord(coord)
         if lo <= r <= hi and isinstance(src, str) and src.startswith('=CEILING'):
@@ -556,6 +603,10 @@ def golden_zones(ev: Evaluator) -> tuple[list[dict], dict]:
     out: list[dict] = []
     skipped: Counter = Counter()
     problems: list[tuple[str, str, str]] = []
+    if calc_v:
+        missing = [k for k, v in CFG_SECTIONS.items() if v not in cls.shift]
+        if missing:
+            problems.append(('伤害配置', 'A 列', f'找不到段名 {"、".join(missing)}，这些段按 20260707 版的行号'))
     for coord, name, br in golden_cells(calc_v, calc_f):
         try:
             g, why, notes = cls.classify(coord, calc_f[coord], name, br)

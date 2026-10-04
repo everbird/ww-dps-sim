@@ -117,6 +117,7 @@ dataDescribe('M2 单人仿真', () => {
     const gold = GoldenDamageSchema.parse(JSON.parse(readFileSync(new URL('../data/generated/fixtures/golden-damage.json', import.meta.url), 'utf8')))
     const zones = GoldenZonesSchema.parse(JSON.parse(readFileSync(new URL('../data/generated/fixtures/golden-zones.json', import.meta.url), 'utf8')))
     const byCell = new Map(zones.map(z => [z.cell, z]))
+    const atk = Number(gold.context.panel['攻击'])
     const colOf = (start: string, k: 2 | 3) => String.fromCharCode(start.charCodeAt(0) + k)
     let checked = 0
     const bad: string[] = []
@@ -130,7 +131,7 @@ dataDescribe('M2 单人仿真', () => {
           const z = byCell.get(`${colOf(e.col, k)}${e.row}`)
           if (!z || z.formula !== 'hurt' || z.table !== 'dmg!AH') continue
           for (const j of js) {
-            const got = hurtWith(z, j.multiplier, 1928)          // xlsx 当前配置：秧秧·玄翎 攻击 1928
+            const got = hurtWith(z, j.multiplier, atk)           // xlsx 计算器当前角色的攻击（20260707 版秧秧·玄翎 1928）
             checked++
             if (got !== z.expected) bad.push(`${name} ${e.label}（${j.name}，${br}）：${got} ≠ ${z.expected}`)
           }

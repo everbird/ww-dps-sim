@@ -294,8 +294,8 @@ dataDescribe('T09-11 全量：每条普攻连段按默认与强制各连按一�
       } catch { broken.push(`${key} ${chain.join('→')}`) }
     }
   }
-  test('119 条连段，默认策略没有把任何一条等断；断的只有凌阳 A3 → A4（A4 起手优先级 2 低于 A3 的 3，数据问题）', () => {
-    expect(chains).toBe(119)
+  test('130 条连段，默认策略没有把任何一条等断；断的只有凌阳 A3 → A4（A4 起手优先级 2 低于 A3 的 3，数据问题）', () => {
+    expect(chains).toBe(130)                                                 // 20261003 版（20260707 版 119）
     expect(broken).toEqual(['凌阳 A1→A2→A3→A4→A5'])
   })
   test('前置动作没有派生窗口的 7 组不设连段前置（comboNoWindow）', () => {
