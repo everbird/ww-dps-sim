@@ -1,11 +1,11 @@
-// tests/timeline.test.ts —— 时间轴网页的数据与嵌入（src/cli/timeline.ts；网页本身是 web/timeline.html，不在这里测）；
+// tests/timeline.test.ts —— 时间轴网页的数据与嵌入（src/report/timeline.ts；网页本身是 web/timeline.html，不在这里测）；
 // 调试表与视频时间点（TD-11 §6 P3）
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { renderTimeline, timelineModel } from '../src/cli/timeline'
+import { renderTimeline, timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData } from './helpers/synth'
 

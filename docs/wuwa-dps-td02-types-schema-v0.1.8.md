@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.7
+# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.8
 
-> **状态**：v0.1.7（2026-10-04），已实现。v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
+> **状态**：v0.1.8（2026-10-05），已实现。v0.1.8 并回补位、开局核心资源、视频时间点与核心资源改名（以"v0.1.8"标出）；v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订；v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》（下称"TD-09"）§9.2 与 M0 确认（`docs/m0-confirm.md`）修订
 > **下游**：全部模块的代码；TD-03（伤害公式，已据其定稿乘区清单）、TD-04（仿真内核，已据其定稿运行时字段）、TD-07 定 BuffDef 语义、TD-09 定排轴语义、TD-10 定事件与汇总字段
 > **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-01 的 14 个、TD-03 的 20 个、TD-04 的 35 个、TD-09 的 33 个用例也全部通过）；构建脚本在 20260707 全量数据上产出的生成文件，逐一用本文的 schema 校验通过（9.2）
@@ -247,7 +247,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 |---|---|
 | `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、judgments（`JudgmentOverride`）、accept |
 | `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange；v0.1.5 新增 element、relatedAttr、heals |
-| `CharacterModule` | weaponType、bodyType?、mergeBlocks?、coreCaps?、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides? |
+| `CharacterModule` | weaponType、bodyType?、mergeBlocks?、coreCaps?、coreNames?（v0.1.8：改核心资源槽名，如椿槽 1"红椿·蕊1"→"红椿·蕊"；写了不存在的槽、改完重名都报错）、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides? |
 | `WeaponModule` | name、passives、**resourceEffects?** |
 | `EchoModule` | v0.1.5：name、cost?、mainSlotBuffs?、resourceEffects?、actionOverrides?（键是声骸动作 ID；去掉了 v0.1.3 的 `multipliers`，倍率改在 `judgments` 里写或连 nanoka，TD-01 §13.3） |
 | `EchoSetModule`、`DmgJoinMap` | 同 v0.1.3 |
@@ -278,12 +278,13 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 | team（3 人） | char、chain、weapon `{ name, rank }`、echoes（≤ 5 件：name、set、main、subs） |
 | enemy | `{ preset }` 或 `{ custom: { level, def?, res, cost, hp?, whiteBar?, paralysisSec?, tunabilityMax? } }`；v0.1.6：自定义敌人的 `whiteBar` 按削韧值计，新增 `paralysisSec` |
 | environment | 场景 buff 的 id |
-| initial | energy（'full' / 'empty' / 三人各值）、concerto、onField |
+| initial | energy（'full' / 'empty' / 三人各值）、concerto、onField、core（v0.1.8：`{ 角色: { 核心资源名: 值 } }`，缺省 0；不在队伍、没有这个资源、超过上限都报错，TD-06 Q7） |
 | rotation | 排轴行（语法见 TD-09 §2）；空行与 null 不产生指令 |
 | opening? | v0.1.7：启动轴，语法同 rotation，只跑一次、记为第 0 轮（TD-09 §3.7） |
+| video? | v0.1.8：视频时间点 `{ url?, loop = 2, marks: { 第几条: "分:秒" \| 秒数 } }`，只给 `pnpm trace` 与时间轴网页对照用，不影响仿真（TD-11 §6.3） |
 | options | repeat、maxFrames、maxWait、endAt?、rules?、tuneBreak（v0.1.6：`auto` / `manual` / `off`，缺省 `auto`，TD-06 §13.4） |
 
-`RotationItem` / `parseRotationLine`：一行解析成多条指令；`Command`：编译后的指令（act / switch / wait，测试台另有 at）。v0.1.6：act 新增 `optional?: true`（排轴里的可选后缀 `?`，TD-09 §2）。
+`RotationItem` / `parseRotationLine`：一行解析成多条指令；`Command`：编译后的指令（act / switch / wait，测试台另有 at）。v0.1.6：act 新增 `optional?: true`（排轴里的可选后缀 `?`，TD-09 §2）。v0.1.8：act 新增 `filler?: true`（补位后缀 `~`，TD-09 §2.2）。
 
 
 - CLI 先用 `yaml` 包把文本解析成对象，再交给 `ScenarioSchema`；网页编辑器直接交对象，两边同一套校验（总设计第 8 节）。
@@ -325,7 +326,7 @@ rotation:
 
 | 类型 | 主要字段 |
 |---|---|
-| `ResolvedScenario` | data、team、enemy、buffs、**effects**、commands、opening（v0.1.7：启动轴编译后的指令）、initial、rules、tuneBreakTiming（v0.1.7：`{ lockFrames, buttonFrames \| null }`，按敌人 COST 取）、options、warnings |
+| `ResolvedScenario` | data、team、enemy、buffs、**effects**、commands、opening（v0.1.7：启动轴编译后的指令）、initial（v0.1.8：加 `core`，三人各 5 槽）、rules、tuneBreakTiming（v0.1.7：`{ lockFrames, buttonFrames \| null }`，按敌人 COST 取）、options、warnings |
 | `ResolvedMember`、`StaticPanel`、`StatParts` | 队员：def、chain、weapon、echoes（v0.1.5：`def` 可为 null——不在声骸表里的非首位声骸，只计入词条与套装）、静态面板、动作表（含首位声骸的 `Q·…`）、别名（含 `Q`） |
 | `RegisteredBuff` / **`RegisteredEffect`** | def、value / amount（已按谐振阶取值）、owner |
 | `SimState` | frame、battleFrames、onField、switchCd、chars、judgments、tails、buffs、enemy、dilations、queue、log、nextId、**outroLinks**、**pendingNextIn**、**lastTrigger** |
@@ -335,7 +336,7 @@ rotation:
 | `JudgmentRuntime` | id、owner、action、actionInstance、def、spawnedAt、age、ticksDone、**detached?** |
 | `EnemyRuntime` | preset、whiteBar（v0.1.6 起按削韧值）、broken、paralyzedUntil（v0.1.6）、poise、tunability、disharmony、tunabilityLockedUntil、tuneButtonUntil（v0.1.7：谐度破坏按钮亮到这一战斗帧）、tuneBreakBy?（v0.1.6：消耗这次失谐的谐度破坏动作实例）、shift?、interference?、effects、responseCd |
 | `QueueState` | 同 v0.1.3；v0.1.7：`opening`（启动轴的指令；有启动轴时从第 0 轮开始） |
-| `BuffRuntime`、`DilationRuntime`、`Rates`、`WaitSegment`、`WaitCode`、`CommandRef`、`TimelineEvent` | 同 v0.1.3 |
+| `BuffRuntime`、`DilationRuntime`、`Rates`、`WaitSegment`、`WaitCode`、`CommandRef`、`TimelineEvent` | 同 v0.1.3；v0.1.8：`WaitCode` 加 `filler`（只用于 skip 事件） |
 | `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn / hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource / **resourceFull** / heal（v0.1.5：char、source）/ enemyState（v0.1.6：change 新增 `breakEnd`，`ENEMY_STATE_CHANGES`）/ effectTick / wait / skip（v0.1.6：cmd、code、reason，可选指令被跳过）/ loop / warning |
 | `Summary` | totalDamage、windowFrames、dps、overflowDamage、byChar、byAction、resourceTimeline、buffUptime、waits、warnings、perLoop?（v0.1.5：loop、start、frames、damage、dps、energyDelta、concertoDelta）、steady?（v0.1.5：from、to、frames、damage、dps）、enemy（v0.1.6：disharmony、tuneBreaks、tuneBreakDamage、breaks）、skipped（v0.1.6：line、item、loop、reason）（TD-10） |
 | `SimResult` | log、summary、error?（code：comboBroken / timeout / maxFrames / notOnField / switchSelf / **chainDepth** / **invariant**） |
@@ -390,7 +391,8 @@ rotation:
 | 场景 · 成员 | `chain` / `weapon.rank` / `echoes` | 0 / 1 / `[]` |
 | 场景 · 声骸 | `subs` | `{}` |
 | 场景 | `environment` | `[]` |
-| 场景 · initial | `energy` / `concerto` / `onField` | `'full'` / 0 / 0 |
+| 场景 · initial | `energy` / `concerto` / `onField` / `core` | `'full'` / 0 / 0 / `{}` |
+| 场景 · video | `loop` | 2 |
 | 场景 · options | `repeat` / `maxFrames` / `maxWait` | 1 / 3600 / 600 |
 | BuffDef | `maxStacks` / `stackGain` / `onSwitchOut` / `refresh` | 1 / 1 / `'persist'` / `'refresh'` |
 | BuffDef · trigger.where | `by` | `'self'` |
@@ -468,3 +470,4 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1.5（2026-10-04）**：并回声骸与 M5 新增的类型与字段（AGENTS.md 差异 1–4）。生成 schema：`GenEchoSchema` / `GenEchoGroupSchema` 按实现定型（技能版本、多段、体型、`textKind`、flags），新增 `GenEchoStatsSchema`；`GenDmgSchema.via` 新增 `'nanoka'`；`NanokaFileSchema` 新增 `echoes` / `echoSets`；`common.ts` 新增 `ECHO_BODIES`、`ECHO_BODY_BY_TYPE`。静态数据：`EchoDef` 重写、`GameData.echoStats`、`ActionDef.charges` / `summon`、`JudgmentDef.heals`。手写数据：`EchoModule` 新增 `resourceEffects`、`actionOverrides`，去掉 `multipliers`；`ActionOverride` 新增 `charges`、`summon`；`JudgmentOverride` 新增 `element`、`relatedAttr`、`heals`；BuffDef 的触发事件新增 `heal`、`where.ownerHas`。引擎：`ResolvedMember.echoes[].def` 可为 null、`CharRuntime.charges`、`SimEvent` 新增 `heal`、`HookContext.heal`、`Summary.perLoop` 定型与 `steady`。Q4 更新。
 - **v0.1.6（2026-10-04）**：并回 M4 敌人量表新增的类型与字段（TD-06 v0.2 §17、AGENTS.md 差异 1）。`ACTION_KINDS` 加 `tuneBreak`；生成 schema：`GenEnemySchema.whiteBarTough`，`GenTuneBreakSchema` 已产出；`EnemyPreset` 加 `whiteBarTough`、`paralysisFrames`；`Rules` 加 `tuneBreakLock`，`breakEnergy` 写明含义；场景 `options.tuneBreak`，自定义敌人 `whiteBar` 按削韧值、加 `paralysisSec`；`Command` / `RotationItem` 加 `optional`；`EnemyRuntime` 加 `paralyzedUntil`、`tuneBreakBy`；`SimEvent` 加 `skip`，`enemyState` 的 change 加 `breakEnd`；`Summary` 加 `enemy`、`skipped`。
 - **v0.1.7（2026-10-04）**：并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（AGENTS.md 差异 1、2、4–6）。生成 schema：`GenTuneBreakSchema.rules`、`GenDmgSchema.whiteBarRatio?`，角色三维的防御可以是 0；`TuneBreakTable.rules`；`JudgmentDef.gauges.whiteBarRatio?`；`Rules.tuneBreakLock` 去掉，`ResolvedScenario` 加 `opening`、`tuneBreakTiming`；`QueueState.opening`；`EnemyRuntime.tuneButtonUntil`；场景加 `opening`；`hit.enemy`。
+- **v0.1.8（2026-10-05）**：并回 AGENTS.md 差异 1、5–7。`RotationItem` / `Command` 加 `filler`，`WaitCode` 加 `filler`（TD-09 v0.1.5）；场景 `initial.core`（`ResolvedScenario.initial.core`）与 `video`；`CharacterModule.coreNames`。调试表的类型（`LoopSpan`、`SegmentRow`、`CommandRow`、`LedgerRow`、`MarkCmp`）在 `src/engine/trace.ts`，见 TD-11 §6。声骸库存择优（TD-13 §5）：`simulate(r, opts?)` 的 `SimOptions.onHit` 与 `HitRecord`；`InventorySchema` / `InvPiece`；`scenario.schema` 导出 `StatValuesSchema`。

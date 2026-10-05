@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { ELEMENTS, FLAT_STATS, STAT_KEYS, type ActionId, type Frame, type Slot, type StatKey } from './common'
 
 /** 属性表：中文键 → 数值。比例属性写小数，写成 22 这种"百分数"直接报错 */
-const StatValues = z.partialRecord(z.enum(STAT_KEYS), z.number()).superRefine((rec, ctx) => {
+export const StatValuesSchema = z.partialRecord(z.enum(STAT_KEYS), z.number()).superRefine((rec, ctx) => {
   for (const [k, v] of Object.entries(rec)) {
     if (typeof v === 'number' && !FLAT_STATS.includes(k as StatKey) && Math.abs(v) >= 3)
       ctx.addIssue({ code: 'custom', path: [k], message: `${k} 是比例，请写小数（22% 写 0.22），收到 ${v}` })
@@ -14,8 +14,8 @@ const StatValues = z.partialRecord(z.enum(STAT_KEYS), z.number()).superRefine((r
 const EchoPieceSchema = z.strictObject({
   name: z.string().min(1),                  // 声骸名（GameData.echoes 的键）
   set: z.string().min(1),                   // 计入哪个套装（同一声骸可属多个套装）
-  main: StatValues,                         // 全部主属性，含固定副主属性（如 4C 的 攻击 150）
-  subs: StatValues.default({}),
+  main: StatValuesSchema,                         // 全部主属性，含固定副主属性（如 4C 的 攻击 150）
+  subs: StatValuesSchema.default({}),
 })
 
 const MemberSchema = z.strictObject({
