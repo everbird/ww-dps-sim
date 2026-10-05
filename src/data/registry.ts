@@ -143,12 +143,17 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     for (const f of a.flags) flags.push(`${a.id}:${f}`)
     for (const j of a.judgments) for (const f of j.flags) flags.push(`${a.id}/${j.name}:${f}`)
   }
+  const coreResources = g.coreResources.map(c => ({
+    slot: c.slot as 1 | 2 | 3 | 4 | 5, name: mod.coreNames?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.name, cap: mod.coreCaps?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.cap,
+  }))
+  for (const k of Object.keys(mod.coreNames ?? {}))
+    if (!coreResources.some(c => c.slot === Number(k))) throw new Error(`${mod.name} 的 coreNames 写了不存在的槽 ${k}`)
+  const dup = coreResources.map(c => c.name).filter((n, i, a) => n && a.indexOf(n) !== i)
+  if (dup.length) throw new Error(`${mod.name} 的核心资源槽名重复：${dup.join('、')}`)
   return {
     name: mod.name, element: g.element, weaponType: mod.weaponType, bodyType: mod.bodyType ?? g.bodyType,
     commonBlock: g.commonBlock, base: g.base90, energyCost: g.energyCost,
-    coreResources: g.coreResources.map(c => ({
-      slot: c.slot as 1 | 2 | 3 | 4 | 5, name: c.name, cap: mod.coreCaps?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.cap,
-    })),
+    coreResources,
     tunabilityRate: g.tunabilityRate, harmonyBreakBoost: g.harmonyBreakBoost,
     treeStats: mod.treeStats ?? {},
     actions, aliases: mod.aliases ?? {},

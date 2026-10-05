@@ -50,7 +50,17 @@ export const ScenarioSchema = z.strictObject({
     energy: z.union([z.enum(['full', 'empty']), Trio]).default('full'),
     concerto: z.union([z.number().min(0).max(100), Trio]).default(0),
     onField: z.number().int().min(0).max(2).default(0),
-  }).default({ energy: 'full', concerto: 0, onField: 0 }),
+    // 开局核心资源：角色名 → { 资源名: 值 }，如 { 椿: { 红椿·蕊: 100 } }；缺省 0（TD-06 Q7）
+    core: z.record(z.string(), z.record(z.string(), z.number().min(0))).default({}),
+  }).default({ energy: 'full', concerto: 0, onField: 0, core: {} }),
+  // 对照视频（TD-11 §6 P2）：marks 是某一轮各条指令开始时在视频里的时刻（播放器时间"分:秒"或秒数），键是第几条；
+  // pnpm trace 从最早的那个时刻起算，列出仿真比视频快慢多少。url 只作记录
+  video: z.strictObject({
+    url: z.string().optional(),
+    loop: z.number().int().min(0).default(2),            // 对照哪一轮：0 是启动轴
+    marks: z.record(z.string().regex(/^\d+$/, '键是第几条（数字）'),
+      z.union([z.number().min(0), z.string().regex(/^(\d+:)?\d+(\.\d+)?$/, '写成"分:秒"（如 1:02.5）或秒数')])),
+  }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
   rotation: z.array(z.string().nullable().transform(v => v ?? '')).min(1),   // 空行、YAML 里只有注释的项（null）不产生指令（TD-09 §2.3）

@@ -19,6 +19,7 @@
     --wait: #d9922b;
     --calm: #9aa1b0;
     --good: #2f8a5b;
+    --hl: rgba(42, 120, 187, 0.16);
     --el-havoc: #a32f6c;
     --el-glacio: #2a78bb;
     --el-spectro: #a98410;
@@ -45,6 +46,7 @@
       --wait: #e7a443;
       --calm: #6c7383;
       --good: #4fb47f;
+    --hl: rgba(90, 165, 232, 0.2);
       --el-havoc: #d6619e;
       --el-glacio: #5aa5e8;
       --el-spectro: #d9b443;
@@ -68,6 +70,7 @@
     --wait: #e7a443;
     --calm: #6c7383;
     --good: #4fb47f;
+    --hl: rgba(90, 165, 232, 0.2);
     --el-havoc: #d6619e;
     --el-glacio: #5aa5e8;
     --el-spectro: #d9b443;
@@ -151,6 +154,19 @@
   .list li { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
   .list .where { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
   .none { color: var(--muted); font-size: 13px; margin: 0; }
+  .debug { padding: 14px 16px; display: grid; gap: 10px; }
+  .debug .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+  .debug .head p { margin: 0; color: var(--muted); font-size: 12px; }
+  .debug .notes { margin: 0; padding-left: 18px; color: var(--muted); font-size: 13px; }
+  .debug .tablebox { max-height: 460px; overflow: auto; }
+  .debug thead th { position: sticky; top: 0; background: var(--panel); }
+  .debug td.wrap { white-space: normal; min-width: 18ch; color: var(--muted); }
+  .debug tr[data-a] { cursor: pointer; }
+  .debug tr[data-a]:hover td { background: var(--grid); }
+  .debug tr.sel td { background: var(--hl); }
+  .debug tr.sub td { color: var(--muted); }
+  .debug td.late { color: var(--alert); }
+  .debug td.early { color: var(--good); }
   footer { color: var(--muted); font-size: 12px; }
   code { font-family: var(--mono); font-size: 12px; }
 
@@ -205,6 +221,8 @@
     <div class="legend" id="legend"></div>
   </section>
 
+  <section class="card debug" id="debug" aria-label="调试表" hidden></section>
+
   <div class="tables" id="tables"></div>
 
   <footer>
@@ -235,6 +253,8 @@
   let M = null            // 时间轴数据（见 normalize）
   let ppf = 0.5           // 每世界帧多少像素
   let tips = []           // 悬停提示：data-t 指向这里
+  let HL = null           // 调试表里点中的那一行：时间轴上高亮的世界帧区间 { a, b }
+  let dbgView = 'cmd'     // 调试表显示哪张：cmd 逐条 / seg 分段 / res<i> 第 i 种资源逐步
 
   // ---------------------------------------------------------------------------
   // 数据：pnpm timeline 嵌入的模型；也接受 pnpm sim 写出的 { summary, log }（缺的元数据按日志推）
@@ -252,6 +272,7 @@
       title, scenario: raw.scenario || '', data: raw.data || '', team,
       enemy: raw.enemy || null, concertoMax: raw.concertoMax || 100, rotation: raw.rotation || [],
       opening: raw.opening || [], options: raw.options || {}, kinds: raw.kinds || {}, summary: raw.summary, error: raw.error || null, log,
+      trace: raw.trace || null, video: raw.video || null,
     }
   }
 
@@ -392,12 +413,92 @@
   }
 
   // ---------------------------------------------------------------------------
+  // 调试表（TD-11 §3、§6 P3）：跟着"范围"选的那一轮；选"全部"时看稳态第一轮（没有稳态时最后一轮）
+
+  const s2 = f => (f / 60).toFixed(2)
+  const signed2 = x => (Math.abs(x) < 0.005 ? '±0.00' : `${x > 0 ? '+' : '−'}${Math.abs(x).toFixed(2)}`)
+  const signedNum = x => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${Math.round(Math.abs(x) * 100) / 100}`
+  const numStr = x => String(Math.round(x * 100) / 100)
+
+  function debugTrace() {
+    const v = $('loopSel').value, T = M.trace
+    const k = v !== 'all' ? Number(v) : M.summary.steady ? M.summary.steady.from : T[T.length - 1].loop
+    return T.find(x => x.loop === k) || T[T.length - 1]
+  }
+
+  function renderDebug() {
+    const box = $('debug')
+    if (!M || !M.trace || !M.trace.length) { box.hidden = true; return }
+    box.hidden = false
+    const T = debugTrace(), sp = T.span
+    const views = [['cmd', '逐条'], ['seg', '分段'], ...T.ledgers.map((l, i) => [`res${i}`, `${l.name}逐步`])]
+    if (!views.some(v => v[0] === dbgView)) dbgView = 'cmd'
+    const V = M.video && M.video.loop === T.loop && M.video.marks.length ? M.video : null
+    const mark = new Map(V ? V.marks.map(k => [k.line, k]) : [])
+    const vHead = V ? '<th class="r">视频</th><th class="r">累计差</th><th class="r">本段差</th>' : ''
+    const vCells = k => !V ? '' : !k ? '<td></td><td></td><td></td>'
+      : `<td class="r">${k.video.toFixed(2)}</td><td class="r ${k.diff > 0.05 ? 'late' : k.diff < -0.05 ? 'early' : ''}">${signed2(k.diff)}</td><td class="r ${k.step > 0.05 ? 'late' : k.step < -0.05 ? 'early' : ''}">${signed2(k.step)}</td>`
+    const tr = (a, b, cells, cls = '') => `<tr data-a="${a}" data-b="${b}" tabindex="0"${cls ? ` class="${cls}"` : ''}>${cells}</tr>`
+    let head = '', body = ''
+    if (dbgView === 'cmd') {
+      const seen = new Set()
+      head = `<th>条</th><th>指令</th><th class="r">开始·世界秒</th><th class="r">开始·战斗秒</th><th class="r">到下一条</th>${vHead}<th>之前在等（帧）</th>`
+      body = T.commands.map(c => {
+        const first = c.line !== null && !seen.has(c.line)
+        if (c.line !== null) seen.add(c.line)
+        const text = c.line !== null ? cmdText({ loop: T.loop, line: c.line }) : ''
+        return tr(c.f, c.f + Math.max(1, c.frames),
+          `<td class="r">${c.line === null ? '' : `${c.line}.${c.item}`}</td><td title="${esc(text)}">${esc(c.label)}</td><td class="r">${s2(c.f - sp.f)}</td><td class="r">${(c.t - sp.t).toFixed(2)}</td><td class="r">${s2(c.frames)}</td>` +
+          `${vCells(first ? mark.get(c.line) : null)}<td class="wrap">${esc(c.waits.map(w => `${w.reason} ${w.frames}`).join('；'))}</td>`,
+          c.kind === 'skip' || c.kind === 'interject' ? 'sub' : '')
+      }).join('')
+    } else if (dbgView === 'seg') {
+      head = `<th class="r">段</th><th>上场</th><th class="r">开始·世界秒</th><th class="r">世界秒</th><th class="r">战斗秒</th><th class="r">第几条</th>${vHead}`
+      body = T.segments.map((g, i) => tr(g.f, g.f + Math.max(1, g.frames),
+        `<td class="r">${i + 1}</td><td><span class="who" style="--c: var(--c${M.D.slot.get(g.char)})"><i class="swatch"></i>${esc(g.char)}${g.intro ? '（变奏）' : ''}</span></td>` +
+        `<td class="r">${s2(g.f - sp.f)}</td><td class="r">${s2(g.frames)}</td><td class="r">${g.battle.toFixed(2)}</td><td class="r">${g.line ?? ''}</td>${vCells(g.line !== null ? mark.get(g.line) : null)}`)).join('')
+    } else {
+      const L = T.ledgers[Number(dbgView.slice(3))]
+      const shown = L.rows[0] ? Object.keys(L.rows[0].values) : []
+      head = `<th class="r">世界秒</th><th class="r">战斗秒</th><th>事件</th><th>来源</th>${shown.map(n => `<th class="r">${esc(n)}</th>`).join('')}`
+      body = L.rows.map(x => tr(x.f, x.f + 1,
+        `<td class="r">${s2(x.f - sp.f)}</td><td class="r">${(x.t - sp.t).toFixed(2)}</td><td>${esc(x.label)}</td><td>${esc(x.source)}</td>` +
+        shown.map(n => `<td class="r">${x.deltas[n] !== undefined ? `${signedNum(x.deltas[n])} → ${numStr(x.values[n])}` : numStr(x.values[n])}</td>`).join(''))).join('')
+      if (!L.rows.length) body = `<tr><td colspan="${4 + shown.length}" class="none">这一轮没有变化。</td></tr>`
+    }
+    const notes = []
+    if (V) {
+      const last = V.marks[V.marks.length - 1]
+      if (V.marks.length > 1) notes.push(`对照视频：第 ${V.marks[0].line} 条到第 ${last.line} 条，视频 ${last.video.toFixed(2)} 秒，仿真 ${last.sim.toFixed(2)} 秒（世界秒），仿真${last.diff >= 0 ? '慢' : '快'} ${Math.abs(last.diff).toFixed(2)} 秒`)
+      if (V.missing.length) notes.push(`视频时间点里第 ${V.missing.join('、')} 条在这一轮没有出现，没有对照`)
+      if (V.url) notes.push(`视频：<a href="${esc(V.url)}" target="_blank" rel="noopener">${esc(V.url)}</a>`)
+    } else if (M.video && M.video.marks.length) notes.push(`视频时间点对照的是${loopName(M.video.loop)}，在"范围"里选那一轮可以看到对照列`)
+    box.innerHTML = `<div class="head"><h2>调试表 · ${loopName(T.loop)}</h2>` +
+      `<select id="dbgView" aria-label="哪张表">${views.map(([v, n]) => `<option value="${v}"${v === dbgView ? ' selected' : ''}>${esc(n)}</option>`).join('')}</select>` +
+      `<p>世界 ${s2(sp.endF - sp.f)} 秒，战斗 ${(sp.endT - sp.t).toFixed(2)} 秒；时刻从本轮开始算。点一行，时间轴上标出这一段（同 <code>pnpm trace</code>）</p></div>` +
+      (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
+      `<div class="tablebox"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
+  }
+
+  function pickRow(row) {
+    const a = Number(row.getAttribute('data-a')), b = Number(row.getAttribute('data-b'))
+    for (const el of $('debug').querySelectorAll('tr.sel')) el.classList.remove('sel')
+    row.classList.add('sel')
+    HL = { a, b }
+    const sc = $('scroller'), view = sc.clientWidth - 48
+    if ((b - a) * ppf > view) fitRange(a - 30, b + 30)
+    else { render(); sc.scrollLeft = Math.max(0, 8 + ((a + b) / 2) * ppf - sc.clientWidth / 2) }
+    $('scroller').scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }
+
+  // ---------------------------------------------------------------------------
   // 时间轴
 
   function layout(m, D) {
     const rows = [{ kind: 'axis', h: 34, label: '战斗时间', sub: '秒' }]
     m.team.forEach((t, i) => rows.push({ kind: 'char', i, h: 50, label: t.name, sub: '动作 · 命中' }))
     rows.push({ kind: 'waits', h: 18, label: '等待 / 跳过', sub: '' })
+    if (m.video && m.video.marks.length) rows.push({ kind: 'video', h: 22, label: '视频对照', sub: `${loopName(m.video.loop)} · △视频 ●仿真` })
     const hasEnemy = m.enemy && (m.enemy.tunabilityMax > 0 || m.enemy.whiteBarTough > 0)
     if ($('showEnemy').checked && hasEnemy) rows.push({ kind: 'enemy', h: 58, label: '敌人', sub: '偏谐值 · 白条' })
     if ($('showRes').checked) m.team.forEach((t, i) => rows.push({ kind: 'res', i, h: 30, label: t.name, sub: '能量 · 协奏' }))
@@ -476,6 +577,17 @@
           const kx = x(k.f)
           out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选 ? / 补位 ~）\n${esc(k.reason)}\n${cmdWhere(k.cmd)}${cmdText(k.cmd) ? `：${esc(cmdText(k.cmd))}` : ''}`)}"/>`)
         }
+      } else if (r.kind === 'video') {
+        // △ 按视频推算的位置（从最早的时间点起算），● 仿真里这条开始的位置；连线颜色看本段差：红 = 仿真慢、绿 = 快
+        const cy = r.y + r.h / 2
+        for (const k of M.video.marks) {
+          const vx = x(k.vf), sx = x(k.f)
+          const col = Math.abs(k.step) < 0.1 ? 'var(--faint)' : k.step > 0 ? 'var(--alert)' : 'var(--good)'
+          const t = tip(`<b>第 ${k.line} 条</b>${cmdText({ loop: M.video.loop, line: k.line }) ? `：${esc(cmdText({ loop: M.video.loop, line: k.line }))}` : ''}\n视频 ${k.video.toFixed(2)} 秒 · 仿真 ${k.sim.toFixed(2)} 秒（世界秒，从第 ${M.video.marks[0].line} 条起算）\n累计差 ${signed2(k.diff)} · 本段差 ${signed2(k.step)}（正数 = 仿真慢）`)
+          out.push(`<line x1="${vx}" x2="${sx}" y1="${cy}" y2="${cy}" style="stroke: ${col}; stroke-width: 2"/>`)
+          out.push(`<path d="M${vx} ${cy - 6} l5 9 l-10 0 z" style="fill: var(--panel); stroke: var(--ink); stroke-width: 1.2" data-t="${t}"/>`)
+          out.push(`<circle cx="${sx}" cy="${cy}" r="3.5" style="fill: ${col}" data-t="${t}"/>`)
+        }
       } else if (r.kind === 'enemy') {
         const en = M.enemy, top = r.y + 8, h = r.h - 16
         // 瘫痪：破盾 → 瘫痪结束
@@ -520,6 +632,7 @@
           out.push(`<rect x="${x(s.start)}" y="${r.y + 3}" width="${Math.max(1, (s.end - s.start) * ppf)}" height="${r.h - 6}" rx="1.5" style="fill: ${c}; opacity: 0.55" data-t="${tip(`<b>${esc(r.b.buff)}</b> → ${esc(r.b.target)}\n第 ${s.start}–${s.end} 帧（${s.end - s.start} 帧）${s.stacks > 1 ? ` · 最多 ${s.stacks} 层` : ''}\n结束：${({ timeout: '到时', switchOut: '下场', removed: '移除' })[s.reason] || s.reason || ''}`)}"/>`)
       }
     }
+    if (HL) out.push(`<rect x="${x(HL.a)}" y="0" width="${Math.max(2, (HL.b - HL.a) * ppf)}" height="${height}" style="fill: var(--hl); stroke: var(--el-glacio); stroke-width: 1; pointer-events: none"/>`)
     $('scroller').innerHTML = `<svg width="${W}" height="${height}" viewBox="0 0 ${W} ${height}" role="img" aria-label="时间轴">${out.join('')}</svg>`
     $('labels').style.height = `${height}px`
     $('labels').innerHTML = rows.map(r => {
@@ -623,16 +736,25 @@
     renderHeader(m)
     renderTables(m)
     renderLegend(m)
-    const first = m.D.loops.some(l => l.loop === 1) && m.D.loops.length > 1 ? '1' : 'all'
+    HL = null
+    // 缺省看稳态第一轮（同 pnpm trace）；没有稳态时看第 1 轮
+    const st = m.summary.steady, first = m.D.loops.length > 1 && st ? String(st.from) : m.D.loops.some(l => l.loop === 1) && m.D.loops.length > 1 ? '1' : 'all'
     $('loopSel').value = first
     showLoop(first)
+    renderDebug()
   }
 
   function init() {
     $('zoomIn').addEventListener('click', () => setPpf(ppf * 1.5))
     $('zoomOut').addEventListener('click', () => setPpf(ppf / 1.5))
-    $('zoomFit').addEventListener('click', () => { $('loopSel').value = 'all'; showLoop('all') })
-    $('loopSel').addEventListener('change', e => showLoop(e.target.value))
+    $('zoomFit').addEventListener('click', () => { $('loopSel').value = 'all'; HL = null; showLoop('all'); renderDebug() })
+    $('loopSel').addEventListener('change', e => { HL = null; showLoop(e.target.value); renderDebug() })
+    $('debug').addEventListener('change', e => { if (e.target.id === 'dbgView') { dbgView = e.target.value; renderDebug() } })
+    $('debug').addEventListener('click', e => { const row = e.target.closest('tr[data-a]'); if (row) pickRow(row) })
+    $('debug').addEventListener('keydown', e => {
+      const row = e.target.closest('tr[data-a]')
+      if (row && (e.key === 'Enter' || e.key === ' ')) { pickRow(row); e.preventDefault() }
+    })
     for (const id of ['showEnemy', 'showRes', 'showBuffs']) $(id).addEventListener('change', () => setPpf(ppf))
     const sc = $('scroller')
     sc.addEventListener('mousemove', onMove)

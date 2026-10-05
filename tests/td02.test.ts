@@ -34,7 +34,7 @@ describe('T02-1 场景：合法输入与默认值', () => {
     expect(r.data.team[1]!.weapon.rank).toBe(1)
     expect(r.data.team[1]!.echoes).toEqual([])
     expect(r.data.team[0]!.echoes[0]!.subs).toEqual({ 暴击伤害: 0.174, '攻击%': 0.071 })
-    expect(r.data.initial).toEqual({ energy: 'full', concerto: 0, onField: 0 })
+    expect(r.data.initial).toEqual({ energy: 'full', concerto: 0, onField: 0, core: {} })
     expect(r.data.options).toEqual({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto' })
     expect(r.data.environment).toEqual([])
   })

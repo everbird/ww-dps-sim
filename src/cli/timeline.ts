@@ -7,6 +7,7 @@ import { loadGameData } from '../data/load'
 import type { Scenario } from '../data/scenario.schema'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { simulate } from '../engine/simulate'
+import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments } from '../engine/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, fmt, loadScenario, pct } from './format'
 
@@ -32,8 +33,39 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     options: { repeat: r.options.repeat, tuneBreak: r.options.tuneBreak },
     kinds: Object.fromEntries(r.team.map(m => [m.def.name, Object.fromEntries(Object.values(m.actions).map(a => [a.id, a.kind]))])),
     summary: res.summary,
+    trace: traceModel(r, res),
+    video: videoModel(sc, r, res),
     ...(res.error ? { error: res.error } : {}),
     log: res.log.filter(ev => ev.type !== 'judgmentSpawn'),            // 网页不用，省体积
+  }
+}
+
+/** 调试表（TD-11 §3、§6 P3）：每轮的分段、逐条与资源逐步（协奏、能量、各核心资源），网页按轮次显示 */
+function traceModel(r: ResolvedScenario, res: SimResult) {
+  const names = ['协奏', '能量', ...r.team.flatMap(m => m.def.coreResources.map(c => c.name)).filter(Boolean)]
+  return loopsOf(res.log).map(loop => ({
+    loop,
+    span: loopSpan(res.log, loop)!,
+    segments: traceSegments(res.log, r, loop),
+    commands: traceCommands(res.log, r, loop),
+    ledgers: names.flatMap(n => {
+      const sel = resourceSel(r, n)
+      return typeof sel === 'string' ? [] : [{ name: sel.label, rows: traceLedger(res.log, r, loop, sel) }]
+    }),
+  }))
+}
+
+/** 视频时间点（TD-11 §6 P2）：每个时间点带上仿真里那条开始的世界帧 f，以及按视频推算的世界帧 vf（从最早那条起算） */
+function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
+  if (!sc.video) return null
+  const cmds = traceCommands(res.log, r, sc.video.loop)
+  const cmp = compareMarks(cmds, sc.video.marks)
+  const fOf = (line: number) => cmds.find(c => c.line === line)!.f
+  const f0 = cmp.rows[0] ? fOf(cmp.rows[0].line) : 0
+  return {
+    ...(sc.video.url ? { url: sc.video.url } : {}),
+    loop: sc.video.loop, missing: cmp.missing,
+    marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60 })),
   }
 }
 
