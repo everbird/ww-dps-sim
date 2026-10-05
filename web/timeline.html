@@ -386,7 +386,7 @@
       ? `<ul class="list">${s.waits.map(w => `<li><span class="where">${where(w)}</span><span>${w.frames} 帧 · ${esc(w.reason)}${line(w)}</span></li>`).join('')}</ul>`
       : '<p class="none">没有。</p>') + '</section>')
     if ((s.skipped || []).length)
-      parts.push(`<section class="card"><h2>跳过的可选指令</h2><ul class="list">${s.skipped.map(k => `<li><span class="where">${where(k)}</span><span>${esc(k.reason)}${line(k)}</span></li>`).join('')}</ul></section>`)
+      parts.push(`<section class="card"><h2>跳过的指令（可选 ? / 补位 ~）</h2><ul class="list">${s.skipped.map(k => `<li><span class="where">${where(k)}</span><span>${esc(k.reason)}${line(k)}</span></li>`).join('')}</ul></section>`)
     if (m.error) parts.push(`<section class="card"><h2>运行报错</h2><p>${esc(m.error.message)}</p></section>`)
     $('tables').innerHTML = parts.join('')
   }
@@ -474,7 +474,7 @@
         }
         for (const k of D.skips) {
           const kx = x(k.f)
-          out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选指令 ?）\n${esc(k.reason)}\n${cmdWhere(k.cmd)}${cmdText(k.cmd) ? `：${esc(cmdText(k.cmd))}` : ''}`)}"/>`)
+          out.push(`<path d="M${kx - 4} ${r.y + 5} l8 8 m0 -8 l-8 8" style="stroke: var(--ink); stroke-width: 1.6; fill: none" data-t="${tip(`<b>跳过</b>（可选 ? / 补位 ~）\n${esc(k.reason)}\n${cmdWhere(k.cmd)}${cmdText(k.cmd) ? `：${esc(cmdText(k.cmd))}` : ''}`)}"/>`)
         }
       } else if (r.kind === 'enemy') {
         const en = M.enemy, top = r.y + 8, h = r.h - 16

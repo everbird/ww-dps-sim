@@ -324,6 +324,40 @@ describe('T09-可选 "?"：状态条件不满足就跳过（TD-06 §13.4）', ()
   })
 })
 
+describe('T09-补位 "~"：后面那个动作因为状态条件放不出来时才打（§3.2）', () => {
+  test('解析：~ 可以和 ! 一起写、可以分开写，全角～也认；和 ? 一起写报错', () => {
+    expect(parseRotationLine('甲 A1~ A2～! E ~')).toEqual([
+      { kind: 'act', char: '甲', action: 'A1', delay: 0, force: false, filler: true },
+      { kind: 'act', char: '甲', action: 'A2', delay: 0, force: true, filler: true },
+      { kind: 'act', char: '甲', action: 'E', delay: 0, force: false, filler: true },
+    ])
+    expect(parseRotationLine('甲 A1?~')).toHaveProperty('error')
+    expect(parseRotationLine('甲 A1? ~')).toHaveProperty('error')
+  })
+  test('编译：补位后面要接同一角色的普通动作（可以隔着同一角色的别的补位）', () => {
+    expect(compileRotation(['甲 A1~ A2~ E'], fake, 0).ok).toBe(true)
+    const bad = compileRotation(['甲 A1~', 'switch 乙', '乙 E'], fake, 0)
+    expect(bad.ok).toBe(false)
+    if (!bad.ok) expect(bad.issues[0]).toMatchObject({ line: 1, item: 1 })
+    expect(compileRotation(['甲 E A1~'], fake, 0).ok).toBe(false)                // 行尾的补位后面没有动作
+  })
+  // E 要到第 from 帧才满足角色条件（模拟"一日花要协奏满"）；A1 → A2 连段，A2 第 10 帧起可派生
+  const gateE = (from: number) => ({ canStart: (st: { frame: number }, _slot: number, def: ActionDef) => def.id !== 'E' || st.frame >= from ? true as const : '协奏不够' })
+  const cmds = (n: 1 | 2): Cmd[] => [{ act: 0, action: 'A1', filler: true }, ...(n === 2 ? [{ act: 0, action: 'A2', filler: true } as Cmd] : []), { act: 0, action: 'E' }]
+  test('E 放不出来就补；E 一开始就能放就跳过补位（记 skip，code filler）', () => {
+    expect(starts(run([acts, acts, acts], cmds(1), gateE(25)))).toEqual(['A1@0', 'E@25'])
+    const r = run([acts, acts, acts], cmds(1), gateE(0))
+    expect(starts(r)).toEqual(['E@0'])
+    expect(eventsOf(r, 'skip').map(e => [e.cmd.line, e.code])).toEqual([[1, 'filler']])
+  })
+  test('两下补位：第二下等派生的时候 E 能放了，就跳过第二下', () => {
+    expect(starts(run([acts, acts, acts], cmds(2), gateE(25)))).toEqual(['A1@0', 'A2@10', 'E@25'])   // 第 10 帧 E 还不能放，补第二下
+    const r = run([acts, acts, acts], cmds(2), gateE(5))
+    expect(starts(r)).toEqual(['A1@0', 'E@5'])                                     // 第 5 帧 E 能放了，A2 不补
+    expect(eventsOf(r, 'skip').map(e => [e.f, e.cmd.line, e.code])).toEqual([[5, 2, 'filler']])
+  })
+})
+
 describe('T09-启动轴（§3.7）：先跑一次 opening（第 0 轮），之后 rotation 循环', () => {
   test('编译：前台从启动轴结束时推起；循环轴回不到它的起点报错，指出是启动还是循环', () => {
     // 启动轴结束时前台是乙；循环轴从乙开始、回到乙结束

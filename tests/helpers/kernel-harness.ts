@@ -15,7 +15,7 @@ import { createScheduler, newQueue, runLoop, ScheduleError, type CompileMember, 
 import type { CharRuntime, SimEvent, SimState } from '../../src/engine/types'
 
 export type Cmd =
-  | { act: Slot; action: ActionId; force?: boolean; delay?: number; optional?: true }
+  | { act: Slot; action: ActionId; force?: boolean; delay?: number; optional?: true; filler?: true }
   | { switch: Slot }
   | { wait: number }
   | { at: number }
@@ -46,7 +46,10 @@ export function toCommands(team: Record<ActionId, ActionDef>[], cmds: Cmd[]): Co
     if ('wait' in c) return { kind: 'wait', ...ref, frames: c.wait }
     if ('switch' in c) return { kind: 'switch', ...ref, to: c.switch }
     if (!team[c.act]?.[c.action]) throw new Error(`没有动作 ${c.action}`)
-    return { kind: 'act', ...ref, slot: c.act, action: c.action, delay: c.delay ?? 0, force: c.force ?? false, ...(c.optional ? { optional: true as const } : {}) }
+    return {
+      kind: 'act', ...ref, slot: c.act, action: c.action, delay: c.delay ?? 0, force: c.force ?? false,
+      ...(c.optional ? { optional: true as const } : {}), ...(c.filler ? { filler: true as const } : {}),
+    }
   })
 }
 
