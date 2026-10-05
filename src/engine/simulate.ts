@@ -4,7 +4,7 @@
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
-import { newBus, type Sim } from './context'
+import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
@@ -18,7 +18,7 @@ import type {
   CharRuntime, EnemyRuntime, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
-export function simulate(r: ResolvedScenario): SimResult {
+export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
   const s = initialState(r)
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
@@ -44,6 +44,7 @@ export function simulate(r: ResolvedScenario): SimResult {
   }
   const sim: Sim = {
     r, k, book: makeBook(r.buffs), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
+    ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
@@ -119,6 +120,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   let dmg: { nonCrit: number; crit: number; expected: number } | null = null
   let factors
   let used: string[] = []
+  let rec: HitRecord | null = null
   const later = draft.tags.find(t => LATER.includes(t))
   if (later && !sim.warned.has(`${m.def.name}|${d.name}`)) {
     sim.warned.add(`${m.def.name}|${d.name}`)
@@ -137,10 +139,12 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       }, acc, r.rules)
       dmg = { nonCrit: v, crit: v, expected: v }
     } else {
-      const res = computeHit({
-        rate: draft.multiplier, attr: d.relatedAttr, panel: m.panel, extraFlat: draft.extraFlat, level: r.rules.charLevel,
+      const hc = {
+        rate: draft.multiplier, attr: d.relatedAttr, extraFlat: draft.extraFlat, level: r.rules.charLevel,
         enemy: { def: r.enemy.def, res: r.enemy.res[draft.element] },
-      }, acc, r.rules)
+      }
+      const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules)
+      if (sim.onHit) rec = { slot: j.owner, index: -1, ctx: hc, view, active, draft: { zones: draft.zones, critOnly: draft.critOnly } }
       dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
       factors = res.factors
     }
@@ -154,6 +158,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     type: 'hit', char: m.def.name, action: j.action, judgment: d.name, id: j.id, tick: n,
     element: draft.element, tags: draft.tags, dmg, ...(factors ? { factors } : {}), buffs: used, gains,
   })
+  if (rec) sim.onHit!({ ...rec, index: hitIndex })
   const link = sim.bus.spawned.get(j.id)                           // 钩子生成的判定：结算接在生成它的那条事件链上
   if (link) sim.bus.chain.set(s.log.length - 1, link)
   const after: Parameters<typeof log>[1][] = [...full, ...(d.heals ? [{ type: 'heal', char: m.def.name, source: d.name } as const] : [])]
