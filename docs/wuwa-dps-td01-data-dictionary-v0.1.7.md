@@ -1,8 +1,8 @@
-# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.6
+# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.7
 
-> **状态**：v0.1.6（2026-10-04，已实现；v0.1.6 并回 M4 敌人量表：`tune-break.json`、白条按削韧值、谐度破坏的装配，见附录。v0.1.5 并回声骸接入与 `echo-stats.json`。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
+> **状态**：v0.1.7（2026-10-04，已实现；v0.1.7 并回 xlsx 版本清单、按表头 / 标记 / 段名定位、附页2 的偏谐通用规则、按比例削白条与换成 20261003 版，见附录。v0.1.6 并回 M4 敌人量表：`tune-break.json`、白条按削韧值、谐度破坏的装配，见附录。v0.1.5 并回声骸接入与 `echo-stats.json`。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§3.1–3.2、§5.1、§7、§11、§12（M0）、§13、附录 A-7；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、4C、4D、5.1、6、7；xlsx 自带的 `附页1`（数据作者写的列说明，下称"作者说明"）
-> **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测
+> **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测。2026-10-04 起构建用 20261003 版（资源版本 3.6.13，见 1.9）；文中的行号、列字母仍是 20260707 版的位置，构建按表头、标记行与段名定位，不依赖它们
 > **下游**：构建脚本 `tools/build/`（Python，v0.1.3，见 0.2）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
 > **不讲**：字段在仿真里怎么用（公式 → TD-03，时钟 / 取消 / 判定生命周期 → TD-04，资源与敌人量表 → TD-06，buff → TD-07）。本文只保证"表里写了什么、怎么原样可靠地搬出来、哪些要人工补"
 
@@ -30,7 +30,7 @@
 | 伤害配置 | buff 库文本（R73–R1790）；当前配置区与分区网格只作对拍（第 10 节） | `buff-texts.json`；分区网格的缓存值供 golden 抽取时求值（10.3） | M1–M3 |
 | 伤害计算 | 标准答案缓存值与数组公式；异常效应、谐度破坏的对照表（第 11 节） | `fixtures/golden-damage.json`、`fixtures/golden-zones.json`（TD-03 §10）、并入 `effects.json` / `tune-break.json` | M1 |
 
-**不读**：`角色技能类型`（INDEX/MATCH 拼的当前角色视图，总设计附录 A-7）、`prop`（敌人与角色的原型数据；`敌对属性列表` 已是它的完整计算结果，只在核对时参考）、`更新变动`（xlsx 自己的更新日志）、`附页2`（聚怪牵引计算，单目标不需要）、`附页1`（人读的列说明，本文已吸收）。
+**不读**：`角色技能类型`（INDEX/MATCH 拼的当前角色视图，总设计附录 A-7）、`prop`（敌人与角色的原型数据；`敌对属性列表` 已是它的完整计算结果，只在核对时参考）、`更新变动`（xlsx 自己的更新日志）、`附页2`（聚怪牵引计算，单目标不需要；只读其中"偏谐机制·通用"那段说明文字，见 11.4，v0.1.7）、`附页1`（人读的列说明，本文已吸收）。
 
 ### 0.2 构建脚本的模块划分
 
@@ -142,6 +142,20 @@ function secToFrames(sec: number, fps = 60): number {
 | B5 | weakpointhitting | FALSE | 弱点命中 |
 
 构建时读出写进 `meta.json`；**任何一项不等于期望值 → 阻断**（缓存值与我们假设的场景不一致，后面的数全不可信）。
+
+### 1.9 版本清单与位置（v0.1.7）
+
+- **版本清单** `data/xlsx-versions.json`（进 git，xlsx 本身不进）：每个版本记 `version`（文件名里的日期）、`file`、`sha256`、`resourceVersion`、`note`；`current` 是构建缺省用的那份。构建（`tools/build/versions.py`）在 `data/raw/`（含子目录，如 `archive/`）里按文件名找 current 的文件、核对 sha256，不一致就停；也可以直接传路径（不在清单里只警告）。`pnpm golden:perturb` 同。2026-10-04 起 current 是 20261003（资源版本 3.6.13）。
+- **不写死位置**：xlsx 作者会插行插列（20261003 版在 `base` 的 O 列后插了 `PropExtraRate.Weakness&Ratio`，`伤害计算`、`伤害配置` 整段下移），按固定位置读会读错（成长表找不到 90 级、谐度破坏表丢了结算次数、golden 认不出乘区、谐度破坏与异常效应判反）。构建按下表的锚点定位，本文写的行号、列字母是 20260707 版的位置：
+
+| 表 | 怎么定位 | 20261003 版相对 20260707 版 |
+|---|---|---|
+| `base`（第 55 行表头起的各表） | 按第 55 行的表头名找列（`tools/build/base_cols.py`）；同名表头（暴击、暴伤都叫 `…Rand901`）按出现顺序 | P 列起右移一列（成长表 AP–AT → AQ–AU，谐度破坏基础值 AO → AP） |
+| `伤害计算` | 角色块到 A 列"其他"的上一行；两张表从 B 列"光噪效应（对目标）"起；谐度破坏表从 B 列"谐度破坏"、D 列"倍率"的表头起 | 第 1027 行起下移 88 行（谐度破坏表 R1095 → R1183） |
+| `伤害配置` 计算区 | 从 A 列第一个 `Calc` 起；golden 拆乘区时引用的行按 A 列段名（`def`、`dmgchg`、`dmgampl1-9(37&38)`、`dmgpost0_6(127&128)`、`dmgampl0(37&38)`、`dmgamplxxxx(37&38)`、`面板`、`聚爆效应121`）平移 | `def` 到 `面板` 下移 117 行，`F自定义面板` 起下移 119 行 |
+| 动作表 | 本来就按块切分（3.2），不依赖行号 | 椿、散华的块下移 222 行，维里奈 143 行（块内相对位置不变） |
+
+20260707 版的产出与改动前逐字节一致；20261003 版的 golden 按 TD-03 重算全等（`golden:perturb` 只有已知的"防御分母 ≤ 0"）。
 
 ---
 
@@ -321,6 +335,8 @@ function secToFrames(sec: number, fps = 60): number {
 | 解析问题 | 小数点当逗号 1、算术字符串 1、斜杠占位 3、动作名为数字 8、复杂资源公式 8 |
 | 发生帧公式 / 其中 P + f(Q) 形式 / 产出出生帧 | 3920 / 468 / 445 |
 
+20261003 版（v0.1.7）：74 块、1721 组、5243 行（判定 4031），连上 dmg 2704、noDmg 1217。
+
 ### 3.11 出生帧 `extractBirthFrame`（v0.1.2）
 
 作者说明（发生帧）："若N=P+f(Q)，则一般有以下2类情况：1. 该攻击在第P秒出现，经过f(Q)秒后开始判定，并根据'可脱手'条目判断是否能在第P秒脱手……2. 若备注'延迟生成飞行道具'，且后续多个动作发生帧为=P+f(Qn)，则表示该攻击在第P秒出现，并以此为基准经过f(Qn)秒后依次开始判定"。出生帧就是这个 P 换算成的帧，TD-04 用它决定动作被取消时还没生效的判定是否保留（TD-04 §5.4）。
@@ -358,7 +374,7 @@ dmg 是游戏技能伤害配置的导出：第 1–2 行表头（第 2 行是 `_
 | BD | Damage.Energy | `energy` | = 大招回收 × 100，交叉校验 |
 | BL | Damage.FormulaType | `formulaType` | ≠ 0 的 148 行：1 = `Formula1`（112 行，椿等，TD-03 §3.2）；9 = 异常效应行；3 / 6 / 7 = 治疗、扣血与 11 条倍率为 0 的特殊伤害（TD-03 Q13） |
 | BQ–CJ | Damage.FormulaParam5_1…20 | `formulaRate` | `Formula1` 的倍率：按 4.3 同一技能等级取值 × 0.0001，只在 FormulaType ≠ 0 的行写出；FormulaParam1–4、6–10 暂不读 |
-| CZ | Damage.Percent0 | —— | 白条（共振度）削减比例 × 10000（如"驱雷-共振度削减(7.5%)"），v0 不读，留给 TD-06 |
+| CZ | Damage.Percent0 | `whiteBarRatio` | 白条（共振度）削减比例 × 10000，÷ 10000 写出，只在不为 0 时写（v0.1.7，TD-06 §13.2）：谐度破坏各变体（每种武器合计 12.5%）、卜灵"重击-震艮"2%、渊武"延奏-削白条"7.5%、釉瑚"诗中物-飞白"0.5% |
 | DD | Damage.WeaknessLvl | `weaknessLvl` | = 偏谐值 × 100，交叉校验 |
 
 `Damage.SpecialEnergy1…5`（BE–BI）与动作表的核心回收**对不上**（对比 1022 行只有 265 行相等），不读；核心资源一律以动作表为准。
@@ -405,6 +421,8 @@ dmg 是游戏技能伤害配置的导出：第 1–2 行表头（第 2 行是 `_
 
 `base` 是若干张游戏配置表横向拼在一起：A–E 列前 10 行是设置与公式定义；第 55 行是各表的表头，数据从第 56 行起，每张表占几列、各自往下延伸，**表与表之间长度不同，读每张表时遇到第一个非本表格式的行就停**。
 
+**列按第 55 行的表头名找**（v0.1.7，1.9）：本节写的列字母是 20260707 版的位置，20261003 版从 P 列起右移一列。
+
 ### 5.1 设置与公式定义（A2:E10）→ `formula-ref.json`
 
 - 设置区见 1.8。
@@ -440,6 +458,8 @@ def90 = floor(baseL1.def × DefRatio     / 10000)
 
 散华：805 / 22 / 77 → **10062 / 275 / 941**。表内有 `20-` 这类文本 Level（突破前的同级行），第 152 行起是别的内容；只取 Level == 90 的那一行（全表唯一，BreachLevel 6），不需要整表解析。
 
+三维里有 0 的照样写出，构建警告"主表三维有 0"（v0.1.7：20261003 版景燃的防御就是 0；schema 允许防御为 0，TD-02）。
+
 ### 5.4 其他表
 
 | 表（列） | 用途 | 需要于 |
@@ -448,7 +468,7 @@ def90 = floor(baseL1.def × DefRatio     / 10000)
 | PhantomGrowth、PhantomBase.MainProp / SubProp、PhantomModel.SubAttribute（AW–CK） | 声骸主词条满级值、副词条档位 → `echo-stats.json`（v0.1.5 已抽，见 12.6） | M5（副词条边际） |
 | AbnormalDamageLv / AbnomalDamage（AM–AN）、WeaknessDamageBaseValue（AO） | 异常伤害基础值、谐度破坏基础值，按等级存成数组（下标 = 等级 − 1，第 56–155 行 = 1–100 级），并入 `effects.json` 的 `abnormalBaseByLevel` / `tune-break.json` 的 `baseByLevel`；公式见 TD-03 §5、§6 | M4 |
 | WeaknessDamageMonsterCost / TypeRate / Minus / MinusRatio（R–U，第 56–58 行） | 按敌人 COST（1 / 3 / 4）的谐度破坏系数：`factor = T × U`，写入 `tune-break.json` 的 `costFactors`（TD-03 §6） | M4 |
-| HardnessMode（AD–AJ）、AttrTransfer（AK–AL）、WorldLevelBonus（Z–AC）、MonsterPropertyGrowth（B–C）、PropExtraRate（O）、Shield（CP–EL） | 暂不读；TD-06 核定白条 / 韧性机制时再定 | — |
+| HardnessMode（AD–AJ）、AttrTransfer（AK–AL）、WorldLevelBonus（Z–AC）、MonsterPropertyGrowth（B–C）、PropExtraRate（O；20261003 版新增 P `Weakness&Ratio`）、Shield（CP–EL） | 暂不读；TD-06 核定白条 / 韧性机制时再定 | — |
 
 ### 5.5 乘区代码（F–Y 列第 11 行起）
 
@@ -592,11 +612,11 @@ Curve1 / Curve2 取 `WeaponGrowth` 里 Lv = 90 的一行（125000 / 45000）。�
 
 ### 10.1 当前配置区（R1–R70）
 
-xlsx 计算器"当前选中"的角色、武器、声骸、开关（本版是 `秧秧·玄翎`，满链、90 级）。它决定了 `伤害计算` 缓存值的上下文，只抽进 `fixtures/golden-damage.json` 的 `context`（11.1），不产出运行时数据。
+xlsx 计算器"当前选中"的角色、武器、声骸、开关（20260707 版是 `秧秧·玄翎`，满链、90 级；20261003 版是 `清宵`，打 100 级全息 6、谐破增幅 10）。它决定了 `伤害计算` 缓存值的上下文，只抽进 `fixtures/golden-damage.json` 的 `context`（11.1），不产出运行时数据。
 
 ### 10.2 buff 库（R73–R1790）→ `buff-texts.json`
 
-第 72 行表头：A `BUFF`、C `类型`、D `来源`、E `激活层数`、F `效果`。A 列非空即一条，共 **1549 条**；R1791 起不再是 buff 库（10.3）。
+第 72 行表头：A `BUFF`、C `类型`、D `来源`、E `激活层数`、F `效果`。A 列非空即一条，共 **1549 条**；R1791 起不再是 buff 库（10.3；20261003 版从 R1908 起）。
 
 | 字段 | 来源 | 说明 |
 |---|---|---|
@@ -619,7 +639,7 @@ xlsx 计算器"当前选中"的角色、武器、声骸、开关（本版是 `�
 
 按此口径：全部 62%；声骸技能 96%、声骸套装 95%、角色 87%、武器 85%、角色延奏 83%、自定义 63%、逆境深塔 38%、冥歌海墟 8%、矩阵叠兵 2%。**文本里没有触发条件的结构和持续时间**，进入运行时的 buff 只来自 curated（总设计 §3.2），`draftable` 只帮 TD-07 排优先级。
 
-### 10.3 分区网格（R1791–R2650）
+### 10.3 分区网格（R1791–R2650；20261003 版从 R1908 起，按段名定位，1.9）
 
 `Calc` 段：A 列或 M 列是网格名（`def`、`res`、`def99`、`def10`、`res_u`、`dmgchg`、`dmgcrit`、`dmgrd`、`dmgrd_e`、`dmgampl1-9(37&38)`、`dmgpost0_6(127&128)`、`dmgampl0(37&38)`、`dmgpost(1001)`、`dmgamplxxxx(37&38)`，以及面板类的"生命 / 攻击 / 暴击 / … / 全属伤"等），其下是"代码行 + 数值行"交替的网格（代码语法见 5.5）。按"一行 ≥3 个代码、下一行对应位置 ≥60% 是数字"识别，现有 263 对、3322 个值。v0.1.1 起不再单独抽成文件：`fixtures/golden-zones.json` 改为从「伤害计算」的数组公式拆出每个标准答案格的乘区（TD-03 §10），网格与汇总格只作为求值时读取的缓存值。R2651 起是界面用的文本 / 值对，不读。
 
@@ -627,29 +647,39 @@ xlsx 计算器"当前选中"的角色、武器、声骸、开关（本版是 `�
 
 ## 11. 伤害计算
 
-### 11.1 标准答案（R3–R1026）→ `fixtures/golden-damage.json`
+### 11.1 标准答案（R3–R1026；角色块到 A 列"其他"的上一行，20261003 版到 R1114）→ `fixtures/golden-damage.json`
 
 - **上下文**（R2 表头、R3 数值）：B–O 为当前角色实时面板（生命、攻击、防御、暴击、暴伤、共鸣效率、普攻 / 重击 / 技伤 / 大招加成、元素加成、伤害加成、偏谐效率、谐破增幅），Q–AD 为当前目标面板（类型、等级、生命、攻击、防御、七元素抗性、共振度、偏谐值）。原样存为 `context`。
 - **条目**：R4 起按角色分块（A 列为角色名，56 块、53 个角色）；每块内有若干"列组"，每组 5 列：`名称 | (空) | 未暴击 | 暴击 | 结算次数`，列组起点在 B、H、N、T、Z 列。名称以"10级 / 已激活 / 技能"结尾、且"未暴击"位置写着"未暴击"的行是**小节标题**（`常态攻击 10级`、`共鸣技能 10级`、`延奏技能`、`固有技能1 已激活`…），其下各行是条目。
-- 每个条目：`{ char, section, label, nonCrit, crit | null, ticks, row, col }`；治疗类条目（"-治疗量"）只有未暴击值，`crit: null`。现有 **1643 条**。
+- 每个条目：`{ char, section, label, nonCrit, crit | null, ticks, row, col }`；治疗类条目（"-治疗量"）只有未暴击值，`crit: null`。现有 **1643 条**（20261003 版 1760 条，其中 1266 条连上 dmg）。
 - **连接**：按 (`char`, `label`) 找 dmg 的 (`charaId`, `dmgCalc`)：唯一命中 1182 条（写 `dmgKey`），多条命中 3 条，未命中 458 条（多为治疗量、层数表"1层"等）。
 - **注意**：所有块都用 R3 这一套面板与目标计算（本版是秧秧·玄翎的面板），所以 golden 验证的是"倍率 × 这套面板 × 这个目标"的公式实现，不是各角色自己的面板。想要更多样本，在 Excel 里切换当前配置后另存一份再抽（总设计 §11）。
 
 例：R5 → `{ char: '散华', section: '常态攻击 10级', label: '普攻第一段', nonCrit: 485, crit: 1114, ticks: 1, row: 5, col: 'B', dmgKey: ['散华', 'A1'] }`。
 
-### 11.2 异常效应表（R1027–R1090）
+### 11.2 异常效应表（R1027–R1090；从 B 列"光噪效应（对目标）"那一行起找，20261003 版下移 88 行）
 
 R1028–R1034 是 7 种效应的文字说明（持续时间、层数规则），R1039 起是各效应逐层的"倍率 / 伤害"表。**主数据取 dmg 的 `异常伤害` 行**（4.3），这里只抽两样：说明文本（并入 `effects.json` 的 `desc`）、逐层伤害缓存值（作为异常公式的 golden，并入同一文件的 `golden`）。
 
 `effects.json` 每条：`{ name, element, subType, multipliers: number[] /* 第 k 项 = k 层 */, maxStacks, desc, golden?: { stacks, value }[] }`，外加 `abnormalBaseByLevel`（5.4）。
 
-### 11.3 谐度破坏表（R1093–R1106）
+### 11.3 谐度破坏表（R1093–R1106；按 B 列"谐度破坏"、D 列"倍率"的表头找，20261003 版下移 88 行）
 
 表头：`谐度破坏 | 倍率 | 对失谐伤害 | 对常态伤害 | 结算次数`；行：`对COST1/3/4通用`、`长刃-1/2/3`、`佩枪`、`臂铠`、`迅刀-1/2`、`音感仪`。**倍率主数据取 dmg `通用` 的 `谐度破坏*` 行**（4.3）；结算次数只有这张表有，按变体名对上（`长刃-1` ↔ `谐度破坏-长刃1`）后并入。
 
-`tune-break.json`（v0.1.6 起由 `tools/build/tune_break.py` 产出）：`{ variants: [{ key, weaponType, seq, multiplier, ticks, golden: { vsDisharmony, vsNormal } }], costRows: [{ label, multiplier, vsDisharmony, vsNormal, ticks }], baseByLevel, costFactors: [{ cost, factor }] }`。8 个变体（长刃三段 1.7334 / 2.2666 / 12，迅刀两段 1 × 4 次 / 12，佩枪、臂铠、音感仪 16），各武器总倍率都是 16；按 TD-03 §6 复算与表里的对失谐 / 对常态伤害逐个一致（`tests/td03.test.ts` T03-7b）。基础值按**角色**等级取（xlsx 公式用「伤害配置」C3）。伤害公式见 TD-03 §6；什么时候放、真空期见 TD-06 §13。
+`tune-break.json`（v0.1.6 起由 `tools/build/tune_break.py` 产出）：`{ variants: [{ key, weaponType, seq, multiplier, ticks, golden: { vsDisharmony, vsNormal } }], costRows: [{ label, multiplier, vsDisharmony, vsNormal, ticks }], baseByLevel, costFactors: [{ cost, factor }], rules }`（`rules` 见 11.4，v0.1.7）。8 个变体（长刃三段 1.7334 / 2.2666 / 12，迅刀两段 1 × 4 次 / 12，佩枪、臂铠、音感仪 16），各武器总倍率都是 16；按 TD-03 §6 复算与表里的对失谐 / 对常态伤害逐个一致（`tests/td03.test.ts` T03-7b）。基础值按**角色**等级取（xlsx 公式用「伤害配置」C3）。伤害公式见 TD-03 §6；什么时候放、真空期见 TD-06 §13。
 
 ---
+
+### 11.4 偏谐通用规则（附页2，v0.1.7）→ `tune-break.json` 的 `rules`
+
+`附页2` 里有一段"偏谐机制·通用"的说明文字（20260707 版 B227、20261003 版 B246，按含"谐破冷却"的那一格找），没有数表，按原句抽：
+
+- `COST1/3/4/红名目标分别冷却a/b/c/d秒` → `lockSec: { 1: a, 3: b, 4: c }`、`lockSecRedName: d`（谐破冷却：谐度破坏命中失谐目标后多久不能累积偏谐值）；
+- `交互按键持续n秒` → `buttonSec`（打出偏谐值不为 0 的伤害后谐度破坏按钮亮多久）；`source` 记单元格。
+- 两版的值：谐破冷却都是 6 / 6 / 3 / 3 秒；按钮 20260707 版 3 秒、20261003 版 5 秒。敌人表里没有红名，红名那一档不用。
+- 写法变了认不出、或找不到这段 → 警告，`rules` 记 null（仿真按 5 秒真空期、按钮不限时并警告，TD-06 §13.1）。
+- 同一段还写了谐度破坏削 12.5% 白条，与 dmg 的 `Damage.Percent0` 一致，后者是数据来源（4.1）。
 
 ## 12. 产出文件
 
@@ -666,7 +696,7 @@ R1028–R1034 是 7 种效应的文字说明（持续时间、层数规则），
 | `generated/weapons.json` | 第 7 节 | M2 |
 | `generated/echoes.json` | 第 8 节 | 声骸接入（v0.1.5） |
 | `generated/nanoka.json` | nanoka 的技能冷却、技能文本、技能树属性（12.5，v0.1.4） | M0 起 |
-| `generated/tune-break.json` | 11.3（v0.1.6 已产出） | M4 |
+| `generated/tune-break.json` | 11.3、11.4（v0.1.6 已产出，v0.1.7 加 `rules`） | M4 |
 | `generated/effects.json` | 11.2（未产出，加带异常效应的角色时） | M4 |
 | `generated/echo-stats.json` | 声骸主词条满级值、固定副主属性、副词条各档（5.4、12.6） | M5（v0.1.5） |
 | `generated/build-report.md` | 12.4 | M0 |
@@ -770,11 +800,11 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **构建**：`pnpm build:data` 顺带抓取（`tools/build/nanoka.py`），缓存在 `data/raw/nanoka/<版本>/`；`--nanoka off` 跳过，`--nanoka 3.6` 指定版本。xlsx 角色名与 nanoka 名不同的（漂泊者各形态）写在 `data/curated/nanoka-names.json`。
 - **产出**：`generated/nanoka.json`（schema `NanokaFileSchema`）：每个角色的技能（类别、名称、文本、冷却）、共鸣链文本、技能树属性节点合计 `treeStats`；v0.1.5 新增 `echoes`（xlsx 声骸表里每个声骸的说明、冷却、伤害条目、所属套装；来自 `/ww/<版本>/echo.json` 与 `/zh/echo/<ID>.json`，异相·X 取 X，名字对不上的写在 `nanoka-names.json` 的"声骸"一节）与 `echoSets`（套装件数效果说明）。构建时 nanoka 在声骸连倍率之前取；`--nanoka off` 或没取到时沿用上次的 `nanoka.json`。
 - **用途**：角色部分只用来核对，不自动填；声骸的伤害条目给 dmg 里没有的声骸行连倍率（第 8 节）。`pnpm check:data -- --flags <角色>` 拿它核对角色模块手填的冷却（`actionOverrides.<动作>.cooldown`）与技能树属性（`treeStats`），对不上的列出来；起草 buff 时作原文出处（TD-07 §11）。
-- **版本**：xlsx 固定在 20260707 版（资源 3.4.17），nanoka 用线上版本，两者不一致没关系；文本以 nanoka 为准，帧数据以 xlsx 为准（规则改过的以较新的 nanoka 为准，如椿的红椿·蕾，m0-confirm §6 C2；声骸数值两边不同时也以 nanoka 为准，8.5）。
+- **版本**：xlsx 用版本清单的 current（1.9；现为 20261003 版，资源 3.6.13），nanoka 用线上版本（换版时按 3.7 构建），两者不一致没关系；文本以 nanoka 为准，帧数据以 xlsx 为准（规则改过的以较新的 nanoka 为准，如椿的红椿·蕾，m0-confirm §6 C2；声骸数值两边不同时也以 nanoka 为准，8.5）。
 
 ### 12.6 `echo-stats.json`（v0.1.5）
 
-`base` 表 AY–CK 列（5.4），第 55 行表头、56 行起数据（`tools/build/echo_stats.py`）：
+`base` 表 AY–CK 列（5.4；按第 55 行表头名找，20261003 版右移一列），第 55 行表头、56 行起数据（`tools/build/echo_stats.py`）：
 
 - `mains`：AY–BC（PhantomBase.MainProp）各 COST 可选的主词条与满级值，按说明文字解析（"暴击22%" → 暴击率 0.22，"冷凝30%" → 冷凝伤害加成 0.3）；
 - `fixedSubs`：BD–BH（PhantomBase.SubProp）固定副主属性（4C 攻击 150、3C 攻击 100、1C 生命 2280）；
@@ -1082,3 +1112,4 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **v0.1.4（2026-10-03）**：并回 M1–M3 实现时的决定（AGENTS.md 差异 2、4、6、7、9）。0.2 模块清单补 M1–M3 的脚本；3.8 新增提示：延奏触发帧的区间写法（取起点、`outroRange`，3 组）与"立即触发"（0）、`endOnSwitchAfter`（13 组）；4.3 只有第 1 级有倍率的技能取 1 级（43 行，原先读成 0）；12.1 / 12.5 新增 `nanoka.json`；13.1 `kind` 改按 dmg 的技能归类（伤害标签仍按 Damage.Type）、`castGains` 跟随判定行的共鸣链版本、新增 `endOnSwitchOut`、`energyCost`；13.4 新增覆盖字段 `cooldownGroup`、`energyCost`、`endOnSwitchOut`、`followUp`；Q8、Q24 关闭，Q7 补实测结论。
 - **v0.1.5（2026-10-04）**：并回声骸接入与 `echo-stats.json`（AGENTS.md 差异 1、4）。4.3 声骸也适用"只有第 1 级有倍率取 1 级"，各级全 0 的占位行不算连上；5.4 / 12.1 / 新增 12.6：`echo-stats.json`（主词条满级值、固定副主属性、副词条各档）；第 8 节按实现改写：分组（技能版本、多段、体型、组名取公共前缀）、异相取本体、脱手与否（`textKind` / `kindText`）、倍率按 dmg-join → dmg → nanoka 连（两边不同以 nanoka 为准）、产出字段；12.5 `nanoka.json` 新增 `echoes` / `echoSets`；13.3 按实现改写（`Q·<组名>`、体型、冷却与多段、`summon`、nanoka 的能量与削韧、`echoes.ts`）；13.4 新增覆盖字段 `charges`、`summon`，`judgments` 新增 `element`、`relatedAttr`、`heals`。
 - **v0.1.6（2026-10-04）**：并回 M4 敌人量表（TD-06 v0.2 §17、AGENTS.md 差异 1）。9.1 新增 `whiteBarTough`（prop RageMax ÷ 100 × PropExtraRate），写明脆弱时长、瘫痪时长对应的原型字段；9.2 修订为"削韧值同时削韧性与白条"，Q16 关闭；11.3 `tune-break.json` 已产出（结算次数、对照值、基础值按角色等级）；12.1 拆开 `tune-break.json`（已产出）与 `effects.json`（未产出）；13.1 技能归类 14 与组名"谐度破坏"→ `tuneBreak`，`tuneBreak` 类没有切人锁时取结束帧；13.2 谐度破坏变体的结算次数、`followHitstop`，RelatedProperty 10000099 不打 `relatedAttrOther`。
+- **v0.1.7（2026-10-04）**：并回 xlsx 版本清单、按位置无关的方式定位、附页2 的偏谐通用规则、按比例削白条与换成 20261003 版（AGENTS.md 差异 4–7）。0.1 附页2 只读"偏谐机制·通用"；新增 1.9 版本清单（`data/xlsx-versions.json`）与各表的定位方式（base 按表头名、伤害计算按标记行、伤害配置按段名），列出 20261003 版的位移；3.10 补 20261003 版的统计；4.1 CZ 列 `Damage.Percent0` 读成 `whiteBarRatio`；5 节 base 的列按表头名找；10.1–10.3、11.1–11.3 注明 20261003 版的位置与计数；新增 11.4 `tune-break.json` 的 `rules`（谐破冷却按 COST、按钮时长）；12.1、12.5、12.6 相应更新。

@@ -1,10 +1,11 @@
 """golden 扰动对拍（TD-03 §10.3）：开发期工具，不进 CI。
 
 xlsx 的缓存值只用了一套配置，大多数乘区是 0，只能证明它们的中性值。这里把标准答案公式引用到的「伤害配置」数值格
-（R1791 起的分区网格与汇总格）、目标防御与七项抗性随机改写：用解析器按原数组公式算出"期望值"，再按 TD-03 §10.2
+（计算区：A 列第一个"Calc"起的分区网格与汇总格，20260707 版 R1791、20261003 版 R1908）、目标防御与七项抗性随机改写：用解析器按原数组公式算出"期望值"，再按 TD-03 §10.2
 拆乘区、按 §3–§7 的公式重算，逐格比较。改公式、改拆分规则、换 xlsx 版本后跑一次。
 
-用法：pnpm golden:perturb [-- --rounds 20 --seed 1]（即 python3 tools/build/golden_perturb.py [xlsx] …）
+用法：pnpm golden:perturb [-- --rounds 20 --seed 1]（即 python3 tools/build/golden_perturb.py [xlsx] …）；
+xlsx 缺省同构建：data/xlsx-versions.json 的 current
 
 已知差异单独计数、不算失败：防御分母 ≤ 0（减防大到有效防御 ≤ −(800 + 8·Lv)）时 xlsx 算出负的防御系数，TD-03 取上限 2
 （§1.3）。物理、谐度破坏与响应"减防后先取整"的写法（§3.2、Q1）在这里不会出现差异：拆分时把 FLOOR(…) 整体记为目标防御。
@@ -23,6 +24,8 @@ from openpyxl import load_workbook
 
 sys.path.insert(0, str(Path(__file__).parent))
 import golden  # noqa: E402
+from golden import Classifier  # noqa: E402
+from versions import pick_xlsx  # noqa: E402
 from xlformula import Evaluator, XlError, col_letter, refs_in, split_coord  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -31,11 +34,13 @@ TARGET_CELLS = ['U3'] + [f'{col_letter(c)}3' for c in range(22, 29)]   # 伤害�
 
 
 def inputs_of(ev: Evaluator, cells: list[tuple[str, str, str]]) -> tuple[set, set]:
-    """(要改写的格, 要按公式现算的格)：标准答案公式引用到的「伤害配置」R1791 起的数值格；
-    其中预先算好的因子格（R1792–R1815 防御 / 抗性系数、R2139–R2142 霜冻 1002 类 MAX(1 + x, 0)）改为现算，
-    它们公式里引用的格也一并改写"""
+    """(要改写的格, 要按公式现算的格)：标准答案公式引用到的「伤害配置」计算区的数值格；
+    其中预先算好的因子格（20260707 版 R1792–R1815 防御 / 抗性系数、R2139–R2142 霜冻 1002 类 MAX(1 + x, 0)，
+    按段名平移）改为现算，它们公式里引用的格也一并改写"""
     cfg_f = ev.formulas.get(CFG, {})
     cfg_v = ev.values.get(CFG, {})
+    cls = Classifier(ev)
+    calc_start = min((int(k[1:]) for k, v in cfg_v.items() if k[0] == 'A' and k[1:].isdigit() and v == 'Calc'), default=1791)
     inputs: set[tuple[str, str]] = set()
     live: set[tuple[str, str]] = set()
     todo = [(CALC, ev.formulas[CALC][c]) for c, _, _ in cells]
@@ -43,12 +48,12 @@ def inputs_of(ev: Evaluator, cells: list[tuple[str, str, str]]) -> tuple[set, se
         here, src = todo.pop()
         for ref in refs_in(ev.parsed(src)):
             sheet = ref.sheet or here
-            if sheet != CFG or ref.r1 is None or ref.r1 < 1791:
+            if sheet != CFG or ref.r1 is None or ref.r1 < calc_start:
                 continue
             for r in range(ref.r1, ref.r2 + 1):
                 for c in range(ref.c1, ref.c2 + 1):
                     key = (CFG, f'{col_letter(c)}{r}')
-                    if (1792 <= r <= 1815 or 2139 <= r <= 2142) and isinstance(cfg_f.get(key[1]), str) \
+                    if (cls.r(1792) <= r <= cls.r(1815) or cls.r(2139) <= r <= cls.r(2142)) and isinstance(cfg_f.get(key[1]), str) \
                             and cfg_f[key[1]].startswith('='):
                         if key not in live:
                             live.add(key)
@@ -89,9 +94,10 @@ def main() -> int:
     if argv[:1] == ['--']:  # pnpm 10 把 `pnpm golden:perturb -- …` 里的 `--` 原样传进来
         argv = argv[1:]
     args = ap.parse_args(argv)
-    xlsx = Path(args.xlsx) if args.xlsx else next(iter(sorted((ROOT / 'data' / 'raw').glob('*.xlsx'))), None)
+    xlsx, _, problems = pick_xlsx(args.xlsx, ROOT / 'data' / 'raw', ROOT / 'data' / 'xlsx-versions.json')
+    for level, msg in problems:
+        print(f"{'错误' if level == 'error' else '注意'}：{msg}", file=sys.stderr)
     if xlsx is None:
-        print('找不到 xlsx', file=sys.stderr)
         return 2
     t0 = time.time()
     warnings.filterwarnings('ignore')
