@@ -11,6 +11,9 @@ import type { Command } from '../data/scenario.schema'
 // ---------------------------------------------------------------------------
 // 装配结果 ResolvedScenario（总设计 §3.3）：仿真过程中只读
 
+/** 五个核心资源槽（下标 = 槽号 − 1） */
+export type Core5 = [number, number, number, number, number]
+
 export interface ResolvedScenario {
   data: GameData
   team: [ResolvedMember, ResolvedMember, ResolvedMember]
@@ -19,7 +22,7 @@ export interface ResolvedScenario {
   effects: RegisteredEffect[]               // 资源型触发效果（TD-07 §9），同上
   commands: Command[]
   opening: Command[]                        // 启动轴（TD-09 §3.7）
-  initial: { energy: [number, number, number]; concerto: [number, number, number]; onField: Slot }
+  initial: { energy: [number, number, number]; concerto: [number, number, number]; onField: Slot; core: [Core5, Core5, Core5] }   // core：各槽开局值（下标 = 槽号 − 1）
   rules: Rules
   /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
   tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }

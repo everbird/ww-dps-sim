@@ -1,4 +1,5 @@
-// tests/timeline.test.ts —— 时间轴网页的数据与嵌入（src/cli/timeline.ts；网页本身是 web/timeline.html，不在这里测）
+// tests/timeline.test.ts —— 时间轴网页的数据与嵌入（src/cli/timeline.ts；网页本身是 web/timeline.html，不在这里测）；
+// 调试表与视频时间点（TD-11 §6 P3）
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
@@ -47,5 +48,19 @@ describe('时间轴网页', () => {
     const frag = renderTimeline(template, m, true)
     expect(frag.startsWith('<title>')).toBe(true)
     expect(frag).not.toContain('<!doctype')
+  })
+  test('调试表：每轮一份分段、逐条、资源逐步；视频时间点带仿真与按视频推算的世界帧', () => {
+    const sc2 = ScenarioSchema.parse({ ...sc, rotation: ['甲 X', 'wait 30', '甲 X'], options: { repeat: 2 }, video: { loop: 1, marks: { 1: '0:10', 3: 11, 7: 12 } } })
+    const r2 = resolveScenario(sc2, data)
+    const m = timelineModel('scenarios/demo.yaml', sc2, r2, simulate(r2))
+    expect(m.trace.map(t => [t.loop, t.commands.map(c => c.label), t.ledgers.map(l => l.name)])).toEqual([
+      [1, ['甲 X', '甲 X'], ['协奏', '能量']], [2, ['甲 X', '甲 X'], ['协奏', '能量']],
+    ])
+    // 第 3 条比第 1 条晚 30 帧（wait 从 X 开始时算），视频里晚 1 秒：仿真快 0.5 秒
+    expect(m.video).toEqual({
+      loop: 1, missing: [7],
+      marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60 }],
+    })
+    expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
   })
 })

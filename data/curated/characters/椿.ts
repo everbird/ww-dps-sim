@@ -12,6 +12,8 @@ const snap = (x: number) => Math.round(x * 1e9) / 1e9
 
 export default defineCharacter('椿', {
   weaponType: '迅刀',
+  // 主表槽名是"红椿·蕊1""红椿·蕊2"；动作表与钩子只用槽 1，槽 2 从不变（原因不明，不影响仿真）。槽 1 按游戏里的叫法
+  coreNames: { 1: '红椿·蕊' },
   treeStats: { '暴击伤害': 0.16, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E1', R: '大招', QTE: 'QTE', '盛绽·谐度破坏': '谐度破坏-时停' },
   buffs: [

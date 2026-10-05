@@ -8,7 +8,7 @@ import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
-import type { RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
+import type { Core5, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
 export const CHAR_BASE = { critRate: 0.05, critDamage: 1.5, energyRegen: 1 } as const
@@ -80,6 +80,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
         issues.push(`${def.id} 的触发条件 ownerHas 写的 buff "${need}"，同一持有者没有登记`)
     }
   }
+  const core = initialCore(sc.initial.core, team, issues)
   if (issues.length > 0) throw new ResolveError(issues)
   // 共鸣效率不按伤害元素 / 标签过滤：写了 filter 的按无条件算（TD-06 §2.1）
   const regenFiltered = buffs.filter(b => b.def.zone === 'energyRegen' && b.def.filter).map(b => b.def.id)
@@ -98,6 +99,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
       energy: trio(e, m => (e === 'full' ? m.def.energyCost : 0)),
       concerto: trio(sc.initial.concerto, () => 0),
       onField,
+      core,
     },
     rules,
     tuneBreakTiming,
@@ -262,6 +264,22 @@ function resolveEnemy(e: Scenario['enemy'], data: GameData, issues: string[]): E
     paralysisFrames: Math.round((c.paralysisSec ?? 0) * 60), poise: { max: 0, recover: 0, reduce: 0 },
     tunabilityMax: c.tunabilityMax ?? 0,
   }
+}
+
+/** 开局核心资源（TD-06 Q7）：按角色名、资源名找到槽；不在队伍、没有这个资源、超过上限的报错 */
+function initialCore(given: Record<string, Record<string, number>>, team: ResolvedMember[], issues: string[]): [Core5, Core5, Core5] {
+  const out = team.map((): Core5 => [0, 0, 0, 0, 0]) as [Core5, Core5, Core5]
+  for (const [char, values] of Object.entries(given)) {
+    const m = team.find(x => x.def.name === char)
+    if (!m) { issues.push(`initial.core.${char}：不在队伍里`); continue }
+    for (const [name, v] of Object.entries(values)) {
+      const c = m.def.coreResources.find(x => x.name === name)
+      if (!c) { issues.push(`initial.core.${char}.${name}：${char} 没有这个核心资源（有：${m.def.coreResources.map(x => x.name).join('、') || '无'}）`); continue }
+      if (v > c.cap) { issues.push(`initial.core.${char}.${name}：${v} 超过上限 ${c.cap}`); continue }
+      out[m.slot]![c.slot - 1] = v
+    }
+  }
+  return out
 }
 
 /** options.rules 覆盖 DEFAULT_RULES：只认已有的键，类型要一致；对象类的键按一层合并 */

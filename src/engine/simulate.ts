@@ -87,7 +87,7 @@ export function simulate(r: ResolvedScenario): SimResult {
 function initialState(r: ResolvedScenario): SimState {
   const chars = r.team.map((m): CharRuntime => ({
     slot: m.slot, name: m.def.name, action: null, last: null, startedThisTick: false,
-    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [0, 0, 0, 0, 0], cooldowns: {}, charges: {}, flags: {},
+    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {}, flags: {},
   })) as SimState['chars']
   const e = r.enemy
   const enemy: EnemyRuntime = {

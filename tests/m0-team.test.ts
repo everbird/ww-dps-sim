@@ -52,6 +52,11 @@ dataDescribe('M0 三人的钩子', () => {
   // ---------------------------------------------------------------------------
   // 椿
 
+  test('T08-椿-0 核心资源槽 1 改叫"红椿·蕊"（主表是"红椿·蕊1"），场景按它写开局值', () => {
+    expect(gd.characters['椿']!.coreResources.map(c => [c.slot, c.name])).toEqual([[1, '红椿·蕊'], [2, '红椿·蕊2'], [3, '红椿·蕾']])
+    const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { custom: { level: 90 } }, rotation: ['椿 A1'], initial: { core: { 椿: { 红椿·蕊: 100 } } } }), gd)
+    expect(r.initial.core[0]).toEqual([100, 0, 0, 0, 0])
+  })
   test('T08-椿-1 盛绽：E1 进入后普攻换成盛绽版本，E2 退出；协奏满时共鸣技能是一日花', () => {
     const bad = m0Run(gd, { initial: { onField: 0 }, rotation: ['椿 E1', '椿 A1'], options: { maxWait: 150 } })
     expect(bad.error!.message).toContain('盛绽状态下 A1 换成了盛绽版本')

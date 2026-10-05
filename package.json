@@ -18,7 +18,8 @@
     "marginal": "tsx src/cli/marginal.ts",
     "timeline": "tsx src/cli/timeline.ts",
     "test": "vitest run",
-    "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'"
+    "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'",
+    "trace": "tsx src/cli/trace.ts"
   },
   "dependencies": {
     "yaml": "^2.9.1",
