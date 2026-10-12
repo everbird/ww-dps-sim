@@ -10,8 +10,16 @@ import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
 import { simulate } from '../../../src/engine/simulate'
-import { renderTimeline, timelineModel } from '../../../src/report/timeline'
+import { renderDesign, renderTimeline, timelineModel } from '../../../src/report/timeline'
 import template from '../../timeline.html?raw'
+import shared from '../../designs/shared.js?raw'
+
+const DESIGN_FILES = import.meta.glob<string>('../../designs/*.html', { query: '?raw', import: 'default', eager: true })
+function designTemplate(file: string): string {
+  const tpl = DESIGN_FILES[`../../designs/${file}`]
+  if (!tpl) throw new Error(`没有设计模板 ${file}`)
+  return tpl
+}
 import { loadGameData } from './gamedata'
 import type { Requests, Source } from './protocol'
 
@@ -37,17 +45,26 @@ export const handlers: Handlers = {
     const d = await gd()
     return { version: d.version, characters: Object.keys(d.characters), xlsx: d.meta.xlsxFile }
   },
-  async run({ scenario }) {
+  async run({ scenario, view }) {
     const sc = scenarioOf(scenario)
     const r = resolveScenario(sc, await gd())
     const res = simulate(r)
     const b = basisOf(res)
     return {
-      html: renderTimeline(template, timelineModel(scenario.name, sc, r, res)),
+      // view：缺省是原版时间轴（含调试表）；写 web/designs 里的文件名就用那个视图
+      html: view && view !== 'classic'
+        ? renderDesign(designTemplate(view), shared, timelineModel(scenario.name, sc, r, res))
+        : renderTimeline(template, timelineModel(scenario.name, sc, r, res)),
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
       error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
       warnings: [...r.warnings, ...res.summary.warnings.map(w => w.message)],
     }
+  },
+  async design({ scenario, file }) {
+    const tpl = designTemplate(file)
+    const sc = scenarioOf(scenario)
+    const r = resolveScenario(sc, await gd())
+    return { html: renderDesign(tpl, shared, timelineModel(scenario.name, sc, r, simulate(r))) }
   },
   async compare({ base, other }) {
     const d = await gd()

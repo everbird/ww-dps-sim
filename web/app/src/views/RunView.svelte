@@ -1,6 +1,7 @@
 <!-- 场景：编辑 YAML、运行，结果是时间轴网页（同 pnpm timeline，含分轮、分动作、等待、调试表） -->
 <script lang="ts">
   import { call } from '../api'
+  import { DESIGNS } from '../designs'
   import { find } from '../docs.svelte'
   import Editor from '../Editor.svelte'
   import { fmt } from '../fmt'
@@ -12,12 +13,15 @@
   let out = $state<Requests['run']['res'] | null>(null)
   let frame = $state<HTMLIFrameElement>()
   let height = $state(900)
+  // 同一次运行换着视图看：原版（含调试表）与 A–D（见"视图说明"）
+  let view = $state('classic')
+  const VIEWS = [{ id: 'classic', name: '原版（含调试表）' }, ...DESIGNS.map(d => ({ id: d.file, name: d.name }))]
 
   async function run() {
     const d = find('scenario', name)
     if (!d) return
     busy = true; err = null
-    try { out = await call('run', { scenario: { name: d.name, text: d.text } }) } catch (e) { err = (e as Error).message; out = null }
+    try { out = await call('run', { scenario: { name: d.name, text: d.text }, view }) } catch (e) { err = (e as Error).message; out = null }
     busy = false
   }
   // 时间轴网页的高度跟着内容（srcdoc 同源，量得到）
@@ -47,6 +51,7 @@
     {/if}
   </section>
   <section class="card result">
+    <div class="views" role="group" aria-label="视图">{#each VIEWS as v (v.id)}<button type="button" class:on={view === v.id} onclick={() => { view = v.id; if (out) run() }}>{v.name}</button>{/each}</div>
     {#if out}
       <iframe bind:this={frame} title="时间轴" srcdoc={out.html} style:height="{height}px" onload={fit}></iframe>
     {:else}
@@ -64,6 +69,8 @@
   @media (max-width: 960px) { .side { position: static; } }
   .actions { display: flex; align-items: center; gap: 10px; }
   .result { overflow: hidden; min-height: 300px; }
+  .views { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--rule); }
+  .views button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
   iframe { width: 100%; border: 0; display: block; background: var(--paper); }
   .stats { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 0; }
   .stats dt { font-size: 12px; color: var(--muted); }

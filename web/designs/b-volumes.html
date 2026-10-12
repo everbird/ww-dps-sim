@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 · B 角色分卷</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* B 角色分卷：每个角色一卷（动作、伤害、资源、身上的 buff），同一根时间轴对齐；buff 用"给的人"的颜色，
+     一眼看出谁在给谁加成。读一个角色时不用在三十多行里找；看跨角色的时机靠共享时间轴与切人竖线 */
+  :root {
+    --paper: #eef1f5; --panel: #ffffff; --ink: #161d29; --muted: #566073; --faint: #8a93a4; --rule: #d6dce5; --grid: #eaedf2;
+    --stop: rgba(22, 29, 41, 0.055); --alert: #c8323b; --wait: #c47f1c;
+    --el-havoc: #a32f6c; --el-glacio: #2a78bb; --el-spectro: #a98410; --el-fusion: #c9512a; --el-electro: #7547cf; --el-aero: #23977a; --el-physical: #677084;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --label-w: 196px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0d1016; --panel: #151a22; --ink: #e4e8ef; --muted: #a0a8b8; --faint: #6f7889; --rule: #29303c; --grid: #1c222b;
+      --stop: rgba(228, 232, 239, 0.055); --alert: #ef5a62; --wait: #e2a446;
+      --el-havoc: #d6619e; --el-glacio: #5aa5e8; --el-spectro: #d9b443; --el-fusion: #e9784f; --el-electro: #a07df0; --el-aero: #4cc3a2; --el-physical: #98a1b5;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); padding: 0 16px 40px; }
+  .wrap { max-width: 1600px; margin: 0 auto; display: grid; gap: 14px; }
+  .top { position: sticky; top: 0; z-index: 2; background: var(--paper); padding-top: 14px; display: grid; gap: 8px; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 24px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 700; }
+  .kpi { font: 500 15px var(--mono); }
+  .kpi span { font: 12px var(--sans); color: var(--muted); margin-right: 4px; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13px; color: var(--muted); align-items: center; }
+  select, button { font: inherit; font-size: 13px; color: var(--ink); background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  .axis { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); background: var(--panel); border: 1px solid var(--rule); border-radius: 8px 8px 0 0; }
+  .axis .l { padding: 6px 12px; font-size: 12px; color: var(--muted); border-right: 1px solid var(--rule); }
+  .vol { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; overflow: hidden; }
+  .vol > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 18px; padding: 10px 12px; border-bottom: 1px solid var(--grid); border-left: 4px solid var(--c); }
+  .vol > header h2 { margin: 0; font-size: 16px; }
+  .vol > header .sub { color: var(--muted); font-size: 12.5px; }
+  .vol > header .share { margin-left: auto; font: 500 14px var(--mono); }
+  .vol > header .share span { font: 12px var(--sans); color: var(--muted); margin-left: 6px; }
+  .grid2 { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); }
+  .labels { position: relative; border-right: 1px solid var(--rule); }
+  .lab { position: absolute; left: 0; right: 0; padding: 0 12px; display: flex; align-items: center; gap: 6px; font-size: 12.5px; border-top: 1px solid var(--grid); }
+  .lab.sec { color: var(--muted); font-size: 12px; }
+  .lab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lab em { margin-left: auto; font: 11px var(--mono); color: var(--faint); font-style: normal; flex: none; }
+  .lab i { width: 8px; height: 8px; border-radius: 2px; flex: none; background: var(--c); }
+  svg { display: block; }
+  svg text { font-family: var(--sans); font-size: 11.5px; fill: var(--ink); }
+  svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  .ww-tip { position: fixed; z-index: 10; max-width: 380px; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
+    border-radius: 6px; box-shadow: 0 6px 20px rgba(10, 16, 28, 0.18); padding: 8px 10px; font-size: 12px; }
+  .note { color: var(--muted); font-size: 12px; margin: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="head"><h1 id="title"></h1><div id="kpis" class="head"></div></div>
+    <div class="ctl">
+      <label>轮次 <select id="loopSel"></select></label>
+      <label>放大到 <select id="segSel"></select></label>
+      <label><input type="checkbox" id="onlyDmg" checked> 只列影响伤害的 buff</label>
+    </div>
+    <div class="axis"><div class="l">战斗秒（竖线是切人）</div><div id="axis"></div></div>
+  </div>
+  <div id="vols" style="display:grid;gap:14px"></div>
+  <p class="note">buff 条的颜色是"给的人"：维里奈给椿的加成画成维里奈的颜色；声骸、武器、套装算角色自己。右侧数字是稳态覆盖率。</p>
+</div>
+<script id="timeline-data" type="application/json">null</script>
+<script>/*@shared*/</script>
+<script>
+(() => {
+  const M = WW.load(); if (!M) return
+  WW.paint(M)
+  const D = M.D, S = M.summary, $ = id => document.getElementById(id)
+  const names = M.team.map(t => t.name)
+  $('title').textContent = `${names.join(' · ')}　${M.title}`
+  const st = S.steady
+  $('kpis').innerHTML = [st && ['稳态 DPS', WW.fmt(st.dps)], ['DPS', WW.fmt(S.dps)], ['窗口（秒）', WW.sec(S.windowFrames)]].filter(Boolean)
+    .map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  $('loopSel').innerHTML = '<option value="all">全部</option>' + D.loops.map(l => `<option value="${l.loop}">${WW.loopName(l.loop)}</option>`).join('')
+  // buff 的"给的人"：模型里的 buffOwners（声骸、武器、套装算穿戴者）；场景 buff 用中性色
+  const giver = b => (D.slot.has(b.owner) ? D.slot.get(b.owner) : null)
+  let range = [0, D.lastF]
+
+  function axisSvg(W, x) {
+    const span = (range[1] - range[0]) / 60
+    const step = [1, 2, 5, 10, 20].find(s => W / (span / s) >= 64) || 30
+    const out = []
+    for (let s = Math.ceil(D.clock.secAt(range[0]) / step) * step; s <= D.clock.secAt(range[1]); s += step) {
+      const fx = x(D.clock.frameAt(s)); out.push(`<line x1="${fx}" x2="${fx}" y1="18" y2="28" style="stroke:var(--faint)"/><text class="num" x="${fx + 3}" y="14">${s}</text>`)
+    }
+    return `<svg width="${W}" height="28">${out.join('')}</svg>`
+  }
+  function frameLines(H, x, vis) {
+    const out = []
+    for (const [a, b] of D.clock.stops) if (vis(a, b)) out.push(`<rect x="${x(a)}" y="0" width="${Math.max(1, (b - a) * (x(1) - x(0)))}" height="${H}" style="fill:var(--stop)"/>`)
+    for (const s of D.switches) if (vis(s.f, s.f + 1)) out.push(`<line x1="${x(s.f)}" x2="${x(s.f)}" y1="0" y2="${H}" style="stroke:var(--faint);stroke-dasharray:2 3;opacity:.7"/>`)
+    return out
+  }
+
+  function render() {
+    const host = $('vols')
+    const W = Math.max(400, $('axis').clientWidth)
+    const ppf = (W - 16) / Math.max(60, range[1] - range[0])
+    const x = f => 8 + (f - range[0]) * ppf
+    const vis = (a, b) => b > range[0] && a < range[1]
+    $('axis').innerHTML = axisSvg(W, x)
+    const only = $('onlyDmg').checked
+    const winDmg = new Map()
+    for (const h of D.hits) if (h.dmg && vis(h.f, h.f + 1)) winDmg.set(h.char, (winDmg.get(h.char) || 0) + h.dmg.expected)
+    const total = [...winDmg.values()].reduce((a, b) => a + b, 0) || 1
+    const blocks = M.team.map((t, i) => {
+      const c = `var(--c${i})`
+      const R = [{ k: 'act', h: 66, label: '动作' }, { k: 'dmg', h: 46, label: '每段伤害' }, { k: 'res', h: 52, label: '能量 · 协奏' }]
+      const bl = D.buffs.filter(b => b.target === t.name && (!only || b.damage) && b.spans.some(s => vis(s.start, s.end)))
+      if (bl.length) R.push({ k: 'sec', h: 22, label: `身上的 buff（${bl.length}）` })
+      for (const b of bl) R.push({ k: 'buff', h: 19, b, label: b.short })
+      let y = 0; for (const r of R) { r.y = y; y += r.h }
+      const H = y, out = frameLines(H, x, vis)
+      for (const r of R) out.push(`<line x1="0" x2="${W}" y1="${r.y}" y2="${r.y}" style="stroke:var(--grid)"/>`)
+      const acts = D.actions.filter(a => a.i === i && vis(a.start, a.end))
+      const actR = R[0], dR = R[1], rR = R[2]
+      for (const o of D.onField) if (o.i === i && vis(o.start, o.end)) out.push(`<rect x="${x(o.start)}" y="${actR.y + 4}" width="${Math.max(1, (o.end - o.start) * ppf)}" height="4" rx="1" style="fill:${c}"/>`)
+      const lanes = [-1e9, -1e9]
+      for (const a of acts) {
+        const bx = x(a.start), w = Math.max(2, (a.end - a.start) * ppf), by = actR.y + 12
+        const op = { liberation: 1, skill: 0.85, heavy: 0.7, normal: 0.48, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.9 }[a.kind] ?? 0.3
+        const tip = `<b>${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒，${a.end - a.start} 帧<br>${a.how}${a.damage ? `<br>伤害 ${WW.fmt(a.damage)}` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}` : ''}`
+        out.push(`<rect x="${bx}" y="${by}" width="${w}" height="22" rx="3" data-tip="${WW.esc(tip)}" style="fill:${a.kind === 'tuneBreak' ? 'var(--alert)' : op ? c : 'var(--panel)'};fill-opacity:${op || 1};stroke:${op ? 'none' : c};stroke-width:1.4"/>`)
+        const tw = WW.textWidth(a.id, 11.5)
+        if (tw + 8 <= w) out.push(`<text x="${bx + 4}" y="${by + 15}" style="pointer-events:none;fill:${op >= 0.7 ? '#fff' : 'var(--ink)'}">${WW.esc(a.id)}</text>`)
+        else { const k = lanes.findIndex(e => e < bx); if (k >= 0) { lanes[k] = bx + tw + 6; out.push(`<text x="${bx + 1}" y="${by + 36 + k * 13}" style="font-size:11px;fill:var(--muted)">${WW.esc(a.id)}</text>`) } }
+      }
+      // 每段伤害：柱高 ∝ 伤害（线性，按本轮这个角色的最大段），一眼看出伤害集中在哪
+      const hs = D.hits.filter(h => h.char === t.name && h.dmg && vis(h.f, h.f + 1))
+      const mx = Math.max(1, ...hs.map(h => h.dmg.expected))
+      for (const h of hs) {
+        const hh = (dR.h - 10) * h.dmg.expected / mx
+        out.push(`<rect x="${x(h.f) - 1}" y="${dR.y + dR.h - 4 - hh}" width="2" height="${Math.max(1, hh)}" data-tip="${WW.esc(`<b>${WW.esc(h.judgment)}</b>（${WW.esc(h.action)}）<br>期望 ${WW.fmt(h.dmg.expected)}<br>战斗 ${h.t.toFixed(2)} 秒`)}" style="fill:${h.tags.includes('谐度破坏') ? 'var(--alert)' : c}"/>`)
+      }
+      out.push(`<text class="num" x="${W - 6}" y="${dR.y + 12}" text-anchor="end">${WW.fmt(mx)}</text>`)
+      const tl = S.resourceTimeline.filter(s => s.f >= range[0] - 600 && s.f <= range[1] + 600)
+      const top = rR.y + 6, h = rR.h - 12, cap = t.energyCap || 100
+      if (tl.length) {
+        out.push(`<path d="M${x(tl[0].f)} ${top + h} L${tl.map(s => `${x(s.f)} ${top + h - h * Math.min(1, s.energy[i] / cap)}`).join(' L')} L${x(tl[tl.length - 1].f)} ${top + h} Z" style="fill:${c};fill-opacity:.16;stroke:${c};stroke-width:1.3"/>`)
+        out.push(`<path d="M${tl.map(s => `${x(s.f)} ${top + h - h * Math.min(1, s.concerto[i] / M.concertoMax)}`).join(' L')}" style="fill:none;stroke:var(--ink);stroke-width:1.1;stroke-dasharray:3 2;opacity:.55"/>`)
+      }
+      for (const r of R) if (r.k === 'buff') {
+        const gi = giver(r.b), gc = gi === null ? 'var(--faint)' : `var(--c${gi})`
+        for (const s of r.b.spans) if (vis(s.start, s.end)) out.push(`<rect x="${x(s.start)}" y="${r.y + 4}" width="${Math.max(1.5, (s.end - s.start) * ppf)}" height="${r.h - 8}" rx="2" data-tip="${WW.esc(`<b>${WW.esc(r.b.buff)}</b><br>${WW.esc(WW.buffEffect(M, r.b.buff, s.stacks) || '状态')}<br>${s.end - s.start} 帧${s.stacks > 1 ? `，${s.stacks} 层` : ''}`)}" style="fill:${gc};fill-opacity:.62"/>`)
+      }
+      const labs = R.map(r => {
+        const pos = `style="top:${r.y}px;height:${r.h}px"`
+        if (r.k === 'buff') { const gi = giver(r.b); return `<div class="lab" ${pos} title="${WW.esc([r.b.buff, WW.buffEffect(M, r.b.buff), (M.buffInfo[r.b.buff] || {}).source].filter(Boolean).join('\n'))}"><i style="--c:${gi === null ? 'var(--faint)' : `var(--c${gi})`}"></i><span>${WW.esc(r.b.short)}</span><em>${r.b.uptime != null ? WW.pct(r.b.uptime) : ''}</em></div>` }
+        return `<div class="lab${r.k === 'sec' ? ' sec' : ''}" ${pos}><span>${WW.esc(r.label)}</span></div>`
+      }).join('')
+      const d = winDmg.get(t.name) || 0
+      return `<section class="vol" style="--c:${c}"><header><h2>${WW.esc(t.name)}</h2><span class="sub">${t.chain != null ? `${t.chain} 链` : ''} ${WW.esc(t.weapon || '')}${t.rank ? ` R${t.rank}` : ''}，${WW.esc(t.element || '')}</span>
+        <span class="share">${WW.fmt(d)}<span>本范围伤害，占 ${WW.pct(d / total)}</span></span></header>
+        <div class="grid2"><div class="labels" style="height:${H}px">${labs}</div><div><svg width="${W}" height="${H}">${out.join('')}</svg></div></div></section>`
+    })
+    // 敌人一卷
+    if (M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)) {
+      const H = 70, out = frameLines(H, x, vis), top = 12, h = H - 24, en = M.enemy
+      const step = (key, max) => { let d = `M${x(range[0])} ${top + h - (key === 'whiteBar' ? h : 0)}`; for (const hit of D.hits) if (hit.enemy) d += ` H${x(hit.f)} V${top + h - h * Math.min(1, hit.enemy[key] / max)}`; return d + ` H${x(range[1])}` }
+      if (en.whiteBarTough > 0) out.push(`<path d="${step('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.4"/>`)
+      if (en.tunabilityMax > 0) out.push(`<path d="${step('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.6"/>`)
+      for (const e of D.enemy) if (vis(e.f, e.f + 1)) out.push(`<circle cx="${x(e.f)}" cy="${e.change === 'disharmony' ? top : top + h}" r="4.5" data-tip="${WW.esc(`<b>${WW.ENEMY_CHANGE[e.change] || e.change}</b><br>战斗 ${e.t.toFixed(2)} 秒`)}" style="fill:${e.change === 'disharmony' ? 'var(--alert)' : 'var(--ink)'}"/>`)
+      blocks.push(`<section class="vol" style="--c:var(--faint)"><header><h2>敌人</h2><span class="sub">${WW.esc(en.id)}，偏谐值（红）与白条（灰）</span></header>
+        <div class="grid2"><div class="labels" style="height:${H}px"><div class="lab sec" style="top:0;height:${H}px"><span>量表</span></div></div><div><svg width="${W}" height="${H}">${out.join('')}</svg></div></div></section>`)
+    }
+    host.innerHTML = blocks.join('')
+  }
+  function segOptions() {
+    const l = D.loops.find(l => String(l.loop) === $('loopSel').value)
+    const segs = D.onField.filter(o => !l || (o.end > l.f && o.start < l.end))
+    $('segSel').innerHTML = '<option value="">整轮</option>' + segs.map((o, k) => `<option value="${o.start}-${o.end}">${k + 1}. ${WW.esc(o.char)}（${WW.sec(o.end - o.start)} 秒）</option>`).join('')
+  }
+  function apply() {
+    const v = $('segSel').value
+    if (v) { const [a, b] = v.split('-').map(Number); range = [a - 30, b + 30] }
+    else { const l = D.loops.find(l => String(l.loop) === $('loopSel').value); range = l ? [l.f, l.end] : [0, D.lastF] }
+    render()
+  }
+  $('loopSel').addEventListener('change', () => { segOptions(); apply() })
+  $('segSel').addEventListener('change', apply)
+  $('onlyDmg').addEventListener('change', render)
+  WW.tips(document.body)
+  $('loopSel').value = String(WW.defaultLoop(M) ?? 'all')
+  segOptions(); apply()
+  addEventListener('resize', render)
+})()
+</script>
+</body>
+</html>

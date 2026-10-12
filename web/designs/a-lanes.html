@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 · A 精修泳道</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* A 精修泳道：保留"一张图看全"的结构，专修可读性：标签不截断（放不下就挪到条下方的标签行）、行高按内容给、
+     buff 按受益人分组且缺省只列影响伤害的、等待只画不是写轴要求的、资源曲线带刻度 */
+  :root {
+    --paper: #f4f6f9; --panel: #ffffff; --ink: #18202c; --muted: #586174; --faint: #8b93a3; --rule: #d9dee6; --grid: #ebeef3;
+    --stop: rgba(24, 32, 44, 0.06); --alert: #c8323b; --wait: #c47f1c; --good: #2f8a5b; --focus: #2a78bb;
+    --el-havoc: #a32f6c; --el-glacio: #2a78bb; --el-spectro: #a98410; --el-fusion: #c9512a; --el-electro: #7547cf; --el-aero: #23977a; --el-physical: #677084;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --label-w: 210px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0e1117; --panel: #151a22; --ink: #e4e8ef; --muted: #a0a8b8; --faint: #6f7889; --rule: #29303c; --grid: #1d232c;
+      --stop: rgba(228, 232, 239, 0.06); --alert: #ef5a62; --wait: #e2a446; --good: #4fb47f; --focus: #5aa5e8;
+      --el-havoc: #d6619e; --el-glacio: #5aa5e8; --el-spectro: #d9b443; --el-fusion: #e9784f; --el-electro: #a07df0; --el-aero: #4cc3a2; --el-physical: #98a1b5;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); padding: 20px 16px 40px; }
+  .wrap { max-width: 1600px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { margin: 0; font-size: 22px; font-weight: 700; }
+  .meta { color: var(--muted); margin: 0; font-size: 13px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 32px; margin: 0; }
+  .stats dt { font-size: 12px; color: var(--muted); }
+  .stats dd { margin: 0; font: 500 19px/1.3 var(--mono); font-variant-numeric: tabular-nums; }
+  .stats dd span { font: 12px var(--sans); color: var(--muted); margin-left: 3px; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 12px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .bar label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  button, select { font: inherit; font-size: 13px; color: var(--ink); background: var(--paper); border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+  .tl { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); }
+  .labels { position: relative; border-right: 1px solid var(--rule); }
+  .lab { position: absolute; left: 0; right: 0; padding: 0 10px; display: flex; flex-direction: column; justify-content: center; border-top: 1px solid var(--grid); overflow: hidden; }
+  .lab b { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 6px; }
+  .lab small { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lab.group { background: var(--paper); border-top: 1px solid var(--rule); }
+  .lab.group b { font-size: 12px; color: var(--muted); }
+  .lab.buff { flex-direction: row; align-items: center; justify-content: space-between; gap: 6px; }
+  .lab.buff span { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lab.buff em { font: 11px var(--mono); color: var(--faint); font-style: normal; flex: none; }
+  .sw { width: 10px; height: 10px; border-radius: 2px; background: var(--c); flex: none; display: inline-block; }
+  .scroller { overflow-x: auto; overflow-y: hidden; }
+  svg { display: block; }
+  svg text { font-family: var(--sans); font-size: 11.5px; fill: var(--ink); }
+  svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
+  .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
+  .ww-tip { position: fixed; z-index: 10; max-width: 380px; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
+    border-radius: 6px; box-shadow: 0 6px 20px rgba(10, 16, 28, 0.18); padding: 8px 10px; font-size: 12px; line-height: 1.55; }
+  .ww-tip b { font-weight: 700; }
+  .empty { padding: 40px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header style="display:grid;gap:8px">
+    <h1 id="title">时间轴</h1>
+    <p class="meta" id="meta"></p>
+    <dl class="stats" id="stats"></dl>
+  </header>
+  <section class="card">
+    <div class="bar">
+      <label>范围 <select id="loopSel"></select></label>
+      <label><button type="button" id="zout" aria-label="缩小">−</button><button type="button" id="zin" aria-label="放大">＋</button></label>
+      <label><input type="checkbox" id="onlyDmg" checked> 只列影响伤害的 buff</label>
+      <label><input type="checkbox" id="showRes" checked> 能量与协奏</label>
+    </div>
+    <div class="tl"><div class="labels" id="labels"></div><div class="scroller" id="scroller"></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</div>
+<script id="timeline-data" type="application/json">null</script>
+<script>/*@shared*/</script>
+<script>
+(() => {
+  const M = WW.load()
+  if (!M) { document.querySelector('.wrap').innerHTML = '<p class="empty">没有数据。</p>'; return }
+  WW.paint(M)
+  const D = M.D, S = M.summary, $ = id => document.getElementById(id)
+  const names = M.team.map(t => t.name)
+  $('title').textContent = `${names.join(' · ')}　${M.title}`
+  $('meta').textContent = [M.scenario, M.data && `数据 ${M.data}`, M.enemy && `${M.enemy.id}（${M.enemy.level} 级）`].filter(Boolean).join('，')
+  const st = S.steady
+  $('stats').innerHTML = [
+    ['整个窗口', `${WW.sec(S.windowFrames)}<span>秒</span>`], ['DPS', WW.fmt(S.dps)],
+    st && [`稳态 DPS（第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮）`, WW.fmt(st.dps)],
+    S.enemy && ['谐度破坏', `${S.enemy.tuneBreaks}<span>次</span>`],
+  ].filter(Boolean).map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')
+  $('loopSel').innerHTML = '<option value="all">全部</option>' + D.loops.map(l => `<option value="${l.loop}">${WW.loopName(l.loop)}</option>`).join('')
+  let range = [0, D.lastF], ppf = 1
+  const sc = $('scroller')
+
+  function rows() {
+    const R = [{ k: 'axis', h: 40, label: '战斗时间', sub: '秒（灰带是全局时停）' }]
+    M.team.forEach((t, i) => R.push({ k: 'char', i, h: 74, label: t.name, sub: `${t.weapon || ''}` }))
+    R.push({ k: 'waits', h: 36, label: '卡住的等待', sub: '冷却、资源、切人等；跳过记 ×' })
+    if (M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)) R.push({ k: 'enemy', h: 64, label: '敌人', sub: '偏谐值（红）、白条（灰）' })
+    if ($('showRes').checked) M.team.forEach((t, i) => R.push({ k: 'res', i, h: 46, label: t.name, sub: '能量（面积）、协奏（虚线）' }))
+    const only = $('onlyDmg').checked
+    const groups = [...names, 'enemy']
+    for (const g of groups) {
+      const list = D.buffs.filter(b => b.target === g && (!only || b.damage) && b.spans.some(s => s.end > range[0] && s.start < range[1]))
+      if (!list.length) continue
+      R.push({ k: 'group', h: 24, label: g === 'enemy' ? '敌人身上的' : `${g} 身上的`, sub: '' })
+      for (const b of list) R.push({ k: 'buff', b, h: 20 })
+    }
+    let y = 0
+    for (const r of R) { r.y = y; y += r.h }
+    return { R, H: y }
+  }
+
+  function render() {
+    const { R, H } = rows()
+    const W = Math.max(sc.clientWidth, Math.ceil((range[1] - range[0]) * ppf) + 24)
+    const x = f => 12 + (f - range[0]) * ppf
+    const vis = (a, b) => b > range[0] && a < range[1]
+    const out = []
+    for (const [a, b] of D.clock.stops) if (vis(a, b)) out.push(`<rect x="${x(a)}" y="0" width="${Math.max(1, (b - a) * ppf)}" height="${H}" style="fill:var(--stop)"/>`)
+    for (const r of R) out.push(`<line x1="0" x2="${W}" y1="${r.y + r.h}" y2="${r.y + r.h}" style="stroke:var(--grid)"/>`)
+    // 刻度：按缩放挑步长，标战斗秒
+    const ax = R[0], span = (range[1] - range[0]) / 60
+    const step = [1, 2, 5, 10, 20].find(s => (W / (span / s)) >= 70) || 30
+    const s0 = Math.ceil(D.clock.secAt(range[0]) / step) * step, s1 = D.clock.secAt(range[1])
+    for (let s = s0; s <= s1; s += step) {
+      const fx = x(D.clock.frameAt(s))
+      out.push(`<line x1="${fx}" x2="${fx}" y1="${ax.y + 26}" y2="${H}" style="stroke:var(--grid)"/>`, `<text class="num" x="${fx + 3}" y="${ax.y + 34}">${s}</text>`)
+    }
+    for (const l of D.loops) if (vis(l.f, l.f + 1)) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="${ax.y + 4}" y2="${H}" style="stroke:var(--faint);stroke-dasharray:4 3"/><text x="${x(l.f) + 4}" y="${ax.y + 16}" style="fill:var(--muted)">${WW.loopName(l.loop)}</text>`)
+    for (const r of R) {
+      if (r.k === 'char') {
+        const c = `var(--c${r.i})`
+        for (const o of D.onField) if (o.i === r.i && vis(o.start, o.end)) out.push(`<rect x="${x(o.start)}" y="${r.y + 4}" width="${Math.max(1, (o.end - o.start) * ppf)}" height="3" style="fill:${c}"/>`)
+        // 动作条：名字放得下就写在条里；放不下写在条下方的标签行，碰到前一个标签就换第二行，两行都占了才省略（悬停可看）
+        const lanes = [-1e9, -1e9]
+        for (const a of D.actions.filter(a => a.i === r.i && vis(a.start, a.end))) {
+          const bx = x(a.start), w = Math.max(2, (a.end - a.start) * ppf), by = r.y + 12
+          const strong = ['liberation', 'skill', 'tuneBreak', 'echo'].includes(a.kind)
+          const fill = a.kind === 'tuneBreak' ? 'var(--alert)' : c
+          const op = { liberation: 1, skill: 0.85, heavy: 0.7, normal: 0.5, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.9 }[a.kind] ?? 0.3
+          const tip = `<b>${WW.esc(a.char)} ${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>第 ${a.start}–${a.end} 帧，${a.end - a.start} 帧；战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒<br>${a.how}${a.damage ? `<br>伤害 ${WW.fmt(a.damage)}（${a.hits} 段）` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}：${WW.esc(WW.cmdText(M, a.cmd))}` : '<br>不是轴里写的（变奏、接续或自动插入）'}`
+          out.push(`<rect x="${bx}" y="${by}" width="${w}" height="22" rx="3" data-tip="${WW.esc(tip)}" style="fill:${op ? fill : 'var(--panel)'};fill-opacity:${op || 1};stroke:${op ? (a.kind === 'liberation' ? 'var(--ink)' : 'none') : c};stroke-width:1.4"/>`)
+          const tw = WW.textWidth(a.id, 11.5)
+          const light = op >= 0.7
+          if (tw + 8 <= w) out.push(`<text x="${bx + 4}" y="${by + 15}" style="pointer-events:none;fill:${light ? '#fff' : 'var(--ink)'};font-weight:${strong ? 500 : 400}">${WW.esc(a.id)}</text>`)
+          else {
+            const k = lanes.findIndex(end => end < bx)
+            if (k >= 0) {
+              lanes[k] = bx + tw + 6
+              out.push(`<line x1="${bx + Math.min(w, 6) / 2}" x2="${bx + Math.min(w, 6) / 2}" y1="${by + 22}" y2="${by + 27 + k * 14}" style="stroke:var(--faint)"/>`,
+                `<text x="${bx + 2}" y="${by + 37 + k * 14}" style="font-size:11px;fill:var(--muted)">${WW.esc(a.id)}</text>`)
+            }
+          }
+        }
+        // 命中：动作条上沿的短竖线，高度 ∝ √伤害
+        for (const h of D.hits) if (D.slot.get(h.char) === r.i && h.dmg && vis(h.f, h.f + 1)) {
+          const hh = 2 + 7 * Math.sqrt(h.dmg.expected / D.maxHit)
+          out.push(`<rect x="${x(h.f) - 0.6}" y="${r.y + 12 - hh}" width="1.2" height="${hh}" style="fill:${h.tags.includes('谐度破坏') ? 'var(--alert)' : 'var(--ink)'};opacity:.55"/>`)
+        }
+      } else if (r.k === 'waits') {
+        for (const w of D.waits) if (!WW.RHYTHM.has(w.code) && vis(w.from, w.f)) {
+          out.push(`<rect x="${x(w.from)}" y="${r.y + 12}" width="${Math.max(1.5, (w.f - w.from) * ppf)}" height="12" rx="2" data-tip="${WW.esc(`<b>等待 ${w.frames} 帧</b><br>${WW.esc(w.reason)}<br>${WW.cmdWhere(w.cmd)}：${WW.esc(WW.cmdText(M, w.cmd))}`)}" style="fill:var(--wait);opacity:.8"/>`)
+        }
+        for (const k of D.skips) if (vis(k.f, k.f + 1)) out.push(`<path d="M${x(k.f) - 4} ${r.y + 8} l8 10 m0 -10 l-8 10" data-tip="${WW.esc(`<b>跳过</b><br>${WW.esc(k.reason)}<br>${WW.cmdWhere(k.cmd)}`)}" style="stroke:var(--ink);stroke-width:1.6"/>`)
+      } else if (r.k === 'enemy') {
+        const top = r.y + 10, h = r.h - 20, en = M.enemy
+        const step2 = (key, max) => {
+          let d = `M${x(range[0])} ${top + h - (key === 'whiteBar' ? h : 0)}`
+          for (const hit of D.hits) if (hit.enemy) d += ` H${x(hit.f)} V${top + h - h * Math.min(1, hit.enemy[key] / max)}`
+          return d + ` H${x(range[1])}`
+        }
+        if (en.whiteBarTough > 0) out.push(`<path d="${step2('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.4"/>`)
+        if (en.tunabilityMax > 0) out.push(`<path d="${step2('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.6"/>`)
+        out.push(`<text x="${W - 6}" y="${top + 4}" text-anchor="end" style="font-size:11px;fill:var(--muted)">上限</text>`)
+        for (const e of D.enemy) if (vis(e.f, e.f + 1)) {
+          const t = WW.esc(`<b>${WW.ENEMY_CHANGE[e.change] || e.change}</b><br>第 ${e.f} 帧，战斗 ${e.t.toFixed(2)} 秒`)
+          out.push(e.change === 'disharmony' ? `<circle cx="${x(e.f)}" cy="${top}" r="5" data-tip="${t}" style="fill:var(--alert)"/>`
+            : `<rect x="${x(e.f) - 4}" y="${top + h - 8}" width="8" height="8" data-tip="${t}" style="fill:${e.change === 'break' ? 'var(--ink)' : 'var(--panel)'};stroke:var(--ink)"/>`)
+        }
+      } else if (r.k === 'res') {
+        const c = `var(--c${r.i})`, top = r.y + 6, h = r.h - 12, cap = M.team[r.i].energyCap || 100
+        const tl = S.resourceTimeline.filter(s => s.f >= range[0] - 600 && s.f <= range[1] + 600)
+        if (tl.length) {
+          const pts = tl.map(s => `${x(s.f)} ${top + h - h * Math.min(1, s.energy[r.i] / cap)}`)
+          out.push(`<path d="M${x(tl[0].f)} ${top + h} L${pts.join(' L')} L${x(tl[tl.length - 1].f)} ${top + h} Z" style="fill:${c};fill-opacity:.18;stroke:${c};stroke-width:1.3"/>`)
+          out.push(`<path d="M${tl.map(s => `${x(s.f)} ${top + h - h * Math.min(1, s.concerto[r.i] / M.concertoMax)}`).join(' L')}" style="fill:none;stroke:var(--ink);stroke-width:1.1;stroke-dasharray:3 2;opacity:.6"/>`)
+        }
+        out.push(`<text x="${W - 6}" y="${top + 9}" text-anchor="end" style="font-size:11px;fill:var(--muted)">满</text>`)
+      } else if (r.k === 'buff') {
+        const ti = D.slot.has(r.b.target) ? D.slot.get(r.b.target) : null
+        const c = ti === null ? 'var(--faint)' : `var(--c${ti})`
+        for (const s of r.b.spans) if (vis(s.start, s.end)) out.push(`<rect x="${x(s.start)}" y="${r.y + 4}" width="${Math.max(1.5, (s.end - s.start) * ppf)}" height="${r.h - 8}" rx="2" data-tip="${WW.esc(`<b>${WW.esc(r.b.buff)}</b> → ${WW.esc(r.b.target)}<br>${WW.esc(WW.buffEffect(M, r.b.buff, s.stacks) || '状态')}<br>第 ${s.start}–${s.end} 帧（${s.end - s.start} 帧）${s.stacks > 1 ? `，最多 ${s.stacks} 层` : ''}`)}" style="fill:${c};fill-opacity:${r.b.damage ? 0.6 : 0.3}"/>`)
+      }
+    }
+    sc.innerHTML = `<svg width="${W}" height="${H}">${out.join('')}</svg>`
+    const L = $('labels')
+    L.style.height = H + 'px'
+    L.innerHTML = R.map(r => {
+      const pos = `style="top:${r.y}px;height:${r.h}px"`
+      if (r.k === 'buff') return `<div class="lab buff" ${pos} title="${WW.esc([r.b.buff, WW.buffEffect(M, r.b.buff), (M.buffInfo[r.b.buff] || {}).source].filter(Boolean).join('\n'))}"><span>${WW.esc(r.b.short)}</span><em>${r.b.uptime != null ? WW.pct(r.b.uptime) : ''}</em></div>`
+      const sw = r.k === 'char' || r.k === 'res' ? `<i class="sw" style="--c:var(--c${r.i})"></i>` : ''
+      return `<div class="lab${r.k === 'group' ? ' group' : ''}" ${pos}><b>${sw}${WW.esc(r.label)}</b>${r.sub ? `<small>${WW.esc(r.sub)}</small>` : ''}</div>`
+    }).join('')
+  }
+  function show(v) {
+    const l = D.loops.find(l => String(l.loop) === v)
+    range = l ? [l.f, l.end] : [0, D.lastF]
+    ppf = Math.max(0.05, (sc.clientWidth - 24) / Math.max(60, range[1] - range[0]))
+    render()
+  }
+  $('legend').innerHTML = ['<span><i style="background:var(--c0);opacity:.5"></i>普攻</span>', '<span><i style="background:var(--c0);opacity:.85"></i>共鸣技能</span>',
+    '<span><i style="background:var(--c0);outline:1px solid var(--ink)"></i>共鸣解放</span>', '<span><i style="background:var(--panel);outline:1.4px solid var(--c0)"></i>变奏、延奏</span>',
+    '<span><i style="background:var(--alert)"></i>谐度破坏</span>', '<span><i style="background:var(--wait)"></i>等待</span>', '<span>buff 右侧数字是稳态覆盖率</span>'].join('')
+  $('loopSel').addEventListener('change', e => show(e.target.value))
+  $('zin').addEventListener('click', () => { ppf *= 1.5; render() })
+  $('zout').addEventListener('click', () => { ppf /= 1.5; render() })
+  for (const id of ['onlyDmg', 'showRes']) $(id).addEventListener('change', render)
+  WW.tips(sc)
+  const first = String(WW.defaultLoop(M) ?? 'all')
+  $('loopSel').value = first
+  show(first)
+  addEventListener('resize', () => show($('loopSel').value))
+})()
+</script>
+</body>
+</html>
