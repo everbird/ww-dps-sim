@@ -25,6 +25,13 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     options: { repeat: r.options.repeat, tuneBreak: r.options.tuneBreak },
     kinds: Object.fromEntries(r.team.map(m => [m.def.name, Object.fromEntries(Object.values(m.actions).map(a => [a.id, a.kind]))])),
     summary: res.summary,
+    // buff 是谁登记的（给的人）：声骸、武器、套装算穿戴者；场景 buff 记 env
+    buffOwners: Object.fromEntries(r.buffs.map(b => [b.def.id, b.owner === 'env' ? 'env' : r.team[b.owner]!.def.name])),
+    // buff 加了什么（每层的值已按谐振阶取好）：检查器里显示"攻击 +20%"这类说明；标记型 buff 没有 zone
+    buffInfo: Object.fromEntries(r.buffs.map(b => [b.def.id, {
+      ...(b.def.zone ? { zone: b.def.zone, value: b.value } : {}), maxStacks: b.def.maxStacks, source: b.def.source,
+      ...(b.def.filter ? { filter: b.def.filter } : {}),
+    }])),
     trace: traceModel(r, res),
     video: videoModel(sc, r, res),
     ...(res.error ? { error: res.error } : {}),
@@ -78,3 +85,13 @@ export function renderTimeline(template: string, model: ReturnType<typeof timeli
     + body.slice(0, cut) + '</head>\n<body>\n' + body.slice(cut) + '</body>\n</html>\n'
 }
 
+
+/** 时间轴的几种视图（TD-12 §2.1）：键是 pnpm timeline --view 的写法，值是 web/designs/ 里的模板 */
+export const TIMELINE_VIEWS: Readonly<Record<string, string>> = { a: 'a-lanes.html', b: 'b-volumes.html', c: 'c-ledger.html', d: 'd-lens.html' }
+
+/** 视图 A–D（web/designs/*.html，2026-10）：模板里 /*@shared*\/ 换成 shared.js，数据占位换成模型；模板本身是完整的网页 */
+export function renderDesign(template: string, shared: string, model: ReturnType<typeof timelineModel>): string {
+  if (!template.includes(DATA_TAG)) throw new Error('设计模板里找不到数据占位')
+  const json = JSON.stringify(model).replace(/</g, '\\u003c')
+  return template.replace('/*@shared*/', () => shared).replace(DATA_TAG, () => `<script id="timeline-data" type="application/json">${json}</script>`)
+}

@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 · D 概览与透镜</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* D 概览与透镜：画面只放"在哪、做什么"，细节按需查。顶部是全程缩略图（拖动选范围），中间是大字号泳道，
+     右侧检查器跟随光标给出那一刻每个人的动作、能量协奏、身上的 buff 与最近一段伤害的乘区拆分。
+     刻意做成单一暗色主题（长时间盯数据不刺眼），所有颜色都显式给出 */
+  :root {
+    color-scheme: dark;
+    --bg: #0c0f14; --panel: #12161d; --panel2: #171c25; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #677084; --rule: #252c38; --grid: #1a2029;
+    --stop: rgba(230, 233, 239, 0.05); --alert: #f0616a; --wait: #e8a94c; --cursor: #f2f4f8;
+    --el-havoc: #d86aa4; --el-glacio: #5fa9ea; --el-spectro: #dcb94b; --el-fusion: #ec7e55; --el-electro: #a584f2; --el-aero: #52c6a5; --el-physical: #9aa3b7;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+  .app { display: grid; grid-template-rows: auto auto minmax(0, 1fr); height: 100%; min-height: 640px; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 26px; padding: 12px 16px 8px; border-bottom: 1px solid var(--rule); }
+  .top h1 { margin: 0; font-size: 17px; font-weight: 500; }
+  .kpi { font: 500 15px var(--mono); }
+  .kpi span { font: 12px var(--sans); color: var(--muted); margin-right: 6px; }
+  .loops { display: flex; gap: 4px; margin-left: auto; }
+  .loops button { font: inherit; font-size: 12.5px; color: var(--muted); background: transparent; border: 1px solid var(--rule); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
+  .loops button.on { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  .ov { padding: 8px 16px 10px; border-bottom: 1px solid var(--rule); }
+  .ov .hint { font-size: 11.5px; color: var(--faint); margin-bottom: 4px; }
+  #ov { cursor: crosshair; user-select: none; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+  .legend b { color: var(--ink); font-weight: 500; font-size: 12px; }
+  #ovLegend { display: flex; gap: 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .buffs { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+  .buffs li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: baseline; }
+  .buffs li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink); }
+  .buffs li span i { display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--c); margin-right: 6px; vertical-align: 1px; }
+  .buffs li b { font-weight: 400; color: var(--muted); font-size: 11.5px; text-align: right; }
+  .small { margin: 0; font-size: 11.5px; color: var(--faint); }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
+  @media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr); } .side { border-left: 0; border-top: 1px solid var(--rule); } }
+  .lens { overflow: auto; position: relative; }
+  .side { border-left: 1px solid var(--rule); background: var(--panel); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+  .insp { overflow: auto; padding: 14px 16px; display: grid; gap: 14px; align-content: start; }
+  .stepper { padding: 10px 16px 12px; border-bottom: 1px solid var(--rule); display: grid; gap: 8px; }
+  .stepper .row1 { display: grid; grid-template-columns: 34px minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+  .stepper .row2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--muted); }
+  .arrow { height: 34px; padding: 0 !important; font-size: 14px !important; }
+  .now { text-align: center; line-height: 1.25; }
+  .now b { font: 500 19px var(--mono); }
+  .now span { display: block; font-size: 11.5px; color: var(--muted); }
+  .track { display: grid; gap: 2px; }
+  .track .tr { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 6px; align-items: baseline; font-size: 12px; color: var(--muted); padding: 3px 6px; border-radius: 4px; }
+  .track button.tr { font: inherit; font-size: 12px; text-align: left; background: transparent; border: 0; cursor: pointer; width: 100%; }
+  .track button.tr:hover { background: var(--panel2); }
+  .track .tr span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .track .tr b { font: 400 11.5px var(--mono); }
+  .track .tr b small { font: 11px var(--sans); }
+  .track .cur { background: var(--panel2); border: 1px solid var(--cursor); color: var(--ink); padding: 6px; }
+  .track .cur ul { list-style: none; margin: 2px 0 0; padding: 0; display: grid; gap: 1px; font-size: 13px; }
+  .track .cur li b { font-weight: 500; font-family: var(--sans); font-size: 13px; }
+  .track .cur li em { font-style: normal; color: var(--muted); font-size: 11.5px; margin-left: 6px; }
+  .track .cur .what { font-size: 11.5px; color: var(--muted); display: flex; justify-content: space-between; gap: 8px; }
+  .help { width: 18px; height: 18px; flex: none; padding: 0 !important; border-radius: 50% !important; font: italic 600 11px/16px Georgia, serif !important;
+    color: var(--muted) !important; background: transparent !important; border: 1px solid var(--faint) !important; cursor: help; }
+  .help.on { color: var(--bg) !important; background: var(--ink) !important; border-color: var(--ink) !important; }
+  .helpPop { position: fixed; z-index: 20; pointer-events: none; max-width: 320px; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 8px 10px; font-size: 12px; line-height: 1.6; white-space: pre-line; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  .stepper button, .stepper select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .stepper button:hover { border-color: var(--muted); }
+  .stepper button:active { transform: translateY(1px); }
+  .stepper select { margin-left: auto; }
+  .bx { position: relative; }
+  .bsum { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; text-align: left; font: inherit; font-size: 12px;
+    color: var(--ink); background: transparent; border: 1px dashed var(--rule); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  .bsum span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bsum i { font-style: normal; color: var(--faint); transition: transform .15s; }
+  .bx .bpop { display: none; }
+  .bx.hover .bpop { display: grid; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; background: var(--panel2); border: 1px solid var(--rule);
+    border-radius: 6px; padding: 8px 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  .bx.pinned .bpop { display: grid; position: static; box-shadow: none; padding: 6px 2px 0; border: 0; background: transparent; }
+  .bx.pinned .bsum { border-style: solid; }
+  .bx.pinned .bsum i { transform: rotate(90deg); }
+  .insp h2 { margin: 0; font: 500 13px var(--sans); color: var(--muted); }
+  .who { border-top: 1px solid var(--rule); padding-top: 10px; display: grid; gap: 5px; }
+  .who header { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .who header i { width: 10px; height: 10px; border-radius: 2px; background: var(--c); }
+  .who header em { margin-left: auto; font: 12px var(--sans); color: var(--muted); font-style: normal; }
+  .meter { display: grid; grid-template-columns: 4ch minmax(0, 1fr) 12ch; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+  .meter div { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .meter div i { display: block; height: 100%; background: var(--c); }
+  .meter b { font: 400 12px var(--mono); color: var(--ink); text-align: right; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chips span { font-size: 11.5px; padding: 1px 7px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--rule); color: var(--ink); }
+  .chips span.from { border-color: var(--c); }
+  .hit { border-top: 1px solid var(--rule); padding-top: 10px; display: grid; gap: 4px; font-size: 12.5px; }
+  .hit dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; }
+  .hit dt { color: var(--muted); }
+  .hit dd { margin: 0; font-family: var(--mono); text-align: right; }
+  svg { display: block; }
+  svg text { font-family: var(--sans); font-size: 12.5px; fill: var(--ink); }
+  svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  .ww-tip { position: fixed; z-index: 10; max-width: 360px; pointer-events: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><h1 id="title"></h1><div id="kpi" style="display:flex;gap:22px;flex-wrap:wrap"></div><div class="loops" id="loops"></div></div>
+  <div class="ov"><div class="legend"><b>全程导航</b><span id="ovLegend"></span><button type="button" class="help" aria-label="全程导航说明" data-help="全程导航：在这里拖动选范围，斜线连到的就是下方放大的那一段；它和下方不对齐，要对着看用主图里的“每秒伤害”。&#10;柱高：这一秒（世界秒）造成的伤害，按角色叠起来；时停里的伤害也算在那一秒。悬停一根柱子看这一秒伤害来自谁、哪个动作。&#10;下方细条：谁在前台。">i</button></div><svg id="ov"></svg></div>
+  <div class="main">
+    <div class="lens" id="lens"></div>
+    <aside class="side">
+      <div class="stepper">
+        <div class="row1">
+          <button type="button" class="arrow" id="prev" aria-label="上一个（←）">◀</button>
+          <div class="now" id="now"></div>
+          <button type="button" class="arrow" id="next" aria-label="下一个（→）">▶</button>
+        </div>
+        <div class="row2">
+          <label>按 <select id="mode" aria-label="步进单位">
+            <option value="hit">命中</option><option value="action">动作开始</option><option value="switch">切人</option>
+            <option value="sec">战斗秒</option><option value="frame">一帧</option>
+          </select> 步进</label>
+          <button type="button" class="help" aria-label="操作说明" data-help="步进：◀ ▶ 或键盘 ← →，按所选单位前后移动；Shift + ← → 按 1 战斗秒；, . 按 1 帧。&#10;上下两行是上一个、下一个会跳到哪，点它们也能跳。&#10;点时间轴锁定光标，再点一下或按 Esc 解锁；步进时自动锁定，走出范围时视窗跟着平移。">i</button>
+        </div>
+        <div class="track" id="track"></div>
+      </div>
+      <div class="insp" id="insp"></div>
+    </aside>
+  </div>
+</div>
+<script id="timeline-data" type="application/json">null</script>
+<script>/*@shared*/</script>
+<script>
+(() => {
+  const M = WW.load(); if (!M) return
+  WW.paint(M)
+  const D = M.D, S = M.summary, $ = id => document.getElementById(id)
+  const names = M.team.map(t => t.name)
+  $('title').textContent = `${names.join(' · ')}　${M.title}`
+  $('kpi').innerHTML = [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)]].filter(Boolean).map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  let range = [0, D.lastF], cursor = null, locked = false
+  const MODE_NAME = { hit: '命中', action: '动作开始', switch: '切人', sec: '战斗秒', frame: '一帧' }
+  // 每种单位的步点：帧 → 这一帧上的事件说明（同一帧可能有几段命中、几个动作）
+  function stopsOf(items, frameOf, text) {
+    const m = new Map()
+    for (const x of items) { const f = frameOf(x); if (!m.has(f)) m.set(f, []); m.get(f).push(text(x)) }
+    return { frames: [...m.keys()].sort((a, b) => a - b), at: m }
+  }
+  const STOPS = {
+    hit: stopsOf(D.hits.filter(h => h.dmg), h => h.f, h => ({ main: `${h.char} ${h.judgment}`, sub: `${h.action}，期望 ${WW.fmt(h.dmg.expected)}`, slot: D.slot.get(h.char) })),
+    action: stopsOf(D.actions, a => a.start, a => ({ main: `${a.char} ${a.id}`, sub: `${WW.KIND_NAME[a.kind] || a.kind}${a.cmd ? `，${WW.cmdWhere(a.cmd)}` : '，不是轴里写的'}`, slot: a.i })),
+    switch: stopsOf(D.switches, e => e.f, e => ({ main: `${e.from} → ${e.to}`, sub: e.intro ? '变奏入场' : '普通切人', slot: D.slot.get(e.to) })),
+  }
+  /** dir 方向上的下一个步点（帧）；没有了返回 null */
+  function targetOf(dir, mode, from = cursor ?? range[0]) {
+    let g
+    if (mode === 'frame') g = from + dir
+    else if (mode === 'sec') g = D.clock.frameAt(Math.max(0, Math.round(D.clock.secAt(Math.round(from))) + dir))
+    else {
+      const list = STOPS[mode].frames
+      g = dir > 0 ? list.find(x => x > from + 0.5) : [...list].reverse().find(x => x < from - 0.5)
+      if (g === undefined) return null
+    }
+    return Math.max(0, Math.min(D.lastF, Math.round(g)))
+  }
+  const brief = (mode, g) => {
+    if (mode === 'frame') return `第 ${g} 帧`
+    if (mode === 'sec') return `战斗 ${D.clock.secAt(g).toFixed(2)} 秒`
+    const xs = STOPS[mode].at.get(g) || []
+    return xs.length ? `${xs[0].main}${xs.length > 1 ? ` 等 ${xs.length} 个` : ''}` : ''
+  }
+  const delta = (f, g) => { const d = D.clock.secAt(g) - D.clock.secAt(f); return `${d >= 0 ? '+' : '−'}${Math.abs(d).toFixed(2)}<small> 秒</small>` }
+  /** 步进区：顶部是时间与锁定状态；下面三行是上一个、当前、下一个（上下两行点了就跳） */
+  function track(f) {
+    const mode = $('mode').value, g = Math.round(f)
+    $('now').innerHTML = `<b>${D.clock.secAt(f).toFixed(2)}</b><span>战斗秒，第 ${g} 帧${locked ? '，已锁定' : ''}</span>`
+    const side = dir => {
+      const t = targetOf(dir, mode, f)
+      const arrow = dir < 0 ? '◂' : '▸'
+      return t === null ? `<div class="tr"><i>${arrow}</i><span>${dir < 0 ? '前面' : '后面'}没有了</span><b></b></div>`
+        : `<button type="button" class="tr" data-dir="${dir}"><i>${arrow}</i><span>${WW.esc(brief(mode, t))}</span><b>${delta(f, t)}</b></button>`
+    }
+    let cur
+    if (mode === 'frame' || mode === 'sec') cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span></div><ul><li><b>${mode === 'frame' ? `第 ${g} 帧` : `战斗 ${D.clock.secAt(g).toFixed(2)} 秒`}</b></li></ul>`
+    else {
+      const st = STOPS[mode], xs = st.at.get(g)
+      if (!xs) {
+        const n = st.frames.filter(x => x < g).length
+        cur = `<div class="what"><span>不在${MODE_NAME[mode]}上</span><span>第 ${n} 与第 ${n + 1} 个之间</span></div>`
+      } else {
+        cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span><span>第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个</span></div>
+          <ul>${xs.map(x => `<li style="color:var(--c${x.slot})"><b>${WW.esc(x.main)}</b><em>${WW.esc(x.sub)}</em></li>`).join('')}</ul>`
+      }
+    }
+    $('track').innerHTML = side(-1) + `<div class="tr cur" style="display:block">${cur}</div>` + side(1)
+  }
+  $('track').addEventListener('click', e => { const b = e.target.closest('[data-dir]'); if (b) stepTo(+b.dataset.dir, $('mode').value) })
+
+  // 说明图标：鼠标悬停显示，点一下钉住 / 收起（触摸屏用点）；内容在 data-help
+  const helpPop = document.createElement('div'); helpPop.className = 'helpPop'; helpPop.hidden = true; document.body.appendChild(helpPop)
+  let helpPinned = null
+  const showHelp = btn => {
+    helpPop.textContent = btn.dataset.help; helpPop.hidden = false
+    const r = btn.getBoundingClientRect(), w = helpPop.offsetWidth, h = helpPop.offsetHeight
+    let x = Math.min(innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2)), y = r.bottom + 6
+    if (y + h > innerHeight - 8) y = r.top - h - 6
+    helpPop.style.left = x + 'px'; helpPop.style.top = y + 'px'
+  }
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.help')
+    if (helpPinned) helpPinned.classList.remove('on')
+    if (!btn || btn === helpPinned) { helpPinned = null; helpPop.hidden = true; return }
+    helpPinned = btn; btn.classList.add('on'); showHelp(btn)
+  })
+  if (matchMedia('(hover: hover)').matches) {
+    document.addEventListener('mouseover', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) showHelp(btn) })
+    document.addEventListener('mouseout', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) helpPop.hidden = true })
+  }
+
+  // 每世界秒每人的伤害（概览与主图的"每秒伤害"共用）：bins[秒][槽] 与这一秒的主要动作
+  const BINS = Math.ceil(D.lastF / 60)
+  const perSec = Array.from({ length: BINS }, () => ({ v: names.map(() => 0), acts: new Map() }))
+  for (const h of D.hits) if (h.dmg) {
+    const b = perSec[Math.min(BINS - 1, Math.floor(h.f / 60))], k = D.slot.get(h.char)
+    b.v[k] += h.dmg.expected
+    const key = `${h.char} ${h.action}`; b.acts.set(key, (b.acts.get(key) || 0) + h.dmg.expected)
+  }
+  const secMax = Math.max(1, ...perSec.map(b => b.v.reduce((a, x) => a + x, 0)))
+  const secTip = i => {
+    const b = perSec[i], tot = b.v.reduce((a, x) => a + x, 0)
+    const top = [...b.acts].sort((a, c) => c[1] - a[1]).slice(0, 3)
+    return WW.esc(`<b>第 ${i}–${i + 1} 世界秒：${WW.fmt(tot)}</b><br>${names.map((n, k) => b.v[k] ? `${n} ${WW.fmt(b.v[k])}` : '').filter(Boolean).join('，') || '没有伤害'}${top.length ? `<br>主要来自 ${top.map(([k, v]) => `${k} ${WW.fmt(v)}`).join('、')}` : ''}`)
+  }
+  // 堆叠柱：每秒一根，按队伍顺序从下往上叠
+  function bars(x0, x1, y0, h, from, to) {
+    const out = []
+    for (let i = Math.max(0, Math.floor(from / 60)); i < Math.min(BINS, Math.ceil(to / 60)); i++) {
+      let base = 0
+      const a = x0(i * 60), w = Math.max(1, x1((i + 1) * 60) - a - (x1((i + 1) * 60) - a > 4 ? 1 : 0))
+      names.forEach((_, k) => {
+        const v = perSec[i].v[k]; if (!v) return
+        const hh = h * v / secMax
+        out.push(`<rect x="${a}" y="${y0 + h - base - hh}" width="${w}" height="${hh}" style="fill:var(--c${k})"/>`)
+        base += hh
+      })
+      out.push(`<rect x="${a}" y="${y0}" width="${w}" height="${h}" data-tip="${secTip(i)}" style="fill:transparent"/>`)
+    }
+    return out
+  }
+
+  // ---- 概览：全程导航（不和下方对齐；选中的范围用两条斜线连到主图两端） ----
+  function overview() {
+    const svg = $('ov'), W = svg.parentElement.clientWidth - 32, H = 92
+    svg.setAttribute('width', W); svg.setAttribute('height', H)
+    const x = f => (f / D.lastF) * W
+    const out = bars(x, x, 4, 40, 0, D.lastF)
+    for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="48" width="${Math.max(1, x(o.end) - x(o.start))}" height="6" style="fill:var(--c${o.i})"/>`)
+    for (const l of D.loops) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="0" y2="58" style="stroke:var(--faint);stroke-dasharray:3 3"/><text class="num" x="${x(l.f) + 3}" y="66">${l.loop === 0 ? '启动' : l.loop}</text>`)
+    const a = x(range[0]), b = x(range[1])
+    out.push(`<rect x="${a}" y="0" width="${Math.max(2, b - a)}" height="58" style="fill:var(--cursor);fill-opacity:.07;stroke:var(--cursor);stroke-opacity:.7;pointer-events:none"/>`)
+    // 放大关系：选框两端斜着连到下方主图的左右两端（主图从 92 像素起画）
+    const L = 92 - 16, R = Math.min(W, $('lens').clientWidth - 12 - 16)
+    out.push(`<path d="M${a} 58 L${L} ${H} M${b} 58 L${R} ${H}" style="stroke:var(--cursor);stroke-opacity:.45;fill:none"/>`, `<path d="M${a} 58 L${b} 58 L${R} ${H} L${L} ${H} Z" style="fill:var(--cursor);fill-opacity:.04;pointer-events:none"/>`)
+    svg.innerHTML = out.join('')
+  }
+  $('ovLegend').innerHTML = names.map((n, k) => `<span><i style="background:var(--c${k})"></i>${WW.esc(n)}</span>`).join('')
+  // 拖动选范围
+  let drag = null
+  $('ov').addEventListener('mousedown', e => { const W = $('ov').clientWidth; drag = (e.offsetX / W) * D.lastF })
+  addEventListener('mouseup', e => {
+    if (drag === null) return
+    const W = $('ov').clientWidth, f = (Math.max(0, Math.min(W, e.clientX - $('ov').getBoundingClientRect().left)) / W) * D.lastF
+    const a = Math.min(drag, f), b = Math.max(drag, f); drag = null
+    if (b - a > 30) { range = [a, b]; markLoop(null); draw() }
+  })
+
+  // ---- 透镜：每秒伤害（与主图对齐）+ 每人一条大泳道 + 敌人量表 ----
+  const LANE = 76, DPS_H = 56
+  function lens() {
+    const host = $('lens'), W = Math.max(500, host.clientWidth - 2), padL = 92
+    const ppf = (W - padL - 12) / Math.max(60, range[1] - range[0])
+    const x = f => padL + (f - range[0]) * ppf
+    const vis = (a, b) => b > range[0] && a < range[1]
+    const hasEnemy = M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)
+    const top0 = 34 + DPS_H
+    const H = top0 + names.length * LANE + (hasEnemy ? 86 : 0) + 8
+    const out = []
+    for (const [a, b] of D.clock.stops) if (vis(a, b)) out.push(`<rect x="${x(a)}" y="26" width="${Math.max(1, (b - a) * ppf)}" height="${H - 26}" style="fill:var(--stop)"/>`)
+    const span = (range[1] - range[0]) / 60, step = [1, 2, 5, 10, 20].find(s => (W - padL) / (span / s) >= 80) || 30
+    for (let s = Math.ceil(D.clock.secAt(range[0]) / step) * step; s <= D.clock.secAt(range[1]); s += step) {
+      const fx = x(D.clock.frameAt(s)); out.push(`<line x1="${fx}" x2="${fx}" y1="22" y2="${H}" style="stroke:var(--grid)"/><text class="num" x="${fx + 3}" y="16">${s}s</text>`)
+    }
+    out.push(`<text x="12" y="44" style="fill:var(--muted);font-size:12px">每秒伤害</text><text x="12" y="60" style="fill:var(--faint);font-size:11px">与下方对齐</text>`)
+    out.push(...bars(f => Math.max(padL, x(f)), f => Math.min(W - 12, x(f)), 30, DPS_H - 8, range[0], range[1]))
+    out.push(`<line x1="0" x2="${W}" y1="${top0 - 2}" y2="${top0 - 2}" style="stroke:var(--rule)"/>`)
+    names.forEach((n, i) => {
+      const y = top0 + i * LANE, c = `var(--c${i})`
+      out.push(`<text x="12" y="${y + 26}" style="font-weight:500;fill:${c}">${WW.esc(n)}</text>`, `<line x1="0" x2="${W}" y1="${y + LANE - 4}" y2="${y + LANE - 4}" style="stroke:var(--rule)"/>`)
+      for (const o of D.onField) if (o.i === i && vis(o.start, o.end)) out.push(`<rect x="${Math.max(padL, x(o.start))}" y="${y}" width="${Math.max(1, x(o.end) - Math.max(padL, x(o.start)))}" height="3" style="fill:${c}"/>`)
+      const lanes = [-1e9, -1e9]
+      for (const a of D.actions) if (a.i === i && vis(a.start, a.end)) {
+        const bx = Math.max(padL, x(a.start)), w = Math.max(2, x(a.end) - bx), by = y + 8
+        const op = { liberation: 1, skill: 0.85, heavy: 0.68, normal: 0.45, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.95 }[a.kind] ?? 0.3
+        out.push(`<rect x="${bx}" y="${by}" width="${w}" height="28" rx="3" style="fill:${a.kind === 'tuneBreak' ? 'var(--alert)' : op ? c : 'var(--bg)'};fill-opacity:${op || 1};stroke:${op ? 'none' : c};stroke-width:1.5"/>`)
+        const tw = WW.textWidth(a.id, 12.5)
+        if (tw + 10 <= w) out.push(`<text x="${bx + 5}" y="${by + 19}" style="fill:${op >= 0.68 ? '#0c0f14' : 'var(--ink)'};font-weight:500">${WW.esc(a.id)}</text>`)
+        else { const k = lanes.findIndex(e => e < bx); if (k >= 0) { lanes[k] = bx + tw + 8; out.push(`<text x="${bx}" y="${by + 44 + k * 14}" style="font-size:11.5px;fill:var(--muted)">${WW.esc(a.id)}</text>`) } }
+      }
+      for (const h of D.hits) if (h.dmg && D.slot.get(h.char) === i && vis(h.f, h.f + 1)) {
+        const hh = 2 + 8 * Math.sqrt(h.dmg.expected / D.maxHit)
+        out.push(`<rect x="${x(h.f) - 0.7}" y="${y + 8 - hh}" width="1.4" height="${hh}" style="fill:${h.tags.includes('谐度破坏') ? 'var(--alert)' : 'var(--ink)'};opacity:.6"/>`)
+      }
+    })
+    if (hasEnemy) {
+      const y = top0 + names.length * LANE, top = y + 14, h = 50, en = M.enemy
+      out.push(`<text x="12" y="${y + 24}" style="fill:var(--muted)">敌人</text>`,
+        `<text x="12" y="${y + 42}" style="fill:var(--alert);font-size:11.5px">— 偏谐值</text>`, `<text x="12" y="${y + 58}" style="fill:var(--el-physical);font-size:11.5px">— 白条</text>`)
+      const stepP = (key, max) => { let d = `M${x(range[0])} ${top + h - (key === 'whiteBar' ? h : 0)}`; for (const hit of D.hits) if (hit.enemy) d += ` H${Math.max(padL, x(hit.f))} V${top + h - h * Math.min(1, hit.enemy[key] / max)}`; return d + ` H${x(range[1])}` }
+      if (en.whiteBarTough > 0) out.push(`<path d="${stepP('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.4"/>`)
+      if (en.tunabilityMax > 0) out.push(`<path d="${stepP('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.6"/>`)
+      for (const e of D.enemy) if (vis(e.f, e.f + 1)) out.push(`<circle cx="${x(e.f)}" cy="${e.change === 'disharmony' ? top : top + h}" r="4.5" data-tip="${WW.esc(`<b>${WW.ENEMY_CHANGE[e.change] || e.change}</b><br>战斗 ${e.t.toFixed(2)} 秒`)}" style="fill:${e.change === 'disharmony' ? 'var(--alert)' : 'var(--ink)'}"/>`)
+    }
+    // 当前步在图上标出来：命中画圈、动作描边、切人画三角（光标正好落在步点上时）
+    const mode = $('mode').value, g = cursor === null ? null : Math.round(cursor)
+    if (g !== null && vis(g, g + 1)) {
+      if (mode === 'hit') for (const h of D.hits) { if (h.f === g && h.dmg) out.push(`<circle cx="${x(g)}" cy="${top0 + D.slot.get(h.char) * LANE + 22}" r="9" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
+      if (mode === 'action') for (const a of D.actions) { if (a.start === g) out.push(`<rect x="${Math.max(padL, x(a.start)) - 2}" y="${top0 + a.i * LANE + 6}" width="${Math.max(6, x(a.end) - Math.max(padL, x(a.start))) + 4}" height="32" rx="4" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
+      if (mode === 'switch') for (const e of D.switches) { if (e.f === g) out.push(`<path d="M${x(g) - 7} 22 l14 0 l-7 10 z" style="fill:var(--cursor)"/>`) }
+    }
+    if (cursor !== null && vis(cursor, cursor + 1)) out.push(`<line x1="${x(cursor)}" x2="${x(cursor)}" y1="22" y2="${H}" style="stroke:var(--cursor);stroke-width:1;${locked ? '' : 'stroke-dasharray:4 3'};pointer-events:none"/>`)
+    host.innerHTML = `<svg width="${W}" height="${H}" id="lsvg">${out.join('')}</svg>`
+    const svg = $('lsvg')
+    svg.addEventListener('mousemove', e => { if (locked) return; const f = range[0] + (e.offsetX - padL) / ppf; if (f >= range[0] && f <= range[1]) { cursor = f; moveCursor(x(f)); inspect() } })
+    svg.addEventListener('click', e => { const f = range[0] + (e.offsetX - padL) / ppf; cursor = Math.max(range[0], Math.min(range[1], f)); locked = !locked; lens(); inspect() })
+  }
+  // 光标只挪那一条线，不重画整张图（悬停提示才不会闪）
+  function moveCursor(px) {
+    const svg = $('lsvg'); let ln = svg.querySelector('#cur')
+    if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); ln.id = 'cur'; ln.setAttribute('y1', 22); ln.setAttribute('y2', svg.getAttribute('height')); ln.setAttribute('style', 'stroke:var(--cursor);stroke-dasharray:4 3;pointer-events:none'); svg.appendChild(ln) }
+    ln.setAttribute('x1', px); ln.setAttribute('x2', px)
+  }
+
+  // ---- 检查器：光标那一刻 ----
+  function enemyAt(f) {
+    let last = null
+    for (const h of D.hits) { if (h.f > f) break; if (h.enemy) last = h.enemy }
+    let dis = false, para = false
+    for (const e of D.enemy) { if (e.f > f) break; if (e.change === 'disharmony') dis = true; if (e.change === 'harmonyBreak') dis = false; if (e.change === 'break') para = true; if (e.change === 'breakEnd') para = false }
+    return { last, dis, para }
+  }
+  function inspect() {
+    const f = cursor ?? range[0], el = $('insp')
+    const tl = S.resourceTimeline; let rs = tl[0]
+    for (const p of tl) { if (p.f <= f) rs = p; else break }
+    const on = D.onField.find(o => o.start <= f && f < o.end)
+    const parts = []
+    M.team.forEach((t, i) => {
+      const a = D.actions.find(a => a.i === i && a.start <= f && f < a.end)
+      const bs = D.buffs.filter(b => b.target === t.name && b.damage && b.spans.some(s => s.start <= f && f < s.end))
+      const cap = t.energyCap || 100
+      const list = bs.map(b => {
+        const g = D.slot.has(b.owner) ? D.slot.get(b.owner) : null, s = b.spans.find(s => s.start <= f && f < s.end)
+        return { id: b.buff, label: b.short, stacks: s ? s.stacks : 1, color: g === null ? 'var(--faint)' : `var(--c${g})` }
+      })
+      parts.push(`<section class="who" style="--c:var(--c${i})"><header><i></i>${WW.esc(t.name)}<em>${on && on.i === i ? '在前台' : '后台'}${a ? `，${WW.esc(a.id)}` : ''}</em></header>
+        <div class="meter"><span>能量</span><div><i style="width:${Math.min(100, 100 * rs.energy[i] / cap)}%"></i></div><b>${rs.energy[i].toFixed(1)}/${cap}</b></div>
+        <div class="meter"><span>协奏</span><div><i style="width:${Math.min(100, 100 * rs.concerto[i] / M.concertoMax)}%"></i></div><b>${rs.concerto[i].toFixed(1)}</b></div>
+        ${buffBox(t.name, list, '临时加成')}</section>`)
+    })
+    if (M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)) {
+      const en = M.enemy, st = enemyAt(f), v = st.last || { tunability: 0, whiteBar: en.whiteBarTough }
+      parts.push(`<section class="who" style="--c:var(--alert)"><header><i></i>敌人<button type="button" class="help" aria-label="敌人量表说明" data-help="偏谐值（红）：打满就失谐，可以放谐度破坏。&#10;白条（灰）：打空就破盾，瘫痪 ${en.paralysisSec ? en.paralysisSec.toFixed(1) : ''} 秒，结束时回满。">i</button><em>${st.dis ? '失谐中' : st.para ? '瘫痪中' : '正常'}</em></header>
+        ${en.tunabilityMax > 0 ? `<div class="meter"><span>偏谐</span><div><i style="width:${Math.min(100, 100 * v.tunability / en.tunabilityMax)}%"></i></div><b>${WW.fmt(v.tunability)}/${WW.fmt(en.tunabilityMax)}</b></div>` : ''}
+        ${en.whiteBarTough > 0 ? `<div class="meter" style="--c:var(--el-physical)"><span>白条</span><div><i style="width:${Math.min(100, 100 * v.whiteBar / en.whiteBarTough)}%"></i></div><b>${WW.fmt(v.whiteBar)}/${WW.fmt(en.whiteBarTough)}</b></div>` : ''}
+        </section>`)
+    }
+    let best = null
+    for (const h of D.hits) if (h.dmg && h.factors && Math.abs(h.f - f) <= 40 && (!best || Math.abs(h.f - f) < Math.abs(best.f - f))) best = h
+    if (best) {
+      const F = best.factors
+      const used = best.buffs.map(id => { const m = id.match(/^(.*?)(?:×(\d+))?$/); const o = M.buffOwners[m[1]]; return { id: m[1], label: m[1], stacks: m[2] ? +m[2] : 1, color: D.slot.has(o) ? `var(--c${D.slot.get(o)})` : 'var(--faint)' } })
+      parts.push(`<section class="hit"><h2>最近一段伤害：${WW.esc(best.char)} ${WW.esc(best.judgment)}（${D.clock.secAt(best.f).toFixed(2)} 秒）</h2><dl>
+        <dt>期望</dt><dd>${WW.fmt(best.dmg.expected)}</dd><dt>不暴击 / 暴击</dt><dd>${WW.fmt(best.dmg.nonCrit)} / ${WW.fmt(best.dmg.crit)}</dd>
+        <dt>基础（倍率 × 攻击）</dt><dd>${WW.fmt(F.base)}</dd><dt>伤害加成</dt><dd>×${F.bonus.toFixed(3)}</dd><dt>加深</dt><dd>×${F.amplify.toFixed(3)}</dd>
+        <dt>防御</dt><dd>×${F.def.toFixed(3)}</dd><dt>抗性</dt><dd>×${F.res.toFixed(3)}</dd><dt>暴击率 / 暴伤</dt><dd>${WW.pct(F.critRate)} / ${WW.pct(F.critDamage)}</dd></dl>
+        <h2 style="margin-top:6px">这一段生效的加成</h2>${buffBox(`hit`, used, '加成')}</section>`)
+    }
+    el.innerHTML = parts.join('')
+    track(f)
+  }
+
+  // buff 折叠：一行汇总（按乘区 + 条件合计，取最大的三项），悬停浮出清单、点一下钉住就地展开（触摸屏只用点）
+  const pinned = new Set()
+  function buffBox(key, list, noun) {
+    if (!list.length) return `<div class="small">没有${noun}</div>`
+    const sum = new Map()
+    for (const x of list) { const p = WW.buffParts(M, x.id, x.stacks); if (!p) continue; const k = sum.get(p.key) || { ...p, v: 0 }; k.v += p.v; sum.set(p.key, k) }
+    const top = [...sum.values()].sort((a, b) => Math.abs(b.flat ? b.v / 1000 : b.v) - Math.abs(a.flat ? a.v / 1000 : a.v)).slice(0, 3)
+      .map(p => `${p.name}${p.cond ? `（${p.cond}）` : ''} ${WW.signedVal(p.v, p.flat)}`).join('、')
+    const rows = list.map(x => `<li style="--c:${x.color}" title="${WW.esc((M.buffInfo[x.id] || {}).source || x.id)}"><span><i></i>${WW.esc(x.label)}${x.stacks > 1 ? ` ×${x.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, x.id, x.stacks) || '状态')}</b></li>`).join('')
+    return `<div class="bx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${noun} ${list.length} 个</b><span>${WW.esc(top)}</span><i>▸</i></button><ul class="buffs bpop">${rows}</ul></div>`
+  }
+  const canHover = matchMedia('(hover: hover)').matches
+  $('insp').addEventListener('click', e => {
+    const box = e.target.closest('.bx'); if (!box || !e.target.closest('.bsum')) return
+    const k = box.dataset.key
+    if (pinned.has(k)) pinned.delete(k); else pinned.add(k)
+    box.classList.toggle('pinned', pinned.has(k)); box.classList.remove('hover')
+    box.querySelector('.bsum').setAttribute('aria-expanded', String(pinned.has(k)))
+  })
+  if (canHover) {
+    $('insp').addEventListener('mouseover', e => { const box = e.target.closest('.bx'); if (box && !box.classList.contains('pinned')) box.classList.add('hover') })
+    $('insp').addEventListener('mouseout', e => { const box = e.target.closest('.bx'); if (box && !box.contains(e.relatedTarget)) box.classList.remove('hover') })
+  }
+
+  function markLoop(k) { for (const b of $('loops').children) b.classList.toggle('on', b.dataset.k === String(k)) }
+  $('loops').innerHTML = `<button type="button" data-k="all">全程</button>` + D.loops.map(l => `<button type="button" data-k="${l.loop}">${WW.loopName(l.loop)}</button>`).join('')
+  $('loops').addEventListener('click', e => {
+    const k = e.target.dataset && e.target.dataset.k; if (!k) return
+    const l = D.loops.find(l => String(l.loop) === k); range = l ? [l.f, l.end] : [0, D.lastF]; cursor = null; locked = false; markLoop(k); draw()
+  })
+  function draw() { overview(); lens(); inspect() }
+
+  // ---- 步进：按命中 / 动作开始 / 切人 / 战斗秒 / 一帧前后移动光标；走出范围时视窗跟着平移 ----
+  function stepTo(dir, mode) {
+    const g0 = targetOf(dir, mode)
+    if (g0 === null) return
+    const g = g0
+    cursor = g; locked = true
+    const w = range[1] - range[0]
+    if (g < range[0] || g > range[1]) {
+      range = g > range[1] ? [g - w * 0.2, g + w * 0.8] : [g - w * 0.8, g + w * 0.2]
+      markLoop(null); overview()
+    }
+    lens(); inspect()
+  }
+  $('prev').addEventListener('click', () => stepTo(-1, $('mode').value))
+  $('next').addEventListener('click', () => stepTo(1, $('mode').value))
+  $('mode').addEventListener('change', () => { lens(); inspect() })
+  addEventListener('keydown', e => {
+    if (e.target && e.target.tagName === 'SELECT') return
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stepTo(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 'sec' : $('mode').value); e.preventDefault() }
+    else if (e.key === '.' || e.key === ',') { stepTo(e.key === '.' ? 1 : -1, 'frame'); e.preventDefault() }
+    else if (e.key === 'Escape') { locked = false; lens(); inspect() }
+  })
+  WW.tips(document.body)
+  const first = WW.defaultLoop(M), l = D.loops.find(l => l.loop === first)
+  if (l) range = [l.f, l.end]
+  markLoop(l ? first : 'all')
+  cursor = range[0] + (range[1] - range[0]) * 0.55
+  draw()
+  addEventListener('resize', draw)
+})()
+</script>
+</body>
+</html>

@@ -85,7 +85,7 @@
 | `pnpm sim 场景.yaml [--out 日志.json]` | 队伍面板、敌人（v0.1.1：偏谐值上限、白条、瘫痪、谐度破坏的模式）；窗口、总伤害、DPS（窗口外伤害）；敌人量表（v0.1.1：失谐、谐度破坏的次数与伤害占比、破盾次数）；分轮表（循环时）；分角色、分动作；不是写轴要求的等待；跳过的可选指令（v0.1.1）；提示；事件日志写到 `out/<场景名>.json` |
 | `pnpm compare 基准.yaml 对比.yaml` | §3 |
 | `pnpm marginal 场景.yaml [--char 角色] [--tier …]` | §4 |
-| `pnpm timeline 场景.yaml [--out 网页.html] [--fragment]` | v0.1.2：时间轴网页（§5.1），写到 `out/<场景名>.html` |
+| `pnpm timeline 场景.yaml [--view a\|b\|c\|d] [--out 网页.html] [--fragment]` | v0.1.2：时间轴网页（§5.1），写到 `out/<场景名>.html`；`--view` 改用视图 A–D，写到 `out/<场景名>.<视图>.html`（TD-12 v0.2 §2.1） |
 | `pnpm trace 场景.yaml [--loop k] [--seg] [--res …] [--char 角色] [--md] [--out 文件.md]` | v0.1.3：调试表——某一轮的分段、逐条，或资源逐步；场景有 `video` 时对照视频（TD-11 §6） |
 
 共用的读场景、对齐、数字格式在 `src/cli/format.ts`。退出码：0 成功；1 场景有错或运行期报错；2 用法错误。`pnpm sim` 的分轮表里启动轴记为"启动"，等待与跳过写"启动第 k 条"（v0.1.2）。

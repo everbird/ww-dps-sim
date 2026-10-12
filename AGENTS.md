@@ -20,7 +20,7 @@
 | `wuwa-dps-td09-rotation-scheduler-v0.1.5.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴 |
 | `wuwa-dps-td10-output-report-v0.1.3.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、命令行输出、时间轴网页 |
 | `wuwa-dps-td11-debug-calibration-v0.1.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、网页调试表、视频时间点）与改进 |
-| `wuwa-dps-td12-web-v0.1.md` | 网页（Vite + Svelte 5，本机用）：结构、四页、Worker、检查 |
+| `wuwa-dps-td12-web-v0.2.md` | 网页（Vite + Svelte 5，本机用）：结构、各页、Worker、时间轴的视图 A–D（步进、检查器）、检查 |
 | `wuwa-dps-td13-echo-optimizer-v0.1.md` | 声骸库存择优：库存写法、快速重算、搜索与完整仿真确认 |
 | `calibration/` | 实测与校准记录（格式见其中 README） |
 | `wuwa-dps-design-v0.2.9.md`（机制设计，已冻结） | 写总设计之前的游戏机制规格书，不再更新；与总设计、各 TD 冲突时以它们为准（勘误见总设计附录 A，开头有按章节找现在文档的对照表） |
@@ -65,8 +65,10 @@ pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
-pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行、对比、边际、择优；pnpm web:build 打包到 out/web（含数据，不发布）
+pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行（可切换时间轴视图）、对比、边际、择优；pnpm web:build 打包到 out/web（含数据，不发布）
+                                             # 用域名访问时：WEB_HOSTS=<域名> pnpm web --port <端口> --host 0.0.0.0
 pnpm timeline scenarios/m0-team.yaml        # 时间轴网页：结果嵌进 web/timeline.html，写到 out/<场景名>.html（浏览器直接打开）；下方有调试表
+                                             # --view a|b|c|d 改用视图 A–D（TD-12 §2.1），写到 out/<场景名>.<视图>.html
 pnpm trace scenarios/m0-video.yaml          # 调试表（TD-11 §6）：某一轮的分段与逐条（--loop k、--seg），资源逐步（--res 协奏|能量|<核心资源名>，--char）；
                                              # 场景有 video 时对照视频；--md 另写 out/<场景名>.trace.md
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）

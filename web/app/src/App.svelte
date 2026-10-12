@@ -3,12 +3,16 @@
   import { call } from './api'
   import { ofKind } from './docs.svelte'
   import CompareView from './views/CompareView.svelte'
+  import DesignView from './views/DesignView.svelte'
   import MarginalView from './views/MarginalView.svelte'
   import OptimizeView from './views/OptimizeView.svelte'
   import RunView from './views/RunView.svelte'
 
-  const TABS = [['run', '场景'], ['compare', '对比'], ['marginal', '副词条边际'], ['optimize', '声骸择优']] as const
-  let tab = $state<(typeof TABS)[number][0]>('run')
+  const TABS = [['run', '场景'], ['compare', '对比'], ['marginal', '副词条边际'], ['optimize', '声骸择优'], ['design', '视图说明']] as const
+  // 地址里的 #design-b 直接打开设计备选的 B
+  const hash = location.hash.slice(1)
+  let tab = $state<(typeof TABS)[number][0]>(hash.startsWith('design') ? 'design' : 'run')
+  let pick = $state(hash.match(/^design-([a-d])$/)?.[1] ?? 'a')
   let name = $state(ofKind('scenario').find(d => d.name === 'm0-team.yaml')?.name ?? ofKind('scenario')[0]?.name ?? '')
   let info = $state('载入数据…')
   call('info', {}).then(i => (info = `数据 ${i.version} · 角色 ${i.characters.join('、')}`), e => (info = (e as Error).message))
@@ -20,14 +24,14 @@
     <p class="muted">{info}</p>
     <nav>{#each TABS as [k, n]}<button type="button" class:on={tab === k} onclick={() => (tab = k)}>{n}</button>{/each}</nav>
   </header>
-  {#if tab === 'run'}<RunView bind:name />{:else if tab === 'compare'}<CompareView {name} />{:else if tab === 'marginal'}<MarginalView bind:name />{:else}<OptimizeView bind:name />{/if}
+  {#if tab === 'run'}<RunView bind:name />{:else if tab === 'compare'}<CompareView {name} />{:else if tab === 'marginal'}<MarginalView bind:name />{:else if tab === 'optimize'}<OptimizeView bind:name />{:else}<DesignView bind:name bind:pick />{/if}
 </div>
 
 <style>
   :global(:root) {
     --paper: #f3f5f8; --panel: #fff; --ink: #1a1f2b; --muted: #5d6576; --faint: #8a91a1; --rule: #d8dce4; --grid: #e8ebf0;
     --alert: #c8323b; --wait: #d9922b; --good: #2f8a5b; --accent: #2a78bb;
-    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :global(:root) { --paper: #0f1218; --panel: #161a22; --ink: #e5e8ef; --muted: #a2a9b8; --faint: #737b8c; --rule: #2a303c; --grid: #1f242d;

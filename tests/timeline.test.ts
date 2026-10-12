@@ -5,7 +5,7 @@ import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { renderTimeline, timelineModel } from '../src/report/timeline'
+import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData } from './helpers/synth'
 
@@ -62,5 +62,18 @@ describe('时间轴网页', () => {
       marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60 }],
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
+  })
+  test('视图 A–D（pnpm timeline --view）：模板都在、共用脚本内联、数据带上 buff 的给予者与定义', () => {
+    const m = timelineModel('scenarios/demo.yaml', sc, r, res)
+    const shared = readFileSync(new URL('../web/designs/shared.js', import.meta.url), 'utf8')
+    for (const file of Object.values(TIMELINE_VIEWS)) {
+      const html = renderDesign(readFileSync(new URL(`../web/designs/${file}`, import.meta.url), 'utf8'), shared, m)
+      expect(html.startsWith('<!doctype html>')).toBe(true)
+      expect(html).toContain('window.WW')
+      expect(html).not.toContain('/*@shared*/')
+      const json = /<script id="timeline-data" type="application\/json">([\s\S]*?)<\/script>/.exec(html)![1]!
+      expect(JSON.parse(json)).toEqual(JSON.parse(JSON.stringify(m)))
+    }
+    expect(Object.keys(m.buffOwners).length).toBe(Object.keys(m.buffInfo).length)
   })
 })
