@@ -81,6 +81,16 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     }
   }
   const core = initialCore(sc.initial.core, team, issues)
+  // 开局能量、协奏：三人分开写数值时也要在 [0, 上限] 内（不然要到第 0 帧才被不变量拦下，报错看不出是哪里写错）
+  const trio = (x: 'full' | 'empty' | number | [number, number, number], f: (m: ResolvedMember) => number): [number, number, number] =>
+    Array.isArray(x) ? x : (team.map(m => (x === 'full' || x === 'empty' ? f(m) : x)) as [number, number, number])
+  const e = sc.initial.energy
+  const energy = trio(e, m => (e === 'full' ? m.def.energyCost : 0))
+  const concerto = trio(sc.initial.concerto, () => 0)
+  team.forEach((m, i) => {
+    if (energy[i]! > m.def.energyCost) issues.push(`initial.energy：${m.def.name} 的大招能量 ${energy[i]} 超过上限 ${m.def.energyCost}`)
+    if (concerto[i]! > rules.concertoMax) issues.push(`initial.concerto：${m.def.name} 的协奏 ${concerto[i]} 超过上限 ${rules.concertoMax}`)
+  })
   if (issues.length > 0) throw new ResolveError(issues)
   // 共鸣效率不按伤害元素 / 标签过滤：写了 filter 的按无条件算（TD-06 §2.1）
   const regenFiltered = buffs.filter(b => b.def.zone === 'energyRegen' && b.def.filter).map(b => b.def.id)
@@ -90,14 +100,11 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
       warnings.push(`${m.def.name} 有 ${m.def.flags.length} 处装配时推断的值（pnpm check:data -- --flags ${m.def.name} 查看）`)
   }
 
-  const trio = (x: 'full' | 'empty' | number | [number, number, number], f: (m: ResolvedMember) => number): [number, number, number] =>
-    Array.isArray(x) ? x : (team.map(m => (x === 'full' || x === 'empty' ? f(m) : x)) as [number, number, number])
-  const e = sc.initial.energy
   return {
     data, team, enemy, buffs, effects, commands, opening,
     initial: {
-      energy: trio(e, m => (e === 'full' ? m.def.energyCost : 0)),
-      concerto: trio(sc.initial.concerto, () => 0),
+      energy,
+      concerto,
       onField,
       core,
     },

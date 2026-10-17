@@ -16,6 +16,7 @@ export function call<K extends Kind>(kind: K, req: Requests[K]['req']): Promise<
   const id = next++
   return new Promise((ok, fail) => {
     waiting.set(id, { ok: ok as (v: unknown) => void, fail })
-    worker.postMessage({ id, kind, req })
+    // 请求都是普通数据（字符串、数字）：先转一遍 JSON，Svelte 的响应式代理对象也能发（否则 postMessage 克隆失败）
+    worker.postMessage({ id, kind, req: JSON.parse(JSON.stringify(req)) })
   })
 }

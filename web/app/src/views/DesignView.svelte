@@ -10,8 +10,9 @@
   let html = $state<string | null>(null)
   let err = $state<string | null>(null)
   let busy = $state(false)
-  let frame = $state<HTMLIFrameElement>()
-  let height = $state(900)
+  // 全屏：效果盖满屏幕（手机、iPad 上看），Esc 或"退出全屏"回来
+  let full = $state(false)
+  $effect(() => { document.documentElement.classList.toggle('lock', full); return () => document.documentElement.classList.remove('lock') })
 
   async function load(file: string, scen: string) {
     const s = find('scenario', scen)
@@ -21,10 +22,6 @@
     busy = false
   }
   $effect(() => { load(d.file, name) })
-  function fit() {
-    const doc = frame?.contentDocument
-    if (doc) height = Math.max(860, doc.documentElement.scrollHeight + 8)
-  }
   function openFull() {
     if (!html) return
     window.open(URL.createObjectURL(new Blob([html], { type: 'text/html' })), '_blank')
@@ -52,14 +49,17 @@
     <button type="button" onclick={openFull} disabled={!html}>在新标签页整页打开</button>
     {#if err}<pre class="error">{err}</pre>{/if}
   </aside>
-  <section class="card result">
+  <section class="card result" class:full>
     {#if html}
-      <iframe bind:this={frame} title={d.name} srcdoc={html} style:height="{height}px" onload={fit}></iframe>
+      <div class="bar"><b>{d.name}</b><button type="button" onclick={() => (full = !full)} aria-pressed={full}>{full ? '退出全屏' : '全屏'}</button></div>
+      <iframe title={d.name} srcdoc={html}></iframe>
     {:else}
       <p class="empty">{busy ? '生成中…' : '选一个设计。'}</p>
     {/if}
   </section>
 </div>
+
+<svelte:window onkeydown={e => { if (e.key === 'Escape' && full) full = false }} />
 
 <style>
   .split { display: grid; grid-template-columns: minmax(280px, 360px) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -78,5 +78,9 @@
   .desc ul { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.6; display: grid; gap: 2px; }
   .desc ul.cons li::marker { color: var(--alert); }
   .result { overflow: hidden; min-height: 400px; }
-  iframe { width: 100%; border: 0; display: block; }
+  iframe { width: 100%; border: 0; display: block; height: max(560px, calc(100dvh - 140px)); }
+  .bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+  .bar b { font-weight: 500; }
+  .result.full { position: fixed; inset: 0; z-index: 50; border: 0; border-radius: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); }
+  .result.full iframe { height: 100%; }
 </style>

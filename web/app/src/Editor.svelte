@@ -12,7 +12,8 @@
     const url = URL.createObjectURL(new Blob([doc.text], { type: 'text/yaml' }))
     const a = Object.assign(document.createElement('a'), { href: url, download: doc.name })
     a.click()
-    URL.revokeObjectURL(url)
+    // Safari 要等下载真的开始才能收回地址
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
   }
 </script>
 
@@ -52,4 +53,7 @@
     white-space: pre; overflow-wrap: normal; overflow-x: auto;
   }
   .hint { margin: 0; font-size: 12px; color: var(--muted); }
+  /* 手机：编辑框不超过半屏，下面的"运行"和结果才够得着；触摸屏字号 16px，iPhone 聚焦时才不自动放大页面 */
+  @media (max-width: 640px) { textarea { max-height: 50vh; max-height: 50dvh; } }
+  @media (pointer: coarse) { textarea { font-size: 16px; } }
 </style>

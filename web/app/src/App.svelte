@@ -38,7 +38,7 @@
       --alert: #ef5a62; --wait: #e7a443; --good: #4fb47f; --accent: #5aa5e8; color-scheme: dark; }
   }
   :global(body) { margin: 0; background: var(--paper); color: var(--ink); font: 14px/1.55 var(--sans); padding: 16px; }
-  :global(.card) { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; }
+  :global(.card) { background: var(--panel); border: 1px solid var(--rule); border-radius: 8px; min-width: 0; }
   :global(.pad) { padding: 14px 16px; }
   :global(.row) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
   :global(.row label) { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
@@ -59,6 +59,14 @@
   :global(.stats) { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 0; }
   :global(.stats dt) { font-size: 12px; color: var(--muted); }
   :global(.stats dd) { margin: 0; font-family: var(--mono); font-size: 18px; }
+  /* 手机、iPad：触摸屏的按钮、下拉框够大好点；输入框字号 16px，iPhone 聚焦时才不自动放大页面；悬停样式只给鼠标 */
+  @media (pointer: coarse) {
+    :global(button), :global(select), :global(input:not([type='checkbox']):not([type='radio'])) { min-height: 36px; }
+    :global(select), :global(input), :global(textarea) { font-size: 16px; }
+  }
+  @media (max-width: 640px) { :global(body) { padding: 10px; } }
+  /* 结果全屏时页面本身不滚 */
+  :global(html.lock) { overflow: hidden; }
   .wrap { max-width: 1600px; margin: 0 auto; display: grid; gap: 16px; }
   header { display: grid; gap: 6px; }
   h1 { margin: 0; font-size: 22px; }

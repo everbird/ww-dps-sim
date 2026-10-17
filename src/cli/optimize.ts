@@ -54,7 +54,7 @@ async function main(): Promise<number> {
   out.builds.forEach((b, i) => {
     const r = resolveScenario(withEchoes(sc, slot as Slot, b.pieces), data)
     const pv = panelsOf(r)[slot]!
-    console.log(`\n第 ${i + 1} 套  DPS ${fmt(b.dps!)}  ${signed(b.dps! - out.current.dps)}（${signed((b.dps! - out.current.dps) / out.current.dps, pct2)}）` +
+    console.log(`\n第 ${i + 1} 套${b.current ? '（就是现在这套）' : ''}  DPS ${fmt(b.dps!)}  ${signed(b.dps! - out.current.dps)}（${signed((b.dps! - out.current.dps) / out.current.dps, pct2)}）` +
       `  估计 ${fmt(b.est)}   攻击 ${fmt(pv.atk)}  暴击 ${pct(pv.critRate)}  暴伤 ${pct(pv.critDamage)}  共鸣效率 ${pct(pv.energyRegen)}`)
     b.pieces.forEach((p, j) => console.log(showPiece(p, j)))
   })

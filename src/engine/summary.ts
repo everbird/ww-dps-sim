@@ -82,7 +82,8 @@ function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {
 
 /** 分轮与稳态（Summary.perLoop / steady 的注释）。不到 2 轮（没循环、或第 2 轮还没开始就停了）时没有 */
 function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly HitEvent[], W: number): Pick<Summary, 'perLoop' | 'steady'> {
-  const marks = log.filter(e => e.type === 'loop')
+  // 只算窗口内开始的轮（endAt 截在某一轮中途时，之后的轮次标记不算，否则与资源快照对不上）
+  const marks = log.filter(e => e.type === 'loop' && battleFrameOf(e) < W)
   if (marks.length < 2) return {}
   const starts = marks.map(battleFrameOf)
   const ends = [...starts.slice(1), W]

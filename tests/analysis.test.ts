@@ -3,7 +3,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
-import { basisOf, compareRuns, marginal, runScenario, tierValue } from '../src/engine/analysis'
+import { basisOf, compareRuns, dpsBreakdown, marginal, runScenario, tierValue } from '../src/engine/analysis'
+import { ResolveError } from '../src/engine/resolve'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { M0 } from './helpers/m0'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -28,6 +29,42 @@ describe('对比（人造数据）', () => {
     expect(c.uptime).toEqual([{ key: '甲.攻击→甲', base: 0, other: 1, delta: 1 }])
     expect(c.panels.other[0]!.atk).toBe(c.panels.base[0]!.atk)                    // 常驻 buff 在命中时才叠，不进静态面板
     expect(basisOf(runScenario(sc([], 3), data()).res).label).toBe('稳态（第 2 轮）')
+  })
+
+  test('有启动轴（第 0 轮）时，稳态窗口从第 2 轮开始，不是第 1 轮；分角色加起来等于稳态 DPS', () => {
+    // 启动轴比循环轴慢一拍（多等 20 帧），让第 0、1 轮长短不同：窗口错一轮时一眼看得出
+    const s2 = ScenarioSchema.parse({
+      team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })),
+      enemy: { custom: { level: 90 } }, opening: ['甲 X', 'wait 20'], rotation: ['甲 X', '甲 X'], options: { repeat: 4 },
+    })
+    const run = runScenario(s2, data())
+    const b = basisOf(run.res), s = run.res.summary
+    expect(s.perLoop!.map(p => p.loop)).toEqual([0, 1, 2, 3, 4])
+    expect(b.label).toBe('稳态（第 2–3 轮）')
+    expect(b.lo).toBe(s.perLoop!.find(p => p.loop === 2)!.start)
+    expect(b.hi).toBe(s.perLoop!.find(p => p.loop === 4)!.start)
+    const sum = [...dpsBreakdown(run.res, b).byChar.values()].reduce((x, v) => x + v, 0)
+    expect(sum).toBeCloseTo(b.dps, 6)
+  })
+
+  test('endAt 截在某一轮中途：分轮只算窗口内开始的轮，不报错', () => {
+    const s3 = ScenarioSchema.parse({
+      team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })),
+      enemy: { custom: { level: 90 } }, rotation: ['甲 X', '甲 X'], options: { repeat: 4, endAt: 75 },
+    })
+    const run = runScenario(s3, data())
+    expect(run.res.summary.windowFrames).toBe(75)
+    expect(run.res.summary.perLoop!.map(p => [p.loop, p.start, p.frames])).toEqual([[1, 0, 60], [2, 60, 15]])
+  })
+
+  test('开局能量、协奏三人分开写时超过上限：装配时就报出是谁', () => {
+    const bad = (initial: ScenarioInput['initial']) => {
+      try { runScenario(ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['甲 X'], initial }), data()); return '' }
+      catch (e) { if (e instanceof ResolveError) return e.message; throw e }
+    }
+    expect(bad({ energy: [999, 0, 0] })).toContain('initial.energy：甲 的大招能量 999 超过上限 100')
+    expect(bad({ concerto: [0, 150, 0] })).toContain('initial.concerto：乙 的协奏 150 超过上限 100')
+    expect(bad({ energy: [100, 0, 0], concerto: [100, 0, 0] })).toBe('')
   })
 
   test('一档的数值：各档平均（比例到 0.0001、固定值取整）/ 最高 / 最低', () => {

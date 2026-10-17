@@ -18,10 +18,10 @@
 | `wuwa-dps-td07-buff-system-v0.1.1.md` | buff 实例、作用对象、触发与事件队列（含治疗事件、`ownerHas`）、消耗型 / 标记型、资源型效果、原文起草 |
 | `wuwa-dps-td08-character-module-v0.1.3.md` | 角色模块怎么写：钩子、写法模式、M0 三人的模块 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.5.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴 |
-| `wuwa-dps-td10-output-report-v0.1.3.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、命令行输出、时间轴网页 |
+| `wuwa-dps-td10-output-report-v0.1.4.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、命令行输出、时间轴网页 |
 | `wuwa-dps-td11-debug-calibration-v0.1.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、网页调试表、视频时间点）与改进 |
-| `wuwa-dps-td12-web-v0.2.md` | 网页（Vite + Svelte 5，本机用）：结构、各页、Worker、时间轴的视图 A–D（步进、检查器）、检查 |
-| `wuwa-dps-td13-echo-optimizer-v0.1.md` | 声骸库存择优：库存写法、快速重算、搜索与完整仿真确认 |
+| `wuwa-dps-td12-web-v0.2.1.md` | 网页（Vite + Svelte 5，本机用）：结构、各页、Worker、时间轴的视图 A–D（步进、检查器）、手机与 iPad（触摸操作、全屏）、检查 |
+| `wuwa-dps-td13-echo-optimizer-v0.1.1.md` | 声骸库存择优：库存写法、快速重算、搜索与完整仿真确认 |
 | `calibration/` | 实测与校准记录（格式见其中 README） |
 | `wuwa-dps-design-v0.2.9.md`（机制设计，已冻结） | 写总设计之前的游戏机制规格书，不再更新；与总设计、各 TD 冲突时以它们为准（勘误见总设计附录 A，开头有按章节找现在文档的对照表） |
 | `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）的数据确认结果与待办 |

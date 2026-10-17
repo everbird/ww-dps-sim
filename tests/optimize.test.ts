@@ -7,7 +7,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
 import { BuffDefSchema } from '../src/data/buff.schema'
 import { basisOf } from '../src/engine/analysis'
-import { buildReplayer, optimize, runRecorded, totalsOf, withEchoes } from '../src/engine/optimize'
+import { buildReplayer, MAX_EVAL, optimize, runRecorded, totalsOf, withEchoes } from '../src/engine/optimize'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
 
@@ -90,10 +90,28 @@ describe('TD-13 搜索', () => {
     expect(out.builds[0]!.dps).toBeCloseTo(best, 6)
     expect(out.builds.every(b => b.pieces.every(p => p.id !== 't1'))).toBe(true)
     expect(out.builds[0]!.dps).toBeGreaterThanOrEqual(out.current.dps)
+    // 和现在身上一样的那套标出来（顺序不同也算），其余不标
+    const same = out.builds.filter(b => b.current)
+    expect(same.length).toBeLessThanOrEqual(1)
+    for (const b of same) expect(b.dps).toBeCloseTo(out.current.dps, 6)
+    const now = optimize(scenario(CURRENT), d, pick('m1', 's3', 's1', 'c3', 'c1'), { slot: 0, top: 3 })
+    expect(now.builds.map(b => !!b.current)).toEqual([true])
     // --include-team：t1 也能用
     const all = optimize(sc, d, INV, { slot: 0, top: 1, includeTeam: true })
     expect(all.builds[0]!.pieces.some(p => p.id === 't1')).toBe(true)
   })
+  test('库存大、预筛留得多（每类 20 件）时，组合数超过上限就少留几件（并提示），不会一跑几小时', () => {
+    const d = data()
+    const big: InvPiece[] = []
+    for (let i = 0; i < 10; i++) big.push(P(`M${i}`, 4, `散套${i % 7}`, { 暴击率: 0.22, 攻击: 150 }, { 暴击伤害: 0.01 * i }))
+    for (let i = 0; i < 60; i++) big.push(P(`X${i}`, i % 2 ? 3 : 1, `散套${i % 7}`, { '攻击%': 0.18 }, { 暴击率: 0.002 * i, 暴击伤害: 0.003 * (60 - i) }))
+    const gear = [big[0]!, big[11]!, big[12]!, big[13]!, big[14]!]          // 五件各是不同套装（cost 4+3+1+3+1）：没有套装要求
+    const out = optimize(scenario(gear), d, big, { slot: 0, top: 2, keep: 20 })
+    expect(out.plan).toEqual({})
+    expect(out.notes.some(n => n.includes('预筛每类只留'))).toBe(true)
+    expect(out.evaluated).toBeLessThan(2 * MAX_EVAL + 20_000)              // 两遍搜索各自不超过上限，加上逐件替换
+    expect(out.builds[0]!.dps).toBeGreaterThanOrEqual(out.current.dps)
+  }, 60000)
   test('指定 5 件套；库存里没有首位声骸就报错', () => {
     const d = data()
     expect(optimize(scenario(CURRENT), d, INV, { slot: 0, top: 1, set: '测试套' }).builds[0]!.pieces.every(p => p.set === '测试套')).toBe(true)

@@ -154,24 +154,45 @@ window.WW = (() => {
   function paint(m) { m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`)) }
   /** 默认看的那一轮：稳态第一轮，没有稳态时第 1 轮 */
   const defaultLoop = m => (m.summary.steady ? m.summary.steady.from : m.D.loops.some(l => l.loop === 1) ? 1 : (m.D.loops[0] ? m.D.loops[0].loop : null))
-  /** 浮动提示：元素带 data-tip（HTML） */
-  function tips(root) {
+  /** 浮动提示：元素带 data-tip（HTML）。鼠标悬停显示；触摸屏点一下显示（放在手指上方），点别处或滚动收起。
+   *  [data-own-tap] 里的点按归页面自己处理（如 D 的导航图），不弹提示。返回 { hide } */
+  function tips(root = document.body) {
     const el = document.createElement('div')
     el.className = 'ww-tip'; el.hidden = true; document.body.appendChild(el)
-    root.addEventListener('mousemove', ev => {
-      const t = ev.target.closest('[data-tip]')
-      if (!t) { el.hidden = true; return }
+    const hide = () => { el.hidden = true }
+    const show = (t, x, y, touch) => {
       el.innerHTML = t.getAttribute('data-tip'); el.hidden = false
       const w = el.offsetWidth, h = el.offsetHeight
-      let x = ev.clientX + 14, y = ev.clientY + 14
-      if (x + w > innerWidth - 8) x = ev.clientX - w - 14
-      if (y + h > innerHeight - 8) y = ev.clientY - h - 14
-      el.style.left = Math.max(8, x) + 'px'; el.style.top = Math.max(8, y) + 'px'
+      let left = x + 14, top = y + 14
+      if (touch) { left = x - w / 2; top = y - h - 18; if (top < 8) top = y + 26 }
+      else { if (left + w > innerWidth - 8) left = x - w - 14; if (top + h > innerHeight - 8) top = y - h - 14 }
+      el.style.left = Math.max(8, Math.min(innerWidth - w - 8, left)) + 'px'; el.style.top = Math.max(8, Math.min(innerHeight - h - 8, top)) + 'px'
+    }
+    root.addEventListener('pointermove', ev => {
+      if (ev.pointerType !== 'mouse') return
+      const t = ev.target.closest('[data-tip]')
+      if (t) show(t, ev.clientX, ev.clientY, false); else hide()
     })
-    root.addEventListener('mouseleave', () => { el.hidden = true })
+    root.addEventListener('pointerleave', ev => { if (ev.pointerType === 'mouse') hide() })
+    // 触摸：按下到抬起没怎么动、也没变成滚动（滚动时浏览器发 pointercancel）才算点按
+    let down = null
+    document.addEventListener('pointerdown', ev => { down = ev.pointerType === 'mouse' ? null : { id: ev.pointerId, x: ev.clientX, y: ev.clientY } })
+    document.addEventListener('pointercancel', () => { down = null })
+    document.addEventListener('pointerup', ev => {
+      if (!down || ev.pointerId !== down.id) return
+      const tap = Math.hypot(ev.clientX - down.x, ev.clientY - down.y) < 10
+      down = null
+      if (!tap) return
+      const t = ev.target.closest && !ev.target.closest('[data-own-tap]') && ev.target.closest('[data-tip]')
+      if (t && root.contains(t)) show(t, ev.clientX, ev.clientY, true); else hide()
+    })
+    document.addEventListener('scroll', hide, { capture: true, passive: true })
+    return { hide }
   }
+  /** 触摸屏（没有悬停）：说明文字改写"点"而不是"悬停" */
+  const touchOnly = () => matchMedia('(hover: none)').matches
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, textWidth }
+  return { buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()
