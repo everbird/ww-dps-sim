@@ -1,13 +1,15 @@
-// src/cli/sim.ts —— pnpm sim <场景.yaml> [--out <文件>]：跑一个场景，终端打印汇总，写出完整事件日志（总设计第 9 节）
+// src/cli/sim.ts —— pnpm sim <场景.yaml> [--out <文件>] [--sample N [--seed S] [--jitter F]]：跑一个场景，终端打印汇总，
+// 写出完整事件日志（总设计第 9 节）；--sample 另按抽样模式跑 N 次，打印 DPS 的分布（总设计 T4，TD-10 §6 ⑤）
 // 退出码：0 成功；1 场景有错或运行期报错（日志照样写出，保留到出错为止）；2 用法错误。
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { panelsOf } from '../engine/analysis'
 import { ResolveError, resolveScenario } from '../engine/resolve'
+import { sampleRuns } from '../engine/sample'
 import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
-import { assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
+import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
 function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: number }): string {
@@ -17,12 +19,12 @@ function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: nu
 }
 
 async function main(): Promise<number> {
-  const args = process.argv.slice(2).filter(a => a !== '--')
-  const oi = args.indexOf('--out')
-  const out = oi >= 0 ? args[oi + 1] : undefined
-  const file = args.find((a, i) => !a.startsWith('--') && (oi < 0 || i !== oi + 1))
-  if (!file) {
-    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>]')
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter'])
+  const out = opt.out
+  const file = pos[0]
+  const runs = opt.sample !== undefined ? Number(opt.sample) : 0
+  if (!file || !Number.isInteger(runs) || runs < 0) {
+    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F]]')
     return 2
   }
   const sc = loadScenario(file)
@@ -40,6 +42,7 @@ async function main(): Promise<number> {
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
+  if (runs > 0 && !res.error) printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0))
   return res.error ? 1 : 0
 }
 
@@ -92,6 +95,21 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   console.log('\n这次碰到的假设（总设计 T16；影响是估计的）')
   for (const l of assumptionLines(s)) console.log(l)
   if (res.error) console.log(`\n报错（第 ${res.error.frame} 帧）：${res.error.message}`)
+}
+
+/** 抽样 N 次（总设计 T4）：逐段抽暴击，jitter > 0 时每个决策点另加 [0, jitter] 帧的操作抖动 */
+function printSampling(r: ResolvedScenario, runs: number, seed: number, jitter: number): void {
+  const t0 = Date.now()
+  const x = sampleRuns(r, { runs, seed, jitter })
+  const what = jitter > 0 ? `逐段抽暴击，操作抖动 0–${jitter} 帧` : '逐段抽暴击'
+  console.log(`\n抽样 ${runs} 次（${what}；种子 ${seed}；${((Date.now() - t0) / 1000).toFixed(1)} 秒）· 口径：${x.label}，期望值 DPS ${fmt(x.expected)}`)
+  if (x.stats) {
+    const s = x.stats
+    const d = s.mean / x.expected - 1
+    console.log(`  平均 ${fmt(s.mean)}（比期望值 ${d >= 0 ? '+' : '−'}${(Math.abs(d) * 100).toFixed(2)}%），标准差 ${fmt(s.sd)}（${pct(s.sd / s.mean)}）`)
+    console.log(`  最低 ${fmt(s.min)} · 5% ${fmt(s.p5)} · 中位 ${fmt(s.p50)} · 95% ${fmt(s.p95)} · 最高 ${fmt(s.max)}`)
+  }
+  if (x.failed > 0) console.log(`  跑不通 ${x.failed} 次：${x.errors.join('；')}`)
 }
 
 main().then(code => process.exit(code), e => { console.error(e instanceof Error ? e.message : e); process.exit(1) })

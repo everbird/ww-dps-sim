@@ -23,6 +23,7 @@
     "optimize": "tsx src/cli/optimize.ts",
     "assumptions": "tsx src/cli/assumptions.ts",
     "conformance": "tsx src/cli/conformance.ts",
+    "insight": "tsx src/cli/insight.ts",
     "web": "vite web/app",
     "web:build": "vite build web/app",
     "check:web": "svelte-check --tsconfig web/app/tsconfig.json"

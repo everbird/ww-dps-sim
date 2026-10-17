@@ -9,7 +9,7 @@ export type Impact = 'none' | 'tiny' | 'small' | 'medium' | 'large' | 'unknown'
 export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小', small: '小', medium: '中', large: '大', unknown: '未知' }
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
-export type AdjustPath = 'rules.defFloor' | 'options.tuneBreak'
+export type AdjustPath = 'rules.defFloor' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -28,7 +28,7 @@ export const ASSUMPTIONS = [
     id: 'crit-expected', topic: '公式', tracked: false, impact: 'none', ref: '总设计 T4',
     what: '暴击按期望值：每段算非暴击、暴击两支，按暴击率加权',
     why: '没有"暴击时触发"的效果时这就是精确值；有了以后只是近似，用抽样模式量一下偏差',
-    adjust: { how: '抽样模式：pnpm sim <场景> --sample N（网页：结论页）' },
+    adjust: { how: '抽样模式：pnpm sim <场景> --sample N（--jitter F 另加操作抖动），看 DPS 的分布与期望值差多少' },
   },
   {
     id: 'def-no-floor', topic: '公式', tracked: true, impact: 'tiny', ref: 'TD-03 Q1',
@@ -47,10 +47,10 @@ export const ASSUMPTIONS = [
     why: '配装择优主要打单体 boss',
   },
   {
-    id: 'earliest-frame', topic: '调度', tracked: false, impact: 'medium', ref: '总设计 T6、TD-09 §3',
+    id: 'earliest-frame', topic: '调度', tracked: false, impact: 'large', ref: '总设计 T6、TD-09 §3',
     what: '每条指令在最早合法的那一帧执行，没有反应时间',
-    why: '算的是理论上限，人手做不到帧帧精确；每条指令都晚几帧时 DPS 掉多少见"操作容错"（TD-10 §6）',
-    adjust: { how: '场景里 options.inputDelay: N（帧）：每条指令合法之后再晚 N 帧' },
+    why: '算的是理论上限，人手做不到帧帧精确；M0 代表轴每个决策点晚 6 帧 DPS 约 −9.5%，见"操作容错"（pnpm insight，TD-10 §6）',
+    adjust: { how: '场景里 options.inputDelay: N（帧）：切人与不是连段后续的出招，在合法之后再晚 N 帧', path: 'options.inputDelay', values: [6] },
   },
   {
     id: 'no-input-buffer', topic: '调度', tracked: false, impact: 'unknown', ref: '总设计 §13、TD-11 §5.6',

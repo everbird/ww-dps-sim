@@ -17,8 +17,9 @@ export interface HitRecord {
   draft: Pick<HitDraft, 'zones' | 'critOnly'>
 }
 
-/** simulate 的可选项 */
-export interface SimOptions { onHit?: (rec: HitRecord) => void }
+/** simulate 的可选项。sample：抽样模式（总设计 T4）——seed 定下全部随机数；逐段抽暴击；jitter > 0 时每个决策点的
+ *  操作延迟另加 [0, jitter] 帧的均匀抖动（在 options.inputDelay 之上）。不给就是期望模式 */
+export interface SimOptions { onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number } }
 
 export interface Sim {
   r: ResolvedScenario

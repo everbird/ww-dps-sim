@@ -1,6 +1,7 @@
 // web/app/src/protocol.ts —— 页面与 Worker 之间的消息（引擎在 Worker 里跑，页面不卡）
 import type { StatKey } from '../../../src/data/common'
 import type { Comparison, MarginalRow, PanelView, Tier } from '../../../src/engine/analysis'
+import type { Insight } from '../../../src/engine/insight'
 import type { OptimizeResult } from '../../../src/engine/optimize'
 import type { Summary } from '../../../src/engine/types'
 
@@ -13,6 +14,7 @@ export interface Requests {
     res: { html: string; dps: number; steady: number | null; label: string; error: string | null; warnings: string[]; assumptions: Summary['assumptions'] }
   }
   design: { req: { scenario: Source; file: string }; res: { html: string } }
+  insight: { req: { scenario: Source }; res: Insight }
   compare: { req: { base: Source; other: Source }; res: Comparison }
   marginal: { req: { scenario: Source; char: string; tier: Tier }; res: { label: string; dps: number; rows: MarginalRow[] } }
   optimize: {

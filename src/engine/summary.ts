@@ -4,10 +4,17 @@
 // 分轮与稳态（options.repeat ≥ 2，TD-09 §3.7）也从日志算。
 import type { CharName } from '../data/common'
 import { ASSUMPTIONS } from './assumptions'
-import type { HitEvent, ResolvedScenario, SimEvent, SimState, Summary, WaitCode } from './types'
+import { INTENDED } from './scheduler'
+import type { HitEvent, ResolvedScenario, SimEvent, SimState, Summary } from './types'
 import { round, roundTo } from './num'
 
-const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
+/** 一段命中计入多少伤害：期望模式是期望值；抽样模式按这一段抽到的暴击 / 非暴击（总设计 T4）。汇总、对比都按它算 */
+export const hitValue = (h: HitEvent): number => {
+  const d = h.dmg
+  if (!d) return 0
+  return d.isCrit === undefined ? d.expected : d.isCrit ? d.crit : d.nonCrit
+}
+
 /** 事件的战斗帧（t 是战斗秒数） */
 export const battleFrameOf = (e: SimEvent): number => round(e.t * 60)
 
@@ -37,7 +44,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   for (const m of r.team) byChar[m.def.name] = { damage: 0, share: 0 }
   const byAction = new Map<string, { char: CharName; action: string; damage: number; hits: number; share: number }>()
   for (const h of hits) {
-    const v = h.dmg!.expected
+    const v = hitValue(h)
     if (battleFrameOf(h) >= windowFrames) { overflowDamage += v; continue }
     totalDamage += v
     byChar[h.char]!.damage += v
@@ -82,7 +89,7 @@ function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {
       if (e.change === 'disharmony') out.disharmony++
       else if (e.change === 'harmonyBreak') out.tuneBreaks++
       else if (e.change === 'break') out.breaks++
-    } else if (e.type === 'hit' && e.dmg && e.tags.includes('谐度破坏')) out.tuneBreakDamage += e.dmg.expected
+    } else if (e.type === 'hit' && e.dmg && e.tags.includes('谐度破坏')) out.tuneBreakDamage += hitValue(e)
   }
   return out
 }
@@ -116,7 +123,7 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
     if (f >= W) continue
     let k = 0
     while (k + 1 < starts.length && f >= starts[k + 1]!) k++
-    damage[k]! += h.dmg!.expected
+    damage[k]! += hitValue(h)
   }
   const delta = (k: number, x: 'energy' | 'concerto') =>
     [0, 1, 2].map(i => roundTo(at[k + 1]![x][i]! - at[k]![x][i]!, 1e6)) as [number, number, number]

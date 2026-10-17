@@ -7,6 +7,7 @@ import type {
 import type { BuffDef, EnemyStateChange, ResourceEffect } from '../data/buff.schema'
 import type { ActionDef, CharacterDef, EchoDef, EnemyPreset, GameData, JudgmentDef, Rules, WeaponDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
+import type { RngState } from './rng'
 
 // ---------------------------------------------------------------------------
 // 装配结果 ResolvedScenario（总设计 §3.3）：仿真过程中只读
@@ -26,7 +27,7 @@ export interface ResolvedScenario {
   rules: Rules
   /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
   tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }
-  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off' }
+  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
 }
 
@@ -93,6 +94,8 @@ export interface SimState {
   lastTrigger: Record<string, number>       // "持有者|定义 id" → 上次触发成功的战斗帧（内置冷却，TD-07 §4.4）
   /** 这次碰到的假设（总设计 T16）：假设 id → 次数、第一次的战斗帧、几个例子（src/engine/assumptions.ts 的 assume） */
   assumed: Record<string, { n: number; at: number; detail: string[] }>
+  /** 抽样模式的随机数状态（总设计 T4，src/engine/rng.ts）；期望模式为 null */
+  rng: RngState | null
 }
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
@@ -104,7 +107,8 @@ export interface QueueState {
   loop: number                              // 当前第几轮（从 1 起；启动轴是第 0 轮）
   loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
   waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
-  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
+  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N、操作延迟从这里起算）
+  extra: number | null                      // 队首的操作延迟（options.inputDelay，抽样模式另加抖动）：第一次全部合法时定下，换下一条清空
   until: number | null                      // wait N：到这个战斗帧结束
   seg: WaitSegment | null                   // 正在累计的等待段（原因不变就合成一段）
 }
@@ -116,6 +120,7 @@ export type WaitCode =
   | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
   | 'switchCd' | 'switchLock'                                    // 切人
   | 'delay' | 'wait' | 'at'
+  | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）
   | 'filler'                                                    // 补位 "~" 不需要了（只用于 skip 事件）
 
 /** 指令在事件里的出处 */
@@ -240,7 +245,8 @@ export interface HitEvent extends EventBase {
   tick: number
   element: Element                          // 这次结算最终的元素与标签（modifyHit 之后，TD-07 §4.1）
   tags: DamageTag[]
-  dmg: { nonCrit: number; crit: number; expected: number } | null   // 非伤害判定为 null
+  /** 非伤害判定为 null。isCrit：抽样模式里这一段暴击了没有（期望模式没有这个字段，计 expected；总设计 T4） */
+  dmg: { nonCrit: number; crit: number; expected: number; isCrit?: boolean } | null
   factors?: HitFactors
   buffs: string[]                           // 生效的 buff，"id×层数"
   gains: { energy: Partial<Record<CharName, number>>; concerto: number; core: number[] }

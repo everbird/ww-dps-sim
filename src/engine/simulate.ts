@@ -4,6 +4,7 @@
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { assume } from './assumptions'
+import { nextFloat, nextInt, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
@@ -21,6 +22,8 @@ import type {
 
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
   const s = initialState(r)
+  if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
+  const jitter = opts.sample?.jitter ?? 0
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
     rules: r.rules,
@@ -53,6 +56,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
+    // 操作延迟：期望模式是固定的 options.inputDelay；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
+    inputDelay: st => r.options.inputDelay + (st.rng && jitter > 0 ? nextInt(st.rng, jitter) : 0),
     canAfford,
     canStart: (st, slot, def) => {
       if (def.kind === 'tuneBreak') { const ok = canTuneBreak(sim, st); if (ok !== true) return ok }
@@ -102,7 +107,7 @@ function initialState(r: ResolvedScenario): SimState {
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
-    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {},
+    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {}, rng: null,
   }
 }
 
@@ -121,7 +126,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     selfEnergyScale: 1, zones: {}, critOnly: {},
   }
   sim.hooks[j.owner]?.modifyHit?.(sim.ctxs[j.owner]!, draft)
-  let dmg: { nonCrit: number; crit: number; expected: number } | null = null
+  let dmg: HitEvent['dmg'] = null
   let factors
   let used: string[] = []
   let rec: HitRecord | null = null
@@ -154,6 +159,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules)
       if (sim.onHit) rec = { slot: j.owner, index: -1, ctx: hc, view, active, draft: { zones: draft.zones, critOnly: draft.critOnly } }
       dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
+      if (s.rng) dmg.isCrit = nextFloat(s.rng) < res.critRate          // 抽样模式：这一段暴击了没有（结算时的随机注入点）
       factors = res.factors
     }
     checkHit(s, dmg, m.def.name, d.name)

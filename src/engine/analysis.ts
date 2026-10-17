@@ -8,7 +8,7 @@ import type { Scenario } from '../data/scenario.schema'
 import { composeStat } from './formula'
 import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
-import { battleFrameOf, buffUptime } from './summary'
+import { battleFrameOf, buffUptime, hitValue } from './summary'
 import type { ResolvedScenario, SimResult } from './types'
 import { round, roundTo } from './num'
 
@@ -43,7 +43,7 @@ export function dpsBreakdown(res: SimResult, b: Basis): { byChar: Map<string, nu
     if (e.type !== 'hit' || e.dmg === null) continue
     const f = battleFrameOf(e)
     if (f < b.lo || f >= b.hi) continue
-    const v = e.dmg.expected / secs
+    const v = hitValue(e) / secs
     byChar.set(e.char, (byChar.get(e.char) ?? 0) + v)
     const k = `${e.char} ${e.action}`
     byAction.set(k, (byAction.get(k) ?? 0) + v)
