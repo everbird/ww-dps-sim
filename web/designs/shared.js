@@ -5,9 +5,9 @@ window.WW = (() => {
   'use strict'
   const ELEMENT_VAR = { 湮灭: '--el-havoc', 冷凝: '--el-glacio', 衍射: '--el-spectro', 热熔: '--el-fusion', 导电: '--el-electro', 气动: '--el-aero', 物理: '--el-physical' }
   const KIND_NAME = { normal: '普攻', heavy: '重击', skill: '共鸣技能', liberation: '共鸣解放', intro: '变奏', outro: '延奏', echo: '声骸技能', dodge: '闪避', tuneBreak: '谐度破坏', other: '其他' }
-  const INTENDED = new Set(['delay', 'wait', 'at'])
+  const INTENDED = new Set(['delay', 'wait', 'at', 'input'])   // input：操作延迟（options.inputDelay）
   /** 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick、写轴要求的），不算"卡住" */
-  const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at'])
+  const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at', 'input'])
   const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'

@@ -7,6 +7,7 @@ import type {
 import type { BuffDef, EnemyStateChange, ResourceEffect } from '../data/buff.schema'
 import type { ActionDef, CharacterDef, EchoDef, EnemyPreset, GameData, JudgmentDef, Rules, WeaponDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
+import type { RngState } from './rng'
 
 // ---------------------------------------------------------------------------
 // 装配结果 ResolvedScenario（总设计 §3.3）：仿真过程中只读
@@ -26,7 +27,7 @@ export interface ResolvedScenario {
   rules: Rules
   /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
   tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }
-  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off' }
+  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
 }
 
@@ -91,6 +92,10 @@ export interface SimState {
   outroLinks: { introInstance: number; from: Slot }[]   // 变奏动作实例 → 延奏的发出者（TD-05 §3）
   pendingNextIn: { owner: Slot | 'env'; defId: string; stacks: number }[]   // 挂起到下一次切入的 nextIn buff（TD-07 §3）
   lastTrigger: Record<string, number>       // "持有者|定义 id" → 上次触发成功的战斗帧（内置冷却，TD-07 §4.4）
+  /** 这次碰到的假设（总设计 T16）：假设 id → 次数、第一次的战斗帧、几个例子（src/engine/assumptions.ts 的 assume） */
+  assumed: Record<string, { n: number; at: number; detail: string[] }>
+  /** 抽样模式的随机数状态（总设计 T4，src/engine/rng.ts）；期望模式为 null */
+  rng: RngState | null
 }
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
@@ -102,7 +107,8 @@ export interface QueueState {
   loop: number                              // 当前第几轮（从 1 起；启动轴是第 0 轮）
   loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
   waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
-  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
+  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N、操作延迟从这里起算）
+  extra: number | null                      // 队首的操作延迟（options.inputDelay，抽样模式另加抖动）：第一次全部合法时定下，换下一条清空
   until: number | null                      // wait N：到这个战斗帧结束
   seg: WaitSegment | null                   // 正在累计的等待段（原因不变就合成一段）
 }
@@ -114,6 +120,7 @@ export type WaitCode =
   | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
   | 'switchCd' | 'switchLock'                                    // 切人
   | 'delay' | 'wait' | 'at'
+  | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）
   | 'filler'                                                    // 补位 "~" 不需要了（只用于 skip 事件）
 
 /** 指令在事件里的出处 */
@@ -130,7 +137,7 @@ export interface CharRuntime {
   core: [number, number, number, number, number]
   cooldowns: Record<string, Frame>          // 键：cooldownKey（动作 ID、cooldownGroup 或 'echo'）；按次数充能的是"下一次回复还要多久"
   charges: Record<string, { spent: number; every: Frame }>   // 按次数充能的冷却键：已用掉几次、每次回复要多久（ActionDef.charges）
-  flags: Record<string, number | boolean | string>   // 只由钩子读写
+  vars: HookVars                            // 钩子的状态量：初值是角色模块声明的 vars，只由钩子读写（总设计 §10.1）
 }
 
 export interface ActionRuntime {
@@ -163,6 +170,7 @@ export interface TailRuntime {
   events: TimelineEvent[]
   detached?: true                           // 独立时间线（延奏动作，TD-05 §4.3；召唤类声骸的判定）：不受持有者之后的动作影响
   skip?: string[]                           // 跳过的判定名（同 ActionRuntime.skip）
+  noted?: true                              // 召唤物：已记过假设 summon-clock（每条尾部只记一次）
 }
 
 export interface JudgmentRuntime {
@@ -237,7 +245,8 @@ export interface HitEvent extends EventBase {
   tick: number
   element: Element                          // 这次结算最终的元素与标签（modifyHit 之后，TD-07 §4.1）
   tags: DamageTag[]
-  dmg: { nonCrit: number; crit: number; expected: number } | null   // 非伤害判定为 null
+  /** 非伤害判定为 null。isCrit：抽样模式里这一段暴击了没有（期望模式没有这个字段，计 expected；总设计 T4） */
+  dmg: { nonCrit: number; crit: number; expected: number; isCrit?: boolean } | null
   factors?: HitFactors
   buffs: string[]                           // 生效的 buff，"id×层数"
   gains: { energy: Partial<Record<CharName, number>>; concerto: number; core: number[] }
@@ -299,6 +308,8 @@ export interface Summary {
   steady?: { from: number; to: number; frames: number; damage: number; dps: number }
   /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
   enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
+  /** 这次碰到的假设（总设计 T16）：按假设表的顺序；每次都适用的（tracked: false）不列，见 ASSUMPTIONS。firstFrame 是战斗帧 */
+  assumptions: { id: string; count: number; firstFrame: number; detail: string[] }[]
 }
 
 export interface SimResult {
@@ -311,16 +322,19 @@ export interface SimResult {
 // ---------------------------------------------------------------------------
 // 角色钩子（总设计 §6.9）：只有四个，ctx 只开放受控操作
 
-export interface CharacterHooks {
-  onResolve?(ctx: HookContext): void
+/** 钩子的状态量：名字 → 数或布尔。在角色模块的 vars 里声明初值，仿真中不能加新键（对应 Rust 的结构体字段，总设计 §10.1） */
+export type HookVars = Record<string, number | boolean>
+
+export interface CharacterHooks<V extends HookVars = HookVars> {
+  onResolve?(ctx: HookContext<V>): void
   /** 返回 true 表示允许；返回字符串表示不允许及原因（会写进等待日志） */
-  canStart?(ctx: HookContext, action: ActionId): true | string
-  onEvent?(ctx: HookContext, ev: SimEvent): void
+  canStart?(ctx: HookContext<V>, action: ActionId): true | string
+  onEvent?(ctx: HookContext<V>, ev: SimEvent): void
   /** 在收集 buff 之前调用（TD-03 §4）：可改倍率、附加值、元素 / 标签，或直接补乘区值 */
-  modifyHit?(ctx: HookContext, hit: HitDraft): void
+  modifyHit?(ctx: HookContext<V>, hit: HitDraft): void
 }
 
-export interface HookContext {
+export interface HookContext<V extends HookVars = HookVars> {
   readonly self: Slot
   readonly chain: Chain                     // 本角色的共鸣链数（钩子里按链数分支，如散华 C5）
   readonly state: Readonly<SimState>        // 只读查询；改状态只能走下面的方法
@@ -331,8 +345,8 @@ export interface HookContext {
   spawnJudgment(judgment: string, opts?: { action?: ActionId }): void
   /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
   skipJudgments(instance: number, names: string[]): void
-  setFlag(key: string, value: number | boolean | string): void
-  getFlag(key: string): number | boolean | string | undefined
+  /** 本角色的状态量（角色模块的 vars 声明的那几个），直接读写：ctx.vars.盛绽 = true */
+  readonly vars: V
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
   heal(source: string): void
   warn(message: string): void

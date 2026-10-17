@@ -6,7 +6,7 @@ import { DEFAULT_RULES, type ActionDef, type CharacterDef, type GameData } from 
 import { ScenarioSchema, type ScenarioInput } from '../../src/data/scenario.schema'
 import { resolveScenario } from '../../src/engine/resolve'
 import { simulate } from '../../src/engine/simulate'
-import type { CharacterHooks, SimEvent, SimResult } from '../../src/engine/types'
+import type { CharacterHooks, HookVars, SimEvent, SimResult } from '../../src/engine/types'
 
 export interface SynthChar {
   name: string
@@ -15,6 +15,7 @@ export interface SynthChar {
   buffs?: BuffDefInput[]
   effects?: ResourceEffectInput[]
   hooks?: CharacterHooks
+  vars?: HookVars                           // 钩子的状态量与初值（总设计 §10.1）
   energyCost?: number                       // 缺省 100
   core?: CoreResourceDef[]
 }
@@ -29,7 +30,7 @@ export function synthData(chars: SynthChar[]): GameData {
       actions: Object.fromEntries(c.actions.map(a => [a.id, a])), aliases: c.aliases ?? {},
       buffs: (c.buffs ?? []).map(b => BuffDefSchema.parse(b)),
       resourceEffects: (c.effects ?? []).map(e => ResourceEffectSchema.parse(e)),
-      ...(c.hooks ? { hooks: c.hooks } : {}), flags: [],
+      vars: c.vars ?? {}, flags: [],
     }
   }
   return {
@@ -49,6 +50,7 @@ export function synthData(chars: SynthChar[]): GameData {
     echoes: {}, echoSets: {}, echoStats: null, enemies: {}, effects: {}, abnormalBaseByLevel: [],
     tuneBreak: { variants: [], baseByLevel: [], costFactor: { 1: 0, 3: 0, 4: 0 }, rules: null },
     envBuffs: {}, rules: DEFAULT_RULES,
+    hooks: Object.fromEntries(chars.flatMap(c => (c.hooks ? [[c.name, c.hooks]] : []))),   // 钩子表（总设计 §10.1）
   }
 }
 

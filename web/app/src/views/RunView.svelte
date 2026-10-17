@@ -7,6 +7,7 @@
   import Editor from '../Editor.svelte'
   import { fmt } from '../fmt'
   import type { Requests } from '../protocol'
+  import { ASSUMPTIONS, IMPACT_NAME, assumptionOf } from '../../../../src/engine/assumptions'
 
   let { name = $bindable() }: { name: string } = $props()
   let busy = $state(false)
@@ -45,6 +46,8 @@
     if (out && ran) { busy = true; call('run', { scenario: ran, view }).then(r => { out = r }, e => { err = (e as Error).message }).finally(() => { busy = false }) }
   }
   function toggleWide() { wide = !wide; save('wwdps.wide', wide ? '1' : '0') }
+  // 每次都适用的假设（总设计 T16）：不随场景变，列在"这次碰到的"后面
+  const ALWAYS = ASSUMPTIONS.filter(a => !a.tracked)
 </script>
 
 <div class="split" class:wide>
@@ -66,6 +69,20 @@
         {#if out.warnings.length}
           <details><summary>提示 {out.warnings.length} 条</summary><ul class="warn">{#each out.warnings as w}<li>{w}</li>{/each}</ul></details>
         {/if}
+        <details class="assume">
+          <summary>这次碰到的假设 {out.assumptions.length} 条，另有 {ALWAYS.length} 条每次都适用</summary>
+          <ul>
+            {#each out.assumptions as x (x.id)}
+              {@const a = assumptionOf(x.id)}
+              {#if a}
+                <li><b>{a.what}</b>（{x.count} 次，影响{IMPACT_NAME[a.impact]}）<br /><span class="muted">{a.why}。{a.adjust ? `怎么改：${a.adjust.how}。` : ''}出处 {a.ref}</span>
+                  {#if x.detail.length}<br /><span class="muted">例：{x.detail.join('；')}</span>{/if}</li>
+              {/if}
+            {/each}
+          </ul>
+          <p class="muted">每次都适用：</p>
+          <ul>{#each ALWAYS as a (a.id)}<li>{a.what}（影响{IMPACT_NAME[a.impact]}）</li>{/each}</ul>
+        </details>
       {/if}
     </section>
   {/if}
@@ -117,4 +134,6 @@
   .stale { margin: 0; font-size: 12.5px; color: var(--wait); }
   .warn { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
   details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  .assume ul { margin: 6px 0; padding-left: 18px; font-size: 13px; display: grid; gap: 6px; }
+  .assume li .muted { font-size: 12px; }
 </style>

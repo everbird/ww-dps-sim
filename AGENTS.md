@@ -2,23 +2,29 @@
 
 鸣潮逐帧期望 DPS 仿真与配装择优工具。个人项目，原则：**实用、清晰、简单**。不追求工业级的安全性与一致性。
 
+**现在是原型期**（总设计 §0.1 第 7、8 条）：
+- 重心在数据与机制，以及能从结果推出的结论；网页能当原型展示即可，不在外观细节上花大力气。
+- 影响小的不确定处不深究，但要登记进假设表 `src/engine/assumptions.ts`（总设计 T16）：写清现在怎么处理、依据、影响、能不能调。
+- 引擎缺省按期望值算；抽样（蒙特卡洛）只在显式给种子时用，随机数只来自 `src/engine/rng.ts`（T4）。
+- 引擎以后可能换成 Rust：按总设计 §10.1 的写法写（数据与钩子分开、钩子状态在 `vars` 里声明、取整用 `num.ts`、输出顺序显式），改了引擎跑一遍 `pnpm conformance`。
+
 ## 先读什么
 
 设计文档都在 `docs/`，改代码前先读相关章节，并在代码注释与提交说明里引用章节号（如"TD-04 §4.2"）：
 
 | 文档 | 管什么 |
 |---|---|
-| `wuwa-dps-engine-tech-design-v0.1.9.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、里程碑与进度 |
+| `wuwa-dps-engine-tech-design-v0.2.md`（总设计） | 架构、数据流、**第 4 节关键取舍（不得推翻）**、好移植的写法（§10.1）、里程碑与进度 |
 | `wuwa-dps-td01-data-dictionary-v0.1.7.md` | xlsx 每一列的含义与抽取规则（含声骸表、声骸属性、敌人与谐度破坏表、附页2 的偏谐规则）、版本清单与定位方式、nanoka 数据、装配默认映射、角色模块与声骸的覆盖字段 |
-| `wuwa-dps-td02-types-schema-v0.1.8.md` | 全部类型与 zod schema（类型一览，代码以仓库为准） |
+| `wuwa-dps-td02-types-schema-v0.1.9.md` | 全部类型与 zod schema（类型一览，代码以仓库为准） |
 | `wuwa-dps-td03-damage-formula-v0.1.3.md` | 伤害公式与乘区、golden 抽取 |
 | `wuwa-dps-td04-sim-kernel-v0.1.4.md` | 仿真内核：tick 相位、帧约定、时钟与膨胀、动作与判定、尾部与独立时间线、冷却与充能 |
 | `wuwa-dps-td05-switch-concerto-v0.1.1.md` | 切人、变奏 / 延奏、协奏清零、切人结束技能 |
 | `wuwa-dps-td06-resources-v0.2.2.md` | 角色资源：大招能量分配与门槛、协奏时机、核心资源；敌人量表：偏谐与失谐、谐破冷却与按钮、谐度破坏（自动 / 手写 / 关闭）、白条（削韧值与按比例）与破盾回能、瘫痪（偏移 / 干涉 / 响应、异常效应以后） |
 | `wuwa-dps-td07-buff-system-v0.1.1.md` | buff 实例、作用对象、触发与事件队列（含治疗事件、`ownerHas`）、消耗型 / 标记型、资源型效果、原文起草 |
-| `wuwa-dps-td08-character-module-v0.1.3.md` | 角色模块怎么写：钩子、写法模式、M0 三人的模块 |
+| `wuwa-dps-td08-character-module-v0.1.4.md` | 角色模块怎么写：钩子、写法模式、M0 三人的模块 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.5.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴 |
-| `wuwa-dps-td10-output-report-v0.1.4.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、命令行输出、时间轴网页 |
+| `wuwa-dps-td10-output-report-v0.1.5.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求、操作容错、假设敏感度）、命令行输出、时间轴网页 |
 | `wuwa-dps-td11-debug-calibration-v0.1.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、网页调试表、视频时间点）与改进 |
 | `wuwa-dps-td12-web-v0.2.1.md` | 网页（Vite + Svelte 5，本机用）：结构、各页、Worker、时间轴的视图 A–D（步进、检查器）、手机与 iPad（触摸操作、全屏）、检查 |
 | `wuwa-dps-td13-echo-optimizer-v0.1.1.md` | 声骸库存择优：库存写法、快速重算、搜索与完整仿真确认 |
@@ -64,7 +70,11 @@ pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
+pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间
+pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
+pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的
+pnpm conformance                             # 一致性样例（总设计 §10.1）：每个场景的装配结果（去掉钩子表）与事件日志、汇总写到 out/conformance/，换实现时对拍
 pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行（可切换时间轴视图）、对比、边际、择优；pnpm web:build 打包到 out/web（含数据，不发布）
                                              # 用域名访问时：WEB_HOSTS=<域名> pnpm web --port <端口> --host 0.0.0.0
 pnpm timeline scenarios/m0-team.yaml        # 时间轴网页：结果嵌进 web/timeline.html，写到 out/<场景名>.html（浏览器直接打开）；下方有调试表
@@ -89,4 +99,7 @@ pnpm test -u                                 # 场景汇总快照（tests/scenar
 
 M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下的 11 处已于 2026-10-03 并回总设计 v0.1.5 等；声骸与 M5 记下的 4 处已于 2026-10-04 并回总设计 v0.1.6 等，并新写 TD-10 v0.1；M4 敌人量表（TD-06 v0.2 §17）已于 2026-10-04 并回总设计 v0.1.7 等；时间轴网页、启动轴、谐度破坏的调整（不拆连段、附页2 规则、椿两种、按比例削白条）、版本清单与换成 20261003 版这 7 处已于 2026-10-04 并回总设计 v0.1.8、TD-01 v0.1.7、TD-02 v0.1.7、TD-03 v0.1.3、TD-06 v0.2.1、TD-08 v0.1.2、TD-09 v0.1.4、TD-10 v0.1.2（各文档附录的变更历史逐条列出）；补位后缀、视频轴转正、M0 代表轴换装、调试工具与 TD-11、开局核心资源、视频时间点、核心资源改名这 7 处已于 2026-10-05 并回总设计 v0.1.9、TD-02 v0.1.8、TD-06 v0.2.2、TD-08 v0.1.3、TD-09 v0.1.5、TD-10 v0.1.3（机制设计 v0.2.9 同时标为冻结）。之后的新决定记在下面：
 
-（暂无）
+1. **假设登记（总设计 T16，2026-10-17）**：`src/engine/assumptions.ts`；`SimState.assumed`、`Summary.assumptions`（这次碰到的，按表的顺序）；新规则 `Rules.defFloor`（缺省 false，TD-03 Q1 的开关）。已并回 TD-02 v0.1.9；待并回 TD-03 Q1。
+2. **好移植的写法（总设计 §10.1，2026-10-17）**：钩子从 `CharacterDef.hooks` 挪到钩子表 `GameData.hooks`（按角色名），GameData 其余都是纯数据；钩子的 `setFlag` / `getFlag` 换成角色模块里声明的 `vars` 与 `ctx.vars.<名字>`（`CharRuntime.flags` → `vars`，不能加新键）；取整集中到 `src/engine/num.ts`；`src/engine/portable.ts` 与 `pnpm conformance`。已并回 TD-02 v0.1.9、TD-08 v0.1.4。
+3. **操作延迟与结论（2026-10-17）**：场景 `options.inputDelay`（决策点在合法之后再晚 N 帧，连段后续不加；等待原因 `input`，与 `delay`、`wait`、`at` 一样不计入 maxWait；`QueueState.extra`；调度器的 `SchedulerOptions.inputDelay` 是抽样模式的随机注入点）；结论 `src/engine/insight.ts`、`pnpm insight` 与网页"结论"页；场景页列出这次碰到的假设。已并回 TD-10 v0.1.5；已并回 TD-02 v0.1.9；待并回 TD-09 §3（`inputDelay`、`input`）、TD-12（"结论"页、场景页的假设）。
+4. **抽样模式（总设计 T4，2026-10-17）**：`simulate(r, { sample: { seed, jitter } })`；随机数只在 `src/engine/rng.ts`，状态 `SimState.rng`；结算时逐段抽暴击（`hit.dmg.isCrit`，汇总按 `hitValue` 计），调度器的 `inputDelay` 另加 [0, jitter] 帧抖动；多次抽样 `src/engine/sample.ts`、`pnpm sim --sample N`。已并回 TD-02 v0.1.9、TD-10 v0.1.5；待并回 TD-03（结算时抽暴击）、TD-09（抖动的注入点）。

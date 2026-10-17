@@ -14,6 +14,7 @@ import {
   DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
 import { parseOrThrow } from './validate'
+import { round } from '../engine/num'
 
 export interface GeneratedFiles {
   meta: GenMeta
@@ -68,7 +69,7 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
   for (const e of gen.enemies) {
     enemies[e.id] = {
       id: e.id, name: e.name, tag: e.tag, cost: e.cost, level: e.level, hp: e.hp, def: e.def, res: e.res,
-      whiteBar: e.whiteBar, whiteBarTough: e.whiteBarTough ?? 0, paralysisFrames: Math.round((e.paralysisSec ?? 0) * 60),
+      whiteBar: e.whiteBar, whiteBarTough: e.whiteBarTough ?? 0, paralysisFrames: round((e.paralysisSec ?? 0) * 60),
       poise: e.poise, tunabilityMax: e.tunabilityMax,
     }
   }
@@ -82,10 +83,12 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     tuneBreak: tuneBreakTable(gen.tuneBreak),
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
     rules: DEFAULT_RULES,
+    // 钩子表（总设计 §10.1）：角色模块里唯一的代码，按角色名放在这里，CharacterDef 只留数据（含 vars 的初值）
+    hooks: Object.fromEntries(cur.characters.flatMap(m => (m.hooks ? [[m.name, m.hooks]] : []))),
   }
 }
 
-const frames = (sec: number): number => Math.round(sec * 60)
+const frames = (sec: number): number => round(sec * 60)
 
 /** tune-break.json → 谐度破坏表（TD-03 §6）与规则（谐破冷却、按钮，秒 → 战斗帧）；没有文件时全 0：谐度破坏伤害为 0 */
 function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
@@ -159,7 +162,7 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     actions, aliases: mod.aliases ?? {},
     buffs: (mod.buffs ?? []).map(b => buff(b, mod.name)),
     resourceEffects: (mod.resourceEffects ?? []).map(e => effect(e, mod.name)),
-    ...(mod.hooks ? { hooks: mod.hooks } : {}),
+    vars: { ...(mod.vars ?? {}) },
     flags,
   }
 }

@@ -1,14 +1,16 @@
 // data/curated/characters/椿.ts —— 角色模块（TD-08 §5.2；结论见 m0-confirm §6 C1–C3、G3）
 import { defineCharacter } from '../../../src/data/define'
+import { snap9 } from '../../../src/engine/num'
 
 /** 白椿（不在盛绽）才能用的动作；盛绽状态下普攻 / 重击 / E 换成盛绽版本（"盛绽·"开头与 E2）。
  *  谐度破坏也分两种：常态（R1886–R1889）与盛绽（R1890–R1893，组名"谐度破坏-时停"，别名"盛绽·谐度破坏"），
  *  伤害相同，结束帧与派生窗口不同（m0-confirm §10 H5） */
 const WHITE = new Set(['A1', 'A2', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1', '谐度破坏'])
 const BLOOM = (id: string) => id.startsWith('盛绽·') || id === 'E2' || id === '谐度破坏-时停'
+/** 钩子的状态量（总设计 §10.1）：盛绽（红椿）形态；一日花时折算的酣梦层数；还没凑满 10 点的蕊消耗；切走那一刻是否在含苞 */
+const VARS = { 盛绽: false, 酣梦层数: 0, 蕊消耗: 0, 切走时含苞: false }
 const OUTRO_PLAIN = ['延奏-C0普通', '延奏-C5普通']
 const OUTRO_BUD = ['延奏-C0含苞', '延奏-C0含苞追加', '延奏-C5含苞', '延奏-C5含苞追加']
-const snap = (x: number) => Math.round(x * 1e9) / 1e9
 
 export default defineCharacter('椿', {
   weaponType: '迅刀',
@@ -16,6 +18,7 @@ export default defineCharacter('椿', {
   coreNames: { 1: '红椿·蕊' },
   treeStats: { '暴击伤害': 0.16, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E1', R: '大招', QTE: 'QTE', '盛绽·谐度破坏': '谐度破坏-时停' },
+  vars: VARS,
   buffs: [
     {
       // 一日花进入含苞，15 秒；切人或红椿·蕊耗完时提前结束（后者在钩子里）
@@ -43,7 +46,7 @@ export default defineCharacter('椿', {
   hooks: {
     canStart(ctx, id) {
       const c = ctx.state.chars[ctx.self]
-      const bloom = ctx.getFlag('盛绽') === true
+      const bloom = ctx.vars.盛绽
       if (id === 'E3') return c.concerto >= 100 ? true : '一日花要协奏满'
       // 协奏满且一日花不在冷却时，共鸣技能替换为一日花
       if ((id === 'E1' || id === 'E2') && c.concerto >= 100 && !(c.cooldowns['E3'] ?? 0)) return '协奏满时共鸣技能是一日花（E3）'
@@ -53,10 +56,10 @@ export default defineCharacter('椿', {
     },
     onEvent(ctx, ev) {
       if (ev.type === 'actionStart' && ev.char === '椿') {
-        if (ev.action === 'E1') ctx.setFlag('盛绽', true)                       // 切人不退出盛绽（m0-confirm §6 C1）
-        if (ev.action === 'E2' || ev.action === '盛绽·跳跃') ctx.setFlag('盛绽', false)
+        if (ev.action === 'E1') ctx.vars.盛绽 = true                            // 切人不退出盛绽（m0-confirm §6 C1）
+        if (ev.action === 'E2' || ev.action === '盛绽·跳跃') ctx.vars.盛绽 = false
         if (ev.action === 'E3') {                                                // 清空红椿·蕾，层数折算进酣梦
-          ctx.setFlag('酣梦层数', Math.min(10, ctx.buffStacks('椿.红椿·蕾')))
+          ctx.vars.酣梦层数 = Math.min(10, ctx.buffStacks('椿.红椿·蕾'))
           ctx.removeBuff('椿.红椿·蕾')
         }
         return
@@ -65,23 +68,23 @@ export default defineCharacter('椿', {
         const used = -(ev.gains.core[0] ?? 0)
         if (used <= 0) return
         // 每消耗 10 点蕊：协奏 +4、红椿·蕾 +1（含苞中不得蕾）
-        let acc = snap(Number(ctx.getFlag('蕊消耗') ?? 0) + used)
+        let acc = snap9(ctx.vars.蕊消耗 + used)
         const bud = ctx.buffStacks('椿.含苞') > 0
         while (acc >= 10) {
-          acc = snap(acc - 10)
+          acc = snap9(acc - 10)
           ctx.addResource('concerto', 4)
           if (!bud) ctx.addBuff('椿.红椿·蕾')
         }
-        ctx.setFlag('蕊消耗', acc)
+        ctx.vars.蕊消耗 = acc
         if (bud && ctx.state.chars[ctx.self].core[0] <= 0) ctx.removeBuff('椿.含苞')   // 蕊耗完，含苞提前结束
         return
       }
       // 延奏挑版本（m0-confirm §6 C3）：切走那一刻在含苞中 → 含苞 + 含苞追加，否则 → 普通。
       // 含苞在切出时就被清掉了，所以在切出那一刻记下
-      if (ev.type === 'switch' && ev.from === '椿') ctx.setFlag('切走时含苞', false)
-      if (ev.type === 'buffExpire' && ev.buff === '椿.含苞' && ev.reason === 'switchOut') ctx.setFlag('切走时含苞', true)
+      if (ev.type === 'switch' && ev.from === '椿') ctx.vars.切走时含苞 = false
+      if (ev.type === 'buffExpire' && ev.buff === '椿.含苞' && ev.reason === 'switchOut') ctx.vars.切走时含苞 = true
       if (ev.type === 'outro' && ev.char === '椿' && ev.instance !== undefined)
-        ctx.skipJudgments(ev.instance, ctx.getFlag('切走时含苞') === true ? OUTRO_PLAIN : OUTRO_BUD)
+        ctx.skipJudgments(ev.instance, ctx.vars.切走时含苞 ? OUTRO_PLAIN : OUTRO_BUD)
     },
     // 消耗红椿·蕊的那几类攻击（数据里核心回收为负的，与酣梦、回能规则覆盖的是同一组）
     modifyHit(ctx, d) {
@@ -89,7 +92,7 @@ export default defineCharacter('椿', {
       if (!(j.gains.core[0] < 0)) return
       if (ctx.buffStacks('椿.含苞') > 0) {
         d.selfEnergyScale = 0                                                    // 含苞期间自己的回能降至 0%（队友不受影响，G3）
-        if (j.formula) d.multiplier += j.formula.rate * (10 + Number(ctx.getFlag('酣梦层数') ?? 0))   // 酣梦 +50%，每层蕾 +5%
+        if (j.formula) d.multiplier += j.formula.rate * (10 + ctx.vars.酣梦层数)   // 酣梦 +50%，每层蕾 +5%
       } else if (ctx.state.chars[ctx.self].core[0] > 0) {
         d.selfEnergyScale = 2.5                                                  // 消耗蕊时自己的基础回能 +150%（G3）
       }

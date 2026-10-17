@@ -51,11 +51,8 @@ dataDescribe('TD-06 M0 队伍', () => {
   })
 
   test('T06-4 事件生成的判定（E-引爆冰棱）：它每次结算时给，含它自己的"进入即得"', () => {
-    const data = { ...gd, characters: { ...gd.characters } }   // 角色带钩子（函数），不能 structuredClone
-    data.characters['散华'] = {
-      ...gd.characters['散华']!,
-      hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } },
-    }
+    // 只换钩子表里散华那份（总设计 §10.1）
+    const data: GameData = { ...gd, hooks: { ...gd.hooks, 散华: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } } } }
     const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 E'] })
     const ice = eventsOfLog(out.log, 'hit').find(h => h.judgment === 'E-引爆冰棱')!
     expect([ice.f, ice.gains.concerto]).toEqual([19, 15])

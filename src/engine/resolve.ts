@@ -9,6 +9,7 @@ import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type Gam
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
 import type { Core5, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
+import { round } from './num'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
 export const CHAR_BASE = { critRate: 0.05, critDamage: 1.5, energyRegen: 1 } as const
@@ -112,6 +113,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     tuneBreakTiming,
     options: {
       repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait, tuneBreak: sc.options.tuneBreak,
+      inputDelay: sc.options.inputDelay,
       ...(sc.options.endAt !== undefined ? { endAt: sc.options.endAt } : {}),
     },
     warnings,
@@ -268,7 +270,7 @@ function resolveEnemy(e: Scenario['enemy'], data: GameData, issues: string[]): E
     id: '自定义', name: '自定义', tag: '自定义', cost: c.cost, level: c.level, hp: c.hp ?? 1e12,   // 生命缺省不设上限
     def: c.def ?? enemyDefByLevel(c.level), res,
     whiteBar: { max: c.whiteBar ?? 0, recover: 0, reduce: 0 }, whiteBarTough: c.whiteBar ?? 0,
-    paralysisFrames: Math.round((c.paralysisSec ?? 0) * 60), poise: { max: 0, recover: 0, reduce: 0 },
+    paralysisFrames: round((c.paralysisSec ?? 0) * 60), poise: { max: 0, recover: 0, reduce: 0 },
     tunabilityMax: c.tunabilityMax ?? 0,
   }
 }

@@ -4,6 +4,8 @@ import { parse } from 'yaml'
 import { FLAT_STATS, type StatKey } from '../data/common'
 import { ScenarioSchema, type Scenario } from '../data/scenario.schema'
 import { parseOrThrow } from '../data/validate'
+import { ASSUMPTIONS, IMPACT_NAME, assumptionOf } from '../engine/assumptions'
+import type { Summary } from '../engine/types'
 
 export const loadScenario = (file: string): Scenario => parseOrThrow(ScenarioSchema, parse(readFileSync(file, 'utf8')), file)
 
@@ -20,6 +22,18 @@ export const width = (t: string) =>
   [...t].reduce((w, ch) => w + (/[ᄀ-ᅟ⺀-꓏가-힣豈-﫿︰-﹏＀-｠￠-￦]/.test(ch) ? 2 : 1), 0)
 export const padEnd = (t: string, n: number) => t + ' '.repeat(Math.max(0, n - width(t)))
 export const padStart = (t: string, n: number) => ' '.repeat(Math.max(0, n - width(t))) + t
+
+/** 汇总里"这次碰到的假设"（总设计 T16）：每条一行（影响、编号、怎么处理、次数、例子），最后一行列每次都适用的 */
+export function assumptionLines(s: Summary): string[] {
+  const out = s.assumptions.map(x => {
+    const a = assumptionOf(x.id)!
+    const eg = x.detail.length > 0 ? `  例：${x.detail.slice(0, 2).join('；')}${x.detail.length > 2 ? '…' : ''}` : ''
+    return `  [${IMPACT_NAME[a.impact]}] ${a.id}  ${a.what}（${x.count} 次）${eg}`
+  })
+  const always = ASSUMPTIONS.filter(a => !a.tracked).map(a => a.id)
+  out.push(`  每次都适用：${always.join('、')}（pnpm assumptions 看全部）`)
+  return out
+}
 
 /** 命令行参数：取 --name 的值，剩下的是位置参数（pnpm 10 会把 `--` 原样传进来，去掉） */
 export function argsOf(argv: string[], flags: string[]): { pos: string[]; opt: Record<string, string> } {

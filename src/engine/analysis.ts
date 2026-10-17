@@ -8,8 +8,9 @@ import type { Scenario } from '../data/scenario.schema'
 import { composeStat } from './formula'
 import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
-import { battleFrameOf, buffUptime } from './summary'
+import { battleFrameOf, buffUptime, hitValue } from './summary'
 import type { ResolvedScenario, SimResult } from './types'
+import { round, roundTo } from './num'
 
 export interface Run { r: ResolvedScenario; res: SimResult }
 
@@ -42,7 +43,7 @@ export function dpsBreakdown(res: SimResult, b: Basis): { byChar: Map<string, nu
     if (e.type !== 'hit' || e.dmg === null) continue
     const f = battleFrameOf(e)
     if (f < b.lo || f >= b.hi) continue
-    const v = e.dmg.expected / secs
+    const v = hitValue(e) / secs
     byChar.set(e.char, (byChar.get(e.char) ?? 0) + v)
     const k = `${e.char} ${e.action}`
     byAction.set(k, (byAction.get(k) ?? 0) + v)
@@ -111,7 +112,7 @@ export function tierValue(values: readonly number[], tier: Tier): number {
   if (tier === 'max') return Math.max(...values)
   if (tier === 'min') return Math.min(...values)
   const mean = values.reduce((a, b) => a + b, 0) / values.length
-  return mean >= 3 ? Math.round(mean) : Math.round(mean * 1e4) / 1e4
+  return mean >= 3 ? round(mean) : roundTo(mean, 1e4)
 }
 
 /** 副词条边际：给第 slot 位角色各加一档副词条（加在他最后一件声骸的副词条上），各重跑一次，比稳态（或整个窗口）的 DPS。

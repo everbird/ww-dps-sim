@@ -4,6 +4,7 @@
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
+import { assume } from './assumptions'
 import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
@@ -139,19 +140,23 @@ export interface SchedulerOptions {
   onSwitch?(s: SimState, k: Kernel, from: Slot, to: Slot, cmd: CommandRef): void
   /** TD-06 §13.4：要插在队首指令之前的动作（目标失谐时前台角色的谐度破坏）；why 写进等待原因。缺省不插 */
   interject?(s: SimState): { slot: Slot; def: ActionDef; why: string } | null
+  /** 操作延迟（总设计 T4）：队首指令第一次全部合法时问一次，再晚这么多帧执行。只加在决策点（切人、不是连段后续的出招），
+   *  插队的动作不算。缺省 0。
+   *  期望模式是 options.inputDelay；抽样模式在这里加随机抖动——这是调度器里唯一的随机注入点 */
+  inputDelay?(s: SimState): number
 }
 
 /** repeat = 循环轴执行几轮（options.repeat）；opening = 启动轴，先跑一次，记为第 0 轮（§3.7） */
 export function newQueue(commands: Command[], repeat = 1, opening: Command[] = []): QueueState {
-  return { commands, opening, repeat, next: 0, loop: opening.length > 0 ? 0 : 1, loopBegun: false, waited: 0, readyAt: null, until: null, seg: null }
+  return { commands, opening, repeat, next: 0, loop: opening.length > 0 ? 0 : 1, loopBegun: false, waited: 0, readyAt: null, extra: null, until: null, seg: null }
 }
 /** 正在执行的那一段：第 0 轮是启动轴，其余是循环轴 */
 const listOf = (q: QueueState): Command[] => (q.loop === 0 ? q.opening : q.commands)
 
 type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
 const GO: Verdict = { go: true }
-/** 写轴的人要求的等待：不计入 maxWait */
-const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
+/** 写轴的人要求的等待与操作延迟：不计入 maxWait，汇总的 waits 也不列 */
+export const INTENDED: readonly WaitCode[] = ['delay', 'wait', 'at', 'input']
 /** 可选指令遇到这几种"状态条件"不满足时跳过；门（优先级、输入锁、派生）与"等出手"照常等 */
 const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook']
 
@@ -174,7 +179,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       // （TD-09 §3.2 插队；m0-confirm §10 H1；AGENTS.md 差异 3）
       const ij = c.kind === 'act' && actions[c.slot]![c.action]!.comboFrom?.length ? null : opts.interject?.(s)
       if (ij) {
-        const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref)
+        const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref, false)
         if (!w.go) { hold(s, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref); return true }
         closeSeg(s, ref)
         startAction(s, k, ij.slot, ij.def)
@@ -189,6 +194,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           q.next += 1
           q.waited = 0
           q.readyAt = null
+          q.extra = null
           q.until = null
           continue
         }
@@ -201,6 +207,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         q.next += 1
         q.waited = 0
         q.readyAt = null
+        q.extra = null
         q.until = null
         continue
       }
@@ -210,6 +217,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       q.next += 1
       q.waited = 0
       q.readyAt = null
+      q.extra = null
       q.until = null
     }
   }
@@ -232,17 +240,21 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
       const last = s.chars[s.onField].last
       const lock = last?.def.switchLockUntil
       if (last && lock !== undefined && last.localFrame < lock) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
-      return GO
+      return afterInput(s, opts, 0)
     }
     case 'act': {
       if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${s.chars[c.slot].name} 不在前台`, ref)
-      return evaluateAct(s, opts, c.slot, actions[c.slot]![c.action]!, c.force, c.delay, ref)
+      // 操作延迟只加在"决策点"：连段的后续（有 comboFrom 的动作，如 A2–A5）玩家会预输入，不加（假设 no-input-buffer）
+      const def = actions[c.slot]![c.action]!
+      return evaluateAct(s, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
     }
   }
 }
 
-/** 出招此刻能不能开始（§3.2 的检查顺序，前台已查过）；插队的动作（opts.interject）也走这里 */
-function evaluateAct(s: SimState, opts: SchedulerOptions, slot: Slot, def: ActionDef, force: boolean, delay: number, ref: CommandRef): Verdict {
+/** 出招此刻能不能开始（§3.2 的检查顺序，前台已查过）；插队的动作（opts.interject）也走这里，input = false：不加操作延迟 */
+function evaluateAct(
+  s: SimState, opts: SchedulerOptions, slot: Slot, def: ActionDef, force: boolean, delay: number, ref: CommandRef, input: boolean,
+): Verdict {
   const q = s.queue
   const ch = s.chars[slot]
   const g = gate(ch, def)
@@ -260,7 +272,16 @@ function evaluateAct(s: SimState, opts: SchedulerOptions, slot: Slot, def: Actio
     q.readyAt ??= s.battleFrames
     if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
   }
-  return GO
+  return input ? afterInput(s, opts, delay) : GO
+}
+
+/** 操作延迟（options.inputDelay；抽样模式另加抖动）：其余全部满足后（+N 之后）再等这么多帧。每条指令只问一次 */
+function afterInput(s: SimState, opts: SchedulerOptions, delay: number): Verdict {
+  const q = s.queue
+  const extra = (q.extra ??= opts.inputDelay?.(s) ?? 0)
+  if (extra <= 0) return GO
+  q.readyAt ??= s.battleFrames
+  return s.battleFrames < q.readyAt + delay + extra ? { go: false, code: 'input', reason: `操作延迟 ${extra} 帧` } : GO
 }
 
 /** 状态条件（第 5–7 条）：冷却、资源、角色钩子。可选 "?" 不满足就跳过；补位 "~" 看后面那个动作满不满足 */
@@ -329,6 +350,8 @@ function closeSeg(s: SimState, ref: CommandRef): void {
     type: 'wait', cmd: ref, code: g.code, reason: g.reason, from: g.from,
     frames: s.frame - g.from, battleFrames: s.battleFrames - g.battleFrom,
   })
+  // 默认等出手（假设 wait-settled）：写 ! 可以抢帧
+  if (g.code === 'settled') assume(s, 'wait-settled', `${where(s.queue, ref)}：${g.reason}，${s.frame - g.from} 帧`)
 }
 
 /** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到 */

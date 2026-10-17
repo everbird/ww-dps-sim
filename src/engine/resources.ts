@@ -7,11 +7,11 @@ import { activeFor } from './buffs'
 import type { Sim } from './context'
 import { log, SLOTS, ticksWithinLife, type EventSource } from './kernel'
 import type { HitEvent, JudgmentRuntime, SimEvent, SimState } from './types'
+import { snap9 } from './num'
 
 type FullEvent = Omit<Extract<SimEvent, { type: 'resourceFull' }>, 'f' | 't'>
 
 /** 资源值每次改动后取整到 1e-9：0.93 × 1.256 这类小数累加的浮点误差不影响"满没满""够不够"的比较 */
-const snap9 = (x: number): number => Math.round(x * 1e9) / 1e9
 const clamp = (v: number, cap: number): number => Math.max(0, Math.min(cap, v))
 
 /** R(x)：静态面板共鸣效率 + 身上 energyRegen 乘区的 buff（结算这一刻，§2.1） */

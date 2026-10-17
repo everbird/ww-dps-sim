@@ -3,6 +3,8 @@
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
+import { assume } from './assumptions'
+import { nextFloat, nextInt, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
@@ -20,6 +22,8 @@ import type {
 
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
   const s = initialState(r)
+  if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
+  const jitter = opts.sample?.jitter ?? 0
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
     rules: r.rules,
@@ -27,6 +31,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
       actionStarted: (st, slot, a) => {
+        // 不带指令出处的谐度破坏是自动插的（options.tuneBreak = auto，假设 tune-break-auto）
+        if (a.def.kind === 'tuneBreak' && !a.cmd) assume(st, 'tune-break-auto', `${st.chars[slot].name} ${a.id}`)
         onTuneBreakStart(st, a.def, a.instance)
         payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st)
       },
@@ -43,17 +49,19 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     },
   }
   const sim: Sim = {
-    r, k, book: makeBook(r.buffs), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
+    r, k, book: makeBook(r.buffs), hooks: r.team.map(m => r.data.hooks[m.def.name]), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
     ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
+    // 操作延迟：期望模式是固定的 options.inputDelay；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
+    inputDelay: st => r.options.inputDelay + (st.rng && jitter > 0 ? nextInt(st.rng, jitter) : 0),
     canAfford,
     canStart: (st, slot, def) => {
       if (def.kind === 'tuneBreak') { const ok = canTuneBreak(sim, st); if (ok !== true) return ok }
-      return r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
+      return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
@@ -61,7 +69,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null
       // 有几种谐度破坏的（椿：常态 / 盛绽），挑角色钩子允许的那个（m0-confirm §10 H5）
       const slot = st.onField
-      const def = tuneBreaks[slot]!.find(d => (r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
+      const def = tuneBreaks[slot]!.find(d => (sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
       return def ? { slot, def, why: '谐度破坏' } : null
     },
   })
@@ -71,7 +79,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       if (reg.def.trigger !== 'always') continue
       for (const t of targetsOf(reg.def, reg.owner, s)) applyBuff(s, reg, t)
     }
-    for (const m of r.team) m.def.hooks?.onResolve?.(sim.ctxs[m.slot]!)
+    for (const m of r.team) sim.hooks[m.slot]?.onResolve?.(sim.ctxs[m.slot]!)
     drain(sim, s)
     runLoop(s, k, schedule, r.options.maxFrames)
     drain(sim, s)                                                 // 最后一个 tick 在 P2 就结束时记下的事件
@@ -88,7 +96,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
 function initialState(r: ResolvedScenario): SimState {
   const chars = r.team.map((m): CharRuntime => ({
     slot: m.slot, name: m.def.name, action: null, last: null, startedThisTick: false,
-    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {}, flags: {},
+    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {},
+    vars: Object.seal({ ...m.def.vars }),                      // 只能改声明过的状态量，加新键会报错（总设计 §10.1）
   })) as SimState['chars']
   const e = r.enemy
   const enemy: EnemyRuntime = {
@@ -98,7 +107,7 @@ function initialState(r: ResolvedScenario): SimState {
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
-    outroLinks: [], pendingNextIn: [], lastTrigger: {},
+    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {}, rng: null,
   }
 }
 
@@ -116,12 +125,14 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     judgment: d, char: m.def.name, multiplier: d.multiplier, extraFlat: 0, element: d.element, tags: [...d.tags],
     selfEnergyScale: 1, zones: {}, critOnly: {},
   }
-  m.def.hooks?.modifyHit?.(sim.ctxs[j.owner]!, draft)
-  let dmg: { nonCrit: number; crit: number; expected: number } | null = null
+  sim.hooks[j.owner]?.modifyHit?.(sim.ctxs[j.owner]!, draft)
+  let dmg: HitEvent['dmg'] = null
   let factors
   let used: string[] = []
   let rec: HitRecord | null = null
   const later = draft.tags.find(t => LATER.includes(t))
+  if (later) assume(s, 'later-damage', `${m.def.name} ${d.name}（${later}）`)
+  if (d.flags.length > 0) assume(s, 'data-guess', `${m.def.name}·${d.name}：${d.flags.join('、')}`)
   if (later && !sim.warned.has(`${m.def.name}|${d.name}`)) {
     sim.warned.add(`${m.def.name}|${d.name}`)
     log(s, { type: 'warning', code: 'later', message: `${m.def.name} ${d.name}：${later}的伤害要到 M4 才计算，这次记 0` })
@@ -130,6 +141,8 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     const view = hitView(draft, j.action, new Set(Object.keys(s.enemy.effects) as EffectName[]))
     const active = activeFor(s, sim.book, j.owner)
     const acc = accumulate(view, active, draft)
+    if (acc.zones.TargetDefRate !== 0 || acc.zones.RoleIgnoreDefRate !== 0)
+      assume(s, 'def-no-floor', `${m.def.name} ${d.name}`)                    // 有减防 / 无视防御时，取不取整才有区别（TD-03 Q1）
     if (draft.tags.includes('谐度破坏')) {
       // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001
       const v = computeTuneBreak({
@@ -146,6 +159,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules)
       if (sim.onHit) rec = { slot: j.owner, index: -1, ctx: hc, view, active, draft: { zones: draft.zones, critOnly: draft.critOnly } }
       dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
+      if (s.rng) dmg.isCrit = nextFloat(s.rng) < res.critRate          // 抽样模式：这一段暴击了没有（结算时的随机注入点）
       factors = res.factors
     }
     checkHit(s, dmg, m.def.name, d.name)
@@ -226,8 +240,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
       }
       src.skip = [...new Set([...(src.skip ?? []), ...names])]
     },
-    setFlag: (key, value) => { s.chars[self].flags[key] = value },
-    getFlag: key => s.chars[self].flags[key],
+    get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
   }

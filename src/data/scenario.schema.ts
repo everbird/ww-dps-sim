@@ -72,7 +72,10 @@ export const ScenarioSchema = z.strictObject({
     rules: z.record(z.string(), z.unknown()).optional(),  // Partial<Rules>，resolve 时逐项校验
     // 谐度破坏（TD-06 §13.4）：auto = 目标失谐后前台角色在下一条指令前自动放；manual = 只按轴里写的放；off = 不累积偏谐值
     tuneBreak: z.enum(['auto', 'manual', 'off']).default('auto'),
-  }).default({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto' }),
+    // 操作延迟（TD-09 §3，总设计 T4）：决策点（切人、不是连段后续的出招）在合法之后再晚几帧执行（人的反应时间）；
+    // 连段后续玩家会预输入，不加。缺省 0 = 最早合法帧（假设 earliest-frame）
+    inputDelay: z.number().int().min(0).default(0),
+  }).default({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto', inputDelay: 0 }),
 }).superRefine((s, ctx) => {
   const names = s.team.map(m => m.char)
   names.forEach((n, i) => {

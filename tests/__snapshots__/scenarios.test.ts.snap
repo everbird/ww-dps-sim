@@ -2,6 +2,14 @@
 
 exports[`场景回归快照 > m0-team.yaml 1`] = `
 {
+  "assumptions": [
+    "wait-settled ×44",
+    "dilation-rules ×450",
+    "summon-clock ×4",
+    "white-bar ×2",
+    "tune-break-auto ×3",
+    "tunability-base ×401",
+  ],
   "byAction": [
     "椿 E3：722683.2（18.70%，4 段）",
     "椿 A4：578850（14.98%，160 段）",
@@ -67,6 +75,15 @@ exports[`场景回归快照 > m0-team.yaml 1`] = `
 
 exports[`场景回归快照 > m0-video.yaml 1`] = `
 {
+  "assumptions": [
+    "wait-settled ×39",
+    "dilation-rules ×432",
+    "summon-clock ×1",
+    "white-bar ×2",
+    "tune-break-auto ×5",
+    "tunability-base ×346",
+    "data-guess ×15",
+  ],
   "byAction": [
     "椿 E3：604184.5（14.89%，5 段）",
     "椿 大招：490797.4（12.10%，5 段）",
@@ -129,6 +146,11 @@ exports[`场景回归快照 > m0-video.yaml 1`] = `
 
 exports[`场景回归快照 > m0-散华单人.yaml 1`] = `
 {
+  "assumptions": [
+    "wait-settled ×2",
+    "dilation-rules ×8",
+    "tunability-base ×11",
+  ],
   "byAction": [
     "散华 大招：3083.2（49.12%，1 段）",
     "散华 E：1277.15（20.35%，1 段）",

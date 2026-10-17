@@ -6,9 +6,10 @@ import type { DamageTag, EffectName, Element, Slot, ZoneId } from '../data/commo
 import type { BuffDef, BuffFilter } from '../data/buff.schema'
 import type { Rules, TuneBreakTable } from '../data/gamedata'
 import type { HitDraft, HitFactors, StaticPanel, StatParts, ZoneAccumulator } from './types'
+import { roundTo } from './num'
 
 export type ZoneSums = Record<ZoneId, number>
-export type FormulaRules = Pick<Rules, 'critRateCap' | 'defFactorCap' | 'highResThreshold'>
+export type FormulaRules = Pick<Rules, 'critRateCap' | 'defFactorCap' | 'highResThreshold'> & Partial<Pick<Rules, 'defFloor'>>
 export type RelatedAttr = 'atk' | 'hp' | 'def' | 'energyRegen'
 
 export const emptyZones = (): ZoneSums => Object.fromEntries(ZONE_IDS.map(z => [z, 0])) as ZoneSums
@@ -42,8 +43,9 @@ export function relatedAttrValue(attr: RelatedAttr, panel: StaticPanel, z: ZoneS
  * 防御系数：min(cap, 1 / (有效防御 / (800 + 8·Lv) + 1))，有效防御 = 目标防御 × (1 + 防御±%) × (1 − 无视防御)。
  * 减防超过 100% 时有效防御为负、系数 > 1；分母 ≤ 0 时 xlsx 会算出负数，这里直接取上限（TD-03 §3.2）。
  */
-export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2): number {
-  const d = targetDef * (1 + defRate) * (1 - ignore) / (800 + level * 8) + 1
+export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2, floor = false): number {
+  const eff = targetDef * (1 + defRate) * (1 - ignore)            // 减防、无视防御之后的目标防御；floor：先取整（TD-03 Q1）
+  const d = (floor ? Math.floor(eff) : eff) / (800 + level * 8) + 1
   return d <= 0 ? cap : Math.min(cap, 1 / d)
 }
 
@@ -94,7 +96,7 @@ export function computeHit(ctx: HitContext, acc: ZoneAccumulator, rules: Formula
 
 function hurt(ctx: HitContext, z: ZoneSums, crit: number, rules: FormulaRules) {
   const base = ctx.rate * (1 + z.RateBonus) * relatedAttrValue(ctx.attr, ctx.panel, z) + z.ExtraEffect9 + ctx.extraFlat
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
+  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const bonus = 1 + z.DamageChange + z.DamageChangeElement + z.DamageChangeType
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
   const dr1 = 1 - Math.min(z.TargetDamageReduce, 1)
@@ -124,7 +126,7 @@ export interface AbnormalContext {
 
 export function computeAbnormal(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules): number {
   const z = acc.zones
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
+  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
   return Math.ceil(ctx.base * ctx.multiplier * def * res
     * (1 - Math.min(z.TargetDamageReduce, 1)) * (1 - Math.min(z.TargetElementDamageReduce, 1))
@@ -139,7 +141,7 @@ export const abnormalBase = (table: number[], level: number): number => table[le
 // §6 谐度破坏 / 震谐响应 / 骇破响应：基础值按等级与敌人 COST
 
 /** Excel ROUND(x, 2)（正数：四舍五入到分） */
-const round2 = (x: number) => Math.round(x * 100) / 100
+const round2 = (x: number) => roundTo(x, 100)
 export const tuneBase = (t: TuneBreakTable, level: number, cost: 1 | 3 | 4): number =>
   round2((t.baseByLevel[level - 1] ?? 0) * t.costFactor[cost])
 
@@ -154,7 +156,7 @@ export interface TuneContext {
 
 export function computeTuneBreak(ctx: TuneContext, acc: ZoneAccumulator, rules: FormulaRules): number {
   const z = acc.zones
-  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap)
+  const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
   let v = ctx.base * ctx.rate * def * res
     * (1 - Math.min(z.TargetDamageReduce, 1)) * (1 - Math.min(z.TargetElementDamageReduce, 1))

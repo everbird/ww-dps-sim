@@ -3,7 +3,7 @@
 import type { ActionId, ActionKind, BodyType, CharName, Frame, StatKey, WeaponType } from './common'
 import type { BuffDefInput, ResourceEffectInput } from './buff.schema'
 import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
-import type { CharacterHooks } from '../engine/types'
+import type { CharacterHooks, HookVars } from '../engine/types'
 
 /** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据。
  *  覆盖了带 flag 的字段，该 flag 即视为已处理（如改 priority 消掉 priorityChangeGuess）；名字写错直接报错，不做模糊匹配。 */
@@ -32,7 +32,7 @@ export type JudgmentOverride = Partial<Pick<JudgmentDef,
   'element' | 'relatedAttr' |               // 元素、相关属性：倍率连不上、手写 multiplier 时一并写（声骸按技能说明）
   'heals'>>                                 // 这段同时治疗（动作表没有治疗判定，触发"提供治疗时"的效果用）
 
-export interface CharacterModule {
+export interface CharacterModule<V extends HookVars = HookVars> {
   weaponType: WeaponType                    // xlsx 没有，必填（TD-01 Q18）
   bodyType?: BodyType                       // 覆盖 `索引` 的分类（女-特殊 等）
   mergeBlocks?: string[]                    // 并入其他动作块（TD-01 Q2）
@@ -44,14 +44,22 @@ export interface CharacterModule {
   aliases?: Record<string, ActionId>
   buffs?: BuffDefInput[]
   resourceEffects?: ResourceEffectInput[]   // 资源型触发效果（TD-07 §9）
-  hooks?: CharacterHooks
+  /** 钩子的状态量与初值（数或布尔）：钩子里用 ctx.vars.<名字> 读写，没声明的名字编译就报错（总设计 §10.1） */
+  vars?: V
+  hooks?: CharacterHooks<V>
   actionOverrides?: Record<ActionId, ActionOverride>
 }
 
 export interface CharacterModuleDef extends CharacterModule { name: CharName }
 
-export function defineCharacter(name: CharName, mod: CharacterModule): CharacterModuleDef {
-  return { name, ...mod }
+/** vars 直接写在模块里时，TS 会把 false、0 推成字面量类型；放宽成 boolean、number，钩子里才能改 */
+type Widen<V> = { -readonly [K in keyof V]: V[K] extends boolean ? boolean : V[K] extends number ? number : never }
+
+/** V 从 vars 推断，钩子里的 ctx.vars 按它检查：没声明的名字、类型不对，编译就报错 */
+export function defineCharacter<V extends HookVars = Record<never, never>>(
+  name: CharName, mod: CharacterModule<Widen<V>> & { vars?: V },
+): CharacterModuleDef {
+  return { name, ...mod } as CharacterModuleDef
 }
 
 export interface EchoSetModule { name: string; pieces: Partial<Record<2 | 3 | 5, BuffDefInput[]>> }

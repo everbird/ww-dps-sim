@@ -7,6 +7,7 @@ import { InventorySchema, resolveInventory } from '../../../src/data/inventory.s
 import { ScenarioSchema, type Scenario } from '../../../src/data/scenario.schema'
 import { parseOrThrow } from '../../../src/data/validate'
 import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../src/engine/analysis'
+import { insight } from '../../../src/engine/insight'
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
 import { simulate } from '../../../src/engine/simulate'
@@ -69,6 +70,7 @@ export const handlers: Handlers = {
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
       error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
       warnings: [...r.warnings, ...res.summary.warnings.map(w => w.message)],
+      assumptions: res.summary.assumptions,                     // 这次碰到的假设（总设计 T16）
     }
   },
   async design({ scenario, file }) {
@@ -80,6 +82,9 @@ export const handlers: Handlers = {
     const a = runScenario(scenarioOf(base), d), b = runScenario(scenarioOf(other), d)
     for (const [s, x] of [[base, a], [other, b]] as const) if (x.res.error) throw new Error(`${s.name} 运行出错（第 ${x.res.error.frame} 帧）：${x.res.error.message}`)
     return compareRuns(a, b)
+  },
+  async insight({ scenario }) {
+    return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真
   },
   async marginal({ scenario, char, tier }) {
     const sc = scenarioOf(scenario)

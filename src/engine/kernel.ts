@@ -6,6 +6,8 @@ import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedat
 import type {
   ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TailRuntime, TimelineEvent, WaitCode,
 } from './types'
+import { assume } from './assumptions'
+import { snap4 } from './num'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
 
@@ -26,8 +28,6 @@ export interface EventSource { def: ActionDef; instance: number; skip?: string[]
 // ---------------------------------------------------------------------------
 // §2 帧约定
 
-/** 局部帧 / 年龄每次推进后取整到 1e-4 帧：膨胀系数都是 1e-4 的整数倍，这样与整数帧的比较不受浮点误差影响 */
-export const snap = (x: number): number => Math.round(x * 1e4) / 1e4
 /** 本 tick 走过局部区间 [t, t + r)：帧 F 落在里面就在本 tick 发生（左闭右开）；r = 0 时什么都不发生 */
 export const within = (F: number, t: number, r: number): boolean => F >= t && F < t + r
 
@@ -94,6 +94,7 @@ export function registerDilation(
   s: SimState, rules: Rules, def: DilationDef, source: Slot, instance: number, withSelf: boolean,
 ): void {
   const sides = [['self', def.self], ['enemy', def.enemy], ['ally', def.ally]] as const
+  assume(s, 'dilation-rules', def.type)                          // 作用范围按 rules.dilation（TD-04 §3.3）
   for (const [side, w] of sides) {
     if (!w || w.duration <= 0 || (side === 'self' && !withSelf)) continue
     const hitstop = rules.dilation[def.type].hitstopSides.includes(side)
@@ -155,6 +156,7 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
     } else c.cooldowns[key] = def.cooldown
   }
   log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
+  if (def.flags.length > 0) assume(s, 'data-guess', `${c.name}·${def.id}：${def.flags.join('、')}`)   // 没确认的推断值（TD-01 §13）
   k.hooks.actionStarted?.(s, slot, a)
   return a
 }
@@ -210,8 +212,13 @@ export function endDueActions(s: SimState): void {
 export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
   const old = new Set(s.tails)
   const advanceTail = (tail: TailRuntime) => {
+    // 召唤物按战斗时钟走；持有者这时被放慢或冻住（队友的时停），才是"不被冻住"这条假设起作用的时候
+    if (tail.def.summon && !tail.noted && rates.chars[tail.owner] !== rates.battle) {
+      tail.noted = true
+      assume(s, 'summon-clock', `${s.chars[tail.owner].name} ${tail.action}`)
+    }
     while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, tail.owner, tail, tail.events.shift()!)
-    tail.localFrame = snap(tail.localFrame + rates.battle)
+    tail.localFrame = snap4(tail.localFrame + rates.battle)
   }
   for (const slot of SLOTS) {
     const c = s.chars[slot]
@@ -221,9 +228,9 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
       const tl = actionTimeline(a.def)
       const until = Math.min(a.localFrame + r, a.def.endFrame)   // ≥ endFrame 的事件一律归尾部（§4.3）
       while (a.cursor < tl.length && tl[a.cursor]!.frame < until) fireEvent(s, k, slot, a, tl[a.cursor++]!)
-      a.localFrame = snap(a.localFrame + r)
+      a.localFrame = snap4(a.localFrame + r)
     } else if (c.last) {
-      c.last.localFrame = snap(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
+      c.last.localFrame = snap4(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
     }
     for (const tail of s.tails) if (tail.owner === slot && old.has(tail)) advanceTail(tail)
   }
@@ -312,7 +319,7 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
   } finally {
     settleQueue = null
   }
-  for (const j of s.judgments) j.age = snap(j.age + judgmentRate(j, rates))
+  for (const j of s.judgments) j.age = snap4(j.age + judgmentRate(j, rates))
   s.judgments = s.judgments.filter(j => j.def.lifeFrames === -1 || j.age < j.def.lifeFrames)
 }
 
