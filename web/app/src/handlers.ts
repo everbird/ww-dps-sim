@@ -69,6 +69,7 @@ export const handlers: Handlers = {
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
       error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
       warnings: [...r.warnings, ...res.summary.warnings.map(w => w.message)],
+      assumptions: res.summary.assumptions,                     // 这次碰到的假设（总设计 T16）
     }
   },
   async design({ scenario, file }) {

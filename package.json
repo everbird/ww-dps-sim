@@ -21,6 +21,7 @@
     "test:py": "python3 -m unittest discover -s tools/build -p 'test_*.py'",
     "trace": "tsx src/cli/trace.ts",
     "optimize": "tsx src/cli/optimize.ts",
+    "assumptions": "tsx src/cli/assumptions.ts",
     "web": "vite web/app",
     "web:build": "vite build web/app",
     "check:web": "svelte-check --tsconfig web/app/tsconfig.json"

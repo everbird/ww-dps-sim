@@ -4,6 +4,7 @@
 // 谐破冷却（按敌人 COST）与按钮时长取 xlsx 附页2 的偏谐通用规则（m0-confirm §10 H2、H4）。
 import type { Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
+import { assume } from './assumptions'
 import { activeFor } from './buffs'
 import type { Sim } from './context'
 import { log, SLOTS } from './kernel'
@@ -63,6 +64,7 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
     log(s, { type: 'enemyState', change: 'harmonyBreak', detail: `${s.chars[j.owner].name} ${j.action}` })
   } else if (sim.r.options.tuneBreak !== 'off' && p.tunabilityMax > 0 && d.gauges.tunability > 0
     && !e.disharmony && s.battleFrames >= e.tunabilityLockedUntil) {
+    assume(s, 'tunability-base', s.chars[j.owner].name)          // 偏谐效率的基础值是推定的（TD-01 Q17）
     e.tunability = Math.min(p.tunabilityMax, e.tunability + d.gauges.tunability * tunabilityRateOf(sim, s, j.owner))
     if (e.tunability >= p.tunabilityMax - 1e-9) {
       e.tunability = p.tunabilityMax
@@ -85,6 +87,7 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
       e.broken = true
       e.paralyzedUntil = s.battleFrames + p.paralysisFrames
       log(s, { type: 'enemyState', change: 'break', detail: `${s.chars[j.owner].name} ${j.action}` })
+      assume(s, 'white-bar', `${s.chars[j.owner].name} ${j.action} 打空白条`)   // 上限与瘫痪后回满是推断（TD-06 Q9、Q11）
       for (const slot of SLOTS) grant(sim, s, slot, 'energy', sim.r.rules.breakEnergy, 'break', true)
     }
   }

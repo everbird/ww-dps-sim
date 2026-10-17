@@ -3,6 +3,7 @@
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
+import { assume } from './assumptions'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
@@ -27,6 +28,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
       actionStarted: (st, slot, a) => {
+        // 不带指令出处的谐度破坏是自动插的（options.tuneBreak = auto，假设 tune-break-auto）
+        if (a.def.kind === 'tuneBreak' && !a.cmd) assume(st, 'tune-break-auto', `${st.chars[slot].name} ${a.id}`)
         onTuneBreakStart(st, a.def, a.instance)
         payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st)
       },
@@ -98,7 +101,7 @@ function initialState(r: ResolvedScenario): SimState {
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
-    outroLinks: [], pendingNextIn: [], lastTrigger: {},
+    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {},
   }
 }
 
@@ -122,6 +125,8 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   let used: string[] = []
   let rec: HitRecord | null = null
   const later = draft.tags.find(t => LATER.includes(t))
+  if (later) assume(s, 'later-damage', `${m.def.name} ${d.name}（${later}）`)
+  if (d.flags.length > 0) assume(s, 'data-guess', `${m.def.name}·${d.name}：${d.flags.join('、')}`)
   if (later && !sim.warned.has(`${m.def.name}|${d.name}`)) {
     sim.warned.add(`${m.def.name}|${d.name}`)
     log(s, { type: 'warning', code: 'later', message: `${m.def.name} ${d.name}：${later}的伤害要到 M4 才计算，这次记 0` })
@@ -130,6 +135,8 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     const view = hitView(draft, j.action, new Set(Object.keys(s.enemy.effects) as EffectName[]))
     const active = activeFor(s, sim.book, j.owner)
     const acc = accumulate(view, active, draft)
+    if (acc.zones.TargetDefRate !== 0 || acc.zones.RoleIgnoreDefRate !== 0)
+      assume(s, 'def-no-floor', `${m.def.name} ${d.name}`)                    // 有减防 / 无视防御时，取不取整才有区别（TD-03 Q1）
     if (draft.tags.includes('谐度破坏')) {
       // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001
       const v = computeTuneBreak({

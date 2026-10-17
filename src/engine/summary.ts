@@ -3,6 +3,7 @@
 // 窗口外仍在结算的伤害单列为溢出伤害，不计入 DPS。资源曲线（TD-06 §6.1）、buff 覆盖率（TD-07 §10.1）、
 // 分轮与稳态（options.repeat ≥ 2，TD-09 §3.7）也从日志算。
 import type { CharName } from '../data/common'
+import { ASSUMPTIONS } from './assumptions'
 import type { HitEvent, ResolvedScenario, SimEvent, SimState, Summary, WaitCode } from './types'
 
 const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
@@ -61,6 +62,11 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
       ...r.warnings.map(message => ({ code: 'resolve', message })),
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
     ],
+    // 这次碰到的假设，按假设表的顺序（总设计 T16、§10.1：输出顺序不依赖对象键）
+    assumptions: ASSUMPTIONS.flatMap(a => {
+      const x = s.assumed[a.id]
+      return x ? [{ id: a.id, count: x.n, firstFrame: x.at, detail: [...x.detail] }] : []
+    }),
   }
 }
 

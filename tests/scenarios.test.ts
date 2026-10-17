@@ -32,6 +32,7 @@ function view(s: Summary) {
     byChar: Object.fromEntries(Object.entries(s.byChar).map(([k, v]) => [k, `${r2(v.damage)}（${pct(v.share)}）`])),
     byAction: s.byAction.map(a => `${a.char} ${a.action}：${r2(a.damage)}（${pct(a.share)}，${a.hits} 段）`),
     warnings: s.warnings.map(w => w.message),
+    assumptions: s.assumptions.map(a => `${a.id} ×${a.count}`),   // 这次碰到的假设（总设计 T16）
   }
 }
 

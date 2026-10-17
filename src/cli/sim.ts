@@ -7,7 +7,7 @@ import { panelsOf } from '../engine/analysis'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
-import { fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
+import { assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
 function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: number }): string {
@@ -89,6 +89,8 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
     console.log('\n提示')
     for (const w of s.warnings) console.log(`  - ${w.message}`)
   }
+  console.log('\n这次碰到的假设（总设计 T16；影响是估计的）')
+  for (const l of assumptionLines(s)) console.log(l)
   if (res.error) console.log(`\n报错（第 ${res.error.frame} 帧）：${res.error.message}`)
 }
 

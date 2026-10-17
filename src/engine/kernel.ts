@@ -6,6 +6,7 @@ import type { ActionDef, DilationDef, JudgmentDef, Rules } from '../data/gamedat
 import type {
   ActionRuntime, CharRuntime, CommandRef, JudgmentRuntime, Rates, SimEvent, SimState, TailRuntime, TimelineEvent, WaitCode,
 } from './types'
+import { assume } from './assumptions'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
 
@@ -94,6 +95,7 @@ export function registerDilation(
   s: SimState, rules: Rules, def: DilationDef, source: Slot, instance: number, withSelf: boolean,
 ): void {
   const sides = [['self', def.self], ['enemy', def.enemy], ['ally', def.ally]] as const
+  assume(s, 'dilation-rules', def.type)                          // 作用范围按 rules.dilation（TD-04 §3.3）
   for (const [side, w] of sides) {
     if (!w || w.duration <= 0 || (side === 'self' && !withSelf)) continue
     const hitstop = rules.dilation[def.type].hitstopSides.includes(side)
@@ -155,6 +157,7 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
     } else c.cooldowns[key] = def.cooldown
   }
   log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
+  if (def.flags.length > 0) assume(s, 'data-guess', `${c.name}·${def.id}：${def.flags.join('、')}`)   // 没确认的推断值（TD-01 §13）
   k.hooks.actionStarted?.(s, slot, a)
   return a
 }
@@ -210,6 +213,11 @@ export function endDueActions(s: SimState): void {
 export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
   const old = new Set(s.tails)
   const advanceTail = (tail: TailRuntime) => {
+    // 召唤物按战斗时钟走；持有者这时被放慢或冻住（队友的时停），才是"不被冻住"这条假设起作用的时候
+    if (tail.def.summon && !tail.noted && rates.chars[tail.owner] !== rates.battle) {
+      tail.noted = true
+      assume(s, 'summon-clock', `${s.chars[tail.owner].name} ${tail.action}`)
+    }
     while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, tail.owner, tail, tail.events.shift()!)
     tail.localFrame = snap(tail.localFrame + rates.battle)
   }

@@ -4,6 +4,7 @@
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
+import { assume } from './assumptions'
 import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
@@ -329,6 +330,8 @@ function closeSeg(s: SimState, ref: CommandRef): void {
     type: 'wait', cmd: ref, code: g.code, reason: g.reason, from: g.from,
     frames: s.frame - g.from, battleFrames: s.battleFrames - g.battleFrom,
   })
+  // 默认等出手（假设 wait-settled）：写 ! 可以抢帧
+  if (g.code === 'settled') assume(s, 'wait-settled', `${where(s.queue, ref)}：${g.reason}，${s.frame - g.from} 帧`)
 }
 
 /** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到 */

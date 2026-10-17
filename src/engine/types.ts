@@ -91,6 +91,8 @@ export interface SimState {
   outroLinks: { introInstance: number; from: Slot }[]   // 变奏动作实例 → 延奏的发出者（TD-05 §3）
   pendingNextIn: { owner: Slot | 'env'; defId: string; stacks: number }[]   // 挂起到下一次切入的 nextIn buff（TD-07 §3）
   lastTrigger: Record<string, number>       // "持有者|定义 id" → 上次触发成功的战斗帧（内置冷却，TD-07 §4.4）
+  /** 这次碰到的假设（总设计 T16）：假设 id → 次数、第一次的战斗帧、几个例子（src/engine/assumptions.ts 的 assume） */
+  assumed: Record<string, { n: number; at: number; detail: string[] }>
 }
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
@@ -163,6 +165,7 @@ export interface TailRuntime {
   events: TimelineEvent[]
   detached?: true                           // 独立时间线（延奏动作，TD-05 §4.3；召唤类声骸的判定）：不受持有者之后的动作影响
   skip?: string[]                           // 跳过的判定名（同 ActionRuntime.skip）
+  noted?: true                              // 召唤物：已记过假设 summon-clock（每条尾部只记一次）
 }
 
 export interface JudgmentRuntime {
@@ -299,6 +302,8 @@ export interface Summary {
   steady?: { from: number; to: number; frames: number; damage: number; dps: number }
   /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
   enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
+  /** 这次碰到的假设（总设计 T16）：按假设表的顺序；每次都适用的（tracked: false）不列，见 ASSUMPTIONS。firstFrame 是战斗帧 */
+  assumptions: { id: string; count: number; firstFrame: number; detail: string[] }[]
 }
 
 export interface SimResult {
