@@ -5,7 +5,7 @@ import type { Slot } from '../data/common'
 import type { BuffBook } from './buffs'
 import type { ActiveBuff, HitContext, HitView } from './formula'
 import type { Kernel } from './kernel'
-import type { HitDraft, HookContext, ResolvedScenario } from './types'
+import type { CharacterHooks, HitDraft, HookContext, ResolvedScenario } from './types'
 
 /** 一次直接伤害结算的输入（不含面板）：换声骸后按新面板重算这一段（TD-13 §3）。index 是日志里那条 hit 事件 */
 export interface HitRecord {
@@ -24,6 +24,7 @@ export interface Sim {
   r: ResolvedScenario
   k: Kernel
   book: BuffBook
+  hooks: (CharacterHooks | undefined)[]     // 各槽位的钩子（从钩子表 r.data.hooks 按角色名取，总设计 §10.1）
   ctxs: HookContext[]                       // 各槽位钩子的受控接口
   slotOf: ReadonlyMap<string, Slot>         // 角色名 → 槽位
   warned: Set<string>                       // 同一件事只提示一次

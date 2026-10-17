@@ -6,6 +6,7 @@ import type { DamageTag, EffectName, Element, Slot, ZoneId } from '../data/commo
 import type { BuffDef, BuffFilter } from '../data/buff.schema'
 import type { Rules, TuneBreakTable } from '../data/gamedata'
 import type { HitDraft, HitFactors, StaticPanel, StatParts, ZoneAccumulator } from './types'
+import { roundTo } from './num'
 
 export type ZoneSums = Record<ZoneId, number>
 export type FormulaRules = Pick<Rules, 'critRateCap' | 'defFactorCap' | 'highResThreshold'> & Partial<Pick<Rules, 'defFloor'>>
@@ -140,7 +141,7 @@ export const abnormalBase = (table: number[], level: number): number => table[le
 // §6 谐度破坏 / 震谐响应 / 骇破响应：基础值按等级与敌人 COST
 
 /** Excel ROUND(x, 2)（正数：四舍五入到分） */
-const round2 = (x: number) => Math.round(x * 100) / 100
+const round2 = (x: number) => roundTo(x, 100)
 export const tuneBase = (t: TuneBreakTable, level: number, cost: 1 | 3 | 4): number =>
   round2((t.baseByLevel[level - 1] ?? 0) * t.costFactor[cost])
 

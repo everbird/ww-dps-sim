@@ -46,7 +46,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     },
   }
   const sim: Sim = {
-    r, k, book: makeBook(r.buffs), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
+    r, k, book: makeBook(r.buffs), hooks: r.team.map(m => r.data.hooks[m.def.name]), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
     ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
@@ -56,7 +56,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     canAfford,
     canStart: (st, slot, def) => {
       if (def.kind === 'tuneBreak') { const ok = canTuneBreak(sim, st); if (ok !== true) return ok }
-      return r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
+      return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
@@ -64,7 +64,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null
       // 有几种谐度破坏的（椿：常态 / 盛绽），挑角色钩子允许的那个（m0-confirm §10 H5）
       const slot = st.onField
-      const def = tuneBreaks[slot]!.find(d => (r.team[slot].def.hooks?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
+      const def = tuneBreaks[slot]!.find(d => (sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
       return def ? { slot, def, why: '谐度破坏' } : null
     },
   })
@@ -74,7 +74,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       if (reg.def.trigger !== 'always') continue
       for (const t of targetsOf(reg.def, reg.owner, s)) applyBuff(s, reg, t)
     }
-    for (const m of r.team) m.def.hooks?.onResolve?.(sim.ctxs[m.slot]!)
+    for (const m of r.team) sim.hooks[m.slot]?.onResolve?.(sim.ctxs[m.slot]!)
     drain(sim, s)
     runLoop(s, k, schedule, r.options.maxFrames)
     drain(sim, s)                                                 // 最后一个 tick 在 P2 就结束时记下的事件
@@ -91,7 +91,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
 function initialState(r: ResolvedScenario): SimState {
   const chars = r.team.map((m): CharRuntime => ({
     slot: m.slot, name: m.def.name, action: null, last: null, startedThisTick: false,
-    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {}, flags: {},
+    energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {},
+    vars: Object.seal({ ...m.def.vars }),                      // 只能改声明过的状态量，加新键会报错（总设计 §10.1）
   })) as SimState['chars']
   const e = r.enemy
   const enemy: EnemyRuntime = {
@@ -119,7 +120,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     judgment: d, char: m.def.name, multiplier: d.multiplier, extraFlat: 0, element: d.element, tags: [...d.tags],
     selfEnergyScale: 1, zones: {}, critOnly: {},
   }
-  m.def.hooks?.modifyHit?.(sim.ctxs[j.owner]!, draft)
+  sim.hooks[j.owner]?.modifyHit?.(sim.ctxs[j.owner]!, draft)
   let dmg: { nonCrit: number; crit: number; expected: number } | null = null
   let factors
   let used: string[] = []
@@ -233,8 +234,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
       }
       src.skip = [...new Set([...(src.skip ?? []), ...names])]
     },
-    setFlag: (key, value) => { s.chars[self].flags[key] = value },
-    getFlag: key => s.chars[self].flags[key],
+    get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
   }

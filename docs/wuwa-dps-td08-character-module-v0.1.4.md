@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1.3
+# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1.4
 
-> **状态**：v0.1.3（2026-10-05；模块字段 `coreNames`，椿槽 1 改叫"红椿·蕊"）；v0.1.2（2026-10-04；椿的谐度破坏也分常态 / 盛绽）；v0.1.1（2026-10-04；新增 `ctx.heal` 与写法 P12，维里奈补治疗）；v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
+> **状态**：v0.1.4（2026-10-17；钩子的状态量改成在模块里声明的 `vars`，钩子放进钩子表，总设计 v0.2 §10.1）；v0.1.3（2026-10-05；模块字段 `coreNames`，椿槽 1 改叫"红椿·蕊"）；v0.1.2（2026-10-04；椿的谐度破坏也分常态 / 盛绽）；v0.1.1（2026-10-04；新增 `ctx.heal` 与写法 P12，维里奈补治疗）；v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§4 T8、§6.9、§3.3；《TD-01 数据字典 v0.1.3》§13.4；《TD-02 类型与 Schema v0.1.3》§5.2、§7.4、Q5；《TD-03 伤害公式规格 v0.1》§3.2、§3.4、§4、Q6、Q7、Q13；《TD-05 切人与变奏 / 延奏 v0.1》；《TD-06 资源 v0.1》；《TD-07 Buff 系统 v0.1》；`docs/m0-confirm.md`
 > **下游**：每个角色的 `data/curated/characters/<角色>.ts` 与它的测试
 > **验证**：§5 的机制逐条对照了 nanoka 3.7 技能描述、xlsx 动作表备注与「伤害计算」页的公式写法
@@ -17,8 +17,8 @@
 
 ### 0.1 要点
 
-1. 模块 = 数据（武器类型、技能树属性、别名、buff、资源型效果、动作覆盖）+ 至多四个钩子（`onResolve`、`canStart`、`onEvent`、`modifyHit`）。
-2. 角色状态放在两处：**标记**（`ctx.setFlag`，无计时，如椿的盛绽）与**标记型 buff**（有层数、有倒计时、可被切人清除，如椿的含苞、散华的冰棱，TD-07 §7）。
+1. 模块 = 数据（武器类型、技能树属性、别名、buff、资源型效果、动作覆盖、钩子的状态量 `vars`）+ 至多四个钩子（`onResolve`、`canStart`、`onEvent`、`modifyHit`）。装配时钩子放进钩子表 `GameData.hooks`（按角色名），角色定义里只留数据（v0.1.4，总设计 §10.1）。
+2. 角色状态放在两处：**状态量**（模块的 `vars` 里声明名字与初值，钩子里 `ctx.vars.<名字>` 读写，无计时，如椿的盛绽；v0.1.4 前叫"标记"、用 `setFlag`）与**标记型 buff**（有层数、有倒计时、可被切人清除，如椿的含苞、散华的冰棱，TD-07 §7）。
 3. 新增两项受控能力：`ctx.skipJudgments(instance, names)`（运行时挑判定版本）、`HitDraft.selfEnergyScale`（这次结算的基础能量倍率，TD-06 §2.1）。
 4. 新增两个动作覆盖字段：`followUp`（某判定命中后自动接下一个动作组，维里奈 QTE-冲 → QTE-撞）、`energyCost` / `endOnSwitchOut`（TD-06 / TD-05）。
 5. 每个角色至少带：装配快照（flag 已知）、nanoka 核对（冷却、技能树）、每个钩子机制一个用例、一条代表轴的回归快照。
@@ -93,9 +93,9 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 
 | 方法 | 作用 |
 |---|---|
-| `self`、`state` | 自己的槽位；只读的仿真状态（敌人、buff、三人的资源与标记） |
+| `self`、`state` | 自己的槽位；只读的仿真状态（敌人、buff、三人的资源与状态量） |
 | `chain` ★ | 本角色的共鸣链数（按链数分支，如散华 C5"冰消失时直接爆炸"，2026-10-03 新增） |
-| `getFlag(key)` / `setFlag(key, value)` | 读写自己的标记 |
+| `vars` ★ | 自己的状态量：模块的 `vars` 里声明名字与初值（数或布尔），钩子里直接读写，如 `ctx.vars.盛绽 = true`；没声明的名字编译就报错，运行时也不能加新键（v0.1.4 取代 `getFlag` / `setFlag`；对应 Rust 的结构体字段，总设计 §10.1）。"还没发生过"用一个说得通的初值表示，如维里奈的 `协同上次: -60` |
 | `buffStacks(id, target?)` | 自己登记的某条 buff 在目标上的层数（0 = 没有） |
 | `addBuff(id, { target?, stacks? })` / `removeBuff(id, target?)` | 施加 / 移除自己登记的 buff（`id` 必须在本模块的 `buffs` 里；不能凭空造） |
 | `addResource(resource, amount, slot?)` | 加减资源（TD-06 §5 的 `grant`，`cause: 'hook'`） |
@@ -127,9 +127,9 @@ TD-01 §13.4 已有：`dropRows`、`kind`、`endFrame`、`priority`、`cancelWin
 | P6 | 倍率随状态变 / Formula1 | `modifyHit`：`draft.multiplier += judgment.formula.rate × N`（xlsx 写法 `FormulaParam5 × N × 属性`，TD-03 §3.2）；不必读攻击力 | 椿 酣梦 |
 | P7 | 出伤者能量倍率 | `modifyHit`：`draft.selfEnergyScale = …`（只乘出伤者那份） | 椿 消耗红椿·蕊时 ×2.5，含苞时 ×0 |
 | P8 | 伤害类型改写 | 静态：`actionOverrides.<动作>.judgments.<判定>.tags`；随状态：`modifyHit` 改 `draft.tags` | 椿 重击修枝视为普攻 |
-| P9 | 队友命中触发的追加攻击 | `onEvent` 看任何人的 `hit`（`dmg ≠ null`），敌人身上有标记且内置冷却已过 → `spawnJudgment`；冷却时刻存标记 | 维里奈 光合标记协同攻击（每秒 1 次） |
+| P9 | 队友命中触发的追加攻击 | `onEvent` 看任何人的 `hit`（`dmg ≠ null`），敌人身上有标记且内置冷却已过 → `spawnJudgment`；冷却时刻存在状态量里 | 维里奈 光合标记协同攻击（每秒 1 次） |
 | P10 | 命中后接下一个动作组 | `actionOverrides.<动作>.followUp`（数据，不写钩子） | 维里奈 QTE-冲 命中 → QTE-撞 |
-| P12 | 持续回复 / 周期效果（v0.1.1） | 标记型 buff 当计时器（`trigger: 'hook'`，时长 = 间隔）：开始时 `addBuff`，`onEvent` 收到它的 `buffExpire`（`timeout`）时做一跳（如 `ctx.heal`），没跳完再 `addBuff`；用 `setFlag` 计数 | 维里奈 延奏盛放每秒一跳共 6 跳、共鸣链1 每 5 秒一跳共 6 跳 |
+| P12 | 持续回复 / 周期效果（v0.1.1） | 标记型 buff 当计时器（`trigger: 'hook'`，时长 = 间隔）：开始时 `addBuff`，`onEvent` 收到它的 `buffExpire`（`timeout`）时做一跳（如 `ctx.heal`），没跳完再 `addBuff`；跳数存在状态量里 | 维里奈 延奏盛放每秒一跳共 6 跳、共鸣链1 每 5 秒一跳共 6 跳 |
 | P11 | 资源计数触发 | `onEvent` 看自己的 `hit.gains.core`，累计到阈值时 `addResource` / `addBuff` | 椿 每消耗 10 点红椿·蕊 → 协奏 +4、红椿·蕾 +1 |
 
 示意（P4，散华引爆；完整写法以实现为准）：
@@ -230,4 +230,5 @@ M0 三人的用例在实现时写进 `tests/m0-team.test.ts`，编号 T08-散华
 - **v0.1（2026-09-30 修订，随实现）**：模块字段 `effects` 改名 `resourceEffects`；`followUp` 的开始时刻与注册层检查；§5 标出已写的数据。
 - **v0.1.1（2026-10-04）**：`ctx` 新增 `heal(source)`（AGENTS.md 差异 2），常见写法新增 P12（标记型 buff 当计时器做持续回复 / 周期效果）；§5.3 维里奈补治疗的写法（判定标 `heals` + 持续回复每跳记一次）。
 - **v0.1.2（2026-10-04）**：§5 椿：谐度破坏也按盛绽分版本（常态 `谐度破坏`、盛绽 `谐度破坏-时停`，别名 `盛绽·谐度破坏`），由 `canStart` 判断（AGENTS.md 差异 4，TD-06 §13.3）。
+- **v0.1.4（2026-10-17）**：总设计 v0.2 §10.1（好移植的写法）：钩子的状态量从 `setFlag` / `getFlag`（任意字符串键）改成模块里声明的 `vars`，钩子里 `ctx.vars.<名字>` 读写，名字写错编译就报错、运行时不能加新键；装配时钩子放进钩子表 `GameData.hooks`，`CharacterDef` 只留数据（含 `vars` 的初值）。M0 三人：椿 `盛绽 / 酣梦层数 / 蕊消耗 / 切走时含苞`，维里奈 `盛放跳数 / 共鸣链1跳数 / 协同上次`，散华没有状态量；结果不变（场景快照相同）。
 - **v0.1.3（2026-10-05）**：§1 模块字段新增 `coreNames`（AGENTS.md 差异 7）：主表槽名带编号的（"红椿·蕊1""韶光1"…）在角色进队时改成游戏叫法；写了不存在的槽、改完重名都报错。§5 椿：槽 1 改叫"红椿·蕊"（槽 2"红椿·蕊2"动作表与钩子都不用）。

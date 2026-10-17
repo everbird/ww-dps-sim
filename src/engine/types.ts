@@ -132,7 +132,7 @@ export interface CharRuntime {
   core: [number, number, number, number, number]
   cooldowns: Record<string, Frame>          // 键：cooldownKey（动作 ID、cooldownGroup 或 'echo'）；按次数充能的是"下一次回复还要多久"
   charges: Record<string, { spent: number; every: Frame }>   // 按次数充能的冷却键：已用掉几次、每次回复要多久（ActionDef.charges）
-  flags: Record<string, number | boolean | string>   // 只由钩子读写
+  vars: HookVars                            // 钩子的状态量：初值是角色模块声明的 vars，只由钩子读写（总设计 §10.1）
 }
 
 export interface ActionRuntime {
@@ -316,16 +316,19 @@ export interface SimResult {
 // ---------------------------------------------------------------------------
 // 角色钩子（总设计 §6.9）：只有四个，ctx 只开放受控操作
 
-export interface CharacterHooks {
-  onResolve?(ctx: HookContext): void
+/** 钩子的状态量：名字 → 数或布尔。在角色模块的 vars 里声明初值，仿真中不能加新键（对应 Rust 的结构体字段，总设计 §10.1） */
+export type HookVars = Record<string, number | boolean>
+
+export interface CharacterHooks<V extends HookVars = HookVars> {
+  onResolve?(ctx: HookContext<V>): void
   /** 返回 true 表示允许；返回字符串表示不允许及原因（会写进等待日志） */
-  canStart?(ctx: HookContext, action: ActionId): true | string
-  onEvent?(ctx: HookContext, ev: SimEvent): void
+  canStart?(ctx: HookContext<V>, action: ActionId): true | string
+  onEvent?(ctx: HookContext<V>, ev: SimEvent): void
   /** 在收集 buff 之前调用（TD-03 §4）：可改倍率、附加值、元素 / 标签，或直接补乘区值 */
-  modifyHit?(ctx: HookContext, hit: HitDraft): void
+  modifyHit?(ctx: HookContext<V>, hit: HitDraft): void
 }
 
-export interface HookContext {
+export interface HookContext<V extends HookVars = HookVars> {
   readonly self: Slot
   readonly chain: Chain                     // 本角色的共鸣链数（钩子里按链数分支，如散华 C5）
   readonly state: Readonly<SimState>        // 只读查询；改状态只能走下面的方法
@@ -336,8 +339,8 @@ export interface HookContext {
   spawnJudgment(judgment: string, opts?: { action?: ActionId }): void
   /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
   skipJudgments(instance: number, names: string[]): void
-  setFlag(key: string, value: number | boolean | string): void
-  getFlag(key: string): number | boolean | string | undefined
+  /** 本角色的状态量（角色模块的 vars 声明的那几个），直接读写：ctx.vars.盛绽 = true */
+  readonly vars: V
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
   heal(source: string): void
   warn(message: string): void

@@ -5,10 +5,11 @@
 import type { CharName } from '../data/common'
 import { ASSUMPTIONS } from './assumptions'
 import type { HitEvent, ResolvedScenario, SimEvent, SimState, Summary, WaitCode } from './types'
+import { round, roundTo } from './num'
 
 const INTENDED: WaitCode[] = ['delay', 'wait', 'at']
 /** 事件的战斗帧（t 是战斗秒数） */
-export const battleFrameOf = (e: SimEvent): number => Math.round(e.t * 60)
+export const battleFrameOf = (e: SimEvent): number => round(e.t * 60)
 
 /** 统计窗口的终点（战斗帧）：最后一条指令——出招看它开始的动作何时结束或被取消，切人看切人那一刻，wait 看等完那一刻 */
 export function windowEnd(log: readonly SimEvent[], s: SimState, endAt?: number): number {
@@ -118,7 +119,7 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
     damage[k]! += h.dmg!.expected
   }
   const delta = (k: number, x: 'energy' | 'concerto') =>
-    [0, 1, 2].map(i => Math.round((at[k + 1]![x][i]! - at[k]![x][i]!) * 1e6) / 1e6) as [number, number, number]
+    [0, 1, 2].map(i => roundTo(at[k + 1]![x][i]! - at[k]![x][i]!, 1e6)) as [number, number, number]
   const perLoop = starts.map((start, k) => ({
     loop: (marks[k] as Extract<SimEvent, { type: 'loop' }>).loop, start, frames: ends[k]! - start, damage: damage[k]!,
     dps: dpsOf(damage[k]!, ends[k]! - start), energyDelta: delta(k, 'energy'), concertoDelta: delta(k, 'concerto'),

@@ -3,6 +3,7 @@
 // （视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
 import type { CharName, Slot } from '../data/common'
 import type { ResolvedScenario, SimEvent } from './types'
+import { round } from './num'
 
 /** 第 k 轮：[本轮 loop 事件, 下一轮 loop 事件)；最后一轮到日志里最后一个事件 */
 export interface LoopSpan { loop: number; f: number; t: number; endF: number; endT: number }
@@ -101,7 +102,7 @@ export function traceCommands(log: readonly SimEvent[], r: ResolvedScenario, loo
     const at = `${row.line}.${row.item}`
     const w = row.line !== null && !used.has(at) ? [...(waits.get(at)?.values() ?? [])] : []
     if (row.line !== null) used.add(at)
-    return { ...row, frames: next - row.f, waits: w.map(x => ({ reason: x.reason, frames: Math.round(x.frames) })) }
+    return { ...row, frames: next - row.f, waits: w.map(x => ({ reason: x.reason, frames: round(x.frames) })) }
   })
 }
 

@@ -80,7 +80,7 @@ function handle(sim: Sim, s: SimState, ev: SimEvent): void {
       for (const t of effectTargets(e.def.target, e.owner, s)) grant(sim, s, t, e.def.resource, e.amount, e.def.id, e.def.scaledByRegen)
     }
   }
-  for (const m of sim.r.team) m.def.hooks?.onEvent?.(sim.ctxs[m.slot]!, ev)
+  for (const m of sim.r.team) sim.hooks[m.slot]?.onEvent?.(sim.ctxs[m.slot]!, ev)
 }
 
 function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {

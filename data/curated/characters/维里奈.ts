@@ -4,16 +4,24 @@ import type { HookContext } from '../../../src/engine/types'
 
 // 持续回复（nanoka 3.7，m0-confirm §7）：延奏盛放"每秒回复…持续6秒"，共鸣链1"每5秒回复…持续30秒"，各 6 跳。
 // 治疗量不建模；每跳记一次治疗事件（触发隐世回光等"提供治疗时"的效果）。计时用标记型 buff：到期记一跳，没跳完再挂上
-const HOT: Record<string, string> = { '维里奈.盛放计时': '延奏-盛放', '维里奈.共鸣链1计时': '共鸣链1' }
+const HOT = {
+  '维里奈.盛放计时': { source: '延奏-盛放', count: '盛放跳数' },
+  '维里奈.共鸣链1计时': { source: '共鸣链1', count: '共鸣链1跳数' },
+} as const
+type HotId = keyof typeof HOT
+const isHot = (id: string): id is HotId => Object.hasOwn(HOT, id)
 const HOT_TICKS = 6
-function startHot(ctx: HookContext, id: string): void {
-  ctx.setFlag(`${id}.跳`, 0)
+/** 钩子的状态量（总设计 §10.1）：两种持续回复各跳了几次；协同攻击上次触发的战斗帧（−60 = 还没触发过，开场就能触发） */
+const VARS = { 盛放跳数: 0, 共鸣链1跳数: 0, 协同上次: -60 }
+type Ctx = HookContext<typeof VARS>
+function startHot(ctx: Ctx, id: HotId): void {
+  ctx.vars[HOT[id].count] = 0
   ctx.addBuff(id)                                              // 再次延奏时刷新、重新计数
 }
-function tickHot(ctx: HookContext, id: string): void {
-  ctx.heal(HOT[id]!)
-  const n = Number(ctx.getFlag(`${id}.跳`) ?? 0) + 1
-  ctx.setFlag(`${id}.跳`, n)
+function tickHot(ctx: Ctx, id: HotId): void {
+  ctx.heal(HOT[id].source)
+  const n = ctx.vars[HOT[id].count] + 1
+  ctx.vars[HOT[id].count] = n
   if (n < HOT_TICKS) ctx.addBuff(id)
 }
 
@@ -21,6 +29,7 @@ export default defineCharacter('维里奈', {
   weaponType: '音感仪',
   treeStats: { '治疗效果加成': 0.12, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
   aliases: { E: 'E', R: '大招', QTE: 'QTE' },
+  vars: VARS,
   buffs: [
     {
       // 大招命中给目标附加光合标记，12 秒（nanoka 3.7，m0-confirm §6 V3）
@@ -73,17 +82,16 @@ export default defineCharacter('维里奈', {
         if (ctx.chain >= 1) startHot(ctx, '维里奈.共鸣链1计时')
         return
       }
-      if (ev.type === 'buffExpire' && ev.reason === 'timeout' && ev.target === me && HOT[ev.buff]) {
+      if (ev.type === 'buffExpire' && ev.reason === 'timeout' && ev.target === me && isHot(ev.buff)) {
         tickHot(ctx, ev.buff)
         return
       }
       // 协同攻击（m0-confirm §6 V4）：任何人（含维里奈自己）的伤害命中带光合标记的目标时触发，全队共用 1 秒冷却；协同本身不再触发
       if (ev.type !== 'hit' || ev.dmg === null || ev.judgment === '大招-协同伤害') return
       if (ctx.buffStacks('维里奈.光合标记', 'enemy') === 0) return
-      const last = ctx.getFlag('协同上次')
       const now = ctx.state.battleFrames
-      if (typeof last === 'number' && now - last < 60) return
-      ctx.setFlag('协同上次', now)
+      if (now - ctx.vars.协同上次 < 60) return
+      ctx.vars.协同上次 = now
       ctx.spawnJudgment('大招-协同伤害', { action: '大招' })
     },
   },

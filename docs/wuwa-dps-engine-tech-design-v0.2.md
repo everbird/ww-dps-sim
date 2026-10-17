@@ -608,7 +608,7 @@ sequenceDiagram
 
 ### 6.9 角色模块与钩子
 
-每个角色 = 生成的帧数据 + 一个手写的 TS 模块。示意（字段以 TD-02 为准）：
+每个角色 = 生成的帧数据 + 一个手写的 TS 模块。模块里除了钩子都是数据；装配时钩子放进钩子表 `GameData.hooks`（按角色名），角色定义只留数据（v0.2，§10.1）。示意（字段以 TD-02 为准）：
 
 ```ts
 // data/curated/characters/散华.ts
@@ -643,7 +643,7 @@ export default defineCharacter('散华', {
 | `onEvent(ctx, event)` | 每个事件（含队友的；在事件队列每条的最后一步） | 资源增减、形态切换、生成额外判定、挑延奏动作的版本 |
 | `modifyHit(ctx, hit)` | 结算时、收集 buff 之前 | 按状态换倍率、算 Formula1、改伤害类型，或直接补乘区值（TD-03 §4） |
 
-`ctx` 只开放受控操作：`addBuff` / `removeBuff` / `addResource` / `spawnJudgment` / `skipJudgments`（某个动作实例里不生成某些判定）/ `setFlag` / `warn`，以及只读查询（`state`、`chain`、`buffStacks`、`getFlag`）；`modifyHit` 还能改这次结算出伤者自己那份能量的倍率（`selfEnergyScale`）。钩子不直接改 `SimState` 的其他部分，出问题时好定位。写法模式与 M0 三人的实现见 TD-08。
+`ctx` 只开放受控操作：`addBuff` / `removeBuff` / `addResource` / `spawnJudgment` / `skipJudgments`（某个动作实例里不生成某些判定）/ `heal` / `warn`，本角色的状态量 `vars`（在角色模块里声明初值，v0.2 起取代 `setFlag` / `getFlag`，§10.1），以及只读查询（`state`、`chain`、`buffStacks`）；`modifyHit` 还能改这次结算出伤者自己那份能量的倍率（`selfEnergyScale`）。钩子不直接改 `SimState` 的其他部分，出问题时好定位。写法模式与 M0 三人的实现见 TD-08。
 
 ---
 
@@ -793,7 +793,8 @@ wuwa-dps/
 5. **遍历顺序显式。** 对外输出的列表按固定规则排（队伍槽位、登记顺序、伤害），不依赖对象键的遍历顺序（JS 里整数样的键排在前面，Rust 的 `HashMap` 没有顺序）。
 6. **出错。** 仿真失败（等不来、等超时、超过帧数、不变量不成立）抛 `ScheduleError`，只在 `simulate` 一处接住，对应 Rust 的 `Result` 与 `?`；别的异常都是程序错误。
 7. **随机数只来自 `src/engine/rng.ts`**（T4），期望模式不用。
-8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表）、事件日志、汇总写成 JSON，放到 `out/conformance/`；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。
+8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表，`src/engine/portable.ts`）、事件日志、汇总写成 JSON，放到 `out/conformance/`；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。
+9. **已知要改的两处。** `kernel.ts` 里有两处模块级的东西：`settleQueue`（P4 进行中新生成的判定）与 `timelineOf` 按对象身份的 WeakMap 缓存。JS 单线程、同步跑，没有问题；Rust 里前者放进仿真上下文，后者在装配时预先算好放进动作定义。
 
 ---
 
@@ -810,8 +811,9 @@ wuwa-dps/
    - 全局时停：战斗时钟、buff、CD 暂停
    - 同帧顺序："xxx 后"类触发，触发者自身不吃
 4. **不变量断言**（开发模式常开）：能量 ≤ 上限、协奏在 0–100、计时器不为负、战斗时钟单调不减、每段伤害 ≥ 0。已实现（`src/engine/invariants.ts`），不成立时 `SimResult.error.code = 'invariant'`。
-5. **回归快照**：每个场景存一份汇总快照；数据或引擎改动导致的数值变化，人工确认后再更新快照。已建（`tests/scenarios.test.ts`，`pnpm test -- -u` 更新）。
+5. **回归快照**：每个场景存一份汇总快照（v0.2 起含这次碰到的假设）；数据或引擎改动导致的数值变化，人工确认后再更新快照。已建（`tests/scenarios.test.ts`，`pnpm test -u` 更新）。
 6. **游戏内校准**：实测伤害数字、轴时长、半程切人拿到的能量和协奏，记到 `docs/calibration/`（v0.1.9：已建，格式见其中 README）；发现偏差优先改 `rules` 里的规则表，而不是改引擎。对不上时怎么查（说清楚、分层、从粗到细、做实验）与调试工具见 TD-11。
+7. **一致性样例**（v0.2，§10.1）：装配结果去掉钩子表后是纯数据，JSON 往返再接上钩子，事件日志与汇总逐条相同（`tests/portable.test.ts`）；取整与 Rust 写法逐位相同（`tests/num.test.ts`）。`pnpm conformance` 写出每个场景的输入与输出，换实现时逐条对拍。
 
 ---
 
@@ -869,13 +871,13 @@ M0–M3 对应机制设计 Roadmap 的 v0，M4–M5 对应 v1，M7 的搜索对�
 | 编号 | 文档 | 回答的问题 | 主要输入 | 需要于 |
 |---|---|---|---|---|
 | TD-01 | 数据字典与抽取规格（v0.1.7，已实现） | 每个 sheet、每一列是什么意思；块结构怎么切；连接与别名规则；构建报告格式 | xlsx、本文 3.1 | M0 |
-| TD-02 | 类型与 Schema（v0.1.8，已实现） | GameData、Scenario、ResolvedScenario、SimState、SimEvent 的完整定义与 zod 校验 | 本文第 5 节 | M0 |
+| TD-02 | 类型与 Schema（v0.1.9，已实现） | GameData、Scenario、ResolvedScenario、SimState、SimEvent 的完整定义与 zod 校验 | 本文第 5 节 | M0 |
 | TD-03 | 伤害公式规格（v0.1.3，已实现） | 乘区 ID 全表、xlsx 分区映射、暴击两支、取整、异常公式、谐度破坏、golden 抽取方法 | base 公式、伤害计算页、本文 6.6 | M1 |
 | TD-04 | 仿真内核规格（v0.1.4，已实现） | tick 相位细则、帧边界约定、时钟与膨胀表、动作推进 / 取消 / 判定生命周期 | 本文 6.2–6.4 | M2 |
 | TD-05 | 切人与协奏（v0.1.1，已实现） | 切人 CD、变奏 / 延奏时机、outroTriggerFrame 的数据来源、协奏规则开关 | 机制设计 5.4、本文 6.4 | M3 |
 | TD-06 | 资源与敌人量表（v0.2.2：角色资源与 M0 用得到的敌人量表，已实现；偏移 / 干涉 / 响应、异常效应以后） | 能量分配、核心资源、破盾、偏谐 / 失谐 / 谐度破坏、偏移 / 干涉 / 响应模板、异常效应 | 机制设计 4–4D、本文 6.7 | M3–M4 |
 | TD-07 | Buff 系统规格（v0.1.1，已实现） | BuffDef 字段、触发事件目录、叠层与刷新、作用对象、文本 → BuffDef 的 AI 起草与审核流程 | 机制设计 6、本文 3.2、6.8 | M3 |
-| TD-08 | 角色模块编写指南（v0.1.3，M0 三人已实现） | 新增一个角色的步骤、模板、钩子写法、必须附带的测试 | 本文 6.9 | M3 |
+| TD-08 | 角色模块编写指南（v0.1.4，M0 三人已实现） | 新增一个角色的步骤、模板、钩子写法、必须附带的测试 | 本文 6.9 | M3 |
 | TD-09 | 排轴脚本与调度语义（v0.1.5，已实现） | 指令语法、最早合法帧判定、等待与超时、重复循环 | 本文 6.5、第 8 节 | M2 |
 | TD-10 | 输出与报告（v0.1.4，已实现） | 汇总指标与 DPS 口径、分轮与稳态、对比与副词条边际、CLI 输出 | 本文 3.5、第 9 节 | M5 |
 | TD-11 | 调试与校准手册（v0.1，工具已实现；v0.1.9 由"测试与校准手册"改名，测试怎么写见 AGENTS.md 与各 TD 的测试章节） | 对不上时怎么查、调试工具、视频时间点怎么记、实测怎么记录 | 本文第 11 节 | M1 起持续 |

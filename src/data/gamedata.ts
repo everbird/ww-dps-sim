@@ -6,7 +6,7 @@ import type {
 } from './common'
 import type { BuffDef, ResourceEffect } from './buff.schema'
 import type { GenEchoStats, GenMeta, GenWeapon } from './generated.schema'
-import type { CharacterHooks } from '../engine/types'
+import type { CharacterHooks, HookVars } from '../engine/types'
 
 export interface GameData {
   version: string                                   // xlsx 文件名里的日期，如 "20260707"
@@ -23,6 +23,8 @@ export interface GameData {
   tuneBreak: TuneBreakTable
   envBuffs: Record<string, BuffDef>
   rules: Rules
+  /** 钩子表：角色名 → 钩子（TD-08）。GameData 里唯一的代码，其余都是纯数据；导出给别的实现时去掉（portable，总设计 §10.1） */
+  hooks: Partial<Record<CharName, CharacterHooks>>
 }
 
 export interface CharacterDef {
@@ -41,7 +43,7 @@ export interface CharacterDef {
   aliases: Record<string, ActionId>                 // "R" → "大招"
   buffs: BuffDef[]                                  // 被动 / 共鸣链 / 延奏 / 回路（curated）
   resourceEffects: ResourceEffect[]                 // 资源型触发效果（curated，TD-07 §9）
-  hooks?: CharacterHooks
+  vars: HookVars                                    // 钩子的状态量与初值（curated；钩子本身在 GameData.hooks，总设计 §10.1）
   flags: string[]                                   // 装配时未处理的数据问题汇总
 }
 

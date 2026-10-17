@@ -10,6 +10,7 @@ import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
 import { battleFrameOf, buffUptime } from './summary'
 import type { ResolvedScenario, SimResult } from './types'
+import { round, roundTo } from './num'
 
 export interface Run { r: ResolvedScenario; res: SimResult }
 
@@ -111,7 +112,7 @@ export function tierValue(values: readonly number[], tier: Tier): number {
   if (tier === 'max') return Math.max(...values)
   if (tier === 'min') return Math.min(...values)
   const mean = values.reduce((a, b) => a + b, 0) / values.length
-  return mean >= 3 ? Math.round(mean) : Math.round(mean * 1e4) / 1e4
+  return mean >= 3 ? round(mean) : roundTo(mean, 1e4)
 }
 
 /** 副词条边际：给第 slot 位角色各加一档副词条（加在他最后一件声骸的副词条上），各重跑一次，比稳态（或整个窗口）的 DPS。

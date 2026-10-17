@@ -54,11 +54,8 @@ dataDescribe('TD-07 M0 队伍', () => {
   })
 
   test('散华 C6：同一帧引爆两块冰给 2 层（2026-10-03 实测，TD-07 Q3）', () => {
-    const data = { ...gd, characters: { ...gd.characters } }   // 角色带钩子（函数），不能 structuredClone
-    data.characters['散华'] = {      // 测试用钩子：E 命中时同时引爆冰棱与冰川（真正的引爆钩子见 TD-08 §5.1）
-      ...gd.characters['散华']!,
-      hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') { ctx.spawnJudgment('E-引爆冰棱'); ctx.spawnJudgment('大招-引爆冰川') } } },
-    }
+    // 测试用钩子：E 命中时同时引爆冰棱与冰川（真正的引爆钩子见 TD-08 §5.1）（只换钩子表里散华那份，总设计 §10.1）
+    const data: GameData = { ...gd, hooks: { ...gd.hooks, 散华: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') { ctx.spawnJudgment('E-引爆冰棱'); ctx.spawnJudgment('大招-引爆冰川') } } } } }
     const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 E'] })
     const c6 = eventsOfLog(out.log, 'buffApply').filter(e => e.buff === '散华.共鸣链6' && e.target === '散华')
     expect(c6.map(e => [e.f, e.stacks])).toEqual([[19, 1], [19, 2]])
@@ -74,11 +71,8 @@ dataDescribe('TD-07 M0 队伍', () => {
   })
 
   test('散华固有2：第 5 段普攻后冰绽伤害 +20%，只对三种引爆', () => {
-    const data = { ...gd, characters: { ...gd.characters } }   // 角色带钩子（函数），不能 structuredClone
-    data.characters['散华'] = {      // 测试用钩子：E 命中时引爆冰棱
-      ...gd.characters['散华']!,
-      hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } },
-    }
+    // 测试用钩子：E 命中时引爆冰棱（只换钩子表里散华那份，总设计 §10.1）
+    const data: GameData = { ...gd, hooks: { ...gd.hooks, 散华: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } } } }
     const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 A1 A2 A3 A4 A5', '散华 E'] })
     const hits = eventsOfLog(out.log, 'hit')
     expect(hits.find(h => h.judgment === 'E-引爆冰棱')!.buffs).toContain('散华.固有2')
