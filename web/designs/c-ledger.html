@@ -13,7 +13,7 @@
     --alert: #c8323b; --wait: #c47f1c; --good: #2f8a5b; --focus: #2a78bb;
     --el-havoc: #a32f6c; --el-glacio: #2a78bb; --el-spectro: #a98410; --el-fusion: #c9512a; --el-electro: #7547cf; --el-aero: #23977a; --el-physical: #677084;
     --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -40,7 +40,7 @@
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   thead th { white-space: nowrap; position: sticky; top: 0; background: var(--panel); z-index: 1; text-align: left; font-weight: 500; font-size: 12px; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--rule); }
   td { padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
-  tbody tr:hover td { background: var(--row); }
+  @media (hover: hover) { tbody tr:hover td { background: var(--row); } }
   th.n { text-align: right; }
   td.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   td.line { font-family: var(--mono); color: var(--faint); white-space: nowrap; }
@@ -48,24 +48,33 @@
   td.cmd .who { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--c); margin-right: 6px; vertical-align: 1px; }
   tr.sw td.cmd { font-weight: 500; }
   tr.sub td { color: var(--muted); }
-  td.why { color: var(--muted); font-size: 12px; min-width: 16ch; }
+  td.why { color: var(--muted); font-size: 12px; min-width: 26ch; }
+  /* 表格在自己的框里滚动：横向放得下「之前卡在」，纵向表头吸顶 */
+  .tablewrap { overflow: auto; max-height: max(420px, 78vh); }
+  .tablewrap table { min-width: 980px; }
   td.why b { color: var(--muted); font-weight: 400; font-family: var(--mono); }
   td.why .hot { color: var(--ink); }
   td.why .hot b { color: var(--wait); font-weight: 500; }
-  td.gantt { width: 42%; min-width: 260px; padding: 0 8px; }
+  td.gantt { width: 34%; min-width: 240px; padding: 0 8px; }
   .g { position: relative; height: 18px; overflow: hidden; }
   .g .bar { position: absolute; top: 3px; height: 12px; border-radius: 2px; background: var(--c); }
   .g .w { position: absolute; top: 3px; height: 12px; background: repeating-linear-gradient(135deg, var(--wait) 0 3px, transparent 3px 6px); opacity: .75; }
   .g .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--grid); }
   .g .dia { position: absolute; top: 2px; width: 10px; height: 10px; transform: translateX(-5px) rotate(45deg); background: var(--c); }
   .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
-  @media (max-width: 900px) { .side { grid-template-columns: minmax(0, 1fr); } td.gantt { display: none; } }
+  @media (max-width: 900px) { .side { grid-template-columns: minmax(0, 1fr); } td.gantt, th#gh { display: none; } .tablewrap table { min-width: 560px; } }
+  @media (max-width: 640px) { body { padding: 14px 10px 32px; } h1 { font-size: 18px; } .row { gap: 6px 18px; } .v { font-size: 15px; } }
+  /* 触摸屏：下拉框够大好点；字号 16px，iPhone 聚焦时才不自动放大页面 */
+  @media (pointer: coarse) { select { min-height: 34px; font-size: 16px; } }
   .side h2 { font-size: 14px; margin: 0 0 8px; }
   .up { display: grid; grid-template-columns: minmax(0, 14ch) minmax(0, 1fr) 6ch; gap: 3px 10px; font-size: 12.5px; align-items: center; }
   .up span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .up i { display: block; height: 8px; border-radius: 2px; background: var(--c); }
   .up em { font: 11.5px var(--mono); font-style: normal; color: var(--muted); text-align: right; }
   .pad { padding: 12px 14px; }
+  [data-tip] { cursor: default; }
+  .ww-tip { position: fixed; z-index: 10; max-width: min(380px, calc(100vw - 16px)); pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
+    border-radius: 6px; box-shadow: 0 6px 20px rgba(10, 16, 28, 0.18); padding: 8px 10px; font-size: 12px; line-height: 1.55; }
 </style>
 </head>
 <body>
@@ -75,7 +84,7 @@
     <div class="row"><label class="k">轮次 <select id="loopSel"></select></label><div class="row" id="kpi"></div></div>
   </header>
   <section class="card strip"><div class="k">谁在前台（每段多长，世界秒）</div><div class="seg" id="seg"></div><div class="scale" id="scale"></div></section>
-  <section class="card">
+  <section class="card tablewrap">
     <table>
       <thead><tr><th>条</th><th>指令</th><th class="n">开始·战斗秒</th><th class="n">到下一条</th><th class="n">伤害</th><th>之前卡在</th><th id="gh">本轮时间线</th></tr></thead>
       <tbody id="body"></tbody>
@@ -106,7 +115,7 @@
     const pl = (S.perLoop || []).find(p => p.loop === T.loop)
     $('kpi').innerHTML = [['世界秒', WW.sec(sp.endF - sp.f)], ['战斗秒', (sp.endT - sp.t).toFixed(2)], pl && ['本轮 DPS', WW.fmt(pl.dps)], pl && ['本轮伤害', WW.fmt(pl.damage)]]
       .filter(Boolean).map(([k, v]) => `<div><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')
-    $('seg').innerHTML = T.segments.map(s => `<div style="--c:${colorOf(s.char)};left:${pc(s.f)};width:${pw(s.frames)}" title="${WW.esc(s.char)} ${WW.sec(s.frames)} 秒">${WW.esc(s.char)} ${WW.sec(s.frames)}</div>`).join('')
+    $('seg').innerHTML = T.segments.map(s => `<div style="--c:${colorOf(s.char)};left:${pc(s.f)};width:${pw(s.frames)}" data-tip="${WW.esc(`<b>${WW.esc(s.char)}</b> 在前台 ${WW.sec(s.frames)} 秒（世界秒）`)}">${WW.esc(s.char)} ${WW.sec(s.frames)}</div>`).join('')
     const marks = []
     for (let s = 0; s <= (sp.endF - sp.f) / 60; s += 5) marks.push(`<span style="left:${pc(sp.f + s * 60)}">${s}</span>`)
     $('scale').innerHTML = marks.join('')
@@ -128,7 +137,7 @@
         ? `<span class="dia" style="--c:${colorOf(who)};left:${pc(c.f)}"></span>`
         : `${wait ? `<span class="w" style="left:${pc(Math.max(sp.f, c.f - wait))};width:${pw(Math.min(wait, c.f - sp.f))}"></span>` : ''}<span class="bar" style="--c:${colorOf(who)};left:${pc(c.f)};width:${pw(Math.max(c.frames, 2))};opacity:${c.kind === 'skip' ? 0.25 : 1}"></span>`
       const cls = c.kind === 'switch' ? 'sw' : c.kind === 'skip' || c.kind === 'interject' ? 'sub' : ''
-      return `<tr class="${cls}"><td class="line">${c.line === null ? '' : `${c.line}.${c.item}`}</td><td class="cmd" title="${WW.esc(text)}"><span class="who" style="--c:${colorOf(who)}"></span>${WW.esc(c.label)}</td>
+      return `<tr class="${cls}"><td class="line">${c.line === null ? '' : `${c.line}.${c.item}`}</td><td class="cmd"${text ? ` data-tip="${WW.esc(`<b>${c.line === null ? '' : `第 ${c.line} 条：`}</b>${WW.esc(text)}`)}"` : ''}><span class="who" style="--c:${colorOf(who)}"></span>${WW.esc(c.label)}</td>
         <td class="n">${(c.t - sp.t).toFixed(2)}</td><td class="n">${WW.sec(c.frames)}</td><td class="n">${d ? WW.fmt(d) : ''}</td><td class="why">${why}</td>
         <td class="gantt"><div class="g">${ticks}${g}</div></td></tr>`
     }).join('')
@@ -137,13 +146,14 @@
       let on = 0; for (const s of b.spans) on += Math.max(0, Math.min(s.end, sp.endF) - Math.max(s.start, sp.f))
       return { b, u: on / len }
     }).filter(x => x.u > 0).sort((a, b) => b.u - a.u).slice(0, 16)
-    $('uptime').innerHTML = ups.map(({ b, u }) => `<span title="${WW.esc(`${b.buff} → ${b.target}\n${WW.buffEffect(M, b.buff) || ''}\n${(M.buffInfo[b.buff] || {}).source || ''}`)}">${WW.esc(b.short)} → ${WW.esc(b.target)}</span><i style="--c:${colorOf(b.target)};width:${(u * 100).toFixed(1)}%"></i><em>${WW.pct(u)}</em>`).join('')
+    $('uptime').innerHTML = ups.map(({ b, u }) => `<span data-tip="${WW.esc([`<b>${WW.esc(b.buff)}</b> → ${WW.esc(b.target)}`, WW.buffEffect(M, b.buff), (M.buffInfo[b.buff] || {}).source].filter(Boolean).map((t, k) => (k ? WW.attr(t) : t)).join('<br>'))}">${WW.esc(b.short)} → ${WW.esc(b.target)}</span><i style="--c:${colorOf(b.target)};width:${(u * 100).toFixed(1)}%"></i><em>${WW.pct(u)}</em>`).join('')
     const acts = new Map()
     for (const h of D.hits) if (h.dmg && h.f >= sp.f && h.f < sp.endF) { const k = `${h.char} ${h.action}`; acts.set(k, (acts.get(k) || 0) + h.dmg.expected) }
     const top = [...acts].sort((a, b) => b[1] - a[1]).slice(0, 12), mx = top.length ? top[0][1] : 1
     $('byact').innerHTML = top.map(([k, v]) => `<span>${WW.esc(k)}</span><i style="--c:${colorOf(k.split(' ')[0])};width:${(100 * v / mx).toFixed(1)}%"></i><em>${WW.fmt(v / 1000)}k</em>`).join('')
   }
   $('loopSel').addEventListener('change', render)
+  WW.tips(document.body)
   const first = WW.defaultLoop(M)
   if (first != null && trace.some(t => t.loop === first)) $('loopSel').value = String(first)
   render()

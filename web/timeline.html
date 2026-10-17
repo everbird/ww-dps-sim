@@ -28,8 +28,8 @@
     --el-aero: #23977a;
     --el-physical: #677084;
     --sans: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
-    --label-w: 132px;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
+    --label-w: 168px;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
@@ -116,7 +116,7 @@
     font: inherit; font-size: 13px; color: var(--ink); background: var(--paper);
     border: 1px solid var(--rule); border-radius: 6px; padding: 3px 10px; cursor: pointer;
   }
-  button:hover, select:hover { border-color: var(--faint); }
+  @media (hover: hover) { button:hover, select:hover { border-color: var(--faint); } }
   button:focus-visible, select:focus-visible, input:focus-visible, .scroller:focus-visible { outline: 2px solid var(--el-glacio); outline-offset: 1px; }
   .check { display: inline-flex; align-items: center; gap: 4px; color: var(--ink); font-size: 13px; cursor: pointer; }
   .file { font-size: 13px; color: var(--muted); }
@@ -133,7 +133,7 @@
   .label.buff b { font-size: 11px; font-weight: 400; color: var(--muted); }
   .label.section { border-top: 1px solid var(--rule); }
   .label.section b { font-size: 11px; letter-spacing: 0.06em; color: var(--muted); }
-  .scroller { overflow-x: auto; overflow-y: hidden; position: relative; }
+  .scroller { overflow-x: auto; overflow-y: hidden; position: relative; -webkit-tap-highlight-color: transparent; }
   svg { display: block; }
   svg text { font-family: var(--sans); font-size: 11px; fill: var(--ink); }
   svg .mono { font-family: var(--mono); }
@@ -152,8 +152,17 @@
   td.r, th.r { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .list { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; font-size: 13px; }
   .list li { display: grid; grid-template-columns: auto 1fr; gap: 10px; }
-  .list .where { font-family: var(--mono); color: var(--muted); white-space: nowrap; }
+  .list .where { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .none { color: var(--muted); font-size: 13px; margin: 0; }
+  .tables section.full { grid-column: 1 / -1; }
+  .waits { display: grid; gap: 2px; min-width: 0; }
+  details { min-width: 0; }
+  details > summary { cursor: pointer; display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 3px 0; }
+  details > summary span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details > summary b { font-weight: 400; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  details > .list { padding: 4px 0 8px 14px; }
+  details.rhythm { margin-top: 6px; border-top: 1px solid var(--grid); padding-top: 4px; }
+  details.rhythm > summary { color: var(--muted); }
   .debug { padding: 14px 16px; display: grid; gap: 10px; }
   .debug .head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
   .debug .head p { margin: 0; color: var(--muted); font-size: 12px; }
@@ -162,7 +171,7 @@
   .debug thead th { position: sticky; top: 0; background: var(--panel); }
   .debug td.wrap { white-space: normal; min-width: 18ch; color: var(--muted); }
   .debug tr[data-a] { cursor: pointer; }
-  .debug tr[data-a]:hover td { background: var(--grid); }
+  @media (hover: hover) { .debug tr[data-a]:hover td { background: var(--grid); } }
   .debug tr.sel td { background: var(--hl); }
   .debug tr.sub td { color: var(--muted); }
   .debug td.late { color: var(--alert); }
@@ -179,8 +188,14 @@
 
   @media (max-width: 640px) {
     :root { --label-w: 92px; }
+    body { padding-inline: 10px; }
     h1 { font-size: 20px; }
     .stat dd { font-size: 16px; }
+  }
+  /* 触摸屏：按钮、下拉框够大好点；字号 16px，iPhone 聚焦时才不自动放大页面 */
+  @media (pointer: coarse) {
+    button, select { min-height: 34px; font-size: 16px; }
+    #zoomOut, #zoomIn { min-width: 40px; }
   }
 </style>
 
@@ -241,6 +256,8 @@
   const ELEMENT_VAR = { 湮灭: '--el-havoc', 冷凝: '--el-glacio', 衍射: '--el-spectro', 热熔: '--el-fusion', 导电: '--el-electro', 气动: '--el-aero', 物理: '--el-physical' }
   const KIND_NAME = { normal: '普攻', heavy: '重击', skill: '共鸣技能', liberation: '共鸣解放', intro: '变奏', outro: '延奏', echo: '声骸技能', dodge: '闪避', tuneBreak: '谐度破坏', other: '其他' }
   const INTENDED = new Set(['delay', 'wait', 'at'])
+  // 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick、写轴要求的）：时间轴上画成灰色，表里收起
+  const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at'])
   const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束、白条回满', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'
@@ -403,8 +420,22 @@
       '</tbody></table></div></section>')
     const where = cmdWhere
     const line = c => cmdText(c) ? `（${esc(cmdText(c))}）` : ''
-    parts.push(`<section class="card"><h2>等待（不是写轴要求的）</h2>` + (s.waits.length
-      ? `<ul class="list">${s.waits.map(w => `<li><span class="where">${where(w)}</span><span>${w.frames} 帧 · ${esc(w.reason)}${line(w)}</span></li>`).join('')}</ul>`
+    // 等待按原因合计（原因里的数字不同也算同一种），卡住的（冷却、资源、切人…）在前、按总帧数排；正常出招节奏（派生窗口、优先级…）收起
+    const groups = new Map()
+    for (const w of s.waits) {
+      const k = `${w.code}|${w.reason.replace(/\d+(\.\d+)?/g, 'n')}`
+      const g = groups.get(k) || { code: w.code, reason: w.reason, n: 0, frames: 0, items: [] }
+      g.n++; g.frames += w.frames; g.items.push(w); groups.set(k, g)
+    }
+    const gs = [...groups.values()].sort((a, b) => b.frames - a.frames)
+    const groupHtml = g => `<details><summary><span>${esc(g.reason)}${g.n > 1 ? ' 等' : ''}</span><b>${g.n} 次，共 ${g.frames} 帧（${(g.frames / 60).toFixed(2)} 秒）</b></summary>` +
+      `<ul class="list">${g.items.map(w => `<li><span class="where">${where(w)}</span><span>${w.frames} 帧 · ${esc(w.reason)}${line(w)}</span></li>`).join('')}</ul></details>`
+    const stuck = gs.filter(g => !RHYTHM.has(g.code)), rhythm = gs.filter(g => RHYTHM.has(g.code))
+    const sum = list => list.reduce((a, g) => a + g.frames, 0)
+    parts.push(`<section class="card full"><h2>等待（不是写轴要求的）</h2>` + (s.waits.length
+      ? `<p class="none">卡住的 ${stuck.reduce((a, g) => a + g.n, 0)} 次，共 ${(sum(stuck) / 60).toFixed(2)} 秒；正常出招节奏 ${rhythm.reduce((a, g) => a + g.n, 0)} 次，共 ${(sum(rhythm) / 60).toFixed(2)} 秒。点一行展开每一次。</p>` +
+        `<div class="waits">${stuck.map(groupHtml).join('') || '<p class="none">没有卡住的等待。</p>'}</div>` +
+        (rhythm.length ? `<details class="rhythm"><summary><span>正常出招节奏（派生窗口、优先级、连段…）</span><b>${rhythm.length} 种</b></summary><div class="waits">${rhythm.map(groupHtml).join('')}</div></details>` : '')
       : '<p class="none">没有。</p>') + '</section>')
     if ((s.skipped || []).length)
       parts.push(`<section class="card"><h2>跳过的指令（可选 ? / 补位 ~）</h2><ul class="list">${s.skipped.map(k => `<li><span class="where">${where(k)}</span><span>${esc(k.reason)}${line(k)}</span></li>`).join('')}</ul></section>`)
@@ -505,7 +536,7 @@
     if ($('showBuffs').checked && D.buffs.length) {
       rows.push({ kind: 'section', h: 20, label: `buff（${D.buffs.length} 行；常驻 ${D.always.size} 个未画）` })
       // 自己给自己的 buff 省掉前缀（"椿.含苞 → 椿" 写成 "含苞 → 椿"），其余写全名
-      for (const b of D.buffs) rows.push({ kind: 'buff', b, h: 13, label: `${b.buff.startsWith(b.target + '.') ? b.buff.slice(b.target.length + 1) : b.buff} → ${b.target}`, sub: b.buff })
+      for (const b of D.buffs) rows.push({ kind: 'buff', b, h: 17, label: `${b.buff.startsWith(b.target + '.') ? b.buff.slice(b.target.length + 1) : b.buff} → ${b.target}`, sub: b.buff })
     }
     let y = 0
     for (const r of rows) { r.y = y; y += r.h }
@@ -570,7 +601,7 @@
       } else if (r.kind === 'waits') {
         for (const w of D.waits) {
           const wx = x(w.from), ww = Math.max(1, (w.f - w.from) * ppf)
-          const col = INTENDED.has(w.code) ? 'var(--calm)' : 'var(--wait)'
+          const col = RHYTHM.has(w.code) ? 'var(--calm)' : 'var(--wait)'
           out.push(`<rect x="${wx}" y="${r.y + 5}" width="${ww}" height="8" rx="2" style="fill: ${col}; opacity: 0.85" data-t="${tip(`<b>等待</b> ${w.frames} 帧（战斗 ${w.battleFrames} 帧）\n${esc(w.reason)}\n${cmdWhere(w.cmd)}${cmdText(w.cmd) ? `：${esc(cmdText(w.cmd))}` : ''}`)}"/>`)
         }
         for (const k of D.skips) {
@@ -638,7 +669,7 @@
     $('labels').innerHTML = rows.map(r => {
       const cls = r.kind === 'buff' ? 'label buff' : r.kind === 'section' ? 'label section' : 'label'
       const sw = (r.kind === 'char' || r.kind === 'res') ? `<i class="swatch" style="--c: var(--c${r.i}); display: inline-block; margin-right: 5px"></i>` : ''
-      return `<div class="${cls}" style="top: ${r.y}px; height: ${r.h}px" title="${esc(r.sub || r.label)}"><b>${sw}${esc(r.label)}</b>${r.kind !== 'buff' && r.sub ? `<span>${esc(r.sub)}</span>` : ''}</div>`
+      return `<div class="${cls}" style="top: ${r.y}px; height: ${r.h}px" data-t="${tip(`<b>${esc(r.label)}</b>${r.sub && r.sub !== r.label ? `\n${esc(r.sub)}` : ''}`)}"><b>${sw}${esc(r.label)}</b>${r.kind !== 'buff' && r.sub ? `<span>${esc(r.sub)}</span>` : ''}</div>`
     }).join('')
   }
 
@@ -674,7 +705,8 @@
       `<span><i style="background: var(--panel); outline: 1.5px solid var(--c0)"></i>变奏 / 延奏</span>`,
       `<span><i style="background: var(--alert)"></i>谐度破坏</span>`,
       `<span><i style="background: var(--stop); outline: 1px solid var(--rule)"></i>全局时停</span>`,
-      `<span><i style="background: var(--wait)"></i>等待</span>`,
+      `<span><i style="background: var(--wait)"></i>卡住的等待</span>`,
+      `<span><i style="background: var(--calm)"></i>正常节奏的等待</span>`,
       m.enemy && m.enemy.tunabilityMax > 0 && `<span><i style="background: var(--alert); height: 2px; vertical-align: 3px"></i>偏谐值（上限 ${fmt(m.enemy.tunabilityMax)}）</span>`,
       m.enemy && m.enemy.whiteBarTough > 0 && `<span><i style="background: var(--el-physical); height: 2px; vertical-align: 3px"></i>白条（${fmt(m.enemy.whiteBarTough)} 削韧值）</span>`,
       `<span>命中：竖线高 ∝ √期望伤害</span>`,
@@ -705,9 +737,10 @@
     fitRange(loops[k].f, k + 1 < loops.length ? loops[k + 1].f : M.D.lastF)
   }
 
-  function onMove(ev) {
+  // 提示：鼠标悬停显示；触摸屏点一下显示（放在手指上方），点别处或滚动收起
+  function onMove(ev, touch) {
     const tipEl = $('tip')
-    const el = ev.target.closest('[data-t], [data-res]')
+    const el = ev.target.closest && ev.target.closest('[data-t], [data-res]')
     if (!el || !M) { tipEl.hidden = true; return }
     let html
     if (el.hasAttribute('data-res')) {
@@ -722,10 +755,13 @@
     tipEl.hidden = false
     const pad = 14, w = tipEl.offsetWidth, h = tipEl.offsetHeight
     let left = ev.clientX + pad, top = ev.clientY + pad
-    if (left + w > window.innerWidth - 8) left = ev.clientX - w - pad
-    if (top + h > window.innerHeight - 8) top = ev.clientY - h - pad
-    tipEl.style.left = `${Math.max(8, left)}px`
-    tipEl.style.top = `${Math.max(8, top)}px`
+    if (touch) { left = ev.clientX - w / 2; top = ev.clientY - h - 18; if (top < 8) top = ev.clientY + 26 }
+    else {
+      if (left + w > window.innerWidth - 8) left = ev.clientX - w - pad
+      if (top + h > window.innerHeight - 8) top = ev.clientY - h - pad
+    }
+    tipEl.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, left))}px`
+    tipEl.style.top = `${Math.max(8, Math.min(window.innerHeight - h - 8, top))}px`
   }
 
   function load(raw) {
@@ -756,9 +792,21 @@
       if (row && (e.key === 'Enter' || e.key === ' ')) { pickRow(row); e.preventDefault() }
     })
     for (const id of ['showEnemy', 'showRes', 'showBuffs']) $(id).addEventListener('change', () => setPpf(ppf))
-    const sc = $('scroller')
-    sc.addEventListener('mousemove', onMove)
-    sc.addEventListener('mouseleave', () => { $('tip').hidden = true })
+    const sc = $('scroller'), tl = document.querySelector('.tl')
+    tl.addEventListener('pointermove', e => { if (e.pointerType === 'mouse') onMove(e, false) })
+    tl.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') $('tip').hidden = true })
+    // 触摸：按下到抬起没怎么动、也没变成滚动（滚动时浏览器发 pointercancel）才算点按
+    let down = null
+    document.addEventListener('pointerdown', e => { down = e.pointerType === 'mouse' ? null : { id: e.pointerId, x: e.clientX, y: e.clientY } })
+    document.addEventListener('pointercancel', () => { down = null })
+    document.addEventListener('pointerup', e => {
+      if (!down || e.pointerId !== down.id) return
+      const tap = Math.hypot(e.clientX - down.x, e.clientY - down.y) < 10
+      down = null
+      if (!tap) return
+      if (tl.contains(e.target)) onMove(e, true); else $('tip').hidden = true
+    })
+    document.addEventListener('scroll', () => { $('tip').hidden = true }, { capture: true, passive: true })
     sc.addEventListener('keydown', e => {
       if (e.key === '+' || e.key === '=') { setPpf(ppf * 1.5); e.preventDefault() }
       else if (e.key === '-') { setPpf(ppf / 1.5); e.preventDefault() }

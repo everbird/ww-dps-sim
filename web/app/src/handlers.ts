@@ -10,9 +10,12 @@ import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
 import { simulate } from '../../../src/engine/simulate'
-import { renderDesign, renderTimeline, timelineModel } from '../../../src/report/timeline'
-import template from '../../timeline.html?raw'
+import type { ResolvedScenario, SimResult } from '../../../src/engine/types'
+import { renderDesign, renderTimeline, timelineModel, type TimelineModel } from '../../../src/report/timeline'
 import shared from '../../designs/shared.js?raw'
+import template from '../../timeline.html?raw'
+import { loadGameData } from './gamedata'
+import type { Requests, Source } from './protocol'
 
 const DESIGN_FILES = import.meta.glob<string>('../../designs/*.html', { query: '?raw', import: 'default', eager: true })
 function designTemplate(file: string): string {
@@ -20,8 +23,6 @@ function designTemplate(file: string): string {
   if (!tpl) throw new Error(`没有设计模板 ${file}`)
   return tpl
 }
-import { loadGameData } from './gamedata'
-import type { Requests, Source } from './protocol'
 
 let data: Promise<GameData> | null = null
 const gd = () => (data ??= loadGameData())
@@ -39,6 +40,20 @@ const slotOf = (sc: Scenario, char: string) => {
 const num = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(v * 10000) / 10000))
 const flow = (t: Partial<Record<StatKey, number>>) => `{ ${Object.entries(t).map(([k, v]) => `${k}: ${num(v!)}`).join(', ')} }`
 
+/** 最近一次仿真（按场景名 + 原文）：切换视图、"视图说明"页换视图时不再重跑 */
+let last: { key: string; r: ResolvedScenario; res: SimResult; model: TimelineModel } | null = null
+async function simulated(s: Source) {
+  const key = `${s.name}\n${s.text}`
+  if (last?.key === key) return last
+  const sc = scenarioOf(s)
+  const r = resolveScenario(sc, await gd())
+  const res = simulate(r)
+  last = { key, r, res, model: timelineModel(s.name, sc, r, res) }
+  return last
+}
+const renderView = (view: string | undefined, model: TimelineModel) =>
+  view && view !== 'classic' ? renderDesign(designTemplate(view), shared, model) : renderTimeline(template, model)
+
 type Handlers = { [K in keyof Requests]: (req: Requests[K]['req']) => Promise<Requests[K]['res']> }
 export const handlers: Handlers = {
   async info() {
@@ -46,25 +61,19 @@ export const handlers: Handlers = {
     return { version: d.version, characters: Object.keys(d.characters), xlsx: d.meta.xlsxFile }
   },
   async run({ scenario, view }) {
-    const sc = scenarioOf(scenario)
-    const r = resolveScenario(sc, await gd())
-    const res = simulate(r)
+    const { r, res, model } = await simulated(scenario)
     const b = basisOf(res)
     return {
       // view：缺省是原版时间轴（含调试表）；写 web/designs 里的文件名就用那个视图
-      html: view && view !== 'classic'
-        ? renderDesign(designTemplate(view), shared, timelineModel(scenario.name, sc, r, res))
-        : renderTimeline(template, timelineModel(scenario.name, sc, r, res)),
+      html: renderView(view, model),
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
       error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
       warnings: [...r.warnings, ...res.summary.warnings.map(w => w.message)],
     }
   },
   async design({ scenario, file }) {
-    const tpl = designTemplate(file)
-    const sc = scenarioOf(scenario)
-    const r = resolveScenario(sc, await gd())
-    return { html: renderDesign(tpl, shared, timelineModel(scenario.name, sc, r, simulate(r))) }
+    designTemplate(file)
+    return { html: renderView(file, (await simulated(scenario)).model) }
   },
   async compare({ base, other }) {
     const d = await gd()

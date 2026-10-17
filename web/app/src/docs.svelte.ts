@@ -52,6 +52,3 @@ export function remove(d: Doc): void {
   if (i >= 0 && d.original === null) docs.splice(i, 1)
   persist()
 }
-
-/** 场景里的队伍（编辑器里改了队伍也能跟上）：粗读 "- char: X" */
-export const teamOf = (text: string): string[] => [...text.matchAll(/^\s*-\s*char:\s*(\S+)/gm)].map(m => m[1]!)

@@ -13,7 +13,7 @@
     --stop: rgba(24, 32, 44, 0.06); --alert: #c8323b; --wait: #c47f1c; --good: #2f8a5b; --focus: #2a78bb;
     --el-havoc: #a32f6c; --el-glacio: #2a78bb; --el-spectro: #a98410; --el-fusion: #c9512a; --el-electro: #7547cf; --el-aero: #23977a; --el-physical: #677084;
     --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
     --label-w: 210px;
   }
   @media (prefers-color-scheme: dark) {
@@ -54,10 +54,20 @@
   svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 10px 12px; border-top: 1px solid var(--rule); font-size: 12px; color: var(--muted); }
   .legend i { display: inline-block; width: 18px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
-  .ww-tip { position: fixed; z-index: 10; max-width: 380px; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
+  .ww-tip { position: fixed; z-index: 10; max-width: min(380px, calc(100vw - 16px)); pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--rule);
     border-radius: 6px; box-shadow: 0 6px 20px rgba(10, 16, 28, 0.18); padding: 8px 10px; font-size: 12px; line-height: 1.55; }
   .ww-tip b { font-weight: 700; }
   .empty { padding: 40px; color: var(--muted); }
+  /* 手机：标签栏收窄（名字截断了点标签看全名），边距收小 */
+  @media (max-width: 640px) {
+    :root { --label-w: 112px; }
+    body { padding: 14px 10px 32px; }
+    h1 { font-size: 19px; }
+    .lab { padding: 0 6px; }
+    .lab.buff em { font-size: 10.5px; }
+  }
+  /* 触摸屏：按钮、下拉框够大好点；字号 16px，iPhone 聚焦时才不自动放大页面 */
+  @media (pointer: coarse) { button, select { min-height: 34px; font-size: 16px; } button { min-width: 40px; } }
 </style>
 </head>
 <body>
@@ -205,9 +215,9 @@
     L.style.height = H + 'px'
     L.innerHTML = R.map(r => {
       const pos = `style="top:${r.y}px;height:${r.h}px"`
-      if (r.k === 'buff') return `<div class="lab buff" ${pos} title="${WW.esc([r.b.buff, WW.buffEffect(M, r.b.buff), (M.buffInfo[r.b.buff] || {}).source].filter(Boolean).join('\n'))}"><span>${WW.esc(r.b.short)}</span><em>${r.b.uptime != null ? WW.pct(r.b.uptime) : ''}</em></div>`
+      if (r.k === 'buff') return `<div class="lab buff" ${pos} data-tip="${WW.esc([`<b>${WW.esc(r.b.buff)}</b> → ${WW.esc(r.b.target)}`, WW.buffEffect(M, r.b.buff), (M.buffInfo[r.b.buff] || {}).source].filter(Boolean).map((t, k) => (k ? WW.attr(t) : t)).join('<br>'))}"><span>${WW.esc(r.b.short)}</span><em>${r.b.uptime != null ? WW.pct(r.b.uptime) : ''}</em></div>`
       const sw = r.k === 'char' || r.k === 'res' ? `<i class="sw" style="--c:var(--c${r.i})"></i>` : ''
-      return `<div class="lab${r.k === 'group' ? ' group' : ''}" ${pos}><b>${sw}${WW.esc(r.label)}</b>${r.sub ? `<small>${WW.esc(r.sub)}</small>` : ''}</div>`
+      return `<div class="lab${r.k === 'group' ? ' group' : ''}" ${pos}${r.sub ? ` data-tip="${WW.esc(`<b>${WW.esc(r.label)}</b><br>${WW.esc(r.sub)}`)}"` : ''}><b>${sw}${WW.esc(r.label)}</b>${r.sub ? `<small>${WW.esc(r.sub)}</small>` : ''}</div>`
     }).join('')
   }
   function show(v) {
@@ -223,11 +233,13 @@
   $('zin').addEventListener('click', () => { ppf *= 1.5; render() })
   $('zout').addEventListener('click', () => { ppf /= 1.5; render() })
   for (const id of ['onlyDmg', 'showRes']) $(id).addEventListener('change', render)
-  WW.tips(sc)
+  WW.tips(document.body)
   const first = String(WW.defaultLoop(M) ?? 'all')
   $('loopSel').value = first
   show(first)
-  addEventListener('resize', () => show($('loopSel').value))
+  // 只在宽度变了时重新适应：手机上滚动时地址栏伸缩也会发 resize，不该把缩放打回去
+  let lastW = innerWidth
+  addEventListener('resize', () => { if (innerWidth !== lastW) { lastW = innerWidth; show($('loopSel').value) } })
 })()
 </script>
 </body>

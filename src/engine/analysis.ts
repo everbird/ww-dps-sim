@@ -24,7 +24,8 @@ export interface Basis { label: string; lo: number; hi: number; damage: number; 
 export function basisOf(res: SimResult): Basis {
   const s = res.summary
   if (s.steady && s.perLoop) {
-    const lo = s.perLoop[s.steady.from - 1]!.start
+    // 按轮号找稳态第一轮：有启动轴时 perLoop[0] 是第 0 轮，不能按下标算（否则窗口错一轮）
+    const lo = s.perLoop.find(p => p.loop === s.steady!.from)!.start
     const label = `稳态（第 ${s.steady.from}${s.steady.to > s.steady.from ? `–${s.steady.to}` : ''} 轮）`
     return { label, lo, hi: lo + s.steady.frames, damage: s.steady.damage, dps: s.steady.dps }
   }

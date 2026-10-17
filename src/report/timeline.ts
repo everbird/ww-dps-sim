@@ -4,6 +4,8 @@ import type { Scenario } from '../data/scenario.schema'
 import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments } from '../engine/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 
+export type TimelineModel = ReturnType<typeof timelineModel>
+
 export const DATA_TAG = '<script id="timeline-data" type="application/json">null</script>'
 
 /** 网页要的数据：仿真结果，加上画图用的队伍、敌人、排轴原文与各动作的类别（事件日志里没有的） */

@@ -118,6 +118,7 @@ export interface Build {
   est: number                               // 快速重算的估计
   dps: number | null                        // 完整仿真（null：没验证或运行出错）
   error?: string
+  current?: true                            // 和现在身上的那套一样（同样 5 件、同样的首位）
 }
 
 export interface OptimizeResult {
@@ -131,6 +132,9 @@ export interface OptimizeResult {
   builds: Build[]                           // 按完整仿真的 DPS 从高到低
   notes: string[]
 }
+
+/** 一遍搜索里最多快速重算多少套（每套约 1 毫秒，M0 代表轴）：超过就少留预筛的件数 */
+export const MAX_EVAL = 40_000
 
 const baseName = (n: string) => (n.startsWith('异相·') ? n.slice(3) : n)
 const keyOf = (b: readonly InvPiece[]) => [b[0]!.id, ...b.slice(1).map(p => p.id).sort()].join('|')
@@ -160,6 +164,36 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   const mains = pool.filter(p => baseName(p.name) === baseName(main))
   if (mains.length === 0) throw new Error(`库存里没有可用的首位声骸"${main}"（首位声骸不变，轴里的 Q 是它的技能）`)
 
+  // 5 件都要计入套装时，别的套装的件用不上：不进预筛、不进逐件替换
+  const planTotal = Object.values(plan).reduce((a, b) => a + b, 0)
+  const usable = planTotal >= 5 ? pool.filter(p => p.set in plan) : pool
+  let shrunk = false
+  /** 首位 × 其余 4 件的全部组合（cost ≤ 12、套装件数够；凑不齐套装的分支提前剪掉），每套调用 fn；fn 为 null 时只计数 */
+  const enumerate = (ms: readonly InvPiece[], kept: readonly InvPiece[], fn: ((b: InvPiece[]) => void) | null): number => {
+    let n = 0
+    const sets = Object.keys(plan)
+    for (const c1 of ms) {
+      const rest = kept.filter(p => p.id !== c1.id)
+      const cnt: Record<string, number> = Object.fromEntries(sets.map(x => [x, x === c1.set ? 1 : 0]))
+      const pick: InvPiece[] = []
+      const dfs = (from: number, cost: number) => {
+        let need = 0
+        for (const x of sets) need += Math.max(0, plan[x]! - cnt[x]!)
+        if (need > 4 - pick.length) return
+        if (pick.length === 4) { n++; fn?.([c1, ...pick]); return }
+        for (let i = from; i < rest.length; i++) {
+          const p = rest[i]!
+          if (cost + p.cost > 12) continue
+          pick.push(p); if (p.set in cnt) cnt[p.set]!++
+          dfs(i + 1, cost + p.cost)
+          pick.pop(); if (p.set in cnt) cnt[p.set]!--
+        }
+      }
+      dfs(0, c1.cost)
+    }
+    return n
+  }
+
   const valid = (b: readonly InvPiece[]): boolean => {
     if (b.reduce((a, p) => a + p.cost, 0) > 12) return false
     if (new Set(b.map(p => p.id)).size !== b.length) return false
@@ -187,28 +221,19 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
     }
     const score = (p: InvPiece) => Object.entries(totalsOf([p])).reduce((a, [k, v]) => a + (grad[k as StatKey] ?? 0) * v!, 0)
     const buckets = new Map<string, InvPiece[]>()
-    for (const p of pool) {
+    for (const p of usable) {
       const k = `${p.cost}|${p.set in plan ? p.set : ''}`
       buckets.set(k, [...(buckets.get(k) ?? []), p])
     }
-    const kept = [...buckets.values()].flatMap(l => [...l].sort((a, b) => score(b) - score(a)).slice(0, keep))
-    const keptMains = [...mains].sort((a, b) => score(b) - score(a)).slice(0, keep)
+    const sortedBuckets = [...buckets.values()].map(l => [...l].sort((a, b) => score(b) - score(a)))
+    const sortedMains = [...mains].sort((a, b) => score(b) - score(a))
+    // 预筛留几件：组合数（剪枝后的）超过 MAX_EVAL 就逐步少留，免得库存大时一跑几小时；逐件替换仍看全部可用的件
+    let k = keep
+    for (; k > 2; k--) if (enumerate(sortedMains.slice(0, k), sortedBuckets.flatMap(l => l.slice(0, k)), null) <= MAX_EVAL) break
+    if (k < keep && !shrunk) { shrunk = true; notes.push(`库存较大，预筛每类只留 ${k} 件（原 ${keep}），组合数控制在 ${MAX_EVAL.toLocaleString('en-US')} 以内；逐件替换仍看全部可用的件`) }
     // 枚举：首位 × 其余 4 件的组合（cost ≤ 12、套装件数够）
     const cand: Build[] = []
-    const push = (b: InvPiece[]) => { cand.push({ pieces: b, est: est(b), dps: null }) }
-    for (const c1 of keptMains) {
-      const rest = kept.filter(p => p.id !== c1.id)
-      const pick: InvPiece[] = []
-      const dfs = (from: number, cost: number) => {
-        if (pick.length === 4) { const b = [c1, ...pick]; if (valid(b)) push(b); return }
-        for (let i = from; i < rest.length; i++) {
-          const p = rest[i]!
-          if (cost + p.cost > 12) continue
-          pick.push(p); dfs(i + 1, cost + p.cost); pick.pop()
-        }
-      }
-      dfs(0, c1.cost)
-    }
+    enumerate(sortedMains.slice(0, k), sortedBuckets.flatMap(l => l.slice(0, k)), b => { cand.push({ pieces: b, est: est(b), dps: null }) })
     cand.sort((a, b) => b.est - a.est)
     // 逐件替换：从估计最好的几套出发，每个位置换成库存里任意一件（不只预筛留下的），有提升就换，直到不再提升
     const seeds = cand.slice(0, Math.max(top * 2, 6))
@@ -217,7 +242,7 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
       for (;;) {
         let best: InvPiece[] | null = null, bestEst = curEst
         for (let i = 0; i < 5; i++) {
-          for (const p of i === 0 ? mains : pool) {
+          for (const p of i === 0 ? mains : usable) {
             if (cur.some(x => x.id === p.id)) continue
             const b = cur.map((x, j) => (j === i ? p : x))
             if (!valid(b)) continue
@@ -252,7 +277,14 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
     search(buildReplayer(run1.r, run1.res, run1.recs, o.slot))
     verified += verify(top * 2)
   }
+  // 和现在身上的一样：首位相同、其余按内容（名字、套装、词条）比，顺序不论
+  const sig = (p: { name: string; set: string; main: Totals; subs: Totals }) =>
+    JSON.stringify([baseName(p.name), p.set, Object.entries(p.main).sort(), Object.entries(p.subs).sort()])
+  const now = member.echoes.map(sig)
+  const isCurrent = (b: readonly InvPiece[]) => b.length === now.length && sig(b[0]!) === now[0] &&
+    JSON.stringify(b.slice(1).map(sig).sort()) === JSON.stringify(now.slice(1).sort())
   const builds = [...found.values()].filter(b => b.dps !== null).sort((a, b) => b.dps! - a.dps!).slice(0, top)
+    .map(b => (isCurrent(b.pieces) ? { ...b, current: true as const } : b))
   const off = builds.filter(b => Math.abs(b.est - b.dps!) / b.dps! > 0.005)
   if (off.length) notes.push(`有 ${off.length} 套的估计与完整仿真差超过 0.5%（多半是共鸣效率或套装改变了出招时机）；排名以完整仿真为准`)
   const failed = [...found.values()].filter(b => b.error !== undefined)

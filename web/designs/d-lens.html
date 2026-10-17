@@ -15,7 +15,7 @@
     --stop: rgba(230, 233, 239, 0.05); --alert: #f0616a; --wait: #e8a94c; --cursor: #f2f4f8;
     --el-havoc: #d86aa4; --el-glacio: #5fa9ea; --el-spectro: #dcb94b; --el-fusion: #ec7e55; --el-electro: #a584f2; --el-aero: #52c6a5; --el-physical: #9aa3b7;
     --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
@@ -30,7 +30,11 @@
   .loops button.on { color: var(--bg); background: var(--ink); border-color: var(--ink); }
   .ov { padding: 8px 16px 10px; border-bottom: 1px solid var(--rule); }
   .ov .hint { font-size: 11.5px; color: var(--faint); margin-bottom: 4px; }
-  #ov { cursor: crosshair; user-select: none; }
+  /* 导航图与主图自己处理拖动：横向拖归页面（选范围、拖光标），竖向仍是滚动；长按不弹选字 */
+  #ov { cursor: crosshair; }
+  #ov, #lens { touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  .zoom { margin-left: auto; display: flex; gap: 4px; }
+  .zoom button { font: inherit; font-size: 13px; line-height: 1; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
   .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
   .legend b { color: var(--ink); font-weight: 500; font-size: 12px; }
   #ovLegend { display: flex; gap: 12px; }
@@ -41,8 +45,7 @@
   .buffs li span i { display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--c); margin-right: 6px; vertical-align: 1px; }
   .buffs li b { font-weight: 400; color: var(--muted); font-size: 11.5px; text-align: right; }
   .small { margin: 0; font-size: 11.5px; color: var(--faint); }
-  .main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
-  @media (max-width: 1000px) { .main { grid-template-columns: minmax(0, 1fr); } .side { border-left: 0; border-top: 1px solid var(--rule); } }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
   .lens { overflow: auto; position: relative; }
   .side { border-left: 1px solid var(--rule); background: var(--panel); display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
   .insp { overflow: auto; padding: 14px 16px; display: grid; gap: 14px; align-content: start; }
@@ -104,13 +107,37 @@
   svg { display: block; }
   svg text { font-family: var(--sans); font-size: 12.5px; fill: var(--ink); }
   svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
-  .ww-tip { position: fixed; z-index: 10; max-width: 360px; pointer-events: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 12px; }
+  .ww-tip { position: fixed; z-index: 30; max-width: min(360px, calc(100vw - 16px)); pointer-events: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  /* 手机上的步进条：固定在屏幕底部（看主图、看检查器时都够得着）；完整的上一个 / 下一个在下方步进区 */
+  .mbar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; grid-template-columns: 44px minmax(0, 1fr) auto 44px; gap: 8px; align-items: center;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--rule); box-shadow: 0 -10px 28px rgba(0, 0, 0, .5); }
+  .mbar button { height: 44px; font-size: 15px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 6px; padding: 0; }
+  .mbar select { height: 36px; font: inherit; font-size: 16px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 6px; padding: 0 6px; }
+  #mnow { min-width: 0; line-height: 1.3; font-size: 12px; color: var(--muted); }
+  #mnow b { font: 500 16px var(--mono); color: var(--ink); }
+  #mnow span { display: block; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 760px) {
+    html, body { height: auto; }
+    .app { display: block; height: auto; min-height: 0; padding-bottom: 80px; }
+    .main { display: block; }
+    .side { display: block; border-left: 0; border-top: 1px solid var(--rule); }
+    .lens { overflow: hidden; }
+    .mbar { display: grid; }
+  }
+  /* 触摸屏：按钮、下拉框够大好点；字号 16px，iPhone 聚焦时才不自动放大页面；悬停样式只给鼠标 */
+  @media (pointer: coarse) {
+    .loops button, .zoom button { min-height: 32px; padding: 2px 12px; }
+    .stepper select { font-size: 16px; }
+    .help { width: 26px; height: 26px; font-size: 13px !important; line-height: 24px !important; }
+    .bsum { padding: 8px 10px; }
+  }
+  @media (hover: none) { .track button.tr:hover { background: transparent; } .stepper button:hover { border-color: var(--rule); } }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="top"><h1 id="title"></h1><div id="kpi" style="display:flex;gap:22px;flex-wrap:wrap"></div><div class="loops" id="loops"></div></div>
-  <div class="ov"><div class="legend"><b>全程导航</b><span id="ovLegend"></span><button type="button" class="help" aria-label="全程导航说明" data-help="全程导航：在这里拖动选范围，斜线连到的就是下方放大的那一段；它和下方不对齐，要对着看用主图里的“每秒伤害”。&#10;柱高：这一秒（世界秒）造成的伤害，按角色叠起来；时停里的伤害也算在那一秒。悬停一根柱子看这一秒伤害来自谁、哪个动作。&#10;下方细条：谁在前台。">i</button></div><svg id="ov"></svg></div>
+  <div class="ov"><div class="legend"><b>全程导航</b><span id="ovLegend"></span><button type="button" class="help" aria-label="全程导航说明" data-help="全程导航：在这里拖动选范围（鼠标、手指都行），点一下把视窗挪到那里；斜线连到的就是下方放大的那一段。右边 − ＋ 缩放视窗；触摸屏也可以在主图上双指捏合。&#10;它和下方不对齐，要对着看用主图里的“每秒伤害”。&#10;柱高：这一秒（世界秒）造成的伤害，按角色叠起来；时停里的伤害也算在那一秒。主图里悬停（触摸屏点）一根柱子，看这一秒伤害来自谁、哪个动作。&#10;下方细条：谁在前台。">i</button><span class="zoom"><button type="button" id="zout" aria-label="缩小视窗">−</button><button type="button" id="zin" aria-label="放大视窗">＋</button></span></div><svg id="ov" data-own-tap></svg></div>
   <div class="main">
     <div class="lens" id="lens"></div>
     <aside class="side">
@@ -125,13 +152,19 @@
             <option value="hit">命中</option><option value="action">动作开始</option><option value="switch">切人</option>
             <option value="sec">战斗秒</option><option value="frame">一帧</option>
           </select> 步进</label>
-          <button type="button" class="help" aria-label="操作说明" data-help="步进：◀ ▶ 或键盘 ← →，按所选单位前后移动；Shift + ← → 按 1 战斗秒；, . 按 1 帧。&#10;上下两行是上一个、下一个会跳到哪，点它们也能跳。&#10;点时间轴锁定光标，再点一下或按 Esc 解锁；步进时自动锁定，走出范围时视窗跟着平移。">i</button>
+          <button type="button" class="help" aria-label="操作说明" data-help="步进：◀ ▶ 或键盘 ← →，按所选单位前后移动；Shift + ← → 按 1 战斗秒；, . 按 1 帧。&#10;上下两行是上一个、下一个会跳到哪，点它们也能跳。&#10;鼠标：光标跟着鼠标走；点时间轴锁定光标，再点一下或按 Esc 解锁。步进时自动锁定，走出范围时视窗跟着平移。&#10;触摸屏：点时间轴放光标，单指横拖移动光标，双指捏合缩放、平移视窗；手机上步进条在屏幕底部。">i</button>
         </div>
         <div class="track" id="track"></div>
       </div>
       <div class="insp" id="insp"></div>
     </aside>
   </div>
+</div>
+<div class="mbar" id="mbar">
+  <button type="button" data-dir="-1" aria-label="上一个">◀</button>
+  <div id="mnow"></div>
+  <select id="mmode" aria-label="步进单位"></select>
+  <button type="button" data-dir="1" aria-label="下一个">▶</button>
 </div>
 <script id="timeline-data" type="application/json">null</script>
 <script>/*@shared*/</script>
@@ -145,6 +178,8 @@
   $('kpi').innerHTML = [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)]].filter(Boolean).map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
   let range = [0, D.lastF], cursor = null, locked = false
   const MODE_NAME = { hit: '命中', action: '动作开始', switch: '切人', sec: '战斗秒', frame: '一帧' }
+  // 触摸屏没有悬停：光标只跟手指走，不分"锁定"
+  const TOUCH = WW.touchOnly()
   // 每种单位的步点：帧 → 这一帧上的事件说明（同一帧可能有几段命中、几个动作）
   function stopsOf(items, frameOf, text) {
     const m = new Map()
@@ -178,28 +213,38 @@
   /** 步进区：顶部是时间与锁定状态；下面三行是上一个、当前、下一个（上下两行点了就跳） */
   function track(f) {
     const mode = $('mode').value, g = Math.round(f)
-    $('now').innerHTML = `<b>${D.clock.secAt(f).toFixed(2)}</b><span>战斗秒，第 ${g} 帧${locked ? '，已锁定' : ''}</span>`
+    $('now').innerHTML = `<b>${D.clock.secAt(f).toFixed(2)}</b><span>战斗秒，第 ${g} 帧${locked && !TOUCH ? '，已锁定' : ''}</span>`
     const side = dir => {
       const t = targetOf(dir, mode, f)
       const arrow = dir < 0 ? '◂' : '▸'
       return t === null ? `<div class="tr"><i>${arrow}</i><span>${dir < 0 ? '前面' : '后面'}没有了</span><b></b></div>`
         : `<button type="button" class="tr" data-dir="${dir}"><i>${arrow}</i><span>${WW.esc(brief(mode, t))}</span><b>${delta(f, t)}</b></button>`
     }
-    let cur
-    if (mode === 'frame' || mode === 'sec') cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span></div><ul><li><b>${mode === 'frame' ? `第 ${g} 帧` : `战斗 ${D.clock.secAt(g).toFixed(2)} 秒`}</b></li></ul>`
-    else {
+    let cur, short   // short：手机底部步进条上的一行
+    if (mode === 'frame' || mode === 'sec') {
+      cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span></div><ul><li><b>${mode === 'frame' ? `第 ${g} 帧` : `战斗 ${D.clock.secAt(g).toFixed(2)} 秒`}</b></li></ul>`
+      short = `按${MODE_NAME[mode]}步进`
+    } else {
       const st = STOPS[mode], xs = st.at.get(g)
       if (!xs) {
         const n = st.frames.filter(x => x < g).length
         cur = `<div class="what"><span>不在${MODE_NAME[mode]}上</span><span>第 ${n} 与第 ${n + 1} 个之间</span></div>`
+        short = `不在${MODE_NAME[mode]}上（第 ${n}–${n + 1} 个之间）`
       } else {
-        cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span><span>第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个</span></div>
+        const k = `第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个`
+        cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span><span>${k}</span></div>
           <ul>${xs.map(x => `<li style="color:var(--c${x.slot})"><b>${WW.esc(x.main)}</b><em>${WW.esc(x.sub)}</em></li>`).join('')}</ul>`
+        short = `<i style="font-style:normal;color:var(--c${xs[0].slot})">${WW.esc(brief(mode, g))}</i> · ${k}`
       }
     }
     $('track').innerHTML = side(-1) + `<div class="tr cur" style="display:block">${cur}</div>` + side(1)
+    $('mnow').innerHTML = `<b>${D.clock.secAt(f).toFixed(2)}</b> 秒 · 第 ${g} 帧<span>${short}</span>`
   }
   $('track').addEventListener('click', e => { const b = e.target.closest('[data-dir]'); if (b) stepTo(+b.dataset.dir, $('mode').value) })
+  // 手机的底部步进条：箭头同 ◀ ▶，步进单位与 #mode 同步
+  $('mmode').innerHTML = $('mode').innerHTML
+  $('mbar').addEventListener('click', e => { const b = e.target.closest('[data-dir]'); if (b) stepTo(+b.dataset.dir, $('mode').value) })
+  $('mmode').addEventListener('change', () => { $('mode').value = $('mmode').value; lens(); inspect() })
 
   // 说明图标：鼠标悬停显示，点一下钉住 / 收起（触摸屏用点）；内容在 data-help
   const helpPop = document.createElement('div'); helpPop.className = 'helpPop'; helpPop.hidden = true; document.body.appendChild(helpPop)
@@ -217,6 +262,10 @@
     if (!btn || btn === helpPinned) { helpPinned = null; helpPop.hidden = true; return }
     helpPinned = btn; btn.classList.add('on'); showHelp(btn)
   })
+  // 按在别处、滚动时收起（iPhone 上点在不可点的地方不一定有 click）
+  const unpin = () => { if (helpPinned) { helpPinned.classList.remove('on'); helpPinned = null; helpPop.hidden = true } }
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('.help')) unpin() })
+  document.addEventListener('scroll', unpin, { capture: true, passive: true })
   if (matchMedia('(hover: hover)').matches) {
     document.addEventListener('mouseover', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) showHelp(btn) })
     document.addEventListener('mouseout', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) helpPop.hidden = true })
@@ -253,37 +302,70 @@
     return out
   }
 
-  // ---- 概览：全程导航（不和下方对齐；选中的范围用两条斜线连到主图两端） ----
-  function overview() {
+  // 主图的几何：宽度跟着框走（手机上也不横向滚动，手势才不和滚动抢）；窄的时候左边标签栏收窄
+  const geom = () => { const W = Math.max(300, $('lens').clientWidth - 2), narrow = W < 600; return { W, narrow, padL: narrow ? 66 : 92 } }
+
+  // ---- 概览：全程导航（不和下方对齐；选中的范围用两条斜线连到主图两端）。sel：拖动中临时的选框 ----
+  function overview(sel = range) {
     const svg = $('ov'), W = svg.parentElement.clientWidth - 32, H = 92
     svg.setAttribute('width', W); svg.setAttribute('height', H)
     const x = f => (f / D.lastF) * W
     const out = bars(x, x, 4, 40, 0, D.lastF)
     for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="48" width="${Math.max(1, x(o.end) - x(o.start))}" height="6" style="fill:var(--c${o.i})"/>`)
     for (const l of D.loops) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="0" y2="58" style="stroke:var(--faint);stroke-dasharray:3 3"/><text class="num" x="${x(l.f) + 3}" y="66">${l.loop === 0 ? '启动' : l.loop}</text>`)
-    const a = x(range[0]), b = x(range[1])
+    const a = x(sel[0]), b = x(sel[1])
     out.push(`<rect x="${a}" y="0" width="${Math.max(2, b - a)}" height="58" style="fill:var(--cursor);fill-opacity:.07;stroke:var(--cursor);stroke-opacity:.7;pointer-events:none"/>`)
-    // 放大关系：选框两端斜着连到下方主图的左右两端（主图从 92 像素起画）
-    const L = 92 - 16, R = Math.min(W, $('lens').clientWidth - 12 - 16)
+    // 放大关系：选框两端斜着连到下方主图的左右两端（主图从左边标签栏之后起画）
+    const L = geom().padL - 16, R = Math.min(W, $('lens').clientWidth - 12 - 16)
     out.push(`<path d="M${a} 58 L${L} ${H} M${b} 58 L${R} ${H}" style="stroke:var(--cursor);stroke-opacity:.45;fill:none"/>`, `<path d="M${a} 58 L${b} 58 L${R} ${H} L${L} ${H} Z" style="fill:var(--cursor);fill-opacity:.04;pointer-events:none"/>`)
     svg.innerHTML = out.join('')
   }
   $('ovLegend').innerHTML = names.map((n, k) => `<span><i style="background:var(--c${k})"></i>${WW.esc(n)}</span>`).join('')
-  // 拖动选范围
-  let drag = null
-  $('ov').addEventListener('mousedown', e => { const W = $('ov').clientWidth; drag = (e.offsetX / W) * D.lastF })
-  addEventListener('mouseup', e => {
-    if (drag === null) return
-    const W = $('ov').clientWidth, f = (Math.max(0, Math.min(W, e.clientX - $('ov').getBoundingClientRect().left)) / W) * D.lastF
-    const a = Math.min(drag, f), b = Math.max(drag, f); drag = null
-    if (b - a > 30) { range = [a, b]; markLoop(null); draw() }
+  /** 换视窗（导航、缩放、捏合）：光标出了视窗就放到中间 */
+  function setRange(lo, w) {
+    w = Math.max(60, Math.min(D.lastF, w)); lo = Math.max(0, Math.min(D.lastF - w, lo))
+    range = [lo, lo + w]; markLoop(null)
+    if (cursor === null || cursor < range[0] || cursor > range[1]) cursor = lo + w / 2
+  }
+  // 拖动选范围（鼠标、手指都行；松开在框外也算），点一下把视窗挪到那里（宽度不变）
+  const ovF = clientX => { const r = $('ov').getBoundingClientRect(); return Math.max(0, Math.min(D.lastF, ((clientX - r.left) / r.width) * D.lastF)) }
+  let brush = null
+  $('ov').addEventListener('pointerdown', e => {
+    if (e.button > 0) return
+    brush = { id: e.pointerId, x0: e.clientX, f0: ovF(e.clientX), moved: false }
+    $('ov').setPointerCapture(e.pointerId)
   })
+  $('ov').addEventListener('pointermove', e => {
+    if (!brush || e.pointerId !== brush.id) return
+    if (!brush.moved && Math.abs(e.clientX - brush.x0) < 6) return
+    brush.moved = true
+    const f = ovF(e.clientX); overview([Math.min(brush.f0, f), Math.max(brush.f0, f)])
+  })
+  $('ov').addEventListener('pointerup', e => {
+    if (!brush || e.pointerId !== brush.id) return
+    const b = brush, f = ovF(e.clientX); brush = null
+    if (!b.moved) setRange(f - (range[1] - range[0]) / 2, range[1] - range[0])
+    else if (Math.abs(f - b.f0) > 30) setRange(Math.min(b.f0, f), Math.abs(f - b.f0))
+    draw()
+  })
+  $('ov').addEventListener('pointercancel', () => { brush = null; overview() })
+  // 缩放视窗：以光标（不在视窗里时以中间）为中心
+  function zoom(k) {
+    const w = range[1] - range[0], c = cursor !== null && cursor >= range[0] && cursor <= range[1] ? cursor : range[0] + w / 2
+    const nw = Math.max(60, Math.min(D.lastF, w * k))
+    setRange(c - (c - range[0]) * (nw / w), nw); draw()
+  }
+  $('zin').addEventListener('click', () => zoom(1 / 1.5))
+  $('zout').addEventListener('click', () => zoom(1.5))
 
   // ---- 透镜：每秒伤害（与主图对齐）+ 每人一条大泳道 + 敌人量表 ----
-  const LANE = 76, DPS_H = 56
+  const LANE = 76
+  let G = { padL: 92, ppf: 1, W: 0 }   // 上一次画主图的几何：指针换算帧用
+  const xOf = f => G.padL + (f - range[0]) * G.ppf
   function lens() {
-    const host = $('lens'), W = Math.max(500, host.clientWidth - 2), padL = 92
+    const host = $('lens'), { W, narrow, padL } = geom(), DPS_H = narrow ? 44 : 56
     const ppf = (W - padL - 12) / Math.max(60, range[1] - range[0])
+    G = { padL, ppf, W }
     const x = f => padL + (f - range[0]) * ppf
     const vis = (a, b) => b > range[0] && a < range[1]
     const hasEnemy = M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)
@@ -295,12 +377,13 @@
     for (let s = Math.ceil(D.clock.secAt(range[0]) / step) * step; s <= D.clock.secAt(range[1]); s += step) {
       const fx = x(D.clock.frameAt(s)); out.push(`<line x1="${fx}" x2="${fx}" y1="22" y2="${H}" style="stroke:var(--grid)"/><text class="num" x="${fx + 3}" y="16">${s}s</text>`)
     }
-    out.push(`<text x="12" y="44" style="fill:var(--muted);font-size:12px">每秒伤害</text><text x="12" y="60" style="fill:var(--faint);font-size:11px">与下方对齐</text>`)
+    const lx = narrow ? 8 : 12   // 左边标签的起点
+    out.push(`<text x="${lx}" y="44" style="fill:var(--muted);font-size:12px">每秒伤害</text><text x="${lx}" y="60" style="fill:var(--faint);font-size:11px">与下方对齐</text>`)
     out.push(...bars(f => Math.max(padL, x(f)), f => Math.min(W - 12, x(f)), 30, DPS_H - 8, range[0], range[1]))
     out.push(`<line x1="0" x2="${W}" y1="${top0 - 2}" y2="${top0 - 2}" style="stroke:var(--rule)"/>`)
     names.forEach((n, i) => {
       const y = top0 + i * LANE, c = `var(--c${i})`
-      out.push(`<text x="12" y="${y + 26}" style="font-weight:500;fill:${c}">${WW.esc(n)}</text>`, `<line x1="0" x2="${W}" y1="${y + LANE - 4}" y2="${y + LANE - 4}" style="stroke:var(--rule)"/>`)
+      out.push(`<text x="${lx}" y="${y + 26}" style="font-weight:500;fill:${c}">${WW.esc(n)}</text>`, `<line x1="0" x2="${W}" y1="${y + LANE - 4}" y2="${y + LANE - 4}" style="stroke:var(--rule)"/>`)
       for (const o of D.onField) if (o.i === i && vis(o.start, o.end)) out.push(`<rect x="${Math.max(padL, x(o.start))}" y="${y}" width="${Math.max(1, x(o.end) - Math.max(padL, x(o.start)))}" height="3" style="fill:${c}"/>`)
       const lanes = [-1e9, -1e9]
       for (const a of D.actions) if (a.i === i && vis(a.start, a.end)) {
@@ -318,8 +401,8 @@
     })
     if (hasEnemy) {
       const y = top0 + names.length * LANE, top = y + 14, h = 50, en = M.enemy
-      out.push(`<text x="12" y="${y + 24}" style="fill:var(--muted)">敌人</text>`,
-        `<text x="12" y="${y + 42}" style="fill:var(--alert);font-size:11.5px">— 偏谐值</text>`, `<text x="12" y="${y + 58}" style="fill:var(--el-physical);font-size:11.5px">— 白条</text>`)
+      out.push(`<text x="${lx}" y="${y + 24}" style="fill:var(--muted)">敌人</text>`,
+        `<text x="${lx}" y="${y + 42}" style="fill:var(--alert);font-size:11.5px">— 偏谐值</text>`, `<text x="${lx}" y="${y + 58}" style="fill:var(--el-physical);font-size:11.5px">— 白条</text>`)
       const stepP = (key, max) => { let d = `M${x(range[0])} ${top + h - (key === 'whiteBar' ? h : 0)}`; for (const hit of D.hits) if (hit.enemy) d += ` H${Math.max(padL, x(hit.f))} V${top + h - h * Math.min(1, hit.enemy[key] / max)}`; return d + ` H${x(range[1])}` }
       if (en.whiteBarTough > 0) out.push(`<path d="${stepP('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.4"/>`)
       if (en.tunabilityMax > 0) out.push(`<path d="${stepP('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.6"/>`)
@@ -332,18 +415,73 @@
       if (mode === 'action') for (const a of D.actions) { if (a.start === g) out.push(`<rect x="${Math.max(padL, x(a.start)) - 2}" y="${top0 + a.i * LANE + 6}" width="${Math.max(6, x(a.end) - Math.max(padL, x(a.start))) + 4}" height="32" rx="4" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
       if (mode === 'switch') for (const e of D.switches) { if (e.f === g) out.push(`<path d="M${x(g) - 7} 22 l14 0 l-7 10 z" style="fill:var(--cursor)"/>`) }
     }
-    if (cursor !== null && vis(cursor, cursor + 1)) out.push(`<line x1="${x(cursor)}" x2="${x(cursor)}" y1="22" y2="${H}" style="stroke:var(--cursor);stroke-width:1;${locked ? '' : 'stroke-dasharray:4 3'};pointer-events:none"/>`)
+    if (cursor !== null && vis(cursor, cursor + 1)) out.push(`<line id="cur" x1="${x(cursor)}" x2="${x(cursor)}" y1="22" y2="${H}" style="${cursorStyle()}"/>`)
     host.innerHTML = `<svg width="${W}" height="${H}" id="lsvg">${out.join('')}</svg>`
-    const svg = $('lsvg')
-    svg.addEventListener('mousemove', e => { if (locked) return; const f = range[0] + (e.offsetX - padL) / ppf; if (f >= range[0] && f <= range[1]) { cursor = f; moveCursor(x(f)); inspect() } })
-    svg.addEventListener('click', e => { const f = range[0] + (e.offsetX - padL) / ppf; cursor = Math.max(range[0], Math.min(range[1], f)); locked = !locked; lens(); inspect() })
   }
-  // 光标只挪那一条线，不重画整张图（悬停提示才不会闪）
+  const cursorStyle = () => `stroke:var(--cursor);stroke-width:1;${locked ? '' : 'stroke-dasharray:4 3'};pointer-events:none`
+  // 光标只挪那一条线，不重画整张图（悬停提示才不会闪、拖动才跟手）
   function moveCursor(px) {
     const svg = $('lsvg'); let ln = svg.querySelector('#cur')
-    if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); ln.id = 'cur'; ln.setAttribute('y1', 22); ln.setAttribute('y2', svg.getAttribute('height')); ln.setAttribute('style', 'stroke:var(--cursor);stroke-dasharray:4 3;pointer-events:none'); svg.appendChild(ln) }
-    ln.setAttribute('x1', px); ln.setAttribute('x2', px)
+    if (!ln) { ln = document.createElementNS('http://www.w3.org/2000/svg', 'line'); ln.id = 'cur'; ln.setAttribute('y1', 22); ln.setAttribute('y2', svg.getAttribute('height')); svg.appendChild(ln) }
+    ln.setAttribute('style', cursorStyle()); ln.setAttribute('x1', px); ln.setAttribute('x2', px)
   }
+
+  // 主图的指针（按下挂在不重画的外框上）。鼠标：光标跟着走，点一下锁定 / 解锁（同以前）。
+  // 触摸：点一下放光标；单指横拖移动光标（竖拖仍是滚动，见 touch-action）；双指捏合缩放、平移视窗。
+  // 手指的移动、抬起听 window：捏合时主图会重画，手指也可能移出主图
+  const LZ = $('lens')
+  const lensF = clientX => range[0] + (clientX - LZ.getBoundingClientRect().left + LZ.scrollLeft - G.padL) / G.ppf
+  const inRange = f => Math.max(range[0], Math.min(range[1], f))
+  let frame = 0
+  const soon = fn => { cancelAnimationFrame(frame); frame = requestAnimationFrame(fn) }
+  const fingers = new Map()
+  let gesture = null      // tap → scrub（横拖超过 8 像素）；两指按下就是 pinch，直到手指全抬起
+  let lastType = 'mouse'  // 最近一次在主图上按下的是什么：触摸点按之后浏览器补发的 click 不算鼠标点
+  LZ.addEventListener('pointerdown', e => {
+    lastType = e.pointerType
+    if (e.pointerType === 'mouse') return
+    fingers.set(e.pointerId, { x: e.clientX, x0: e.clientX })
+    if (fingers.size === 1) gesture = { kind: 'tap' }
+    else if (fingers.size === 2) {
+      const [a, b] = [...fingers.values()]
+      gesture = { kind: 'pinch', d0: Math.max(24, Math.abs(a.x - b.x)), w0: range[1] - range[0], fm: lensF((a.x + b.x) / 2) }
+    }
+  })
+  LZ.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse' || locked) return
+    const f = lensF(e.clientX)
+    if (f >= range[0] && f <= range[1]) { cursor = f; moveCursor(xOf(f)); inspect() }
+  })
+  addEventListener('pointermove', e => {
+    const p = fingers.get(e.pointerId); if (!p || !gesture) return
+    p.x = e.clientX
+    if (gesture.kind === 'pinch') {
+      if (fingers.size < 2) return
+      const [a, b] = [...fingers.values()], d = Math.max(24, Math.abs(a.x - b.x)), m = (a.x + b.x) / 2
+      const w = Math.max(60, Math.min(D.lastF, gesture.w0 * gesture.d0 / d))
+      setRange(gesture.fm - (m - LZ.getBoundingClientRect().left - G.padL) * w / (G.W - G.padL - 12), w)
+      soon(() => { overview(); lens(); inspect() })
+      return
+    }
+    if (gesture.kind === 'tap' && Math.abs(p.x - p.x0) > 8) gesture = { kind: 'scrub' }
+    if (gesture.kind === 'scrub') { cursor = inRange(lensF(p.x)); locked = true; moveCursor(xOf(cursor)); soon(inspect) }
+  })
+  const lift = (e, cancel) => {
+    const p = fingers.get(e.pointerId); if (!p) return
+    fingers.delete(e.pointerId)
+    if (fingers.size) return
+    const g = gesture; gesture = null
+    if (!g || cancel && g.kind === 'tap') return
+    if (g.kind === 'tap') { cursor = inRange(lensF(p.x)); locked = true }
+    lens(); inspect()
+    if (g.kind === 'pinch') overview()
+  }
+  addEventListener('pointerup', e => lift(e, false))
+  addEventListener('pointercancel', e => lift(e, true))
+  LZ.addEventListener('click', e => {
+    if (lastType !== 'mouse') return
+    cursor = inRange(lensF(e.clientX)); locked = !locked; lens(); inspect()
+  })
 
   // ---- 检查器：光标那一刻 ----
   function enemyAt(f) {
@@ -402,7 +540,8 @@
     for (const x of list) { const p = WW.buffParts(M, x.id, x.stacks); if (!p) continue; const k = sum.get(p.key) || { ...p, v: 0 }; k.v += p.v; sum.set(p.key, k) }
     const top = [...sum.values()].sort((a, b) => Math.abs(b.flat ? b.v / 1000 : b.v) - Math.abs(a.flat ? a.v / 1000 : a.v)).slice(0, 3)
       .map(p => `${p.name}${p.cond ? `（${p.cond}）` : ''} ${WW.signedVal(p.v, p.flat)}`).join('、')
-    const rows = list.map(x => `<li style="--c:${x.color}" title="${WW.esc((M.buffInfo[x.id] || {}).source || x.id)}"><span><i></i>${WW.esc(x.label)}${x.stacks > 1 ? ` ×${x.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, x.id, x.stacks) || '状态')}</b></li>`).join('')
+    // 每行的出处放进提示（鼠标悬停、触摸屏点一下都能看）
+    const rows = list.map(x => `<li style="--c:${x.color}" data-tip="${WW.esc(`<b>${WW.esc(x.id)}</b>${(M.buffInfo[x.id] || {}).source ? `<br>${WW.attr(M.buffInfo[x.id].source)}` : ''}`)}"><span><i></i>${WW.esc(x.label)}${x.stacks > 1 ? ` ×${x.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, x.id, x.stacks) || '状态')}</b></li>`).join('')
     return `<div class="bx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${noun} ${list.length} 个</b><span>${WW.esc(top)}</span><i>▸</i></button><ul class="buffs bpop">${rows}</ul></div>`
   }
   const canHover = matchMedia('(hover: hover)').matches
@@ -441,7 +580,7 @@
   }
   $('prev').addEventListener('click', () => stepTo(-1, $('mode').value))
   $('next').addEventListener('click', () => stepTo(1, $('mode').value))
-  $('mode').addEventListener('change', () => { lens(); inspect() })
+  $('mode').addEventListener('change', () => { $('mmode').value = $('mode').value; lens(); inspect() })
   addEventListener('keydown', e => {
     if (e.target && e.target.tagName === 'SELECT') return
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stepTo(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 'sec' : $('mode').value); e.preventDefault() }
@@ -454,7 +593,9 @@
   markLoop(l ? first : 'all')
   cursor = range[0] + (range[1] - range[0]) * 0.55
   draw()
-  addEventListener('resize', draw)
+  // 只在宽度变了时重画：手机上滚动时地址栏伸缩也会发 resize
+  let lastW = innerWidth
+  addEventListener('resize', () => { if (innerWidth !== lastW) { lastW = innerWidth; draw() } })
 })()
 </script>
 </body>

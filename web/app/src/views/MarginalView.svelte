@@ -1,7 +1,8 @@
 <!-- 副词条边际：给一个角色各加一档副词条重跑，按 DPS 增加排序（同 pnpm marginal，TD-10 §4） -->
 <script lang="ts">
   import { call } from '../api'
-  import { find, ofKind, teamOf } from '../docs.svelte'
+  import { find, ofKind } from '../docs.svelte'
+  import { teamOf } from '../peek'
   import { fmt, pct2, signed, statValue } from '../fmt'
   import type { Requests } from '../protocol'
 

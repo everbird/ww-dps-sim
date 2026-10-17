@@ -1,10 +1,11 @@
 // tests/web.test.ts —— 网页（web/app，TD-12）的 Worker 处理：浏览器里装配的 GameData 与 Node 侧相同；四种请求都能跑通。
 // vitest 认 Vite 的 import.meta.glob 与 ?raw，所以直接调用 handlers；依赖 data/generated（缺数据时跳过）。
 import { readFileSync } from 'node:fs'
-import { expect, test } from 'vitest'
+import { describe, expect, test } from 'vitest'
 import { loadGameData as nodeLoad } from '../src/data/load'
 import { loadGameData as webLoad } from '../web/app/src/gamedata'
 import { handlers } from '../web/app/src/handlers'
+import { setsOf, teamOf } from '../web/app/src/peek'
 import { dataDescribe } from './helpers/kernel-harness'
 
 const src = (f: string) => ({ name: f.replace(/^.*\//, ''), text: readFileSync(f, 'utf8') })
@@ -39,4 +40,14 @@ dataDescribe('网页的 Worker', () => {
     }
     await expect(handlers.design({ scenario: src('scenarios/m0-team.yaml'), file: 'x.html' })).rejects.toThrow(/没有设计模板/)
   }, 60000)
+})
+
+describe('网页：从 YAML 原文读候选', () => {
+  test('队伍：块写法、行内写法都认；写到一半解析不了时粗读', () => {
+    expect(teamOf('team:\n  - char: 椿\n    chain: 0\n  - { char: 散华, chain: 6 }\n  - char: 维里奈\n')).toEqual(['椿', '散华', '维里奈'])
+    expect(teamOf('team:\n  - char: 椿\n  - { char: 散华, chain: [\n')).toEqual(['椿', '散华'])
+  })
+  test('库存里的套装：去重', () => {
+    expect(setsOf('echoes:\n  - { name: a, set: 沉日劫明 }\n  - { name: b, set: 轻云出月 }\n  - { name: c, set: 沉日劫明 }\n')).toEqual(['沉日劫明', '轻云出月'])
+  })
 })
