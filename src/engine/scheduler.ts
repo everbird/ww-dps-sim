@@ -6,6 +6,7 @@ import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
 import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
+import { roundTo } from './num'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
 export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant'
@@ -81,7 +82,7 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
         if (it.kind === 'switch') switchFailed = true
         return
       }
-      if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot }); return }
+      if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot, ...(it.expectIntro ? { expectIntro: true } : {}) }); return }
       const m = team[slot]!
       const id = Object.hasOwn(m.actions, it.action) ? it.action : Object.hasOwn(m.aliases, it.action) ? m.aliases[it.action] : undefined
       const def = id !== undefined && Object.hasOwn(m.actions, id) ? m.actions[id] : undefined
@@ -309,10 +310,19 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
     case 'switch': {
       beginLoop(s)
       const from = s.onField
+      // 写了"变奏"（switch <角色> 变奏）而切出者协奏没满：照常普通切人，记一条警告——轴这里可能有问题（AGENTS.md 差异 3）
+      const short = c.expectIntro && s.chars[from].concerto < k.rules.concertoMax ? s.chars[from].concerto : null
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
       if (opts.onSwitch) opts.onSwitch(s, k, from, c.to, ref)
       else log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
+      if (short !== null) {
+        const a = s.chars[from].name, b = s.chars[c.to].name
+        log(s, {
+          type: 'warning', code: 'introMissed', line: c.line, cmd: ref,
+          message: `${where(s.queue, ref)} switch ${b} 变奏：${a} 协奏 ${roundTo(short, 100)}，没满 ${k.rules.concertoMax}，这次是普通切人（${a} 的延奏没出，${b} 没有变奏），轴这里可能有问题`,
+        })
+      }
       return
     }
     case 'act':

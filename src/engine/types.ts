@@ -1,5 +1,6 @@
 // src/engine/types.ts —— 仿真引擎的输入、运行时状态、事件与汇总（TD-02 §7）
 // 纯内部类型：不跨进程边界，不用 zod。所有状态都是可 structuredClone 的纯数据（总设计 §3.7）。
+import type { TrackedId } from './assumptions'
 import type {
   ActionId, Chain, CharName, DamageTag, DilationSide, DilationType, EffectName, Element, Frame, Rank, ResourceKind, Slot,
   StatKey, ZoneId,
@@ -271,7 +272,8 @@ export type SimEvent =
   | (EventBase & { type: 'outro'; char: CharName; to: CharName; instance?: number })
   | (EventBase & { type: 'buffApply'; buff: string; target: CharName | 'enemy'; stacks: number; remaining: number | 'inf' })
   | (EventBase & { type: 'buffExpire'; buff: string; target: CharName | 'enemy'; reason: 'timeout' | 'switchOut' | 'removed' })
-  | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string })
+  // cause：cast / cost / hook / break / outro，或资源型效果的 id；note：钩子给的说明（ctx.addResource 的第 4 个参数）
+  | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string; note?: string })
   | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
   // 治疗：char 提供了一次治疗（标了 heals 的判定结算、钩子记的持续回复每一跳）；治疗量不建模，只用来触发"提供治疗时"的效果
   | (EventBase & { type: 'heal'; char: CharName; source: string })
@@ -281,7 +283,8 @@ export type SimEvent =
   // 可选指令（排轴里写 "?"）的条件不满足，跳过了（TD-06 §13.4）
   | (EventBase & { type: 'skip'; cmd: CommandRef; code: WaitCode; reason: string })
   | (EventBase & { type: 'loop'; loop: number })
-  | (EventBase & { type: 'warning'; code: string; message: string; line?: number })
+  // cmd：由哪条指令引起（introMissed：写了"变奏"的切人没变奏）
+  | (EventBase & { type: 'warning'; code: string; message: string; line?: number; cmd?: CommandRef })
 
 export type SimEventType = SimEvent['type']
 
@@ -341,7 +344,8 @@ export interface HookContext<V extends HookVars = HookVars> {
   buffStacks(id: string, target?: Slot | 'enemy'): number   // 0 = 没有
   addBuff(id: string, opts?: { target?: Slot | 'enemy'; stacks?: number }): void   // id 指本角色 buffs 里的定义
   removeBuff(id: string, target?: Slot | 'enemy'): void
-  addResource(resource: ResourceKind, amount: number, slot?: Slot): void
+  /** note：这笔资源怎么来的（如"每消耗 10 点红椿·蕊"），记进 resource 事件，时间轴与调试表显示出处用 */
+  addResource(resource: ResourceKind, amount: number, slot?: Slot, note?: string): void
   spawnJudgment(judgment: string, opts?: { action?: ActionId }): void
   /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
   skipJudgments(instance: number, names: string[]): void
@@ -350,6 +354,8 @@ export interface HookContext<V extends HookVars = HookVars> {
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
   heal(source: string): void
   warn(message: string): void
+  /** 记一次碰到的假设（总设计 T16，src/engine/assumptions.ts 里 tracked 的那些）：角色模块里推断着写的机制，如散华 5 链自爆算不算 6 链的"引爆" */
+  assume(id: TrackedId, detail?: string): void
 }
 
 /** 一次结算的草稿：由判定生成，modifyHit 可改，随后按它的元素 / 标签收集 buff（TD-03 §4） */

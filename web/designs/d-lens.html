@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
 <style>
   /* D 概览与透镜：画面只放"在哪、做什么"，细节按需查。顶部是全程缩略图（拖动选范围），中间是大字号泳道，
-     右侧检查器跟随光标给出那一刻每个人的动作、能量协奏、身上的 buff 与最近一段伤害的乘区拆分。
+     右侧检查器跟随光标给出那一刻每个人的动作（及这个动作给的协奏、能量与出处、打出的伤害——按引发的动作算）、能量协奏、身上的 buff 与最近一段伤害的乘区拆分。
      刻意做成单一暗色主题（长时间盯数据不刺眼），所有颜色都显式给出 */
   :root {
     color-scheme: dark;
@@ -88,6 +88,18 @@
   .bx.pinned .bpop { display: grid; position: static; box-shadow: none; padding: 6px 2px 0; border: 0; background: transparent; }
   .bx.pinned .bsum { border-style: solid; }
   .bx.pinned .bsum i { transform: rotate(90deg); }
+  /* 当前动作给的资源（折叠同 buff）：按资源分组，每行一个出处；给队友的写在第二行 */
+  .gx .bpop { gap: 3px; }
+  .gx h3 { margin: 4px 0 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 500 12px var(--sans); color: var(--muted); }
+  .gx h3:first-child { margin-top: 0; }
+  .gx h3 b { font: 400 11.5px var(--mono); color: var(--ink); text-align: right; }
+  .gx i.n { font: normal 11.5px var(--sans); }
+  .gl { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+  .gl li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; align-items: baseline; }
+  .gl li span { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gl li small { color: var(--faint); font-size: 11px; }
+  .gl li b { font: 400 11.5px var(--mono); color: var(--ink); text-align: right; }
+  .gl li em { grid-column: 1 / -1; font: normal 11px var(--mono); color: var(--muted); padding-left: 12px; }
   .insp h2 { margin: 0; font: 500 13px var(--sans); color: var(--muted); }
   .who { border-top: 1px solid var(--rule); padding-top: 10px; display: grid; gap: 5px; }
   .who header { display: flex; align-items: center; gap: 8px; font-weight: 500; }
@@ -187,9 +199,12 @@
     return { frames: [...m.keys()].sort((a, b) => a - b), at: m }
   }
   const STOPS = {
-    hit: stopsOf(D.hits.filter(h => h.dmg), h => h.f, h => ({ main: `${h.char} ${h.judgment}`, sub: `${h.action}，期望 ${WW.fmt(h.dmg.expected)}`, slot: D.slot.get(h.char) })),
+    hit: stopsOf(D.hits.filter(h => h.dmg), h => h.f, h => ({ main: `${h.char} ${h.judgment}`, sub: `${h.action}${WW.hitBy(h) ? `，${WW.hitBy(h)}` : ''}，期望 ${WW.fmt(h.dmg.expected)}`, slot: D.slot.get(h.char) })),
     action: stopsOf(D.actions, a => a.start, a => ({ main: `${a.char} ${a.id}`, sub: `${WW.KIND_NAME[a.kind] || a.kind}${a.cmd ? `，${WW.cmdWhere(a.cmd)}` : '，不是轴里写的'}`, slot: a.i })),
-    switch: stopsOf(D.switches, e => e.f, e => ({ main: `${e.from} → ${e.to}`, sub: e.intro ? '变奏入场' : '普通切人', slot: D.slot.get(e.to) })),
+    switch: stopsOf(D.switches, e => e.f, e => {
+      const al = WW.alertOf(M, e)                                   // 写了"变奏"却没变奏（AGENTS.md 差异 3）
+      return { main: `${e.from} → ${e.to}`, sub: e.intro ? '变奏入场' : '普通切人', slot: D.slot.get(e.to), ...(al ? { warn: WW.alertBody(al) } : {}) }
+    }),
   }
   /** dir 方向上的下一个步点（帧）；没有了返回 null */
   function targetOf(dir, mode, from = cursor ?? range[0]) {
@@ -233,7 +248,7 @@
       } else {
         const k = `第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个`
         cur = `<div class="what"><span>当前${MODE_NAME[mode]}</span><span>${k}</span></div>
-          <ul>${xs.map(x => `<li style="color:var(--c${x.slot})"><b>${WW.esc(x.main)}</b><em>${WW.esc(x.sub)}</em></li>`).join('')}</ul>`
+          <ul>${xs.map(x => `<li style="color:var(--c${x.slot})"><b>${WW.esc(x.main)}</b><em>${WW.esc(x.sub)}</em>${x.warn ? `<em class="ww-alert-text">${WW.esc(x.warn)}</em>` : ''}</li>`).join('')}</ul>`
         short = `<i style="font-style:normal;color:var(--c${xs[0].slot})">${WW.esc(brief(mode, g))}</i> · ${k}`
       }
     }
@@ -277,7 +292,7 @@
   for (const h of D.hits) if (h.dmg) {
     const b = perSec[Math.min(BINS - 1, Math.floor(h.f / 60))], k = D.slot.get(h.char)
     b.v[k] += h.dmg.expected
-    const key = `${h.char} ${h.action}`; b.acts.set(key, (b.acts.get(key) || 0) + h.dmg.expected)
+    const key = `${h.char} ${h.ownerAct}`; b.acts.set(key, (b.acts.get(key) || 0) + h.dmg.expected)   // 按引发的动作（AGENTS.md 差异 8）
   }
   const secMax = Math.max(1, ...perSec.map(b => b.v.reduce((a, x) => a + x, 0)))
   const secTip = i => {
@@ -313,6 +328,7 @@
     const out = bars(x, x, 4, 40, 0, D.lastF)
     for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="48" width="${Math.max(1, x(o.end) - x(o.start))}" height="6" style="fill:var(--c${o.i})"/>`)
     for (const l of D.loops) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="0" y2="58" style="stroke:var(--faint);stroke-dasharray:3 3"/><text class="num" x="${x(l.f) + 3}" y="66">${l.loop === 0 ? '启动' : l.loop}</text>`)
+    for (const al of D.alerts) out.push(`<path d="M${x(al.f) - 5} 0 l10 0 l-5 9 z" style="fill:var(--alert)"/><line x1="${x(al.f)}" x2="${x(al.f)}" y1="9" y2="58" style="stroke:var(--alert);stroke-width:1.4"/>`)   // 轴可能有问题
     const a = x(sel[0]), b = x(sel[1])
     out.push(`<rect x="${a}" y="0" width="${Math.max(2, b - a)}" height="58" style="fill:var(--cursor);fill-opacity:.07;stroke:var(--cursor);stroke-opacity:.7;pointer-events:none"/>`)
     // 放大关系：选框两端斜着连到下方主图的左右两端（主图从左边标签栏之后起画）
@@ -407,6 +423,11 @@
       if (en.whiteBarTough > 0) out.push(`<path d="${stepP('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.4"/>`)
       if (en.tunabilityMax > 0) out.push(`<path d="${stepP('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.6"/>`)
       for (const e of D.enemy) if (vis(e.f, e.f + 1)) out.push(`<circle cx="${x(e.f)}" cy="${e.change === 'disharmony' ? top : top + h}" r="4.5" data-tip="${WW.esc(`<b>${WW.ENEMY_CHANGE[e.change] || e.change}</b><br>战斗 ${e.t.toFixed(2)} 秒`)}" style="fill:${e.change === 'disharmony' ? 'var(--alert)' : 'var(--ink)'}"/>`)
+    }
+    // 轴可能有问题：写了"变奏"的切人没变奏——红色虚线，顶上一个"!"（悬停看原因）
+    for (const al of D.alerts) if (vis(al.f, al.f + 1)) {
+      out.push(`<line x1="${x(al.f)}" x2="${x(al.f)}" y1="22" y2="${H}" style="stroke:var(--alert);stroke-width:1.6;stroke-dasharray:5 3;pointer-events:none"/>`,
+        `<g data-tip="${WW.esc(`<b>轴可能有问题</b><br>${WW.esc(al.message)}`)}" style="cursor:help"><circle cx="${x(al.f)}" cy="11" r="7.5" style="fill:var(--alert)"/><text x="${x(al.f)}" y="15" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:12px;pointer-events:none">!</text></g>`)
     }
     // 当前步在图上标出来：命中画圈、动作描边、切人画三角（光标正好落在步点上时）
     const mode = $('mode').value, g = cursor === null ? null : Math.round(cursor)
@@ -508,6 +529,7 @@
       parts.push(`<section class="who" style="--c:var(--c${i})"><header><i></i>${WW.esc(t.name)}<em>${on && on.i === i ? '在前台' : '后台'}${a ? `，${WW.esc(a.id)}` : ''}</em></header>
         <div class="meter"><span>能量</span><div><i style="width:${Math.min(100, 100 * rs.energy[i] / cap)}%"></i></div><b>${rs.energy[i].toFixed(1)}/${cap}</b></div>
         <div class="meter"><span>协奏</span><div><i style="width:${Math.min(100, 100 * rs.concerto[i] / M.concertoMax)}%"></i></div><b>${rs.concerto[i].toFixed(1)}</b></div>
+        ${a ? gainBox(t.name, a) + dmgBox(t.name, a) : ''}
         ${buffBox(t.name, list, '临时加成')}</section>`)
     })
     if (M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)) {
@@ -522,7 +544,7 @@
     if (best) {
       const F = best.factors
       const used = best.buffs.map(id => { const m = id.match(/^(.*?)(?:×(\d+))?$/); const o = M.buffOwners[m[1]]; return { id: m[1], label: m[1], stacks: m[2] ? +m[2] : 1, color: D.slot.has(o) ? `var(--c${D.slot.get(o)})` : 'var(--faint)' } })
-      parts.push(`<section class="hit"><h2>最近一段伤害：${WW.esc(best.char)} ${WW.esc(best.judgment)}（${D.clock.secAt(best.f).toFixed(2)} 秒）</h2><dl>
+      parts.push(`<section class="hit"><h2>最近一段伤害：${WW.esc(best.char)} ${WW.esc(best.judgment)}（${D.clock.secAt(best.f).toFixed(2)} 秒${WW.hitBy(best) ? `，${WW.esc(WW.hitBy(best))}` : ''}）</h2><dl>
         <dt>期望</dt><dd>${WW.fmt(best.dmg.expected)}</dd><dt>不暴击 / 暴击</dt><dd>${WW.fmt(best.dmg.nonCrit)} / ${WW.fmt(best.dmg.crit)}</dd>
         <dt>基础（倍率 × 攻击）</dt><dd>${WW.fmt(F.base)}</dd><dt>伤害加成</dt><dd>×${F.bonus.toFixed(3)}</dd><dt>加深</dt><dd>×${F.amplify.toFixed(3)}</dd>
         <dt>防御</dt><dd>×${F.def.toFixed(3)}</dd><dt>抗性</dt><dd>×${F.res.toFixed(3)}</dd><dt>暴击率 / 暴伤</dt><dd>${WW.pct(F.critRate)} / ${WW.pct(F.critDamage)}</dd></dl>
@@ -543,6 +565,36 @@
     // 每行的出处放进提示（鼠标悬停、触摸屏点一下都能看）
     const rows = list.map(x => `<li style="--c:${x.color}" data-tip="${WW.esc(`<b>${WW.esc(x.id)}</b>${(M.buffInfo[x.id] || {}).source ? `<br>${WW.attr(M.buffInfo[x.id].source)}` : ''}`)}"><span><i></i>${WW.esc(x.label)}${x.stacks > 1 ? ` ×${x.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, x.id, x.stacks) || '状态')}</b></li>`).join('')
     return `<div class="bx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${noun} ${list.length} 个</b><span>${WW.esc(top)}</span><i>▸</i></button><ul class="buffs bpop">${rows}</ul></div>`
+  }
+  // 当前动作打出的伤害（整个动作的合计，含之后才命中的段；按引发的动作算，判定在别的组里的也算进来，AGENTS.md 差异 8）：
+  // 一行概括，展开后每行一个判定
+  function dmgBox(name, a) {
+    if (!a.damage) return ''
+    const key = `dmg|${name}`
+    const rows = a.dmg.map(it => `<li><span>${WW.esc(it.judgment)}${it.n > 1 ? `<small> ${it.n} 段</small>` : ''}</span><b>${WW.fmt(it.v)}</b>`
+      + `${WW.dmgItemNote(a, it) ? `<em>${WW.esc(WW.dmgItemNote(a, it))}</em>` : ''}</li>`).join('')
+    return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${WW.esc(a.id)} 打出的</b><span>伤害 ${WW.fmt(a.damage)}（${a.hits} 段）</span><i>▸</i></button>`
+      + `<div class="bpop"><ul class="gl">${rows}</ul><div class="small">${WW.esc(WW.DMG_NOTE)}</div></div></div>`
+  }
+  // 当前动作给的资源（整个动作的合计，含之后才命中的段）：一行概括，展开后按资源分组、每行一个出处；提示里是原文、每段多少、什么时候
+  function gainBox(name, a) {
+    const g = a.gains
+    if (!g || !g.items.length) return ''
+    const key = `gain|${name}`, totals = WW.gainTotals(M, g)
+    const who = (n, v) => `<i class="n" style="color:${D.slot.has(n) ? `var(--c${D.slot.get(n)})` : 'var(--muted)'}">${WW.esc(n)}</i> ${WW.signedNum(v)}`
+    const sum = Object.entries(totals).map(([res, d]) => {
+      const mates = Object.entries(d).filter(([n]) => n !== name).reduce((x, [, v]) => x + v, 0)
+      return `${WW.RES_NAME[res] || res} ${WW.signedNum(d[name] || 0)}${mates ? `（队友 ${WW.signedNum(mates)}）` : ''}`
+    }).join(' · ')
+    const groups = Object.entries(totals).map(([res, d]) => {
+      const rows = g.items.filter(it => it.resource === res).map(it => {
+        const rest = WW.byTeam(M, it.deltas).filter(([n]) => n !== name)
+        return `<li data-tip="${WW.esc(WW.gainTip(M, g, it))}"><span>${WW.esc(WW.gainName(it))}${it.dt > 0 ? `<small> +${it.dt.toFixed(2)} 秒</small>` : ''}</span>`
+          + `<b>${it.deltas[name] !== undefined ? WW.signedNum(it.deltas[name]) : ''}</b>${rest.length ? `<em>${rest.map(([n, v]) => who(n, v)).join('　')}</em>` : ''}</li>`
+      }).join('')
+      return `<h3><span>${WW.RES_NAME[res] || res}</span><b>${Object.entries(d).map(([n, v]) => who(n, v)).join('　')}</b></h3><ul class="gl">${rows}</ul>`
+    }).join('')
+    return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${WW.esc(a.id)} 给的</b><span>${WW.esc(sum)}</span><i>▸</i></button><div class="bpop">${groups}</div></div>`
   }
   const canHover = matchMedia('(hover: hover)').matches
   $('insp').addEventListener('click', e => {
@@ -586,6 +638,12 @@
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stepTo(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 'sec' : $('mode').value); e.preventDefault() }
     else if (e.key === '.' || e.key === ',') { stepTo(e.key === '.' ? 1 : -1, 'frame'); e.preventDefault() }
     else if (e.key === 'Escape') { locked = false; lens(); inspect() }
+  })
+  // 提示条（写了"变奏"的切人没变奏）放在顶栏里：点一条换到那一轮，光标落在那次切人上（按切人步进）
+  WW.mountAlerts(M, document.querySelector('.top'), a => {
+    const l = D.loops.find(l => a.f >= l.f && a.f < l.end)
+    range = l ? [l.f, l.end] : [0, D.lastF]; markLoop(l ? l.loop : 'all')
+    cursor = a.f; locked = true; $('mode').value = 'switch'; $('mmode').value = 'switch'; draw()
   })
   WW.tips(document.body)
   const first = WW.defaultLoop(M), l = D.loops.find(l => l.loop === first)

@@ -1,5 +1,5 @@
 // src/engine/assumptions.ts —— 假设登记表（总设计 T16）：原型期先按一个说得过去的做法写进代码、不深究的地方，都登记在这里，
-// 写清现在怎么处理、依据、估计影响、出处、怎么改。tracked 的在仿真里碰到时用 assume() 记一笔，汇总里列"这次碰到的"
+// 写清现在怎么处理、依据、估计影响、出处、怎么改。tracked 的在仿真里碰到时用 assume() 记一笔（角色模块里用 ctx.assume），汇总里列"这次碰到的"
 // （Summary.assumptions）；不 tracked 的每次仿真都适用。adjust.path / values 给敏感度分析逐个试（TD-10 §6）。
 // 纯数据：Rust 那边照抄这张表，assume() 的调用点一一对应（总设计 §10.1）。
 import type { SimState } from './types'

@@ -44,8 +44,10 @@ export function relatedAttrValue(attr: RelatedAttr, panel: StaticPanel, z: ZoneS
  * 减防超过 100% 时有效防御为负、系数 > 1；分母 ≤ 0 时 xlsx 会算出负数，这里直接取上限（TD-03 §3.2）。
  */
 export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2, floor = false): number {
-  const eff = targetDef * (1 + defRate) * (1 - ignore)            // 减防、无视防御之后的目标防御；floor：先取整（TD-03 Q1）
-  const d = (floor ? Math.floor(eff) : eff) / (800 + level * 8) + 1
+  // 减防之后的目标防御；floor：先对它取整、再乘无视防御，同 xlsx 物理与谐度破坏公式的 FLOOR(U3 × (1 + B2456 − 减防) / (1 + B2456)) × (1 − 无视)
+  // （TD-03 §3.2、Q1）。不取整时与原来的 targetDef × (1 + defRate) × (1 − ignore) 逐位相同
+  const reduced = targetDef * (1 + defRate)
+  const d = (floor ? Math.floor(reduced) : reduced) * (1 - ignore) / (800 + level * 8) + 1
   return d <= 0 ? cap : Math.min(cap, 1 / d)
 }
 

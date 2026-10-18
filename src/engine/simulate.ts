@@ -223,7 +223,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
       for (const b of s.buffs.filter(x => x.defId === id && x.owner === self && (target === undefined || x.target === target)))
         removeBuff(s, b, 'removed')
     },
-    addResource: (resource, amount, slot = self) => { grant(sim, s, slot, resource, amount, 'hook') },
+    addResource: (resource, amount, slot = self, note) => { grant(sim, s, slot, resource, amount, 'hook', false, note) },
     spawnJudgment: (name, opts = {}) => {
       const hit = findJudgment(name, opts.action)
       if (!hit) throw new Error(`${m.def.name} 的钩子要生成的判定"${name}"不存在`)
@@ -243,5 +243,6 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
+    assume: (id, detail) => assume(s, id, detail),
   }
 }

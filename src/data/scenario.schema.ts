@@ -105,12 +105,13 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //   <角色> <动作>[!][?] [+N] [<动作>[!][?] [+N] …]   依次出招；! = 强制（不等"取消不丢东西"）；+N = 最早合法之后再等 N 帧（战斗帧）；
 //                                                ? = 可选：冷却、资源、角色条件（含谐度破坏要的失谐）不满足就跳过，不等（TD-06 §13.4）
 //   switch <角色>   或  切人 <角色>          切人
+//   switch <角色> 变奏                       切人，并说明这里应是变奏：切出者协奏没满时照常普通切人，记一条警告（轴可能有问题；AGENTS.md 差异 3）
 //   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
   | { kind: 'act'; char: string; action: string; delay: number; force: boolean; optional?: true; filler?: true }
-  | { kind: 'switch'; char: string }
+  | { kind: 'switch'; char: string; expectIntro?: true }
   | { kind: 'wait'; frames: number }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
@@ -123,7 +124,8 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
   const tok = s.split(/\s+/)
   const head = tok[0]!
   if (head === 'switch' || head === '切人') {
-    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色>` }
+    if (tok.length === 3 && tok[2] === '变奏') return [{ kind: 'switch', char: tok[1]!, expectIntro: true }]
+    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色> 或 ${head} <角色> 变奏` }
     return [{ kind: 'switch', char: tok[1]! }]
   }
   if (head === 'wait' || head === '等待') {
@@ -169,6 +171,6 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
 /** 编译后的指令：角色名解析成槽位，别名解析成动作 ID（TD-09 §4，总设计 §3.3 第 7 步）。line 从 1 起，item 是行内第几个（从 1 起） */
 export type Command =
   | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean; optional?: true; filler?: true }
-  | { kind: 'switch'; line: number; item: number; to: Slot }
+  | { kind: 'switch'; line: number; item: number; to: Slot; expectIntro?: true }   // expectIntro：写了"变奏"
   | { kind: 'wait'; line: number; item: number; frames: Frame }
   | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来

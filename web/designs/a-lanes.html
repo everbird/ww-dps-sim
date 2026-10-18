@@ -145,6 +145,11 @@
       out.push(`<line x1="${fx}" x2="${fx}" y1="${ax.y + 26}" y2="${H}" style="stroke:var(--grid)"/>`, `<text class="num" x="${fx + 3}" y="${ax.y + 34}">${s}</text>`)
     }
     for (const l of D.loops) if (vis(l.f, l.f + 1)) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="${ax.y + 4}" y2="${H}" style="stroke:var(--faint);stroke-dasharray:4 3"/><text x="${x(l.f) + 4}" y="${ax.y + 16}" style="fill:var(--muted)">${WW.loopName(l.loop)}</text>`)
+    // 轴可能有问题：写了"变奏"的切人没变奏——红色虚线贯穿各行，刻度行上一个"!"（悬停看原因）
+    for (const al of D.alerts) if (vis(al.f, al.f + 1)) {
+      out.push(`<line x1="${x(al.f)}" x2="${x(al.f)}" y1="${ax.y + 20}" y2="${H}" style="stroke:var(--alert);stroke-width:1.6;stroke-dasharray:5 3;pointer-events:none"/>`,
+        `<g data-tip="${WW.esc(`<b>轴可能有问题</b><br>${WW.esc(al.message)}`)}" style="cursor:help"><circle cx="${x(al.f)}" cy="${ax.y + 12}" r="7.5" style="fill:var(--alert)"/><text x="${x(al.f)}" y="${ax.y + 16}" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:12px;pointer-events:none">!</text></g>`)
+    }
     for (const r of R) {
       if (r.k === 'char') {
         const c = `var(--c${r.i})`
@@ -156,7 +161,7 @@
           const strong = ['liberation', 'skill', 'tuneBreak', 'echo'].includes(a.kind)
           const fill = a.kind === 'tuneBreak' ? 'var(--alert)' : c
           const op = { liberation: 1, skill: 0.85, heavy: 0.7, normal: 0.5, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.9 }[a.kind] ?? 0.3
-          const tip = `<b>${WW.esc(a.char)} ${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>第 ${a.start}–${a.end} 帧，${a.end - a.start} 帧；战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒<br>${a.how}${a.damage ? `<br>伤害 ${WW.fmt(a.damage)}（${a.hits} 段）` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}：${WW.esc(WW.cmdText(M, a.cmd))}` : '<br>不是轴里写的（变奏、接续或自动插入）'}`
+          const tip = `<b>${WW.esc(a.char)} ${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>第 ${a.start}–${a.end} 帧，${a.end - a.start} 帧；战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒<br>${a.how}${a.damage ? `<br>${WW.esc(WW.dmgLine(a))}` : ''}${a.gains && a.gains.items.length ? `<br>${WW.esc(WW.gainLine(M, a.gains))}` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}：${WW.esc(WW.cmdText(M, a.cmd))}` : '<br>不是轴里写的（变奏、接续或自动插入）'}`
           out.push(`<rect x="${bx}" y="${by}" width="${w}" height="22" rx="3" data-tip="${WW.esc(tip)}" style="fill:${op ? fill : 'var(--panel)'};fill-opacity:${op || 1};stroke:${op ? (a.kind === 'liberation' ? 'var(--ink)' : 'none') : c};stroke-width:1.4"/>`)
           const tw = WW.textWidth(a.id, 11.5)
           const light = op >= 0.7
@@ -228,11 +233,19 @@
   }
   $('legend').innerHTML = ['<span><i style="background:var(--c0);opacity:.5"></i>普攻</span>', '<span><i style="background:var(--c0);opacity:.85"></i>共鸣技能</span>',
     '<span><i style="background:var(--c0);outline:1px solid var(--ink)"></i>共鸣解放</span>', '<span><i style="background:var(--panel);outline:1.4px solid var(--c0)"></i>变奏、延奏</span>',
-    '<span><i style="background:var(--alert)"></i>谐度破坏</span>', '<span><i style="background:var(--wait)"></i>等待</span>', '<span>buff 右侧数字是稳态覆盖率</span>'].join('')
+    '<span><i style="background:var(--alert)"></i>谐度破坏</span>', '<span><i style="background:var(--wait)"></i>等待</span>', '<span>buff 右侧数字是稳态覆盖率</span>',
+    D.alerts.length ? '<span style="color:var(--alert)"><b>!</b> 红色虚线：轴可能有问题（写了变奏但没变奏）</span>' : ''].join('')
   $('loopSel').addEventListener('change', e => show(e.target.value))
   $('zin').addEventListener('click', () => { ppf *= 1.5; render() })
   $('zout').addEventListener('click', () => { ppf /= 1.5; render() })
   for (const id of ['onlyDmg', 'showRes']) $(id).addEventListener('change', render)
+  // 提示条（写了"变奏"的切人没变奏）：点一条换到那一轮，把那个时刻滚进视野
+  WW.mountAlerts(M, document.querySelector('.wrap'), a => {
+    const l = D.loops.find(l => a.f >= l.f && a.f < l.end), v = l ? String(l.loop) : 'all'
+    $('loopSel').value = v; show(v)
+    sc.scrollLeft = Math.max(0, 12 + (a.f - range[0]) * ppf - sc.clientWidth / 3)
+    sc.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, document.querySelector('.wrap > section.card'))
   WW.tips(document.body)
   const first = String(WW.defaultLoop(M) ?? 'all')
   $('loopSel').value = first

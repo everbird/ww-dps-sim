@@ -12,12 +12,12 @@ import { simulate } from '../src/engine/simulate'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
-const ENGINE = new URL('../src/engine/', import.meta.url)
-const engineCode = readdirSync(ENGINE).filter(f => f.endsWith('.ts') && f !== 'assumptions.ts')
-  .map(f => readFileSync(new URL(f, ENGINE), 'utf8')).join('\n')
+// 记录点：引擎里的 assume()，角色模块里的 ctx.assume()
+const codeOf = (dir: URL, skip = '') => readdirSync(dir).filter(f => f.endsWith('.ts') && f !== skip).map(f => readFileSync(new URL(f, dir), 'utf8'))
+const engineCode = [...codeOf(new URL('../src/engine/', import.meta.url), 'assumptions.ts'), ...codeOf(new URL('../data/curated/characters/', import.meta.url))].join('\n')
 
 describe('假设登记表', () => {
-  test('编号不重复；碰到才记的在引擎里有记录点，每次都适用的没有', () => {
+  test('编号不重复；碰到才记的在引擎或角色模块里有记录点，每次都适用的没有', () => {
     const ids = ASSUMPTIONS.map(a => a.id)
     expect(new Set(ids).size).toBe(ids.length)
     for (const a of ASSUMPTIONS) expect([a.id, engineCode.includes(`'${a.id}'`)]).toEqual([a.id, a.tracked])
@@ -34,12 +34,26 @@ describe('假设登记表', () => {
   })
 })
 
+describe('钩子里记假设：ctx.assume（AGENTS.md 差异 6）', () => {
+  test('角色模块的钩子碰到时记一笔：汇总里列出次数，同样的说明只记一次', () => {
+    const X = action({ id: 'X', kind: 'skill', endFrame: 40, judgments: [judgment({ name: 'a', spawnFrame: 10, multiplier: 100 })] })
+    const 甲: SynthChar = {
+      name: '甲', actions: [X],
+      hooks: { onEvent(ctx, ev) { if (ev.type === 'hit' && ev.char === '甲') ctx.assume('data-guess', '甲 钩子里推断的机制') } },
+    }
+    const r = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X X'] })
+    expect(r.summary.assumptions.find(a => a.id === 'data-guess')).toMatchObject({ count: 2, detail: ['甲 钩子里推断的机制'] })
+  })
+})
+
 describe('rules.defFloor：减防后的目标防御先取整（TD-03 Q1）', () => {
   test('defFactor：1593 × (1 − 0.18) = 1306.26，取整后按 1306 算', () => {
     const den = 800 + 90 * 8
     expect(defFactor(1593, -0.18, 0, 90, 2, true)).toBe(1 / (1306 / den + 1))
     expect(defFactor(1593, -0.18, 0, 90, 2, false)).toBeCloseTo(1 / (1306.26 / den + 1), 12)
     expect(defFactor(1593, 0, 0, 90, 2, true)).toBe(defFactor(1593, 0, 0, 90))   // 没有减防：防御本来就是整数
+    // 同 xlsx：先对减防后的防御取整，再乘无视防御（不是乘完再取整）
+    expect(defFactor(1593, -0.18, 0.1, 90, 2, true)).toBe(1 / (1306 * (1 - 0.1) / den + 1))
   })
 
   const X = action({ id: 'X', kind: 'skill', endFrame: 40, judgments: [judgment({ name: 'a', spawnFrame: 10, multiplier: 100 })] })

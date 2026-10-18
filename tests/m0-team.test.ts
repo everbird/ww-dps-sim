@@ -1,11 +1,15 @@
 // tests/m0-team.test.ts —— M0 三人的角色钩子（TD-08 §5、§6；结论见 m0-confirm §6）
 // 依赖 data/generated（缺数据时跳过）。
+import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
+import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { composeStat } from '../src/engine/formula'
 import { resolveScenario } from '../src/engine/resolve'
+import { simulate } from '../src/engine/simulate'
+import { actionGains, gainSteps } from '../src/engine/trace'
 import { dataDescribe } from './helpers/kernel-harness'
 import { M0, m0Run } from './helpers/m0'
 import { eventsOfLog } from './helpers/synth'
@@ -51,6 +55,25 @@ dataDescribe('M0 三人的钩子', () => {
 
   // ---------------------------------------------------------------------------
   // 椿
+
+  test('T08-散华-4 资源出处（时间轴的检查器）：谁引发的算谁——E 只有行进序曲 8 + 起手即得 15，重击居合引爆的冰都算重击居合；没被引爆、5 链到时自爆的冰算 E', () => {
+    const gainsOf = (rotation: string[]) => {
+      const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
+      const gains = actionGains(gainSteps(simulate(r).log, r))
+      return (action: string, res: string) => gains.find(g => g.char === '散华' && g.action === action)!.items
+        .filter(it => it.resource === res).map(it => [it.how, it.what, it.deltas['散华'], it.of ?? null])
+    }
+    const items = gainsOf(['散华 E R 重击居合'])
+    expect(items('E', 'concerto')).toEqual([['effect', '行进序曲.协奏', 8, null], ['cast', '', 15, null]])
+    expect(items('大招', 'concerto')).toEqual([['cast', '', 20, null]])
+    expect(items('大招', 'energy')).toEqual([['cost', '', -100, null], ['effect', '散华.共鸣链4.能量', 10, null]])
+    // 重击居合挂的"引爆计时"到时 → 钩子引爆两块冰：都算重击居合，of 写判定所在的组
+    expect(items('重击居合', 'concerto')).toEqual([
+      ['hit', '重击居合-1', 7.5, null], ['hit', 'E-引爆冰棱', 15, 'E'], ['hit', '大招-引爆冰川', 15, '大招-引爆冰川'], ['hit', '重击居合-2', 7.5, null],
+    ])
+    // 只放 E：冰棱是 E 命中时挂上的，到时自爆（5 链）算 E
+    expect(gainsOf(['散华 E', 'wait 400'])('E', 'concerto')).toEqual([['effect', '行进序曲.协奏', 8, null], ['cast', '', 15, null], ['hit', 'E-引爆冰棱', 15, null]])
+  })
 
   test('T08-椿-0 核心资源槽 1 改叫"红椿·蕊"（主表是"红椿·蕊1"），场景按它写开局值', () => {
     expect(gd.characters['椿']!.coreResources.map(c => [c.slot, c.name])).toEqual([[1, '红椿·蕊'], [2, '红椿·蕊2'], [3, '红椿·蕾']])
@@ -194,5 +217,15 @@ dataDescribe('M0 三人的钩子', () => {
     const manual = run(50, ['椿 E1', '椿 盛绽·A1', '椿 谐度破坏?', '椿 盛绽·谐度破坏'], 'manual')
     expect(eventsOfLog(manual.log, 'skip').map(e => e.reason)).toEqual(['盛绽状态下 谐度破坏 换成了盛绽版本'])
     expect(starts(manual)).toEqual(['E1', '盛绽·A1', '谐度破坏-时停'])
+  })
+
+  test('视频轴两份（m0-confirm §11 V7）：AQ 版两处"switch 椿 变奏"没变奏（启动轴散华协奏 92、第 1 轮 19）有警告；EQ 版每次都变奏、没有警告', () => {
+    const alerts = (file: string) => {
+      const sc = ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${file}`, import.meta.url), 'utf8')))
+      return eventsOfLog(simulate(resolveScenario(sc, gd)).log, 'warning').filter(w => w.code === 'introMissed')
+        .map(w => [w.cmd!.loop, w.cmd!.line, /协奏 ([\d.]+)/.exec(w.message)![1]])
+    }
+    expect(alerts('m0-video.yaml')).toEqual([[0, 11, '92'], [1, 13, '19']])
+    expect(alerts('m0-video-eq.yaml')).toEqual([])
   })
 })

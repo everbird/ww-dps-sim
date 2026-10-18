@@ -5,7 +5,7 @@ import { snap9 } from '../../../src/engine/num'
 /** 白椿（不在盛绽）才能用的动作；盛绽状态下普攻 / 重击 / E 换成盛绽版本（"盛绽·"开头与 E2）。
  *  谐度破坏也分两种：常态（R1886–R1889）与盛绽（R1890–R1893，组名"谐度破坏-时停"，别名"盛绽·谐度破坏"），
  *  伤害相同，结束帧与派生窗口不同（m0-confirm §10 H5） */
-const WHITE = new Set(['A1', 'A2', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1', '谐度破坏'])
+const WHITE = new Set(['A1', 'A2', 'A2-地面出场技', 'A3', 'A3-1D', 'A4', 'A5', '空中A5', '空中普攻', '重击', 'P1重击', 'E1', '谐度破坏'])   // 地面出场技就是 A2（见 actionOverrides.A2）
 const BLOOM = (id: string) => id.startsWith('盛绽·') || id === 'E2' || id === '谐度破坏-时停'
 /** 钩子的状态量（总设计 §10.1）：盛绽（红椿）形态；一日花时折算的酣梦层数；还没凑满 10 点的蕊消耗；切走那一刻是否在含苞 */
 const VARS = { 盛绽: false, 酣梦层数: 0, 蕊消耗: 0, 切走时含苞: false }
@@ -72,7 +72,7 @@ export default defineCharacter('椿', {
         const bud = ctx.buffStacks('椿.含苞') > 0
         while (acc >= 10) {
           acc = snap9(acc - 10)
-          ctx.addResource('concerto', 4)
+          ctx.addResource('concerto', 4, ctx.self, '每消耗 10 点红椿·蕊，协奏 +4')
           if (!bud) ctx.addBuff('椿.红椿·蕾')
         }
         ctx.vars.蕊消耗 = acc
@@ -101,6 +101,9 @@ export default defineCharacter('椿', {
   actionOverrides: {
     // 固有1"重击修枝伤害视为普攻伤害"：吃普攻加成与普攻加深（TD-08 P8）；P1重击在数据里已经是普攻
     重击: { judgments: { '重击-1': { tags: ['普攻'] }, '重击-2': { tags: ['普攻'] }, '重击-3': { tags: ['普攻'] } } },
+    // 地面出场技（普通切人入场按 A）就是 A2：2026-10-18 用户游戏内实测。xlsx 现在的椿块没写（只有"旧椿"块 A2-1 备注"地面出场技复用"，
+    // 那是旧版的椿），以实测为准（m0-confirm §11 V10）。之后再按 A 接哪一段没实测，A3 的连段前置没加它
+    A2: { copyAs: ['A2-地面出场技'] },
     // 共鸣技能（2026-09-27 用户说明，出处：nanoka 的共鸣技能与共鸣回路描述）：
     //   白椿状态 E1 → 变红椿（盛绽）；红椿状态 E2 → 变回白椿；E1 / E2 共用 4 秒冷却
     //   协奏满且一日花不在冷却时，E 替换为 E3 一日花（不限白椿 / 红椿），消耗 70 点协奏、进入含苞状态；

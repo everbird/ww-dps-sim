@@ -108,12 +108,16 @@
     for (let s = Math.ceil(D.clock.secAt(range[0]) / step) * step; s <= D.clock.secAt(range[1]); s += step) {
       const fx = x(D.clock.frameAt(s)); out.push(`<line x1="${fx}" x2="${fx}" y1="18" y2="28" style="stroke:var(--faint)"/><text class="num" x="${fx + 3}" y="14">${s}</text>`)
     }
+    // 轴可能有问题：写了"变奏"的切人没变奏，刻度上一个"!"（悬停看原因）
+    for (const al of D.alerts) if (al.f >= range[0] && al.f <= range[1]) out.push(`<g data-tip="${WW.esc(`<b>轴可能有问题</b><br>${WW.esc(al.message)}`)}" style="cursor:help"><circle cx="${x(al.f)}" cy="14" r="7.5" style="fill:var(--alert)"/><text x="${x(al.f)}" y="18" text-anchor="middle" style="fill:#fff;font-weight:700;font-size:12px;pointer-events:none">!</text></g>`)
     return `<svg width="${W}" height="28">${out.join('')}</svg>`
   }
   function frameLines(H, x, vis) {
     const out = []
     for (const [a, b] of D.clock.stops) if (vis(a, b)) out.push(`<rect x="${x(a)}" y="0" width="${Math.max(1, (b - a) * (x(1) - x(0)))}" height="${H}" style="fill:var(--stop)"/>`)
-    for (const s of D.switches) if (vis(s.f, s.f + 1)) out.push(`<line x1="${x(s.f)}" x2="${x(s.f)}" y1="0" y2="${H}" style="stroke:var(--faint);stroke-dasharray:2 3;opacity:.7"/>`)
+    for (const s of D.switches) if (vis(s.f, s.f + 1)) out.push(WW.alertOf(M, s)
+      ? `<line x1="${x(s.f)}" x2="${x(s.f)}" y1="0" y2="${H}" style="stroke:var(--alert);stroke-width:1.6;stroke-dasharray:5 3"/>`   // 写了"变奏"却没变奏
+      : `<line x1="${x(s.f)}" x2="${x(s.f)}" y1="0" y2="${H}" style="stroke:var(--faint);stroke-dasharray:2 3;opacity:.7"/>`)
     return out
   }
 
@@ -144,7 +148,7 @@
       for (const a of acts) {
         const bx = x(a.start), w = Math.max(2, (a.end - a.start) * ppf), by = actR.y + 12
         const op = { liberation: 1, skill: 0.85, heavy: 0.7, normal: 0.48, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.9 }[a.kind] ?? 0.3
-        const tip = `<b>${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒，${a.end - a.start} 帧<br>${a.how}${a.damage ? `<br>伤害 ${WW.fmt(a.damage)}` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}` : ''}`
+        const tip = `<b>${WW.esc(a.id)}</b>（${WW.KIND_NAME[a.kind] || a.kind}）<br>战斗 ${a.t0.toFixed(2)}–${(a.t1 ?? a.t0).toFixed(2)} 秒，${a.end - a.start} 帧<br>${a.how}${a.damage ? `<br>${WW.esc(WW.dmgLine(a))}` : ''}${a.gains && a.gains.items.length ? `<br>${WW.esc(WW.gainLine(M, a.gains))}` : ''}${a.cmd ? `<br>${WW.cmdWhere(a.cmd)}` : ''}`
         out.push(`<rect x="${bx}" y="${by}" width="${w}" height="22" rx="3" data-tip="${WW.esc(tip)}" style="fill:${a.kind === 'tuneBreak' ? 'var(--alert)' : op ? c : 'var(--panel)'};fill-opacity:${op || 1};stroke:${op ? 'none' : c};stroke-width:1.4"/>`)
         const tw = WW.textWidth(a.id, 11.5)
         if (tw + 8 <= w) out.push(`<text x="${bx + 4}" y="${by + 15}" style="pointer-events:none;fill:${op >= 0.7 ? '#fff' : 'var(--ink)'}">${WW.esc(a.id)}</text>`)
@@ -155,7 +159,7 @@
       const mx = Math.max(1, ...hs.map(h => h.dmg.expected))
       for (const h of hs) {
         const hh = (dR.h - 10) * h.dmg.expected / mx
-        out.push(`<rect x="${x(h.f) - 1}" y="${dR.y + dR.h - 4 - hh}" width="2" height="${Math.max(1, hh)}" data-tip="${WW.esc(`<b>${WW.esc(h.judgment)}</b>（${WW.esc(h.action)}）<br>期望 ${WW.fmt(h.dmg.expected)}<br>战斗 ${h.t.toFixed(2)} 秒`)}" style="fill:${h.tags.includes('谐度破坏') ? 'var(--alert)' : c}"/>`)
+        out.push(`<rect x="${x(h.f) - 1}" y="${dR.y + dR.h - 4 - hh}" width="2" height="${Math.max(1, hh)}" data-tip="${WW.esc(`<b>${WW.esc(h.judgment)}</b>（${WW.esc(h.action)}${WW.hitBy(h) ? `，${WW.esc(WW.hitBy(h))}` : ''}）<br>期望 ${WW.fmt(h.dmg.expected)}<br>战斗 ${h.t.toFixed(2)} 秒`)}" style="fill:${h.tags.includes('谐度破坏') ? 'var(--alert)' : c}"/>`)
       }
       out.push(`<text class="num" x="${W - 6}" y="${dR.y + 12}" text-anchor="end">${WW.fmt(mx)}</text>`)
       const tl = S.resourceTimeline.filter(s => s.f >= range[0] - 600 && s.f <= range[1] + 600)
@@ -204,6 +208,13 @@
   $('loopSel').addEventListener('change', () => { segOptions(); apply() })
   $('segSel').addEventListener('change', apply)
   $('onlyDmg').addEventListener('change', render)
+  // 提示条（写了"变奏"的切人没变奏）：点一条换到那一轮，放大到切人前在前台的那一段
+  WW.mountAlerts(M, $('top').parentNode, a => {
+    const l = D.loops.find(l => a.f >= l.f && a.f < l.end)
+    $('loopSel').value = l ? String(l.loop) : 'all'; segOptions()
+    const o = [...$('segSel').options].find(o => { if (!o.value) return false; const [s0, s1] = o.value.split('-').map(Number); return s0 < a.f && a.f <= s1 })
+    $('segSel').value = o ? o.value : ''; apply(); scrollTo({ top: 0, behavior: 'smooth' })
+  }, $('top').nextSibling)
   WW.tips(document.body)
   $('loopSel').value = String(WW.defaultLoop(M) ?? 'all')
   segOptions(); apply()

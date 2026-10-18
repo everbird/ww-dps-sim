@@ -47,15 +47,15 @@ const valueOf = (s: SimState, slot: Slot, res: ResourceKind): number => {
 }
 
 /** 给某人加减资源（§5）：钩子、资源型效果、施放资源、扣除、共用。只给这一个人，不做全队分配；
- *  定值默认不乘共鸣效率，scaledByRegen 时正数的能量乘接收者的共鸣效率（TD-06 Q3）。记 resource 事件，返回实际变化量 */
+ *  定值默认不乘共鸣效率，scaledByRegen 时正数的能量乘接收者的共鸣效率（TD-06 Q3）。记 resource 事件（note：钩子给的说明），返回实际变化量 */
 export function grant(
-  sim: Sim, s: SimState, slot: Slot, res: ResourceKind, amount: number, cause: string, scaledByRegen = false,
+  sim: Sim, s: SimState, slot: Slot, res: ResourceKind, amount: number, cause: string, scaledByRegen = false, note?: string,
 ): number {
   if (!amount) return 0
   const v = res === 'energy' && scaledByRegen && amount > 0 ? amount * regenOf(sim, s, slot) : amount
   const full: FullEvent[] = []
   const d = add(sim, s, slot, res, v, full)
-  if (d !== 0) log(s, { type: 'resource', char: s.chars[slot].name, resource: res, delta: d, value: valueOf(s, slot, res), cause })
+  if (d !== 0) log(s, { type: 'resource', char: s.chars[slot].name, resource: res, delta: d, value: valueOf(s, slot, res), cause, ...(note ? { note } : {}) })
   for (const f of full) log(s, f)
   return d
 }

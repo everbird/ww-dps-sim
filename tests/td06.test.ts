@@ -35,7 +35,7 @@ dataDescribe('TD-06 M0 队伍', () => {
     ])
   })
 
-  test('T06-4 协奏时机：onCast 在动作开始时发（按段数汇总），onHit 随每次结算发；进入即得两种模式都在开始时', () => {
+  test('T06-4 协奏时机：onCast 在动作开始时发（按段数汇总），onHit 随每次结算发；起手即得两种模式都在开始时', () => {
     const cast = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'], options: onCast })
     expect(at(cast.log, 0)).toContain('散华 concerto +2 cast')
     expect(eventsOfLog(cast.log, 'hit')[0]!.gains.concerto).toBe(0)
@@ -44,13 +44,13 @@ dataDescribe('TD-06 M0 队伍', () => {
     expect(eventsOfLog(hit.log, 'hit').map(h => [h.f, h.gains.concerto])).toEqual([[13, 2]])
     const dflt = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 A1'] })   // 默认按命中给（2026-10-03 实测，TD-06 Q1）
     expect(eventsOfLog(dflt.log, 'hit').map(h => h.gains.concerto)).toEqual([2])
-    for (const opts of [onCast, onHit]) {                 // E 的 15 是"进入即得"
+    for (const opts of [onCast, onHit]) {                 // E 的 15 是"起手即得"
       const e = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 E'], options: opts })
       expect(at(e.log, 0)).toContain('散华 concerto +15 cast')
     }
   })
 
-  test('T06-4 事件生成的判定（E-引爆冰棱）：它每次结算时给，含它自己的"进入即得"', () => {
+  test('T06-4 事件生成的判定（E-引爆冰棱）：它每次结算时给，含它自己的"起手即得"', () => {
     // 只换钩子表里散华那份（总设计 §10.1）
     const data: GameData = { ...gd, hooks: { ...gd.hooks, 散华: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.judgment === 'E') ctx.spawnJudgment('E-引爆冰棱') } } } }
     const out = m0Run(data, { initial: { onField: 1 }, rotation: ['散华 E'] })

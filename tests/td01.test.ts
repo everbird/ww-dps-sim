@@ -85,6 +85,41 @@ describe('T01-14 角色模块覆盖（TD-01 §13.4）', () => {
     expect(b['QTE']!.flags).toEqual([])
     expect(b['QTE']!.judgments[0]!.persistsOnCancel).toBe(false)
   })
+  test('splitRows：拆出的行自成一个动作（动作 ID 是行名），原组里没有它；拆出的动作也能写覆盖', () => {
+    const g = file([
+      group('A3', [
+        row(1, 'A3-目标3m内', { spawnFrame: 16, endFrame: 61, deriveFrame: 30, deriveDuration: 30, priority: [2] }),
+        row(2, 'A3-地面出场技', { spawnFrame: 22, endFrame: 61, deriveFrame: 30, deriveDuration: 30, priority: [2] }),
+      ]),
+      group('A4', [row(3, 'A4', { spawnFrame: 10, endFrame: 48, deriveFrame: 40, deriveDuration: 50, priority: [2] })]),
+    ])
+    const b = assembleBlock(g, { A3: { splitRows: ['A3-地面出场技'] }, A4: { comboFrom: ['A3', 'A3-地面出场技'] } })
+    expect(Object.keys(b)).toEqual(['A3', 'A3-地面出场技', 'A4'])
+    expect(names(b['A3']!)).toEqual(['A3-目标3m内'])
+    const e = b['A3-地面出场技']!
+    expect(e.judgments.map(j => [j.name, j.spawnFrame])).toEqual([['A3-地面出场技', 22]])
+    expect([e.kind, e.endFrame, e.cancelWindows.map(w => [w.from, w.until]), e.comboFrom, e.source.rows]).toEqual(['normal', 61, [[30, 60]], undefined, [2]])
+    expect(b['A4']!.comboFrom).toEqual(['A3', 'A3-地面出场技'])
+    expect(assembleBlock(g, { A3: { splitRows: ['A3-地面出场技'] }, 'A3-地面出场技': { endFrame: 50 } })['A3-地面出场技']!.endFrame).toBe(50)
+    expect(() => assembleBlock(g, { A3: { splitRows: ['A3-出场技'] } })).toThrow('splitRows 写了不存在的行"A3-出场技"')
+    expect(() => assembleBlock(g, { A4: { splitRows: ['A4'] } })).toThrow('"A4"与已有的动作重名')
+  })
+  test('copyAs：整组按新 ID 再装配一次（不推连段前置、不带本组的其余覆盖），原组不变', () => {
+    const g = file([
+      group('A1', [row(1, 'A1', { spawnFrame: 9, endFrame: 34, deriveFrame: 18, deriveDuration: 30, priority: [2] })]),
+      group('A2', [
+        row(2, 'A2-1', { spawnFrame: 8, priority: [2] }),
+        row(3, 'A2-2', { spawnFrame: 20, endFrame: 44, deriveFrame: 30, deriveDuration: 30, priority: [2] }),
+        row(4, 'A2-无目标', { spawnFrame: 22, endFrame: 44, priority: [2] }),
+      ]),
+    ])
+    const b = assembleBlock(g, { A2: { dropRows: ['A2-无目标'], copyAs: ['A2-地面出场技'], cooldown: 60 } })
+    expect(Object.keys(b)).toEqual(['A1', 'A2', 'A2-地面出场技'])
+    const [a2, e] = [b['A2']!, b['A2-地面出场技']!]
+    expect([a2.comboFrom, a2.cooldown, names(a2)]).toEqual([['A1'], 60, ['A2-1', 'A2-2']])
+    expect([e.comboFrom, e.cooldown, names(e), e.endFrame, e.cancelWindows.map(w => [w.from, w.until])]).toEqual([undefined, undefined, ['A2-1', 'A2-2'], 44, [[30, 60]]])
+    expect(() => assembleBlock(g, { A2: { copyAs: ['A1'] } })).toThrow('copyAs："A1"与已有的动作重名')
+  })
   test('accept：明确接受的 flag 不再提示', () => {
     expect(assembleBlock(f, { A3: { accept: ['multiEnd'] } })['A3']!.flags).toEqual([])
   })
@@ -105,6 +140,21 @@ dataDescribe('T01-15 M0 队伍的确认结果（m0-confirm 第 2 节：椿 0 链
     expect(a.judgments.map(j => [j.name, j.spawnFrame, j.ticks])).toEqual([['A3-目标3m内', 16, 2]])
     expect(a.cancelWindows.map(w => [w.from, w.until])).toEqual([[30, 60]])
     expect(a.flags).not.toContain('multiEnd')
+  })
+  test('维里奈"A3-地面出场技"拆成单独的动作：第 22 帧出伤害，其余同 A3；之后接 A4、A5（m0-confirm §11 V10）', () => {
+    const e = verina['A3-地面出场技']!
+    expect(e.judgments.map(j => [j.name, j.spawnFrame, j.ticks, j.multiplier])).toEqual([['A3-地面出场技', 22, 2, verina['A3']!.judgments[0]!.multiplier]])
+    expect([e.kind, e.endFrame, e.cancelWindows.map(w => [w.from, w.until]), e.comboFrom, e.flags]).toEqual(['normal', 61, [[30, 60]], undefined, []])
+    expect(verina['A4']!.comboFrom).toEqual(['A3', 'A3-地面出场技'])
+    const d = run([verina, verina, verina], [{ act: 0, action: 'A3-地面出场技' }, { act: 0, action: 'A4' }, { act: 0, action: 'A5' }], { names: ['维里奈', '乙', '丙'] })
+    // 派生窗口：出场技第 30 帧、A4 第 40 帧；命中顿帧（每次约 4 帧）让动作帧走慢：出场技结算 2 次 → A4 在 38，A4 结算 1 次 → A5 在 38 + 40 + 4
+    expect(d.s.log.filter(e => e.type === 'actionStart').map(e => [e.action, e.f])).toEqual([['A3-地面出场技', 0], ['A4', 38], ['A5', 82]])
+  })
+  test('椿的地面出场技就是 A2（用户实测，xlsx 没写）：两段同 A2，不用接在谁后面（m0-confirm §11 V10）', () => {
+    const [a2, e] = [chun['A2']!, chun['A2-地面出场技']!]
+    expect(e.judgments.map(j => [j.name, j.spawnFrame, j.multiplier])).toEqual(a2.judgments.map(j => [j.name, j.spawnFrame, j.multiplier]))
+    expect([e.kind, e.endFrame, e.cancelWindows.map(w => [w.from, w.until]), e.comboFrom, e.source.rows]).toEqual(['normal', 44, [[30, 60]], undefined, a2.source.rows])
+    expect(a2.comboFrom).toEqual(['A1'])
   })
   test('维里奈 3 链：6 链的协同判定不出现', () => {
     expect(names(verina['C6']!)).toEqual([])
