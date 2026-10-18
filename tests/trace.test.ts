@@ -135,11 +135,11 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
     ])
   })
 
-  test('命中归到的动作同资源（AGENTS.md 差异 8）：y 归 Y；Q 引发的 z、y2 归 Q（判定在 Z、Y 组里）；时间轴模型的命中带上那个动作的实例号', () => {
+  test('命中归到的动作同资源（TD-11 §6.1）：y 归 Y；Q 引发的 z、y2 归 Q（判定在 Z、Y 组里）；时间轴模型的命中带上那个动作的实例号', () => {
     const causes = hitCauses(res.log, r)
     expect(eventsOfLog(res.log, 'hit').map(e => [e.judgment, causes.get(e)?.owner?.action ?? null, causes.get(e)?.trigger ?? null]))
       .toEqual([['y', 'Y', null], ['z', 'Q', null], ['y2', 'Q', null]])      // z、y2 由动作开始、buff 到时引出，不是命中触发的
-    // 引出原因（差异 9）：钩子在什么之后生成的、钩子附的说明；不是钩子生成的没有
+    // 引出原因（TD-11 §6.1）：钩子在什么之后生成的、钩子附的说明；不是钩子生成的没有
     expect(eventsOfLog(res.log, 'hit').map(e => causes.get(e)?.origin ?? null))
       .toEqual([null, { via: '丁 Q 开始', note: null }, { via: '丁.计时 到时', note: '计时到了' }])
     expect(actionGains(gainSteps(res.log, r)).find(g => g.action === 'Q')!.items.filter(it => it.how === 'hit').map(it => [it.what, it.note ?? null, it.via ?? null]))
@@ -161,7 +161,7 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
   })
 })
 
-describe('命中触发：钩子在命中后生成的判定，记下由谁的命中触发（维里奈的协同攻击，AGENTS.md 差异 8）', () => {
+describe('命中触发：钩子在命中后生成的判定，记下由谁的命中触发（维里奈的协同攻击，TD-11 §6.1）', () => {
   // 戊：R 组里的判定 c 没有发生帧，任何人的命中（c 自己除外）都让钩子生成一次，同维里奈的协同攻击。
   // 戊 R 第 5 帧自己命中 r，切甲后甲 X 第 10 帧命中 x，各触发一次 c
   const 戊: SynthChar = {

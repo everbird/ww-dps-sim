@@ -34,7 +34,7 @@ describe('假设登记表', () => {
   })
 })
 
-describe('钩子里记假设：ctx.assume（AGENTS.md 差异 6）', () => {
+describe('钩子里记假设：ctx.assume（TD-08 §3.2）', () => {
   test('角色模块的钩子碰到时记一笔：汇总里列出次数，同样的说明只记一次', () => {
     const X = action({ id: 'X', kind: 'skill', endFrame: 40, judgments: [judgment({ name: 'a', spawnFrame: 10, multiplier: 100 })] })
     const 甲: SynthChar = {

@@ -74,7 +74,7 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
       console.log(`  ${padEnd(p.loop === 0 ? '启动' : String(p.loop), 4)}${padStart(`${(p.frames / 60).toFixed(2)} 秒`, 10)}${padStart(fmt(p.damage), 12)}${padStart(fmt(p.dps), 10)}` +
         `   ${p.energyDelta.map(signed).join(' / ')}   ${p.concertoDelta.map(signed).join(' / ')}`)
   }
-  // 轴可能有问题：写了"变奏"（switch <角色> 变奏）的切人没变奏（AGENTS.md 差异 3），单列在前面；其余警告在末尾的"提示"
+  // 轴可能有问题：写了"变奏"（switch <角色> 变奏）的切人没变奏（TD-09 §3.5、TD-10 §5），单列在前面；其余警告在末尾的"提示"
   const alerts = s.warnings.filter(w => w.code === 'introMissed')
   if (alerts.length > 0) {
     console.log('\n轴可能有问题（写了"变奏"的切人没变奏）')

@@ -310,7 +310,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
     case 'switch': {
       beginLoop(s)
       const from = s.onField
-      // 写了"变奏"（switch <角色> 变奏）而切出者协奏没满：照常普通切人，记一条警告——轴这里可能有问题（AGENTS.md 差异 3）
+      // 写了"变奏"（switch <角色> 变奏）而切出者协奏没满：照常普通切人，记一条警告——轴这里可能有问题（TD-09 §3.5）
       const short = c.expectIntro && s.chars[from].concerto < k.rules.concertoMax ? s.chars[from].concerto : null
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
