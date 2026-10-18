@@ -110,6 +110,8 @@ export default defineCharacter('维里奈', {
     'QTE-撞': { accept: ['priorityChangeGuess'] },
     '重击-强化撞1': { accept: ['priorityChangeGuess'] },
     C6: { accept: ['noEnd', 'noPriority', 'kindGuess', 'chainAdditive'] },     // 6 链才有（维里奈 3 链）
+    // 第 19 帧（"第19F前不能闪避"）降到 2，只比派生帧 20 早 1 帧：按默认接受（m0-confirm §12 甲类，2026-10-18 用户同意）
+    'A3-闪避反击': { accept: ['priorityChangeGuess'] },
     // 协同攻击不随大招自动出，由钩子在命中带光合标记的目标时生成（TD-08 P9）。
     // heals：动作表没有治疗判定，带治疗的这几段标出来，结算后记治疗事件（触发隐世回光等"提供治疗时"的效果）；治疗量不建模。
     // nanoka 3.7 写了回复生命 / 有治疗量的：草木生长、协同攻击、星星花绽放（重击 / 空中攻击）；延奏盛放与共鸣链1 的持续回复见钩子

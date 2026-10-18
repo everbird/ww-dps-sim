@@ -127,5 +127,9 @@ export default defineCharacter('散华', {
     '大招-引爆冰川': { accept: ['noEnd', 'noPriority'] },
     // 6 链"引爆后攻击提升"已写成 buff 散华.共鸣链6，这一组标记行不会被当成动作放
     'C6-引爆触发器': { accept: ['noEnd', 'noPriority', 'kindGuess', 'chainAdditive'] },
+    // 推断值按默认接受（m0-confirm §12 甲类，2026-10-18 用户同意）：蓄力只有名字的一行标记，没有帧数据，不会被当成动作放；
+    // 普通重击（不是重击居合）第 47 帧（派生帧）降到 2
+    蓄力: { accept: ['noEnd', 'noPriority', 'kindGuess'] },
+    重击: { accept: ['priorityChangeGuess'] },
   },
 })
