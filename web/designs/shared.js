@@ -111,8 +111,8 @@ window.WW = (() => {
       if (!a) continue
       a.damage += h.dmg.expected; a.hits++
       const of = h.action !== a.id ? h.action : undefined
-      let it = a.dmg.find(x => x.judgment === h.judgment && x.of === of)
-      if (!it) a.dmg.push(it = { judgment: h.judgment, ...(of ? { of } : {}), n: 0, v: 0, by: {} })
+      let it = a.dmg.find(x => x.judgment === h.judgment && x.of === of && x.note === h.note)
+      if (!it) a.dmg.push(it = { judgment: h.judgment, ...(of ? { of } : {}), ...(h.note ? { note: h.note } : {}), n: 0, v: 0, by: {} })
       it.n++; it.v += h.dmg.expected
       if (h.trigger) it.by[h.trigger.char] = (it.by[h.trigger.char] || 0) + 1   // 由谁的命中触发（维里奈的协同攻击可能是队友触发的）
     }
@@ -161,10 +161,12 @@ window.WW = (() => {
   const RES_NAME = { concerto: '协奏', energy: '能量' }
   /** 带符号的资源数：+15、+7.2、−125（10 以下留两位小数，去掉末尾的 0） */
   const signedNum = v => { const a = Math.abs(v); return `${v < 0 ? '−' : '+'}${+a.toFixed(a >= 10 ? 1 : 2)}` }
-  /** 一条出处叫什么："E-引爆冰棱 命中 2 段""行进序曲.协奏""起手即得" */
+  /** 引出原因写成一句（同 src/engine/trace.ts 的 causeText）："5 链：冰到时自爆（散华.冰棱 到时）" */
+  const causeText = (note, via) => (note && via ? `${note}（${via}）` : note || via || '')
+  /** 一条出处叫什么："E-引爆冰棱 命中 2 段""E-引爆冰棱 命中（5 链：冰到时自爆）""行进序曲.协奏""起手即得" */
   function gainName(it) {
     const n = it.n > 1 ? (it.how === 'hit' ? ` ${it.n} 段` : ` ×${it.n}`) : ''
-    if (it.how === 'hit') return `${it.what} 命中${n}`
+    if (it.how === 'hit') return `${it.what} 命中${it.note ? `（${it.note}）` : ''}${n}`
     if (it.how === 'effect') return it.what + n
     return ({ cast: '起手即得', cost: '施放扣除', hook: it.what || '角色钩子', break: '破盾回能' })[it.how] + n
   }
@@ -196,6 +198,7 @@ window.WW = (() => {
     const share = m.energyShare
     if (it.how === 'hit') {
       if (it.of) lines.push(`判定在「${esc(it.of)}」组里，由 ${esc(g.action)} 引发（钩子生成），所以算在这里`)
+      if (it.note || it.via) lines.push(`引出：${esc(causeText(it.note, it.via))}`)
       if (it.base !== undefined && it.resource === 'energy') {
         lines.push(`每段基础能量 ${+it.base.toFixed(4)}${share ? `：出伤者拿 ${share.dealer * 100}%、队友各拿 ${share.others * 100}%` : ''}，再乘各自的共鸣效率`)
       } else if (it.base !== undefined) lines.push(`每段 ${+it.base.toFixed(4)}`)
@@ -221,15 +224,19 @@ window.WW = (() => {
   }
   /** 逐个判定（C 的伤害列的提示、D 的检查器）：判定名、段数、伤害；判定在别的组里的、由队友命中触发的注明 */
   const dmgItemNote = (a, it) => [it.of ? `判定在「${it.of}」组里，由 ${a.id} 引发` : '', dmgTriggers(a, it) ? `触发：${dmgTriggers(a, it)}` : ''].filter(Boolean).join('；')
-  const dmgItemText = (a, it) => `${it.judgment}${it.n > 1 ? ` ${it.n} 段` : ''} ${fmt(it.v)}${dmgItemNote(a, it) ? `（${dmgItemNote(a, it)}）` : ''}`
+  const dmgItemText = (a, it) => `${it.judgment}${it.note ? `（${it.note}）` : ''}${it.n > 1 ? ` ${it.n} 段` : ''} ${fmt(it.v)}${dmgItemNote(a, it) ? `（${dmgItemNote(a, it)}）` : ''}`
   const DMG_NOTE = '按引发它的动作算（谁引发的算谁，同资源的出处）；汇总的"分动作"按判定所在的动作'
   function dmgTip(a) {
     return [`<b>${esc(`${a.char} ${a.id}`)} 打出的伤害 ${fmt(a.damage)}</b>`, ...a.dmg.map(it => esc(dmgItemText(a, it))), esc(DMG_NOTE)].join('<br>')
   }
-  /** 这一段由谁引出："由 椿 盛绽·A3 命中触发"（钩子在命中后生成的，如维里奈的协同攻击；本人触发的不写角色名）；
-   *  不是命中触发、但归到的动作与判定所在的动作不同时："由 重击居合 引发"；都不是时为空 */
-  const hitBy = h => (h.trigger ? `由 ${h.trigger.char === h.char ? '' : `${h.trigger.char} `}${h.trigger.action} 命中触发`
-    : h.ownerAct && h.ownerAct !== h.action ? `由 ${h.ownerAct} 引发` : '')
+  /** 这一段怎么来的："由 椿 盛绽·A3 命中触发"（钩子在命中后生成的，如维里奈的协同攻击；本人触发的不写角色名）；
+   *  其余钩子生成的写引出原因，归到的动作与判定所在的动作不同时前面加"由 X 引发"：
+   *  "由 重击居合 引发：重击爆裂引爆（散华.引爆计时 到时）""5 链：冰到时自爆（散华.冰棱 到时）"；都没有时为空 */
+  const hitBy = h => {
+    if (h.trigger) return `由 ${h.trigger.char === h.char ? '' : `${h.trigger.char} `}${h.trigger.action} 命中触发${h.note ? `（${h.note}）` : ''}`
+    const by = h.ownerAct && h.ownerAct !== h.action ? `由 ${h.ownerAct} 引发` : '', why = causeText(h.note, h.via)
+    return by && why ? `${by}：${why}` : by || why
+  }
   const cmdText = (m, c) => ((c.loop === 0 ? m.opening : m.rotation) || [])[c.line - 1] || ''
   const cmdWhere = c => `${c.loop === 0 ? '启动' : `第 ${c.loop} 轮`}第 ${c.line} 条`
   /** 每个角色的颜色：--c0..--c2 指向元素色 */
@@ -299,5 +306,5 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()

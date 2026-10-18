@@ -228,7 +228,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
       const hit = findJudgment(name, opts.action)
       if (!hit) throw new Error(`${m.def.name} 的钩子要生成的判定"${name}"不存在`)
       const running = s.chars[self].action
-      const j = spawnJudgment(s, self, hit.action.id, running?.id === hit.action.id ? running.instance : s.nextId++, hit.j)
+      const j = spawnJudgment(s, self, hit.action.id, running?.id === hit.action.id ? running.instance : s.nextId++, hit.j, undefined, opts.note)
       const cur = sim.bus.current
       if (cur) sim.bus.spawned.set(j.id, { depth: cur.depth + 1, root: cur.root })
     },

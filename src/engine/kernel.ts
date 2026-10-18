@@ -263,16 +263,16 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
 
 let settleQueue: JudgmentRuntime[] | null = null   // P4 进行中时，新生成的判定追加到这里，同一 tick 内结算
 
-/** detached：由延奏动作的独立时间线生成，不随持有者之后的动作消失（TD-05 §4.3） */
+/** detached：由延奏动作的独立时间线生成，不随持有者之后的动作消失（TD-05 §4.3）；note：钩子生成时附的说明，记进事件 */
 export function spawnJudgment(
-  s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef, detached?: true,
+  s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef, detached?: true, note?: string,
 ): JudgmentRuntime {
   const j: JudgmentRuntime = {
     id: s.nextId++, owner, action, actionInstance: instance, def, spawnedAt: s.frame, age: 0, ticksDone: 0, ...(detached ? { detached } : {}),
   }
   s.judgments.push(j)
   settleQueue?.push(j)
-  log(s, { type: 'judgmentSpawn', char: s.chars[owner].name, action, judgment: def.name, id: j.id })
+  log(s, { type: 'judgmentSpawn', char: s.chars[owner].name, action, judgment: def.name, id: j.id, ...(note ? { note } : {}) })
   return j
 }
 
