@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-09 排轴脚本与调度语义 v0.1.5
+# 鸣潮 DPS 引擎 · TD-09 排轴脚本与调度语义 v0.1.6
 
-> **状态**：v0.1.5（2026-10-05），已实现（`src/engine/scheduler.ts`）。v0.1.5 并回补位后缀 `~`（§2.2、§3.2、§4.2）；v0.1.4 并回启动轴 `opening`（§3.7、§4.2）与"插队不拆连段"（§3.2）；v0.1.3 并回 M4：可选后缀 `?`（§2.2、§3.2）与"插队"（§3.2）。v0.1.2 并回声骸的 `Q`、按次数充能（§3.2）与稳态口径（§3.7，关闭 Q10），见附录。v0.1.1 并回 M2 / M3 实现时的决定（共用冷却、切人交给 TD-05、变奏与接续动作的指令出处、示意轴按现在的规则重算），见附录
+> **状态**：v0.1.6（2026-10-17），已实现（`src/engine/scheduler.ts`）。v0.1.6 并回操作延迟 `options.inputDelay` 与抽样模式的抖动（§3.3、§3.6）；v0.1.5（2026-10-05）v0.1.5 并回补位后缀 `~`（§2.2、§3.2、§4.2）；v0.1.4 并回启动轴 `opening`（§3.7、§4.2）与"插队不拆连段"（§3.2）；v0.1.3 并回 M4：可选后缀 `?`（§2.2、§3.2）与"插队"（§3.2）。v0.1.2 并回声骸的 `Q`、按次数充能（§3.2）与稳态口径（§3.7，关闭 Q10），见附录。v0.1.1 并回 M2 / M3 实现时的决定（共用冷却、切人交给 TD-05、变奏与接续动作的指令出处、示意轴按现在的规则重算），见附录
 > **依据**：《技术总体设计 v0.1.3》（下称"总设计"）§3.3 第 7 步、§3.5、§4 T6 / T7、§5.3、§6.5、第 8 节；《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§1、§6、Q9、Q10；《TD-02 类型与 Schema v0.1.2》§6、§7；《TD-01 数据字典与抽取规格 v0.1.2》§13
 > **下游**：TD-05（切人之后的变奏 / 延奏接在本文的 `onSwitch` 上）、TD-06（资源检查接在 `canAfford` 上）、TD-08（角色钩子 `canStart`、角色技能的冷却数值）、TD-10（等待记录、轮次边界、"指令的完成时刻"用于统计窗口）
 > **验证**：TypeScript 原型 `src/engine/scheduler.ts`（约 280 行）跑通 11 组 33 个用例（§7）；TD-04 的 35 个用例改用本文的调度器后全部照旧通过；全量 119 条普攻连段按默认与强制各连按一遍（§8）；另请一个未参与编写的审阅者对照代码逐条核对了本文的规则与约 110 个数字（§7.4）
@@ -171,6 +171,7 @@ rotation:
 | `started` | 同一角色本 tick 已开始过动作 | 是 |
 | `switchCd`、`switchLock` | 切人冷却、切人锁 | 是 |
 | `delay`、`wait` | `+N`、`wait N` | 否 |
+| `input` | 操作延迟（v0.1.6：`options.inputDelay`，抽样模式另加抖动，§3.6） | 否 |
 | `at` | 测试台专用：等到某世界帧 | 否 |
 
 **分段记录**：队首连续几个 tick 的原因代码相同，合成一段；代码变了或指令执行了，就结束这一段，写一条 `wait` 事件：
@@ -181,7 +182,7 @@ rotation:
 
 例：散华 `E A1 A2 A3 A4 A5 R`（T09-10）记下 7 段——第 2 个动作 `priority` 60 帧、第 3–6 个 `combo` 26 / 35 / 36 / 38 帧、第 5 个另有 `settled` 1 帧、第 7 个 `settled` 34 帧。这就是总设计 T7 说的"等了多少帧、在等什么"。
 
-**超时**：队首因"不合法"等待（`delay`、`wait`、`at` 以外）的世界帧累计超过 `options.maxWait`（默认 600，即 10 秒）时报错，信息带最后一个原因。用世界帧计，是因为它总在走（全局时停时战斗帧不走），保证一定能停下来。
+**超时**：队首因"不合法"等待（`delay`、`wait`、`at`、`input` 以外）的世界帧累计超过 `options.maxWait`（默认 600，即 10 秒）时报错，信息带最后一个原因。用世界帧计，是因为它总在走（全局时停时战斗帧不走），保证一定能停下来。
 
 **报错**：`ScheduleError { code, message, cmd, frame }`，仿真就此停止。报错前先把正在累计的等待段写进日志，已写出的事件日志保留，便于看停在哪里、等了什么（T09-8：超时前的 270 帧 `cooldown` 在日志里）。信息里的位置写成"第 k 条"，一行有几个动作时写成"第 k 条第 i 个"，循环中写成"第 2 轮第 k 条"。
 
@@ -221,12 +222,18 @@ rotation:
   - 已实现："第nF后切人（立即）结束技能 / 消失"与"切人立即结束 / 消失"由构建脚本抽成 `endOnSwitchOut`，切出时局部帧已过就按取消处理。M0 队伍里是椿 A4（72）与盛绽·A3循环聚怪（24）。
   - 未实现："第nF前切人不消失 / 不离场"（陆·赫斯、赞妮、露帕）；没有帧数的"不能切人"（全量 118 组，大半是谐度破坏）——仍按"切人不打断动作、没有锁"处理（Q6）。
 
-### 3.6 `+N` 与 `wait N`
+### 3.6 `+N`、`wait N` 与操作延迟
 
 - 两者都按**战斗帧**：与 DPS 分母同一口径，全局时停期间不走。散华大招（全局时停 90 帧）里写 `wait 30`，世界帧过了 120 帧（T09-5）。
 - **`+N`**：从队首第一次"其余检查全部满足"（含本 tick 已出过招；强制时不含就绪）的那个 tick 起算，再过 N 个战斗帧执行。这期间条件又不满足了就接着等；等不来照常报错——`A1 A2 +40`：A2 最早第 26 帧，再等 40 帧时 A1 的派生窗口已在第 55 帧关闭，报"连段中断"（T09-3）。
 - **`wait N`**：从队首变成它的那个 tick 起算，N 个战斗帧后完成。`wait 0` 立即完成。
 - 两者都不计入 maxWait（T09-8）。
+- **操作延迟**（v0.1.6，总设计 T4）：场景 `options.inputDelay: N`（帧，缺省 0）让每个决策点在合法之后再晚 N 个战斗帧执行，模拟人的反应时间（缺省 0 就是假设 `earliest-frame`：最早合法帧，理论上限）。
+  - 决策点 = 切人，与不是连段后续的出招。连段的后续（有 `comboFrom` 的动作，如 A2–A5）按玩家会预输入不加；插队的谐度破坏不加。
+  - 与 `+N` 相加：先 `+N`，再操作延迟。例：`X Y+10`、延迟 3 帧，X 结束后第 13 帧开始 Y。
+  - 每条的延迟在它第一次全部合法时定下（`QueueState.extra`），换下一条清空。等待原因 `input`，不计入 maxWait，也不进 `Summary.waits`。
+  - 抽样模式（总设计 T4）在这里加随机抖动：`simulate(r, { sample: { seed, jitter } })` 时每条的延迟是 `inputDelay` 加上 [0, jitter] 上的均匀整数，从 `SchedulerOptions.inputDelay` 取——调度器里唯一的随机注入点。
+  - 用途：`pnpm insight` 的操作容错（TD-10 §6）。
 
 ### 3.7 循环
 
@@ -323,7 +330,8 @@ export interface QueueState {
   loop: number                              // 当前第几轮（从 1 起）
   loopBegun: boolean                        // 本轮的第一条指令是否已生效（生效时记 loop 事件）
   waited: number                            // 队首因"不合法"已经等了几个世界帧（maxWait 计时；+N、wait 不算）
-  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N 从这里起算）
+  readyAt: number | null                    // 队首第一次全部合法时的战斗帧（+N、操作延迟从这里起算）
+  extra: number | null                      // v0.1.6：队首的操作延迟（options.inputDelay，抽样模式另加抖动），第一次全部合法时定下
   until: number | null                      // wait N：到这个战斗帧结束
   seg: WaitSegment | null                   // 正在累计的等待段（原因不变就合成一段）
 }
@@ -333,6 +341,7 @@ export type WaitCode =
   | 'cooldown' | 'resource' | 'hook' | 'settled'
   | 'switchCd' | 'switchLock'
   | 'delay' | 'wait' | 'at'
+  | 'input'                                 // v0.1.6：操作延迟
   | 'filler'                                // v0.1.5：补位不需要了（只用于 skip 事件）
 /** 指令在事件里的出处 */
 export interface CommandRef { line: number; item: number; loop: number }
@@ -342,7 +351,7 @@ export interface CommandRef { line: number; item: number; loop: number }
 //   wait：{ cmd, code, reason, from, frames, battleFrames }（取代 v0.1.2 的 { line, frames, reason }）
 //   新增 { type: 'loop'; loop: number }
 //   新增 { type: 'skip'; cmd; code; reason }（v0.1.3：可选指令被跳过）；Summary.skipped：{ line, item, loop, reason }[]
-// SchedulerOptions 新增 interject?(s) → { slot, def, why } | null（v0.1.3：插队）
+// SchedulerOptions 新增 interject?(s) → { slot, def, why } | null（v0.1.3：插队）；inputDelay?(s) → 帧数（v0.1.6：操作延迟，抽样模式加抖动）
 // Summary.waits：{ line, item, loop, code, frames, reason }[]（v0.1.1：带 item）
 ```
 
@@ -775,3 +784,4 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 - **v0.1.3（2026-10-04）**：并回 M4（TD-06 v0.2 §17、AGENTS.md 差异 1）。§2 新增可选后缀 `?`（全角也认，`??` 报错）；§3.1 / §3.2：可选指令遇到冷却、资源、钩子条件不满足时跳过，记 `skip` 事件、列进 `Summary.skipped`，门与就绪照常等；新增"插队"（`SchedulerOptions.interject`，目前用于自动放谐度破坏）；§3.9 跳过的指令与插队的动作不算完成时刻；§5 类型。
 - **v0.1.4（2026-10-04）**：并回启动轴与插队不拆连段（AGENTS.md 差异 2、3）。§0.1 第 8 条、§3.7 新增启动轴 `opening`（只跑一次、第 0 轮、`QueueState.opening`、报错写"启动第 k 条"）；§4.2 编译时前台从启动轴结束处推起；§3.2 插队：队首是连段后续时先不插；全量连段计数补 20261003 版。
 - **v0.1.5（2026-10-05）**：并回补位后缀（AGENTS.md 差异 1）。§0.1、§2.1、§2.2 新增 `~`（全角 `～` 也认，可与 `!` 同写，不能与 `?` 同写）；§2.4 报错；§3.2 补位：后面那条的冷却、资源、钩子都满足就跳过（skip code `filler`），等待时每 tick 再看；§4.2 编译期要求补位后面接同一角色的动作；§5 类型（`filler`、`WaitCode` 加 `filler`）。
+- **v0.1.6（2026-10-17）**：并回操作延迟与抽样模式的抖动（AGENTS.md 差异 3、4，总设计 v0.2 T4）。§3.3 等待原因新增 `input`（不计入 maxWait）；§3.6 新增操作延迟 `options.inputDelay`：决策点（切人、不是连段后续的出招）在合法之后再晚 N 帧，与 `+N` 相加，抽样模式另加 [0, jitter] 帧的抖动；§5 `QueueState.extra`、`SchedulerOptions.inputDelay`。

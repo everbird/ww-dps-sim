@@ -40,6 +40,8 @@ describe('rules.defFloor：减防后的目标防御先取整（TD-03 Q1）', () 
     expect(defFactor(1593, -0.18, 0, 90, 2, true)).toBe(1 / (1306 / den + 1))
     expect(defFactor(1593, -0.18, 0, 90, 2, false)).toBeCloseTo(1 / (1306.26 / den + 1), 12)
     expect(defFactor(1593, 0, 0, 90, 2, true)).toBe(defFactor(1593, 0, 0, 90))   // 没有减防：防御本来就是整数
+    // 同 xlsx：先对减防后的防御取整，再乘无视防御（不是乘完再取整）
+    expect(defFactor(1593, -0.18, 0.1, 90, 2, true)).toBe(1 / (1306 * (1 - 0.1) / den + 1))
   })
 
   const X = action({ id: 'X', kind: 'skill', endFrame: 40, judgments: [judgment({ name: 'a', spawnFrame: 10, multiplier: 100 })] })
