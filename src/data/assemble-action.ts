@@ -23,13 +23,29 @@ export function assembleBlock(
   file: GenActionFile, overrides: Record<ActionId, ActionOverride> = {}, opts: AssembleOptions = {},
 ): Record<string, ActionDef> {
   const ids = new Set(file.groups.map(g => g.id))
+  // splitRows：拆出的行自成一个动作，动作 ID 就是行名（维里奈 A3 组里的"A3-地面出场技"）；copyAs：整组另存为新动作（椿的地面出场技 = A2）。
+  // 先登记新动作，它们也能写覆盖
+  const fresh = (g: GenGroup, field: string, n: string) => {
+    if (ids.has(n)) throw new Error(`${file.key} ${g.id} 的 ${field}："${n}"与已有的动作重名`)
+    ids.add(n)
+  }
+  for (const g of file.groups) {
+    for (const n of overrides[g.id]?.splitRows ?? []) {
+      if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 splitRows 写了不存在的行"${n}"`)
+      fresh(g, 'splitRows', n)
+    }
+    for (const n of overrides[g.id]?.copyAs ?? []) fresh(g, 'copyAs', n)
+  }
   for (const id of Object.keys(overrides))
     if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
   const out: Record<string, ActionDef> = {}
+  const put = (def: ActionDef) => { const ov = overrides[def.id]; out[def.id] = ov ? applyOverride(def, ov) : def }
   for (const g of file.groups) {
-    const ov = overrides[g.id]
-    const def = assembleGroup(file, g, ids, opts, ov?.dropRows)
-    out[g.id] = ov ? applyOverride(def, ov) : def
+    const split = overrides[g.id]?.splitRows ?? []
+    const drop = [...(overrides[g.id]?.dropRows ?? []), ...split]
+    put(assembleGroup(file, g, ids, opts, drop))
+    for (const n of split) put(assembleGroup(file, { id: n, rows: g.rows.filter(r => r.name === n) }, ids, opts))
+    for (const n of overrides[g.id]?.copyAs ?? []) put(assembleGroup(file, { id: n, rows: g.rows }, ids, opts, drop))
   }
   // 前置动作一个派生窗口都没有时，连段永远接不上：不设连段前置，打 flag 交给 curated（TD-09 §8 全量检查发现 7 组）
   for (const def of Object.values(out)) {
@@ -334,8 +350,8 @@ function targetOf(r: GenRow, opts: AssembleOptions, jf: string[]): JudgmentDef['
   return 'other'
 }
 
-/** 每次结算发放的资源：普通数字取 total；公式按"逐段命中"项取（只有一项取它，多项取平均），进入即得的项归 castGains。
- *  事件生成的判定（E-引爆冰棱…）不随动作施放，它的"进入即得"项在它结算时一起发（总设计 §6.7） */
+/** 每次结算发放的资源：普通数字取 total；公式按"逐段命中"项取（只有一项取它，多项取平均），起手即得的项（公式末项常数，原作者说"进入该动作就获得"）归 castGains。
+ *  事件生成的判定（E-引爆冰棱…）不随动作施放，它的"起手即得"项在它结算时一起发（总设计 §6.7） */
 function perHit(cell: GainCell | null, r: GenRow, jf: string[]): number {
   if (!cell) return 0
   const onSpawn = r.eventSpawned ? cell.onAction ?? 0 : 0

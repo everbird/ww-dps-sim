@@ -38,7 +38,7 @@ export function log(s: SimState, ev: DistOmit<SimEvent, 'f' | 't'>): void {
 
 // ---------------------------------------------------------------------------
 // §4.1 时间线：动作里一切"到某帧发生"的事，按帧排好，用游标推进。
-// 施放资源只放 atFrame > 0 的：进入即得的那部分在开始动作的那一刻由资源模块发（TD-06 §7）
+// 施放资源只放 atFrame > 0 的：起手即得的那部分在开始动作的那一刻由资源模块发（TD-06 §7）
 
 const ORDER = { gain: 0, dilation: 1, spawn: 2, outro: 3 } as const
 const timelines = new WeakMap<ActionDef, TimelineEvent[]>()

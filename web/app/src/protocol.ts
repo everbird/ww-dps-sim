@@ -11,7 +11,7 @@ export interface Requests {
   info: { req: Record<string, never>; res: { version: string; characters: string[]; xlsx: string } }
   run: {
     req: { scenario: Source; view?: string }
-    res: { html: string; dps: number; steady: number | null; label: string; error: string | null; warnings: string[]; assumptions: Summary['assumptions'] }
+    res: { html: string; dps: number; steady: number | null; label: string; error: string | null; alerts: string[]; warnings: string[]; assumptions: Summary['assumptions'] }
   }
   design: { req: { scenario: Source; file: string }; res: { html: string } }
   insight: { req: { scenario: Source }; res: Insight }

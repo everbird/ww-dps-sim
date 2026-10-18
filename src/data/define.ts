@@ -9,6 +9,9 @@ import type { CharacterHooks, HookVars } from '../engine/types'
  *  覆盖了带 flag 的字段，该 flag 即视为已处理（如改 priority 消掉 priorityChangeGuess）；名字写错直接报错，不做模糊匹配。 */
 export interface ActionOverride {
   dropRows?: string[]                       // 装配前去掉的行（行名）：互斥的"情形"版本只留一个，如维里奈 A3 只留"目标3m内"
+  splitRows?: string[]                      // 装配前拆出的行（行名）：各自成为一个动作，动作 ID 就是行名，如维里奈"A3-地面出场技"（同散华单列的"A2-地面出场技"组）
+  copyAs?: ActionId[]                       // 另存为这些动作：同一组行（去掉 dropRows、splitRows 之后）按新 ID 再装配一次，不带本组的其余覆盖；
+                                            // xlsx 没写、实测得知的，如椿的地面出场技就是 A2（新 ID 不推连段前置）
   kind?: ActionKind
   endFrame?: Frame                          // 不会重算派生窗口；需要时一并覆盖 cancelWindows
   priority?: PriorityStep[]

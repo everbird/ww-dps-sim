@@ -66,6 +66,9 @@
           <div><dt>整个窗口</dt><dd>{fmt(out.dps)}</dd></div>
         </dl>
         {#if out.error}<p class="error">运行报错（{out.error}）：日志保留到出错为止</p>{/if}
+        {#if out.alerts.length}
+          <div class="alerts" role="alert"><b>轴可能有问题（{out.alerts.length} 处）：写了"变奏"的切人没变奏</b><ul>{#each out.alerts as w}<li>{w}</li>{/each}</ul></div>
+        {/if}
         {#if out.warnings.length}
           <details><summary>提示 {out.warnings.length} 条</summary><ul class="warn">{#each out.warnings as w}<li>{w}</li>{/each}</ul></details>
         {/if}
@@ -133,6 +136,9 @@
   .stats dd { margin: 0; font-family: var(--mono); font-size: 18px; font-weight: 500; font-variant-numeric: tabular-nums; }
   .stale { margin: 0; font-size: 12.5px; color: var(--wait); }
   .warn { margin: 6px 0 0; padding-left: 18px; font-size: 12px; color: var(--muted); }
+  .alerts { border: 1px solid var(--alert); border-left-width: 4px; border-radius: 6px; padding: 8px 10px; font-size: 12.5px; }
+  .alerts b { color: var(--alert); font-weight: 500; }
+  .alerts ul { margin: 4px 0 0; padding-left: 18px; }
   details summary { cursor: pointer; font-size: 13px; color: var(--muted); }
   .assume ul { margin: 6px 0; padding-left: 18px; font-size: 13px; display: grid; gap: 6px; }
   .assume li .muted { font-size: 12px; }

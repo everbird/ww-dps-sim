@@ -1,8 +1,8 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments } from '../engine/trace'
-import type { ResolvedScenario, SimResult } from '../engine/types'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments, type HitTrigger } from '../engine/trace'
+import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>
 
@@ -34,11 +34,27 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
       ...(b.def.zone ? { zone: b.def.zone, value: b.value } : {}), maxStacks: b.def.maxStacks, source: b.def.source,
       ...(b.def.filter ? { filter: b.def.filter } : {}),
     }])),
+    // 每个动作给的协奏、能量，各从哪来（视图 D 的检查器、动作条的提示）；资源型效果的原文；能量的分配比例（出伤者 / 队友）
+    gains: actionGains(gainSteps(res.log, r)),
+    effectInfo: Object.fromEntries(r.effects.map(e => [e.def.id, { source: e.def.source }])),
+    energyShare: r.rules.energyShare,
     trace: traceModel(r, res),
     video: videoModel(sc, r, res),
     ...(res.error ? { error: res.error } : {}),
-    log: res.log.filter(ev => ev.type !== 'judgmentSpawn'),            // 网页不用，省体积
+    log: withCauses(res.log.filter(ev => ev.type !== 'judgmentSpawn'), hitCauses(res.log, r)),   // 判定生成网页不用，省体积
   }
+}
+
+/** 命中带上归到的动作与触发者（"谁引发的算谁"，AGENTS.md 差异 8）：owner = 那个动作开始的实例号（归到延奏、归不到动作的不写）；
+ *  trigger = 触发它的命中（钩子在命中后生成的判定才有：维里奈的协同攻击由谁的命中触发）。
+ *  网页里动作的伤害按 owner 合计（散华重击居合引爆的"E-引爆冰棱"算重击居合）；汇总的"分动作"仍按判定所在的动作 */
+function withCauses(log: SimEvent[], causes: ReturnType<typeof hitCauses>): (SimEvent & { owner?: number; trigger?: HitTrigger })[] {
+  return log.map(ev => {
+    const c = ev.type === 'hit' ? causes.get(ev) : undefined
+    if (!c) return ev
+    const o = c.owner && !c.owner.outro && c.owner.instance !== null ? { owner: c.owner.instance } : {}
+    return c.trigger || 'owner' in o ? { ...ev, ...o, ...(c.trigger ? { trigger: c.trigger } : {}) } : ev
+  })
 }
 
 /** 调试表（TD-11 §3、§6 P3）：每轮的分段、逐条与资源逐步（协奏、能量、各核心资源），网页按轮次显示 */

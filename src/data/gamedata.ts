@@ -228,7 +228,7 @@ export const DEFAULT_RULES: Rules = {
   charLevel: 90,
   switchCooldown: 60,                               // 机制设计 5.4
   concertoMax: 100,
-  concertoTiming: 'onHit',                          // 逐段所得按命中给，"进入即得"仍在出手时（2026-10-03 用户实测，TD-06 Q1）
+  concertoTiming: 'onHit',                          // 逐段所得按命中给，"起手即得"仍在动作开始时（2026-10-03 用户实测，TD-06 Q1）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1
   breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
   critRateCap: 1,

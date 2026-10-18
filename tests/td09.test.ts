@@ -9,6 +9,7 @@ import 椿 from '../data/curated/characters/椿'
 import 散华 from '../data/curated/characters/散华'
 import 维里奈 from '../data/curated/characters/维里奈'
 import { action, block, dataDescribe, eventsOf, hasData, judgment, member, run, tryRun, type Cmd, type RunResult } from './helpers/kernel-harness'
+import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
 const starts = (r: RunResult) => eventsOf(r, 'actionStart').map(e => `${e.action}@${e.f}`)
 const waits = (r: RunResult) => eventsOf(r, 'wait').map(e => `${e.cmd.line}:${e.code} ${e.from}+${e.frames}`)
@@ -40,6 +41,8 @@ describe('T09-1 语法（§2）', () => {
     expect(parseRotationLine('# 第二轮')).toEqual([])
     expect(parseRotationLine('千咲 电锯A2#2')).toEqual([{ kind: 'act', char: '千咲', action: '电锯A2#2', delay: 0, force: false }])
     expect(parseRotationLine('切人 长离')).toEqual([{ kind: 'switch', char: '长离' }])
+    expect(parseRotationLine('switch 椿 变奏  # 散AQ 变奏椿')).toEqual([{ kind: 'switch', char: '椿', expectIntro: true }])   // 写了"变奏"（AGENTS.md 差异 3）
+    expect(parseRotationLine('切人 椿 变奏')).toEqual([{ kind: 'switch', char: '椿', expectIntro: true }])
     expect(parseRotationLine('等待 20')).toEqual([{ kind: 'wait', frames: 20 }])
     expect(parseRotationLine('散华 A2 ＋３ E ＃注释')).toEqual([act('A2', 3), act('E')])   // 全角数字、＃ 也按半角
     expect(parseRotationLine('等待 ３０')).toEqual([{ kind: 'wait', frames: 30 }])
@@ -52,6 +55,7 @@ describe('T09-1 语法（§2）', () => {
     expect(err('散华 A2 +3 +4')).toContain('两个延迟')
     expect(err('散华 A2 +0 +4')).toContain('两个延迟')
     expect(err('等待 abc')).toContain('格式不对')
+    expect(err('switch 椿 普通')).toBe('"switch 椿 普通" 格式不对：应为 switch <角色> 或 switch <角色> 变奏')
     expect(err('switch')).toContain('格式不对')
   })
 })
@@ -374,3 +378,25 @@ describe('T09-启动轴（§3.7）：先跑一次 opening（第 0 轮），之�
   })
 })
 
+// 写了"变奏"的切人（switch <角色> 变奏，AGENTS.md 差异 3）：切出者协奏没满就照常普通切人，记一条警告——轴这里可能有问题
+describe('switch <角色> 变奏', () => {
+  const 乙: SynthChar = { name: '乙', actions: [action({ id: 'QTE', kind: 'intro', endFrame: 30 })] }
+  const go = (concerto: number, line = 'switch 乙 变奏') =>
+    synthRun([idle('甲'), 乙, idle('丙')], { initial: { onField: 0, concerto: [concerto, 0, 0] }, rotation: ['wait 10', line] })
+  const alerts = (r: ReturnType<typeof go>) => eventsOfLog(r.log, 'warning').filter(e => e.code === 'introMissed')
+
+  test('协奏没满：照常普通切人，记一条 introMissed 警告（带指令出处），汇总的 warnings 里也有', () => {
+    const r = go(73.5)
+    expect(eventsOfLog(r.log, 'switch').map(e => [e.f, e.intro])).toEqual([[10, false]])
+    expect(alerts(r).map(e => [e.f, e.line, e.cmd])).toEqual([[10, 2, { line: 2, item: 1, loop: 1 }]])
+    expect(alerts(r)[0]!.message).toBe('第 2 条 switch 乙 变奏：甲 协奏 73.5，没满 100，这次是普通切人（甲 的延奏没出，乙 没有变奏），轴这里可能有问题')
+    expect(r.summary.warnings.filter(w => w.code === 'introMissed').map(w => w.line)).toEqual([2])
+  })
+
+  test('协奏满了照常变奏，不警告；没写"变奏"的切人协奏没满也不警告', () => {
+    const full = go(100)
+    expect(eventsOfLog(full.log, 'switch').map(e => e.intro)).toEqual([true])
+    expect(alerts(full)).toEqual([])
+    expect(alerts(go(50, 'switch 乙'))).toEqual([])
+  })
+})

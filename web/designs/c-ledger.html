@@ -86,13 +86,13 @@
   <section class="card strip"><div class="k">谁在前台（每段多长，世界秒）</div><div class="seg" id="seg"></div><div class="scale" id="scale"></div></section>
   <section class="card tablewrap">
     <table>
-      <thead><tr><th>条</th><th>指令</th><th class="n">开始·战斗秒</th><th class="n">到下一条</th><th class="n">伤害</th><th>之前卡在</th><th id="gh">本轮时间线</th></tr></thead>
+      <thead><tr><th>条</th><th>指令</th><th class="n">开始·战斗秒</th><th class="n">到下一条</th><th class="n">伤害</th><th class="n">协奏</th><th class="n">能量</th><th>之前卡在</th><th id="gh">本轮时间线</th></tr></thead>
       <tbody id="body"></tbody>
     </table>
   </section>
   <div class="side">
     <section class="card pad"><h2>buff 覆盖（本轮，影响伤害的）</h2><div class="up" id="uptime"></div></section>
-    <section class="card pad"><h2>本轮伤害（按动作）</h2><div class="up" id="byact"></div></section>
+    <section class="card pad"><h2>本轮伤害（按引发的动作）</h2><div class="up" id="byact"></div></section>
   </div>
 </div>
 <script id="timeline-data" type="application/json">null</script>
@@ -121,10 +121,18 @@
     $('scale').innerHTML = marks.join('')
     $('gh').textContent = `本轮时间线（${WW.sec(sp.endF - sp.f)} 世界秒）`
     const ticks = [...Array(Math.floor((sp.endF - sp.f) / 300) + 1).keys()].map(k => `<span class="tick" style="left:${pc(sp.f + k * 300)}"></span>`).join('')
-    const dmgOf = c => {
-      const a = D.actions.find(a => a.cmd && a.cmd.loop === T.loop && a.cmd.line === c.line && a.cmd.item === c.item && a.start === c.f)
-        || D.actions.find(a => !a.cmd && a.start === c.f && c.kind === 'interject')
-      return a ? a.damage : 0
+    const actOf = c => (c.kind === 'act' || c.kind === 'interject'
+      ? D.actions.find(a => a.cmd && a.cmd.loop === T.loop && a.cmd.line === c.line && a.cmd.item === c.item && a.start === c.f)
+        || D.actions.find(a => !a.cmd && a.start === c.f && c.kind === 'interject') || null
+      : null)
+    // 这个动作给的协奏、能量（动作本人拿到的；整个动作的合计，含之后才命中的段）；提示里逐条列出处，给队友的也在里面
+    const gainCells = a => {
+      const g = a && a.gains
+      if (!g || !g.items.length) return '<td class="n"></td><td class="n"></td>'
+      const t = WW.gainTotals(M, g)
+      const tip = WW.esc(`<b>${WW.esc(`${a.char} ${a.id}`)} 给的资源</b><br>` + g.items.map(it => `${WW.RES_NAME[it.resource] || it.resource} ${WW.esc(WW.whoGot(M, it.deltas, a.char))}　${WW.esc(WW.gainName(it))}${it.dt > 0 ? `（+${it.dt.toFixed(2)} 秒）` : ''}`).join('<br>'))
+      const own = res => (t[res] && t[res][a.char] !== undefined ? WW.signedNum(t[res][a.char]) : '')
+      return `<td class="n" data-tip="${tip}">${own('concerto')}</td><td class="n" data-tip="${tip}">${own('energy')}</td>`
     }
     $('body').innerHTML = T.commands.map(c => {
       const who = c.kind === 'switch' ? c.label.replace(/^switch\s+/, '').replace(/（.*$/, '') : c.label.replace(/^（[^）]*）/, '').split(' ')[0]
@@ -132,13 +140,15 @@
       // 派生窗口、优先级是正常出招节奏（淡色）；冷却、资源、等出手、切人冷却等是真正卡住（高亮）
       const why = c.waits.map(w => `<span class="${/派生窗口|优先级/.test(w.reason) ? '' : 'hot'}">${WW.esc(w.reason)} <b>${w.frames}</b></span>`).join('；')
       const text = c.line !== null ? WW.cmdText(M, { loop: T.loop, line: c.line }) : ''
-      const d = c.kind === 'act' || c.kind === 'interject' ? dmgOf(c) : 0
+      const act = actOf(c), d = act ? act.damage : 0
       const g = c.kind === 'switch'
         ? `<span class="dia" style="--c:${colorOf(who)};left:${pc(c.f)}"></span>`
         : `${wait ? `<span class="w" style="left:${pc(Math.max(sp.f, c.f - wait))};width:${pw(Math.min(wait, c.f - sp.f))}"></span>` : ''}<span class="bar" style="--c:${colorOf(who)};left:${pc(c.f)};width:${pw(Math.max(c.frames, 2))};opacity:${c.kind === 'skip' ? 0.25 : 1}"></span>`
-      const cls = c.kind === 'switch' ? 'sw' : c.kind === 'skip' || c.kind === 'interject' ? 'sub' : ''
+      // 写了"变奏"的切人没变奏：这一行标红，原因写在"之前卡在"一栏（AGENTS.md 差异 3）
+      const al = c.kind === 'switch' ? D.alerts.find(a => a.cmd && a.cmd.loop === T.loop && a.cmd.line === c.line && a.cmd.item === c.item) : null
+      const cls = (c.kind === 'switch' ? 'sw' : c.kind === 'skip' || c.kind === 'interject' ? 'sub' : '') + (al ? ' ww-alert' : '')
       return `<tr class="${cls}"><td class="line">${c.line === null ? '' : `${c.line}.${c.item}`}</td><td class="cmd"${text ? ` data-tip="${WW.esc(`<b>${c.line === null ? '' : `第 ${c.line} 条：`}</b>${WW.esc(text)}`)}"` : ''}><span class="who" style="--c:${colorOf(who)}"></span>${WW.esc(c.label)}</td>
-        <td class="n">${(c.t - sp.t).toFixed(2)}</td><td class="n">${WW.sec(c.frames)}</td><td class="n">${d ? WW.fmt(d) : ''}</td><td class="why">${why}</td>
+        <td class="n">${(c.t - sp.t).toFixed(2)}</td><td class="n">${WW.sec(c.frames)}</td><td class="n"${d ? ` data-tip="${WW.esc(WW.dmgTip(act))}"` : ''}>${d ? WW.fmt(d) : ''}</td>${gainCells(act)}<td class="why">${al ? `<span class="ww-alert-text">${WW.esc(WW.alertBody(al))}</span>${why ? '；' : ''}` : ''}${why}</td>
         <td class="gantt"><div class="g">${ticks}${g}</div></td></tr>`
     }).join('')
     // buff 覆盖：本轮内（世界帧）的覆盖比例，只列影响伤害的，按受益人分色
@@ -148,11 +158,18 @@
     }).filter(x => x.u > 0).sort((a, b) => b.u - a.u).slice(0, 16)
     $('uptime').innerHTML = ups.map(({ b, u }) => `<span data-tip="${WW.esc([`<b>${WW.esc(b.buff)}</b> → ${WW.esc(b.target)}`, WW.buffEffect(M, b.buff), (M.buffInfo[b.buff] || {}).source].filter(Boolean).map((t, k) => (k ? WW.attr(t) : t)).join('<br>'))}">${WW.esc(b.short)} → ${WW.esc(b.target)}</span><i style="--c:${colorOf(b.target)};width:${(u * 100).toFixed(1)}%"></i><em>${WW.pct(u)}</em>`).join('')
     const acts = new Map()
-    for (const h of D.hits) if (h.dmg && h.f >= sp.f && h.f < sp.endF) { const k = `${h.char} ${h.action}`; acts.set(k, (acts.get(k) || 0) + h.dmg.expected) }
+    // 按引发的动作合计（同上面的伤害列，AGENTS.md 差异 8）；按命中时刻算进本轮，合计同本轮伤害
+    for (const h of D.hits) if (h.dmg && h.f >= sp.f && h.f < sp.endF) { const k = `${h.char} ${h.ownerAct}`; acts.set(k, (acts.get(k) || 0) + h.dmg.expected) }
     const top = [...acts].sort((a, b) => b[1] - a[1]).slice(0, 12), mx = top.length ? top[0][1] : 1
     $('byact').innerHTML = top.map(([k, v]) => `<span>${WW.esc(k)}</span><i style="--c:${colorOf(k.split(' ')[0])};width:${(100 * v / mx).toFixed(1)}%"></i><em>${WW.fmt(v / 1000)}k</em>`).join('')
   }
   $('loopSel').addEventListener('change', render)
+  // 提示条（写了"变奏"的切人没变奏）：点一条换到那一轮，滚到那一行
+  WW.mountAlerts(M, document.querySelector('.wrap'), a => {
+    if (!a.cmd || !trace.some(t => t.loop === a.cmd.loop)) return
+    $('loopSel').value = String(a.cmd.loop); render()
+    const tr = document.querySelector('tr.ww-alert'); if (tr) tr.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, document.querySelector('.wrap > section'))
   WW.tips(document.body)
   const first = WW.defaultLoop(M)
   if (first != null && trace.some(t => t.loop === first)) $('loopSel').value = String(first)
