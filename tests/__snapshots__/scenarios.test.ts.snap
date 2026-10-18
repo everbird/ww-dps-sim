@@ -65,9 +65,9 @@ exports[`场景回归快照 > m0-team.yaml 1`] = `
   "steady": "第 2–3 轮：3812 帧，DPS 31023.11",
   "totalDamage": 3864711.85,
   "warnings": [
-    "椿 有 9 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
-    "散华 有 7 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
-    "维里奈 有 3 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
+    "椿 有 1 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
+    "散华 有 3 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
+    "维里奈 有 2 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
   ],
   "windowFrames": 7667,
 }
@@ -82,7 +82,7 @@ exports[`场景回归快照 > m0-video.yaml 1`] = `
     "white-bar ×2",
     "tune-break-auto ×5",
     "tunability-base ×313",
-    "data-guess ×15",
+    "data-guess ×10",
   ],
   "byAction": [
     "椿 E3：783686.2（16.71%，5 段）",
@@ -137,9 +137,9 @@ exports[`场景回归快照 > m0-video.yaml 1`] = `
   "steady": "第 2–3 轮：3000 帧，DPS 40888.04",
   "totalDamage": 4689035.1,
   "warnings": [
-    "椿 有 9 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
-    "散华 有 7 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
-    "维里奈 有 3 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
+    "椿 有 1 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
+    "散华 有 3 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
+    "维里奈 有 2 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
     "启动第 11 条 switch 椿 变奏：散华 协奏 92，没满 100，这次是普通切人（散华 的延奏没出，椿 没有变奏），轴这里可能有问题",
     "第 13 条 switch 椿 变奏：散华 协奏 19，没满 100，这次是普通切人（散华 的延奏没出，椿 没有变奏），轴这里可能有问题",
   ],
@@ -156,7 +156,7 @@ exports[`场景回归快照 > m0-video-eq.yaml 1`] = `
     "white-bar ×2",
     "tune-break-auto ×5",
     "tunability-base ×290",
-    "data-guess ×15",
+    "data-guess ×10",
   ],
   "byAction": [
     "椿 E3：903354（17.35%，5 段）",
@@ -208,9 +208,9 @@ exports[`场景回归快照 > m0-video-eq.yaml 1`] = `
   "steady": "第 2–3 轮：3000 帧，DPS 42511.25",
   "totalDamage": 5207268.05,
   "warnings": [
-    "椿 有 9 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
-    "散华 有 7 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
-    "维里奈 有 3 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
+    "椿 有 1 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
+    "散华 有 3 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
+    "维里奈 有 2 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
   ],
   "windowFrames": 7414,
 }
@@ -241,9 +241,9 @@ exports[`场景回归快照 > m0-散华单人.yaml 1`] = `
   "overflowDamage": 0,
   "totalDamage": 6277.3,
   "warnings": [
-    "椿 有 9 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
-    "散华 有 7 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
-    "维里奈 有 3 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
+    "椿 有 1 处装配时推断的值（pnpm check:data -- --flags 椿 查看）",
+    "散华 有 3 处装配时推断的值（pnpm check:data -- --flags 散华 查看）",
+    "维里奈 有 2 处装配时推断的值（pnpm check:data -- --flags 维里奈 查看）",
   ],
   "windowFrames": 281,
 }
