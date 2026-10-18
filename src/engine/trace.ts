@@ -299,7 +299,7 @@ export interface HitCause { owner: GainOwner | null; trigger: HitTrigger | null;
 export const causeText = (note: string | null | undefined, via: string | null | undefined): string =>
   note && via ? `${note}（${via}）` : note ?? via ?? ''
 
-/** 每次命中归到的动作与触发者（规则见 walkOwners）：时间轴网页里动作的伤害按 owner 合计，同资源的出处（AGENTS.md 差异 8）；
+/** 每次命中归到的动作与触发者（规则见 walkOwners）：时间轴网页里动作的伤害按 owner 合计，同资源的出处（TD-11 §6.1、TD-12 §2.1）；
  *  汇总的"分动作"、pnpm compare 仍按判定所在的动作（xlsx 的组）。键是日志里的 hit 事件 */
 export function hitCauses(log: readonly SimEvent[], r: ResolvedScenario): Map<SimEvent, HitCause> {
   const out = new Map<SimEvent, HitCause>()

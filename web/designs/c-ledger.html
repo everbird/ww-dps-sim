@@ -144,7 +144,7 @@
       const g = c.kind === 'switch'
         ? `<span class="dia" style="--c:${colorOf(who)};left:${pc(c.f)}"></span>`
         : `${wait ? `<span class="w" style="left:${pc(Math.max(sp.f, c.f - wait))};width:${pw(Math.min(wait, c.f - sp.f))}"></span>` : ''}<span class="bar" style="--c:${colorOf(who)};left:${pc(c.f)};width:${pw(Math.max(c.frames, 2))};opacity:${c.kind === 'skip' ? 0.25 : 1}"></span>`
-      // 写了"变奏"的切人没变奏：这一行标红，原因写在"之前卡在"一栏（AGENTS.md 差异 3）
+      // 写了"变奏"的切人没变奏：这一行标红，原因写在"之前卡在"一栏（TD-12 §2.1）
       const al = c.kind === 'switch' ? D.alerts.find(a => a.cmd && a.cmd.loop === T.loop && a.cmd.line === c.line && a.cmd.item === c.item) : null
       const cls = (c.kind === 'switch' ? 'sw' : c.kind === 'skip' || c.kind === 'interject' ? 'sub' : '') + (al ? ' ww-alert' : '')
       return `<tr class="${cls}"><td class="line">${c.line === null ? '' : `${c.line}.${c.item}`}</td><td class="cmd"${text ? ` data-tip="${WW.esc(`<b>${c.line === null ? '' : `第 ${c.line} 条：`}</b>${WW.esc(text)}`)}"` : ''}><span class="who" style="--c:${colorOf(who)}"></span>${WW.esc(c.label)}</td>
@@ -158,7 +158,7 @@
     }).filter(x => x.u > 0).sort((a, b) => b.u - a.u).slice(0, 16)
     $('uptime').innerHTML = ups.map(({ b, u }) => `<span data-tip="${WW.esc([`<b>${WW.esc(b.buff)}</b> → ${WW.esc(b.target)}`, WW.buffEffect(M, b.buff), (M.buffInfo[b.buff] || {}).source].filter(Boolean).map((t, k) => (k ? WW.attr(t) : t)).join('<br>'))}">${WW.esc(b.short)} → ${WW.esc(b.target)}</span><i style="--c:${colorOf(b.target)};width:${(u * 100).toFixed(1)}%"></i><em>${WW.pct(u)}</em>`).join('')
     const acts = new Map()
-    // 按引发的动作合计（同上面的伤害列，AGENTS.md 差异 8）；按命中时刻算进本轮，合计同本轮伤害
+    // 按引发的动作合计（同上面的伤害列，TD-12 §2.1）；按命中时刻算进本轮，合计同本轮伤害
     for (const h of D.hits) if (h.dmg && h.f >= sp.f && h.f < sp.endF) { const k = `${h.char} ${h.ownerAct}`; acts.set(k, (acts.get(k) || 0) + h.dmg.expected) }
     const top = [...acts].sort((a, b) => b[1] - a[1]).slice(0, 12), mx = top.length ? top[0][1] : 1
     $('byact').innerHTML = top.map(([k, v]) => `<span>${WW.esc(k)}</span><i style="--c:${colorOf(k.split(' ')[0])};width:${(100 * v / mx).toFixed(1)}%"></i><em>${WW.fmt(v / 1000)}k</em>`).join('')

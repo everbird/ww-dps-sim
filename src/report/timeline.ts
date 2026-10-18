@@ -45,7 +45,7 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
   }
 }
 
-/** 命中带上归到的动作与引出原因（"谁引发的算谁"，AGENTS.md 差异 8、9）：owner = 那个动作开始的实例号（归到延奏、归不到动作的不写）；
+/** 命中带上归到的动作与引出原因（"谁引发的算谁"，TD-10 §5.1、TD-12 §2.1）：owner = 那个动作开始的实例号（归到延奏、归不到动作的不写）；
  *  钩子生成的判定再带上 trigger（触发它的命中：维里奈的协同攻击由谁的命中触发）、via（钩子在什么之后生成的："散华.冰棱 到时"）、
  *  note（钩子附的说明："5 链：冰到时自爆"）。网页里动作的伤害按 owner 合计；汇总的"分动作"仍按判定所在的动作 */
 function withCauses(log: SimEvent[], causes: ReturnType<typeof hitCauses>): (SimEvent & { owner?: number; trigger?: HitTrigger; via?: string; note?: string })[] {

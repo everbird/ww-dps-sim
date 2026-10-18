@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.9
+# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.10
 
-> **状态**：v0.1.9（2026-10-17），已实现。v0.1.9 并回假设登记与好移植的写法（总设计 v0.2 T16、§10.1；以"v0.1.9"标出）；v0.1.8（2026-10-05）v0.1.8 并回补位、开局核心资源、视频时间点与核心资源改名（以"v0.1.8"标出）；v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
+> **状态**：v0.1.10（2026-10-18），已实现。v0.1.10 并回视频轴核对时新增的类型与字段（以"v0.1.10"标出）；v0.1.9（2026-10-17）v0.1.9 并回假设登记与好移植的写法（总设计 v0.2 T16、§10.1；以"v0.1.9"标出）；v0.1.8（2026-10-05）v0.1.8 并回补位、开局核心资源、视频时间点与核心资源改名（以"v0.1.8"标出）；v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订；v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》（下称"TD-09"）§9.2 与 M0 确认（`docs/m0-confirm.md`）修订
 > **下游**：全部模块的代码；TD-03（伤害公式，已据其定稿乘区清单）、TD-04（仿真内核，已据其定稿运行时字段）、TD-07 定 BuffDef 语义、TD-09 定排轴语义、TD-10 定事件与汇总字段
 > **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-01 的 14 个、TD-03 的 20 个、TD-04 的 35 个、TD-09 的 33 个用例也全部通过）；构建脚本在 20260707 全量数据上产出的生成文件，逐一用本文的 schema 校验通过（9.2）
@@ -178,7 +178,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 - `comboFrom` 只出现在连段动作上（A2 ← A1 …）：上一个动作必须是其中之一且派生窗口开着；`inputLocks` 来自"第 nF 前不响应输入 / 不能闪避"等备注（TD-04 §6.2、§6.3）。
 - `DilationDef.anchor`：`action` 表示动作局部帧到 `start` 时登记（时停、全局时停、极限闪避）；`hit` 表示判定每次命中时登记。xlsx 同一行各侧的"膨胀发生"有的有值、有的为空时拆成两条：为空的一侧（任何类型）放进 `JudgmentDef.hitstop`，有值的放进 `ActionDef.dilations`（TD-04 §3.2）。
 - `JudgmentDef.birthFrame` 来自发生帧公式 P + f(Q) 的 P：动作在出生帧之后被取消，可脱手的判定仍在发生帧生成（TD-04 §5.4）。
-- `CastGain.atFrame` 为 0 表示"进入动作即得"：开始动作的那一刻由资源模块发放（TD-06 §7）；由判定行汇总来的项带 `chainRange`，与判定一起按共鸣链筛（v0.1.4）。
+- `CastGain.atFrame` 为 0 表示"起手即得"（v0.1.10 前叫"进入动作即得"，TD-01 §3.7）：开始动作的那一刻由资源模块发放（TD-06 §7）；由判定行汇总来的项带 `chainRange`，与判定一起按共鸣链筛（v0.1.4）。
 - v0.1.4 新增：`ActionDef.energyCost`（大招门槛与扣除，TD-06 §2.3）、`endOnSwitchOut`（切人结束技能，TD-05 §5）、`followUp`（接续动作，TD-08 P10）、`cooldownGroup`（共用冷却）；`CharacterDef.treeStats`（技能树属性，进静态面板）、`resourceEffects`（资源型效果，TD-07 §9）；`WeaponDef.resourceEffects`。
 - `JudgmentDef.calc` 来自 dmg 的 `CalculateType`：治疗、扣血判定照常结算（发资源、触发 buff），只是不产生伤害。
 - `coreOncePerAction` 来自核心回收的合并单元格（TD-01 §1.5）：同一个动作实例里，该槽只在第一次结算时发放。
@@ -195,7 +195,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 | `charLevel` | 90 | 总设计第 7 节（等级永久锁定）；防御公式里的 Lv（TD-03 §3.2） | — |
 | `switchCooldown` | 60 | 机制设计 5.4 | 实测 |
 | `concertoMax` | 100 | 机制设计 4.2 | — |
-| `concertoTiming` | `'onHit'`（v0.1.4，2026-10-03 实测：协奏按命中给；"进入即得"仍在出手时） | TD-06 §3.2 | —— |
+| `concertoTiming` | `'onHit'`（v0.1.4，2026-10-03 实测：协奏按命中给；起手即得仍在动作开始时给） | TD-06 §3.2 | —— |
 | `energyShare` | 出伤者 1、其余 0.5 | 机制设计 4.1 | — |
 | `breakEnergy` | 3：白条打空时全队每人 +3 × 各自共鸣效率（v0.1.6） | 机制设计 4.3、TD-06 §13.2 | —— |
 | ~~`tuneBreakLock`~~ | v0.1.7 去掉：谐破冷却改按敌人 COST 取自 xlsx 附页2（`ResolvedScenario.tuneBreakTiming`，TD-06 §13.1） | —— | —— |
@@ -246,7 +246,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 
 | 类型 | 字段 |
 |---|---|
-| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、judgments（`JudgmentOverride`）、accept |
+| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、splitRows、copyAs（v0.1.10：行拆成单独的动作、整组另存为新动作，TD-01 §13.4）、judgments（`JudgmentOverride`）、accept |
 | `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange；v0.1.5 新增 element、relatedAttr、heals |
 | `CharacterModule` | weaponType、bodyType?、mergeBlocks?、coreCaps?、coreNames?（v0.1.8：改核心资源槽名，如椿槽 1"红椿·蕊1"→"红椿·蕊"；写了不存在的槽、改完重名都报错）、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides? |
 | `WeaponModule` | name、passives、**resourceEffects?** |
@@ -285,7 +285,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 | video? | v0.1.8：视频时间点 `{ url?, loop = 2, marks: { 第几条: "分:秒" \| 秒数 } }`，只给 `pnpm trace` 与时间轴网页对照用，不影响仿真（TD-11 §6.3） |
 | options | repeat、maxFrames、maxWait、endAt?、rules?、tuneBreak（v0.1.6：`auto` / `manual` / `off`，缺省 `auto`，TD-06 §13.4）、inputDelay（v0.1.9：操作延迟，帧，缺省 0；决策点在合法之后再晚这么多帧，TD-10 §6） |
 
-`RotationItem` / `parseRotationLine`：一行解析成多条指令；`Command`：编译后的指令（act / switch / wait，测试台另有 at）。v0.1.6：act 新增 `optional?: true`（排轴里的可选后缀 `?`，TD-09 §2）。v0.1.8：act 新增 `filler?: true`（补位后缀 `~`，TD-09 §2.2）。
+`RotationItem` / `parseRotationLine`：一行解析成多条指令；`Command`：编译后的指令（act / switch / wait，测试台另有 at）。v0.1.6：act 新增 `optional?: true`（排轴里的可选后缀 `?`，TD-09 §2）。v0.1.8：act 新增 `filler?: true`（补位后缀 `~`，TD-09 §2.2）。v0.1.10：switch 新增 `expectIntro?: true`（排轴写 `switch <角色> 变奏`：这里应是变奏，没变奏时记 `warning`，TD-09 §2.1）。
 
 
 - CLI 先用 `yaml` 包把文本解析成对象，再交给 `ScenarioSchema`；网页编辑器直接交对象，两边同一套校验（总设计第 8 节）。
@@ -338,11 +338,11 @@ rotation:
 | `EnemyRuntime` | preset、whiteBar（v0.1.6 起按削韧值）、broken、paralyzedUntil（v0.1.6）、poise、tunability、disharmony、tunabilityLockedUntil、tuneButtonUntil（v0.1.7：谐度破坏按钮亮到这一战斗帧）、tuneBreakBy?（v0.1.6：消耗这次失谐的谐度破坏动作实例）、shift?、interference?、effects、responseCd |
 | `QueueState` | 同 v0.1.3；v0.1.7：`opening`（启动轴的指令；有启动轴时从第 0 轮开始）；v0.1.9：`extra`（队首的操作延迟，第一次全部合法时定下） |
 | `BuffRuntime`、`DilationRuntime`、`Rates`、`WaitSegment`、`WaitCode`、`CommandRef`、`TimelineEvent` | 同 v0.1.3；v0.1.8：`WaitCode` 加 `filler`（只用于 skip 事件）；v0.1.9：`WaitCode` 加 `input`（操作延迟，与 `delay`、`wait`、`at` 同属不计入 maxWait 的 `INTENDED`） |
-| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn / hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource / **resourceFull** / heal（v0.1.5：char、source）/ enemyState（v0.1.6：change 新增 `breakEnd`，`ENEMY_STATE_CHANGES`）/ effectTick / wait / skip（v0.1.6：cmd、code、reason，可选指令被跳过）/ loop / warning |
+| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn（v0.1.10：**note?**）/ hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource（v0.1.10：**note?**）/ **resourceFull** / heal（v0.1.5：char、source）/ enemyState（v0.1.6：change 新增 `breakEnd`，`ENEMY_STATE_CHANGES`）/ effectTick / wait / skip（v0.1.6：cmd、code、reason，可选指令被跳过）/ loop / warning（v0.1.10：**cmd?**） |
 | `Summary` | totalDamage、windowFrames、dps、overflowDamage、byChar、byAction、resourceTimeline、buffUptime、waits、warnings、perLoop?（v0.1.5：loop、start、frames、damage、dps、energyDelta、concertoDelta）、steady?（v0.1.5：from、to、frames、damage、dps）、enemy（v0.1.6：disharmony、tuneBreaks、tuneBreakDamage、breaks）、skipped（v0.1.6：line、item、loop、reason）、**assumptions**（v0.1.9：id、count、firstFrame、detail，按假设表的顺序）（TD-10） |
 | `SimResult` | log、summary、error?（code：comboBroken / timeout / maxFrames / notOnField / switchSelf / **chainDepth** / **invariant**） |
 | `CharacterHooks` | onResolve?、canStart?、onEvent?、modifyHit? |
-| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource、spawnJudgment、**skipJudgments**、**vars**（v0.1.9，取代 setFlag、getFlag）、heal（v0.1.5：记一次本角色提供的治疗）、warn；`CharacterHooks<V>` / `HookContext<V>` 按模块声明的 `vars` 定型（`HookVars`） |
+| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource（v0.1.10：第 4 个参数 `note`）、spawnJudgment（v0.1.10：选项 `note`）、**skipJudgments**、**vars**（v0.1.9，取代 setFlag、getFlag）、heal（v0.1.5：记一次本角色提供的治疗）、warn、**assume**（v0.1.10：记一次碰到的假设，总设计 T16）；`CharacterHooks<V>` / `HookContext<V>` 按模块声明的 `vars` 定型（`HookVars`） |
 | `HitDraft` | judgment、char、multiplier、extraFlat、element、tags、effect?、**selfEnergyScale**、zones、critOnly |
 | `ZoneAccumulator` | zones、critOnly |
 
@@ -374,6 +374,8 @@ rotation:
 - v0.1.7：`hit` 新增可选的 `enemy: { tunability, whiteBar }`——这次结算后的偏谐值与白条，时间轴网页画曲线用（TD-10 §5）。`loop` 的第 0 轮是启动轴（`perLoop` 里记为"启动"）。
 - `hit.buffs` 记"id×层数"；`factors` 是非暴击分支的各项系数，键名按 TD-03 §8，默认写不写由 TD-10 定。
 - v0.1.4：`hit` 带这次结算最终的 `element`、`tags`（`modifyHit` 之后，TD-07 §4.1）；`outro` 带 `to`（这次变奏的角色）与延奏动作独立时间线的 `instance`；新增 `resourceFull`（TD-06 §6）；`Summary.resourceTimeline`、`buffUptime` 已从日志算出（TD-06 §6.1、TD-07 §10.1）；`SimResult.error.code` 新增 `chainDepth`（TD-07 §5）、`invariant`（总设计 §11 第 4 条）。
+- v0.1.10：`resource` 带 `note`（钩子 `addResource` 附的说明，如椿"每消耗 10 点红椿·蕊"）；`judgmentSpawn` 带 `note`（钩子 `spawnJudgment` 附的说明，如散华"5 链：冰到时自爆"）；`warning` 带 `cmd`（指令出处），新的 code `introMissed`：写了"变奏"的切人没变奏（TD-09 §2.1），汇总的 `warnings` 里也有。
+- v0.1.10：出处的类型在 `src/engine/trace.ts`（只读日志，TD-11 §6）：资源出处 `GainOwner`、`GainHow`（`hit` / `cast` 起手即得 / `cost` / `effect` / `hook` / `break` / `outro`）、`GainStep`、`GainItem`、`ActionGains`；命中的来由 `HitTrigger`（触发它的命中）、`HitOrigin`（引出原因：`via` 钩子在什么之后生成、`note` 钩子的说明）、`HitCause`，以及 `causeText`。时间轴模型（`src/report/timeline.ts`，TD-10 §5.1）新增 `gains`、`effectInfo`、`energyShare`，命中事件带 `owner`（归到的动作开始的实例号）、`trigger`、`via`、`note`（TD-12 §2.1）。
 - `wait`（v0.1.3）按原因分段：`code` 是原因代码（`WaitCode`），`from` 是开始帧，`frames` / `battleFrames` 分别是世界帧数与战斗帧数，`cmd` 指出第几轮第几条第几个（TD-09 §3.3）。`loop` 标出每轮的开始（TD-09 §3.7）。`actionStart`、`switch` 由指令触发时带 `cmd`。
 
 ### 7.4 钩子
@@ -381,6 +383,7 @@ rotation:
 - 只有四个钩子（总设计 §6.9）。`canStart` 返回字符串表示不允许及原因，原因会写进等待日志（"等待 36 帧：离火不足"）。
 - `ctx.state` 只读；改状态只能通过 `ctx` 上的方法，出问题好定位。`addBuff` 的 id 指本角色 `buffs` 里的定义，钩子不能凭空造 buff。
 - `modifyHit` 在收集 buff 之前调用（TD-03 §4）：可以改 `HitDraft` 的倍率、`extraFlat`（Formula1）、元素、标签，或往 `zones` / `critOnly` 直接补值；不能改面板，也看不到 buff 合计（TD-03 Q5）。
+- v0.1.10（TD-08 §3.2）：`ctx.addResource(resource, amount, slot?, note?)`、`ctx.spawnJudgment(judgment, { action?, note? })` 的 `note` 记进事件，时间轴与调试表显示出处、引出原因用；`ctx.assume(id, detail?)`：角色模块里推断着写、还没查证的机制，碰到时记一笔（`id` 是假设表里 tracked 的）。
 - v0.1.4（TD-08 §3）：`onEvent` 收到全部事件（含队友的）；`ctx.chain` 是本角色的共鸣链数；`ctx.skipJudgments(instance, names)` 让某个动作实例（或延奏的独立时间线）不生成某些判定；`HitDraft.selfEnergyScale` 是这次结算出伤者自己那份能量的倍率，队友那 50% 不变（TD-06 §2.1）；只由钩子施加的 buff 写 `trigger: 'hook'`。
 
 ---
@@ -473,3 +476,4 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1.7（2026-10-04）**：并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（AGENTS.md 差异 1、2、4–6）。生成 schema：`GenTuneBreakSchema.rules`、`GenDmgSchema.whiteBarRatio?`，角色三维的防御可以是 0；`TuneBreakTable.rules`；`JudgmentDef.gauges.whiteBarRatio?`；`Rules.tuneBreakLock` 去掉，`ResolvedScenario` 加 `opening`、`tuneBreakTiming`；`QueueState.opening`；`EnemyRuntime.tuneButtonUntil`；场景加 `opening`；`hit.enemy`。
 - **v0.1.9（2026-10-17）**：并回总设计 v0.2 的 T16 与 §10.1（AGENTS.md 差异 1、2）。假设登记：`src/engine/assumptions.ts`（`Assumption`、`ASSUMPTIONS`、`assume`），`SimState.assumed`、`Summary.assumptions`，`Rules.defFloor`。好移植：钩子表 `GameData.hooks`（`CharacterDef.hooks` 去掉），`CharacterDef.vars` / `CharacterModule.vars`、`CharRuntime.vars`（原 `flags`）、`HookContext.vars`（取代 `setFlag` / `getFlag`），`HookVars`；`src/engine/num.ts`（取整）、`src/engine/portable.ts`（`portable`、`withHooks`）。操作延迟：场景 `options.inputDelay`、`ResolvedScenario.options.inputDelay`、`QueueState.extra`、`WaitCode` 的 `input`、`SchedulerOptions.inputDelay`（AGENTS.md 差异 3）；结论的类型（`Insight`、`EnergyNeed`、`ToleranceRow`、`SensitivityRow`、`WaitCost`）在 `src/engine/insight.ts`（TD-10 §6）。抽样模式（总设计 T4）：`SimOptions.sample`（`seed`、`jitter?`）、`SimState.rng`（`RngState`，期望模式为 null）、`HitEvent.dmg.isCrit?`；`src/engine/rng.ts`（`seedRng`、`nextU32`、`nextFloat`、`nextInt`、`runSeeds`）、`src/engine/sample.ts`（`sampleRuns`、`statsOf`、`Sampling`）、`summary.ts` 的 `hitValue`。
 - **v0.1.8（2026-10-05）**：并回 AGENTS.md 差异 1、5–7。`RotationItem` / `Command` 加 `filler`，`WaitCode` 加 `filler`（TD-09 v0.1.5）；场景 `initial.core`（`ResolvedScenario.initial.core`）与 `video`；`CharacterModule.coreNames`。调试表的类型（`LoopSpan`、`SegmentRow`、`CommandRow`、`LedgerRow`、`MarkCmp`）在 `src/engine/trace.ts`，见 TD-11 §6。声骸库存择优（TD-13 §5）：`simulate(r, opts?)` 的 `SimOptions.onHit` 与 `HitRecord`；`InventorySchema` / `InvPiece`；`scenario.schema` 导出 `StatValuesSchema`。
+- **v0.1.10（2026-10-18）**：并回视频轴核对时新增的类型与字段（AGENTS.md 差异 2、3、5–9）。`ActionOverride` 加 `splitRows`、`copyAs`（TD-01 §13.4）；`RotationItem` / `Command` 的 switch 加 `expectIntro`（TD-09 §2.1）；事件：`resource`、`judgmentSpawn` 加 `note`，`warning` 加 `cmd`，code `introMissed`；`HookContext.addResource` 加 `note` 参数、`spawnJudgment` 加 `note` 选项、新增 `assume`；出处的类型（`trace.ts` 的 `GainStep` / `GainItem` / `ActionGains`、`HitTrigger` / `HitOrigin` / `HitCause`）与时间轴模型的新字段；`CastGain.atFrame = 0` 改称"起手即得"。

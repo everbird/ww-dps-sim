@@ -80,7 +80,7 @@ window.WW = (() => {
           for (const b of e.buffs || []) damaging.add(b.replace(/×\d+$/, ''))
           break
         case 'switch': switches.push(e); break
-        case 'warning': if (e.code === 'introMissed') alerts.push(e); break   // 轴可能有问题：写了"变奏"的切人没变奏（AGENTS.md 差异 3）
+        case 'warning': if (e.code === 'introMissed') alerts.push(e); break   // 轴可能有问题：写了"变奏"的切人没变奏（TD-12 §2.1）
         case 'wait': waits.push(e); break
         case 'skip': skips.push(e); break
         case 'loop': loops.push(e); break
@@ -103,7 +103,7 @@ window.WW = (() => {
     for (const r of buffRows.values()) for (const s of r.spans) if (s.end === null) { s.end = lastF; s.reason = 'end' }
     // 命中归到引发它的动作（"谁引发的算谁"，同资源的出处；src/engine/trace.ts 的 hitOwners，命中的 owner 是那个动作开始的实例号）：
     // 动作条的伤害、C 的伤害列与本轮按动作、D 的检查器与每秒伤害都按它；判定在别的组里的（重击居合引爆的"E-引爆冰棱"）逐条记下。
-    // ownerAct：归到的动作名（归到延奏、归不到动作的，按判定所在的动作）。汇总的"分动作"仍按判定所在的动作（AGENTS.md 差异 8）
+    // ownerAct：归到的动作名（归到延奏、归不到动作的，按判定所在的动作）。汇总的"分动作"仍按判定所在的动作（TD-10 §1、TD-12 §2.1）
     for (const h of hits) {
       if (!h.dmg) continue
       const a = h.owner != null ? byInst.get(h.owner) : null
@@ -210,7 +210,7 @@ window.WW = (() => {
     lines.push('满了的部分不计（数值是实际加上的）')
     return lines.join('<br>')
   }
-  // ---- 动作打出的伤害（"谁引发的算谁"，AGENTS.md 差异 8）----
+  // ---- 动作打出的伤害（"谁引发的算谁"，TD-12 §2.1）----
   /** 动作条提示里的一行："伤害 28,258（14 段，含它引发的 E-引爆冰棱 3,275、QTE-引爆冰棘 2,547）"；没有伤害时为空 */
   function dmgLine(a) {
     if (!a.damage) return ''
@@ -241,7 +241,7 @@ window.WW = (() => {
   const cmdWhere = c => `${c.loop === 0 ? '启动' : `第 ${c.loop} 轮`}第 ${c.line} 条`
   /** 每个角色的颜色：--c0..--c2 指向元素色 */
   function paint(m) { m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`)) }
-  // ---- 轴可能有问题（AGENTS.md 差异 3）：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏。
+  // ---- 轴可能有问题（TD-09 §3.5、TD-12 §2.1）：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏。
   // 引擎记成 warning 事件（code introMissed，带指令出处 cmd）；各视图顶上一条提示条（点一条跳过去），切人处画标记 ----
   /** 警告正文：去掉开头的"启动第 11 条 switch 椿 变奏："（行号、指令各视图自己写） */
   const alertBody = a => a.message.slice(a.message.indexOf('：') + 1)

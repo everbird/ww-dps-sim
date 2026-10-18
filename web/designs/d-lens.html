@@ -202,7 +202,7 @@
     hit: stopsOf(D.hits.filter(h => h.dmg), h => h.f, h => ({ main: `${h.char} ${h.judgment}`, sub: `${h.action}${WW.hitBy(h) ? `，${WW.hitBy(h)}` : ''}，期望 ${WW.fmt(h.dmg.expected)}`, slot: D.slot.get(h.char) })),
     action: stopsOf(D.actions, a => a.start, a => ({ main: `${a.char} ${a.id}`, sub: `${WW.KIND_NAME[a.kind] || a.kind}${a.cmd ? `，${WW.cmdWhere(a.cmd)}` : '，不是轴里写的'}`, slot: a.i })),
     switch: stopsOf(D.switches, e => e.f, e => {
-      const al = WW.alertOf(M, e)                                   // 写了"变奏"却没变奏（AGENTS.md 差异 3）
+      const al = WW.alertOf(M, e)                                   // 写了"变奏"却没变奏（TD-12 §2.1）
       return { main: `${e.from} → ${e.to}`, sub: e.intro ? '变奏入场' : '普通切人', slot: D.slot.get(e.to), ...(al ? { warn: WW.alertBody(al) } : {}) }
     }),
   }
@@ -292,7 +292,7 @@
   for (const h of D.hits) if (h.dmg) {
     const b = perSec[Math.min(BINS - 1, Math.floor(h.f / 60))], k = D.slot.get(h.char)
     b.v[k] += h.dmg.expected
-    const key = `${h.char} ${h.ownerAct}`; b.acts.set(key, (b.acts.get(key) || 0) + h.dmg.expected)   // 按引发的动作（AGENTS.md 差异 8）
+    const key = `${h.char} ${h.ownerAct}`; b.acts.set(key, (b.acts.get(key) || 0) + h.dmg.expected)   // 按引发的动作（TD-12 §2.1）
   }
   const secMax = Math.max(1, ...perSec.map(b => b.v.reduce((a, x) => a + x, 0)))
   const secTip = i => {
@@ -566,7 +566,7 @@
     const rows = list.map(x => `<li style="--c:${x.color}" data-tip="${WW.esc(`<b>${WW.esc(x.id)}</b>${(M.buffInfo[x.id] || {}).source ? `<br>${WW.attr(M.buffInfo[x.id].source)}` : ''}`)}"><span><i></i>${WW.esc(x.label)}${x.stacks > 1 ? ` ×${x.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, x.id, x.stacks) || '状态')}</b></li>`).join('')
     return `<div class="bx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${noun} ${list.length} 个</b><span>${WW.esc(top)}</span><i>▸</i></button><ul class="buffs bpop">${rows}</ul></div>`
   }
-  // 当前动作打出的伤害（整个动作的合计，含之后才命中的段；按引发的动作算，判定在别的组里的也算进来，AGENTS.md 差异 8）：
+  // 当前动作打出的伤害（整个动作的合计，含之后才命中的段；按引发的动作算，判定在别的组里的也算进来，TD-12 §2.1）：
   // 一行概括，展开后每行一个判定
   function dmgBox(name, a) {
     if (!a.damage) return ''

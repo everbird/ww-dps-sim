@@ -69,7 +69,7 @@ export const handlers: Handlers = {
       html: renderView(view, model),
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
       error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
-      // 轴可能有问题：写了"变奏"的切人没变奏（AGENTS.md 差异 3），单独列出、不折叠；其余是"提示"
+      // 轴可能有问题：写了"变奏"的切人没变奏（TD-12 §2），单独列出、不折叠；其余是"提示"
       alerts: res.summary.warnings.filter(w => w.code === 'introMissed').map(w => w.message),
       warnings: [...r.warnings, ...res.summary.warnings.filter(w => w.code !== 'introMissed').map(w => w.message)],
       assumptions: res.summary.assumptions,                     // 这次碰到的假设（总设计 T16）

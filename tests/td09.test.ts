@@ -41,7 +41,7 @@ describe('T09-1 语法（§2）', () => {
     expect(parseRotationLine('# 第二轮')).toEqual([])
     expect(parseRotationLine('千咲 电锯A2#2')).toEqual([{ kind: 'act', char: '千咲', action: '电锯A2#2', delay: 0, force: false }])
     expect(parseRotationLine('切人 长离')).toEqual([{ kind: 'switch', char: '长离' }])
-    expect(parseRotationLine('switch 椿 变奏  # 散AQ 变奏椿')).toEqual([{ kind: 'switch', char: '椿', expectIntro: true }])   // 写了"变奏"（AGENTS.md 差异 3）
+    expect(parseRotationLine('switch 椿 变奏  # 散AQ 变奏椿')).toEqual([{ kind: 'switch', char: '椿', expectIntro: true }])   // 写了"变奏"（TD-09 §2.1）
     expect(parseRotationLine('切人 椿 变奏')).toEqual([{ kind: 'switch', char: '椿', expectIntro: true }])
     expect(parseRotationLine('等待 20')).toEqual([{ kind: 'wait', frames: 20 }])
     expect(parseRotationLine('散华 A2 ＋３ E ＃注释')).toEqual([act('A2', 3), act('E')])   // 全角数字、＃ 也按半角
@@ -378,7 +378,7 @@ describe('T09-启动轴（§3.7）：先跑一次 opening（第 0 轮），之�
   })
 })
 
-// 写了"变奏"的切人（switch <角色> 变奏，AGENTS.md 差异 3）：切出者协奏没满就照常普通切人，记一条警告——轴这里可能有问题
+// 写了"变奏"的切人（switch <角色> 变奏，TD-09 §3.5）：切出者协奏没满就照常普通切人，记一条警告——轴这里可能有问题
 describe('switch <角色> 变奏', () => {
   const 乙: SynthChar = { name: '乙', actions: [action({ id: 'QTE', kind: 'intro', endFrame: 30 })] }
   const go = (concerto: number, line = 'switch 乙 变奏') =>

@@ -340,7 +340,7 @@
   }
 
   /** 这一段怎么来的（同 web/designs/shared.js 的 hitBy）：协同攻击由谁的命中触发；其余钩子生成的写引出原因，
-   *  归到的动作与判定所在的动作不同时前面加"由 X 引发"（AGENTS.md 差异 8、9） */
+   *  归到的动作与判定所在的动作不同时前面加"由 X 引发"（TD-12 §2.1） */
   function hitWhy(h) {
     if (h.trigger) return `由 ${h.trigger.char === h.char ? '' : `${h.trigger.char} `}${h.trigger.action} 命中触发${h.note ? `（${h.note}）` : ''}`
     const by = h.ownerAct && h.ownerAct !== h.action ? `由 ${h.ownerAct} 引发` : '', why = h.note && h.via ? `${h.note}（${h.via}）` : h.note || h.via || ''
@@ -365,12 +365,12 @@
         }
         case 'hit':
           if (e.dmg || e.enemy) hits.push(e)
-          // 归到引发它的动作（"谁引发的算谁"，AGENTS.md 差异 8）：重击居合引爆的"E-引爆冰棱"在提示里写"由 重击居合 引发"，
+          // 归到引发它的动作（"谁引发的算谁"，TD-12 §2.1）：重击居合引爆的"E-引爆冰棱"在提示里写"由 重击居合 引发"，
           // 协同攻击写由谁的命中触发（命中的 trigger）
           if (e.owner != null && byInst.has(e.owner)) e.ownerAct = byInst.get(e.owner).id
           break
         case 'switch': switches.push(e); break
-        case 'warning': if (e.code === 'introMissed') alerts.push(e); break   // 轴可能有问题：写了"变奏"的切人没变奏（AGENTS.md 差异 3）
+        case 'warning': if (e.code === 'introMissed') alerts.push(e); break   // 轴可能有问题：写了"变奏"的切人没变奏（TD-12 §2.1）
         case 'wait': waits.push(e); break
         case 'skip': skips.push(e); break
         case 'loop': loops.push(e); break
@@ -436,7 +436,7 @@
   function renderTables(m) {
     const s = m.summary, names = m.team.map(t => t.name)
     const parts = []
-    // 轴可能有问题：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏（AGENTS.md 差异 3）；时间轴上是红色虚线
+    // 轴可能有问题：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏（TD-12 §2.1）；时间轴上是红色虚线
     const alerts = (s.warnings || []).filter(w => w.code === 'introMissed')
     if (alerts.length)
       parts.push(`<section class="card full" style="border-color: var(--alert)"><h2 style="color: var(--alert)">轴可能有问题（${alerts.length} 处）：写了"变奏"的切人没变奏</h2><ul class="list">${alerts.map(w => `<li><span>${esc(w.message)}</span></li>`).join('')}</ul></section>`)
