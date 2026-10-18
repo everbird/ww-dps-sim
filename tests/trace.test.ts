@@ -81,7 +81,7 @@ describe('TD-11 资源逐步', () => {
 describe('资源出处：每次变化归到哪个动作（时间轴的检查器、动作提示；调试表的事件列）', () => {
   // 丁：Y（共鸣技能）开始时起手即得协奏 +5，武器式的效果"施放共鸣技能时协奏 +8"；第 10 帧命中：协奏 +10、基础能量 4、蕊 −10，
   // 钩子在消耗蕊的命中之后协奏 +4（带说明）。Q 扣 50 能量，开始时钩子生成 Z 的判定 z（Z 本身从没开始过），并挂上 20 帧的"计时"；
-  // 计时到时钩子生成 Y 组里的判定 y2（没有发生帧，同散华重击居合引爆 E 的冰棱）
+  // 计时到时钩子生成 Y 组里的判定 y2（没有发生帧，同散华重击居合引爆 E 的冰棱），附说明"计时到了"
   const 丁: SynthChar = {
     name: '丁', energyCost: 50, core: [{ slot: 1, name: '蕊', cap: 100 }],
     actions: [
@@ -104,7 +104,7 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
       onEvent: (ctx, ev) => {
         if (ev.type === 'hit' && ev.char === '丁' && (ev.gains.core[0] ?? 0) < 0) ctx.addResource('concerto', 4, ctx.self, '每消耗 10 点蕊')
         if (ev.type === 'actionStart' && ev.char === '丁' && ev.action === 'Q') ctx.spawnJudgment('z')
-        if (ev.type === 'buffExpire' && ev.buff === '丁.计时' && ev.reason === 'timeout') ctx.spawnJudgment('y2')
+        if (ev.type === 'buffExpire' && ev.buff === '丁.计时' && ev.reason === 'timeout') ctx.spawnJudgment('y2', { note: '计时到了' })
       },
     },
   }
@@ -139,9 +139,15 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
     const causes = hitCauses(res.log, r)
     expect(eventsOfLog(res.log, 'hit').map(e => [e.judgment, causes.get(e)?.owner?.action ?? null, causes.get(e)?.trigger ?? null]))
       .toEqual([['y', 'Y', null], ['z', 'Q', null], ['y2', 'Q', null]])      // z、y2 由动作开始、buff 到时引出，不是命中触发的
+    // 引出原因（差异 9）：钩子在什么之后生成的、钩子附的说明；不是钩子生成的没有
+    expect(eventsOfLog(res.log, 'hit').map(e => causes.get(e)?.origin ?? null))
+      .toEqual([null, { via: '丁 Q 开始', note: null }, { via: '丁.计时 到时', note: '计时到了' }])
+    expect(actionGains(gainSteps(res.log, r)).find(g => g.action === 'Q')!.items.filter(it => it.how === 'hit').map(it => [it.what, it.note ?? null, it.via ?? null]))
+      .toEqual([['z', null, '丁 Q 开始'], ['y2', '计时到了', '丁.计时 到时']])
     const inst = (a: string) => eventsOfLog(res.log, 'actionStart').find(e => e.action === a)!.instance
     const m = timelineModel('丁.yaml', sc, r, res)
-    expect(m.log.filter(e => e.type === 'hit').map(e => [e.type === 'hit' ? e.judgment : '', e.owner])).toEqual([['y', inst('Y')], ['z', inst('Q')], ['y2', inst('Q')]])
+    expect(m.log.filter(e => e.type === 'hit').map(e => [e.type === 'hit' ? e.judgment : '', e.owner, e.via ?? null, e.note ?? null]))
+      .toEqual([['y', inst('Y'), null, null], ['z', inst('Q'), '丁 Q 开始', null], ['y2', inst('Q'), '丁.计时 到时', '计时到了']])
   })
 
   test('调试表的事件列：效果写它跟在哪个动作开始后面，钩子写跟在哪次命中后面、来源带说明', () => {
@@ -150,7 +156,7 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
     expect(traceLedger(res.log, r, 1, sel, '丁').map(x => [x.label, x.source, x.deltas['丁'], x.values['丁']])).toEqual([
       ['丁 Y 开始', '效果 丁.技能协奏', 8, 8], ['丁 Y 开始', '起手即得', 5, 13],
       ['丁 Y 命中（y）', '命中', 10, 23], ['丁 Y 命中后', '角色钩子：每消耗 10 点蕊', 4, 27],
-      ['丁 Z 命中（z）', '命中', 3, 30], ['丁 Y 命中（y2）', '命中', 6, 36],
+      ['丁 Z 命中（z；丁 Q 开始）', '命中', 3, 30], ['丁 Y 命中（y2；计时到了（丁.计时 到时））', '命中', 6, 36],
     ])
   })
 })
@@ -174,8 +180,8 @@ describe('命中触发：钩子在命中后生成的判定，记下由谁的命�
   test('自己命中触发的归那一下、记触发者；队友命中触发的仍归 R、触发者是队友；时间轴模型的命中带上 trigger', () => {
     const causes = hitCauses(res.log, r)
     const trig = (t: { char: string; action: string; judgment: string } | null | undefined) => (t ? `${t.char} ${t.action}（${t.judgment}）` : null)
-    expect(eventsOfLog(res.log, 'hit').map(e => [`${e.char} ${e.judgment}`, causes.get(e)?.owner?.action ?? null, trig(causes.get(e)?.trigger)])).toEqual([
-      ['戊 r', 'R', null], ['戊 c', 'R', '戊 R（r）'], ['甲 x', 'X', null], ['戊 c', 'R', '甲 X（x）'],
+    expect(eventsOfLog(res.log, 'hit').map(e => [`${e.char} ${e.judgment}`, causes.get(e)?.owner?.action ?? null, trig(causes.get(e)?.trigger), causes.get(e)?.origin?.via ?? null])).toEqual([
+      ['戊 r', 'R', null, null], ['戊 c', 'R', '戊 R（r）', '戊 R 命中'], ['甲 x', 'X', null, null], ['戊 c', 'R', '甲 X（x）', '甲 X 命中'],
     ])
     const m = timelineModel('戊.yaml', sc, r, res)
     expect(m.log.filter(e => e.type === 'hit').map(e => trig(e.trigger))).toEqual([null, '戊 R（r）', null, '甲 X（x）'])

@@ -264,7 +264,7 @@ export type SimEvent =
   | (EventBase & { type: 'actionStart'; char: CharName; action: ActionId; instance: number; cmd?: CommandRef; dropped?: string[] })
   | (EventBase & { type: 'actionEnd'; char: CharName; action: ActionId; instance: number })
   | (EventBase & { type: 'actionCancel'; char: CharName; action: ActionId; instance: number; by: ActionId; dropped: string[] })
-  | (EventBase & { type: 'judgmentSpawn'; char: CharName; action: ActionId; judgment: string; id: number })
+  | (EventBase & { type: 'judgmentSpawn'; char: CharName; action: ActionId; judgment: string; id: number; note?: string })   // note：钩子生成时附的说明
   | HitEvent
   | (EventBase & { type: 'switch'; from: CharName; to: CharName; intro: boolean; cmd?: CommandRef })
   | (EventBase & { type: 'intro'; char: CharName; action: ActionId })
@@ -346,7 +346,8 @@ export interface HookContext<V extends HookVars = HookVars> {
   removeBuff(id: string, target?: Slot | 'enemy'): void
   /** note：这笔资源怎么来的（如"每消耗 10 点红椿·蕊"），记进 resource 事件，时间轴与调试表显示出处用 */
   addResource(resource: ResourceKind, amount: number, slot?: Slot, note?: string): void
-  spawnJudgment(judgment: string, opts?: { action?: ActionId }): void
+  /** note：为什么生成（如散华"5 链：冰到时自爆"），记进 judgmentSpawn 事件，时间轴与调试表标"引出原因"用 */
+  spawnJudgment(judgment: string, opts?: { action?: ActionId; note?: string }): void
   /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
   skipJudgments(instance: number, names: string[]): void
   /** 本角色的状态量（角色模块的 vars 声明的那几个），直接读写：ctx.vars.盛绽 = true */
@@ -354,7 +355,7 @@ export interface HookContext<V extends HookVars = HookVars> {
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
   heal(source: string): void
   warn(message: string): void
-  /** 记一次碰到的假设（总设计 T16，src/engine/assumptions.ts 里 tracked 的那些）：角色模块里推断着写的机制，如散华 5 链自爆算不算 6 链的"引爆" */
+  /** 记一次碰到的假设（总设计 T16，src/engine/assumptions.ts 里 tracked 的那些）：角色模块里推断着写、还没查证的机制 */
   assume(id: TrackedId, detail?: string): void
 }
 

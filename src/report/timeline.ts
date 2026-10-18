@@ -45,15 +45,20 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
   }
 }
 
-/** 命中带上归到的动作与触发者（"谁引发的算谁"，AGENTS.md 差异 8）：owner = 那个动作开始的实例号（归到延奏、归不到动作的不写）；
- *  trigger = 触发它的命中（钩子在命中后生成的判定才有：维里奈的协同攻击由谁的命中触发）。
- *  网页里动作的伤害按 owner 合计（散华重击居合引爆的"E-引爆冰棱"算重击居合）；汇总的"分动作"仍按判定所在的动作 */
-function withCauses(log: SimEvent[], causes: ReturnType<typeof hitCauses>): (SimEvent & { owner?: number; trigger?: HitTrigger })[] {
+/** 命中带上归到的动作与引出原因（"谁引发的算谁"，AGENTS.md 差异 8、9）：owner = 那个动作开始的实例号（归到延奏、归不到动作的不写）；
+ *  钩子生成的判定再带上 trigger（触发它的命中：维里奈的协同攻击由谁的命中触发）、via（钩子在什么之后生成的："散华.冰棱 到时"）、
+ *  note（钩子附的说明："5 链：冰到时自爆"）。网页里动作的伤害按 owner 合计；汇总的"分动作"仍按判定所在的动作 */
+function withCauses(log: SimEvent[], causes: ReturnType<typeof hitCauses>): (SimEvent & { owner?: number; trigger?: HitTrigger; via?: string; note?: string })[] {
   return log.map(ev => {
     const c = ev.type === 'hit' ? causes.get(ev) : undefined
     if (!c) return ev
-    const o = c.owner && !c.owner.outro && c.owner.instance !== null ? { owner: c.owner.instance } : {}
-    return c.trigger || 'owner' in o ? { ...ev, ...o, ...(c.trigger ? { trigger: c.trigger } : {}) } : ev
+    const extra = {
+      ...(c.owner && !c.owner.outro && c.owner.instance !== null ? { owner: c.owner.instance } : {}),
+      ...(c.trigger ? { trigger: c.trigger } : {}),
+      ...(c.origin?.via ? { via: c.origin.via } : {}),
+      ...(c.origin?.note ? { note: c.origin.note } : {}),
+    }
+    return Object.keys(extra).length ? { ...ev, ...extra } : ev
   })
 }
 

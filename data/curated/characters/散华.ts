@@ -99,7 +99,7 @@ export default defineCharacter('散华', {
         for (const ice of ICES) {
           if (ctx.buffStacks(ice.buff, 'enemy') === 0) continue
           ctx.removeBuff(ice.buff, 'enemy')
-          ctx.spawnJudgment(ice.boom)
+          ctx.spawnJudgment(ice.boom, { note: '重击爆裂引爆' })
         }
         return
       }
@@ -107,7 +107,7 @@ export default defineCharacter('散华', {
       const ice = ICES.find(x => x.buff === ev.buff)
       if (ice && ev.reason === 'timeout' && ctx.chain >= 5) {
         // 自爆生成的是同一个引爆判定，6 链"引爆后攻击提升"照样触发（2026-10-18 用户实测，m0-confirm §11 V8）
-        ctx.spawnJudgment(ice.boom)
+        ctx.spawnJudgment(ice.boom, { note: '5 链：冰到时自爆' })
       }
     },
   },

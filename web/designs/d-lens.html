@@ -571,7 +571,7 @@
   function dmgBox(name, a) {
     if (!a.damage) return ''
     const key = `dmg|${name}`
-    const rows = a.dmg.map(it => `<li><span>${WW.esc(it.judgment)}${it.n > 1 ? `<small> ${it.n} 段</small>` : ''}</span><b>${WW.fmt(it.v)}</b>`
+    const rows = a.dmg.map(it => `<li><span>${WW.esc(it.judgment)}${it.note ? `<small>（${WW.esc(it.note)}）</small>` : ''}${it.n > 1 ? `<small> ${it.n} 段</small>` : ''}</span><b>${WW.fmt(it.v)}</b>`
       + `${WW.dmgItemNote(a, it) ? `<em>${WW.esc(WW.dmgItemNote(a, it))}</em>` : ''}</li>`).join('')
     return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>${WW.esc(a.id)} 打出的</b><span>伤害 ${WW.fmt(a.damage)}（${a.hits} 段）</span><i>▸</i></button>`
       + `<div class="bpop"><ul class="gl">${rows}</ul><div class="small">${WW.esc(WW.DMG_NOTE)}</div></div></div>`

@@ -339,6 +339,14 @@
     }).join('；')
   }
 
+  /** 这一段怎么来的（同 web/designs/shared.js 的 hitBy）：协同攻击由谁的命中触发；其余钩子生成的写引出原因，
+   *  归到的动作与判定所在的动作不同时前面加"由 X 引发"（AGENTS.md 差异 8、9） */
+  function hitWhy(h) {
+    if (h.trigger) return `由 ${h.trigger.char === h.char ? '' : `${h.trigger.char} `}${h.trigger.action} 命中触发${h.note ? `（${h.note}）` : ''}`
+    const by = h.ownerAct && h.ownerAct !== h.action ? `由 ${h.ownerAct} 引发` : '', why = h.note && h.via ? `${h.note}（${h.via}）` : h.note || h.via || ''
+    return by && why ? `${by}：${why}` : by || why
+  }
+
   function build(m) {
     const slot = new Map(m.team.map((t, i) => [t.name, i]))
     const gainsOf = new Map(m.gains.filter(g => !g.outro).map(g => [g.instance, g]))   // 每个动作给的资源（src/engine/trace.ts 的 actionGains）
@@ -622,7 +630,7 @@
         for (const h of D.hits) if (D.slot.get(h.char) === r.i && h.dmg) {
           const hx = x(h.f), hh = 3 + 13 * Math.sqrt(h.dmg.expected / D.maxHit)
           const tb = h.tags.includes('谐度破坏')
-          const t = tip(`<b>${esc(h.char)} ${esc(h.judgment)}</b>（${esc(h.action)}${h.trigger ? `，由 ${h.trigger.char === h.char ? '' : `${esc(h.trigger.char)} `}${esc(h.trigger.action)} 命中触发` : h.ownerAct && h.ownerAct !== h.action ? `，由 ${esc(h.ownerAct)} 引发` : ''}）\n期望伤害 ${fmt(h.dmg.expected)}（不暴击 ${fmt(h.dmg.nonCrit)} / 暴击 ${fmt(h.dmg.crit)}）\n${esc(h.element)} · ${esc(h.tags.join('、'))}\n第 ${h.f} 帧 · 战斗 ${h.t.toFixed(2)} 秒${h.buffs.length ? `\nbuff：${esc(h.buffs.join('、'))}` : ''}`)
+          const t = tip(`<b>${esc(h.char)} ${esc(h.judgment)}</b>（${esc(h.action)}${hitWhy(h) ? `，${esc(hitWhy(h))}` : ''}）\n期望伤害 ${fmt(h.dmg.expected)}（不暴击 ${fmt(h.dmg.nonCrit)} / 暴击 ${fmt(h.dmg.crit)}）\n${esc(h.element)} · ${esc(h.tags.join('、'))}\n第 ${h.f} 帧 · 战斗 ${h.t.toFixed(2)} 秒${h.buffs.length ? `\nbuff：${esc(h.buffs.join('、'))}` : ''}`)
           out.push(tb
             ? `<path d="M${hx} ${r.y + 33} l4 6 l-4 6 l-4 -6 z" style="fill: var(--alert)" data-t="${t}"/>`
             : `<rect x="${hx - 0.75}" y="${r.y + 33}" width="1.5" height="${hh}" style="fill: ${c}" data-t="${t}"/>`)

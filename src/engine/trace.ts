@@ -181,6 +181,8 @@ export interface GainStep {
   what: string                               // 判定名（命中）、效果 id（效果）、钩子的说明（钩子，可能为空）
   base?: number                              // 命中：数据里每段给多少（能量是分给全队之前的基础值）
   of?: ActionId                              // 命中：判定所在的动作（xlsx 的组），与归到的动作不同时才写（散华"E-引爆冰棱"归重击居合时是 E）
+  note?: string                              // 命中：钩子生成这个判定时附的说明（散华"5 链：冰到时自爆"）
+  via?: string                               // 命中：钩子在什么之后生成的（"散华.冰棱 到时""椿 盛绽·A3 命中"）
   label: string                              // 调试表的"事件"列
   owner: GainOwner | null                    // null：不归动作（延奏清零；切人、计时引起的）
 }
@@ -196,10 +198,11 @@ type ResourceEvent = Extract<SimEvent, { type: 'resource' }>
  *  - 命中：钩子生成的判定（没有发生帧，如散华"E-引爆冰棱""大招-引爆冰川"）归生成那一刻的起因，起因是别人的动作时（维里奈的协同攻击由
  *    队友命中触发）改归它所在动作最近的实例；其余判定归生成那一刻出伤者同名动作最近的实例；都找不到时归出伤者最近开始的动作；
  *  - 施放资源、扣除归本人最近开始的动作（含延奏动作）；效果、钩子、破盾回能归起因；延奏清零不归动作；
- *  - 钩子生成判定时起因是一次命中（维里奈的协同攻击由谁的命中触发），记下那次命中，交给 hit 的 trigger。
+ *  - 钩子生成的判定记下引出原因，交给 hit：起因是一次命中时记那次命中（trigger，维里奈的协同攻击由谁的命中触发）；
+ *    via 是钩子在什么之后生成的（"散华.冰棱 到时""丁 Q 开始""椿 盛绽·A3 命中"），note 是钩子附的说明（"5 链：冰到时自爆"）。
  *  局限：同一帧有几个 buff 一起到时，它们引出的事件都排在后面，会全算到最后一个到时的 buff 的起因上 */
 function walkOwners(log: readonly SimEvent[], r: ResolvedScenario, visit: {
-  hit(e: HitEvent, owner: GainOwner | null, trigger: HitTrigger | null): void
+  hit(e: HitEvent, owner: GainOwner | null, trigger: HitTrigger | null, origin: HitOrigin | null): void
   resource(e: ResourceEvent, how: GainHow, owner: GainOwner | null, label: string): void
 }): void {
   const members = new Map(r.team.map(m => [m.def.name, m]))
@@ -209,6 +212,7 @@ function walkOwners(log: readonly SimEvent[], r: ResolvedScenario, visit: {
   const applied = new Map<string, GainOwner | null>()         // "buff→目标" → 最近一次挂上时的起因
   let anchor: { owner: GainOwner | null; label: string; hit?: HitEvent } = { owner: null, label: '' }   // hit：起因是一次命中时
   const triggers = new Map<number, HitTrigger>()              // 钩子生成的判定 id → 触发它的命中
+  const origins = new Map<number, HitOrigin>()                // 钩子生成的判定 id → 引出原因
   const started = (o: GainOwner) => (o.outro ? `${o.char} 延奏` : `${o.char} ${o.action} 开始`)
   for (const e of log) {
     switch (e.type) {
@@ -225,7 +229,11 @@ function walkOwners(log: readonly SimEvent[], r: ResolvedScenario, visit: {
         const byHook = members.get(e.char)?.actions[e.action]?.judgments.find(j => j.name === e.judgment)?.spawnFrame === null
         const cause = byHook && anchor.owner?.char === e.char ? anchor.owner : null
         spawned.set(e.id, cause ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null)
-        if (byHook && anchor.hit) triggers.set(e.id, { char: anchor.hit.char, action: anchor.hit.action, judgment: anchor.hit.judgment })
+        if (byHook) {
+          if (anchor.hit) triggers.set(e.id, { char: anchor.hit.char, action: anchor.hit.action, judgment: anchor.hit.judgment })
+          const via = anchor.hit ? `${anchor.hit.char} ${anchor.hit.action} 命中` : anchor.label || null
+          if (via || e.note) origins.set(e.id, { via, note: e.note ?? null })
+        }
         break
       }
       case 'switch': case 'loop':
@@ -240,7 +248,7 @@ function walkOwners(log: readonly SimEvent[], r: ResolvedScenario, visit: {
       case 'hit': {
         const owner = spawned.get(e.id) ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null
         anchor = { owner, label: `${e.char} ${e.action} 命中后`, hit: e }
-        visit.hit(e, owner, triggers.get(e.id) ?? null)
+        visit.hit(e, owner, triggers.get(e.id) ?? null, origins.get(e.id) ?? null)
         break
       }
       case 'resource': {
@@ -259,12 +267,14 @@ export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario): GainSt
   const members = new Map(r.team.map(m => [m.def.name, m]))
   const out: GainStep[] = []
   walkOwners(log, r, {
-    hit(e, owner) {
+    hit(e, owner, _trigger, origin) {
       const of = owner && owner.action !== e.action ? { of: e.action } : {}
+      const why = origin ? { ...(origin.note ? { note: origin.note } : {}), ...(origin.via ? { via: origin.via } : {}) } : {}
       const g = members.get(e.char)?.actions[e.action]?.judgments.find(j => j.name === e.judgment)?.gains
-      const label = `${e.char} ${e.action} 命中（${e.judgment}）`
+      const c = origin ? causeText(origin.note, origin.via) : ''
+      const label = `${e.char} ${e.action} 命中（${e.judgment}${c ? `；${c}` : ''}）`
       const step = (resource: ResourceKind, deltas: Partial<Record<CharName, number>>, base: number | undefined) =>
-        out.push({ f: e.f, t: e.t, resource, deltas, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, label, owner })
+        out.push({ f: e.f, t: e.t, resource, deltas, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, ...why, label, owner })
       const energy = Object.entries(e.gains.energy).filter(([, v]) => v)
       if (energy.length) step('energy', Object.fromEntries(energy), g?.energy)
       if (e.gains.concerto) step('concerto', { [e.char]: e.gains.concerto }, g?.concerto)
@@ -280,14 +290,20 @@ export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario): GainSt
 
 /** 触发钩子生成这个判定的那次命中：维里奈的协同攻击由谁的命中触发（可能是队友的） */
 export interface HitTrigger { char: CharName; action: ActionId; judgment: string }
-/** 一次命中的来由：owner 归到的动作，trigger 由哪次命中触发（只有钩子在命中后生成的判定才有） */
-export interface HitCause { owner: GainOwner | null; trigger: HitTrigger | null }
+/** 钩子生成的判定是怎么引出的：via 钩子在什么之后生成（"散华.冰棱 到时""散华.引爆计时 到时""椿 盛绽·A3 命中"），note 钩子附的说明 */
+export interface HitOrigin { via: string | null; note: string | null }
+/** 一次命中的来由：owner 归到的动作，trigger 由哪次命中触发（只有钩子在命中后生成的判定才有），origin 引出原因（钩子生成的判定才有） */
+export interface HitCause { owner: GainOwner | null; trigger: HitTrigger | null; origin: HitOrigin | null }
+
+/** 引出原因写成一句："5 链：冰到时自爆（散华.冰棱 到时）"；只有一半时就写那一半 */
+export const causeText = (note: string | null | undefined, via: string | null | undefined): string =>
+  note && via ? `${note}（${via}）` : note ?? via ?? ''
 
 /** 每次命中归到的动作与触发者（规则见 walkOwners）：时间轴网页里动作的伤害按 owner 合计，同资源的出处（AGENTS.md 差异 8）；
  *  汇总的"分动作"、pnpm compare 仍按判定所在的动作（xlsx 的组）。键是日志里的 hit 事件 */
 export function hitCauses(log: readonly SimEvent[], r: ResolvedScenario): Map<SimEvent, HitCause> {
   const out = new Map<SimEvent, HitCause>()
-  walkOwners(log, r, { hit: (e, owner, trigger) => out.set(e, { owner, trigger }), resource: () => {} })
+  walkOwners(log, r, { hit: (e, owner, trigger, origin) => out.set(e, { owner, trigger, origin }), resource: () => {} })
   return out
 }
 
@@ -298,6 +314,8 @@ export interface GainItem {
   dt: number                                 // 第一次在动作开始之后多少战斗秒（中间有时停时比世界秒短）
   base?: number                              // 命中：每段的数据值（同 GainStep）
   of?: ActionId                              // 命中：判定所在的动作，与这个动作不同时才写（同 GainStep）
+  note?: string                              // 命中：钩子附的说明（同 GainStep；说明不同的分开记）
+  via?: string                               // 命中：钩子在什么之后生成的（同 GainStep；几次不一样时不写）
   deltas: Partial<Record<CharName, number>>  // 合计
 }
 export interface ActionGains extends GainOwner { items: GainItem[] }
@@ -309,13 +327,14 @@ export function actionGains(steps: readonly GainStep[], resources: readonly Reso
     if (!g.owner || !resources.includes(g.resource)) continue
     let a = by.get(g.owner)
     if (!a) by.set(g.owner, (a = { ...g.owner, items: [] }))
-    let it = a.items.find(x => x.resource === g.resource && x.how === g.how && x.what === g.what)
+    let it = a.items.find(x => x.resource === g.resource && x.how === g.how && x.what === g.what && x.note === g.note)
     if (!it) {
       a.items.push((it = {
         resource: g.resource, how: g.how, what: g.what, n: 0, dt: roundTo(g.t - g.owner.t, 100),
-        ...(g.base !== undefined ? { base: g.base } : {}), ...(g.of !== undefined ? { of: g.of } : {}), deltas: {},
+        ...(g.base !== undefined ? { base: g.base } : {}), ...(g.of !== undefined ? { of: g.of } : {}),
+        ...(g.note !== undefined ? { note: g.note } : {}), ...(g.via !== undefined ? { via: g.via } : {}), deltas: {},
       }))
-    }
+    } else if (it.via !== g.via) delete it.via                // 几次的引出原因不一样（协同由不同队友触发）：不写
     it.n++
     for (const [n, v] of Object.entries(g.deltas)) it.deltas[n] = (it.deltas[n] ?? 0) + v!
   }
