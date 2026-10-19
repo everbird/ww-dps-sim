@@ -28,7 +28,10 @@ async function main(): Promise<number> {
   console.log('\n① 共鸣效率需求：轴里的大招不等能量，最低要多少（按单调二分，精确到 0.25%）')
   if (x.energy.length === 0) console.log('  轴里没有大招')
   for (const e of x.energy) {
-    const need = e.need === null ? `加到 ${pct(e.current + 2)} 还要等（大招放得太早）` : pct(e.need)
+    // 最低就是下限（面板 100% + 常驻 buff）：不堆共鸣效率也够，单独说明，免得当成"要堆到这么多"
+    const atFloor = e.need !== null && e.need <= e.floor + 1e-9
+    const floorNote = `下限：面板 100%${e.floor > 1 + 1e-9 ? ` + 常驻 ${pct(e.floor - 1)}` : ''}，不堆共鸣效率也够`
+    const need = e.need === null ? `加到 ${pct(e.current + 2)} 还要等（大招放得太早）` : atFloor ? `${pct(e.need)}（${floorNote}）` : pct(e.need)
     const margin = e.need === null ? '' : e.current >= e.need ? `，富余 ${pct(e.current - e.need)}` : `，差 ${pct(e.need - e.current)}`
     console.log(`  ${padEnd(e.char, 8)}现在 ${pct(e.current)}，最低 ${need}${margin}${e.waitSecs > 0 ? `；现在等能量 ${e.waitSecs.toFixed(2)} 秒` : ''}`)
   }

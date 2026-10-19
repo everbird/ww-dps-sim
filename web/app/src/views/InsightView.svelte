@@ -38,14 +38,15 @@
     <h2>口径：{out.basis.label} · DPS {fmt(out.basis.dps)} <span class="muted">（{out.runs} 次仿真，{secs.toFixed(1)} 秒）</span></h2>
 
     <h3>共鸣效率需求</h3>
-    <p class="muted">轴里的大招不等能量，每人最低要多少共鸣效率（按单调二分，精确到 0.25%）。富余的部分可以换成别的副词条。</p>
+    <p class="muted">轴里的大招不等能量，每人最低要多少共鸣效率（按单调二分，精确到 0.25%）。富余的部分可以换成别的副词条。标"下限"的是面板 100% 加常驻 buff，压不下去了：不堆共鸣效率也够。</p>
     <div class="tablebox"><table>
       <thead><tr><th>角色</th><th class="r">现在</th><th class="r">最低</th><th class="r">富余</th><th class="r">现在等能量</th></tr></thead>
       <tbody>
         {#each out.energy as e (e.char)}
+          {@const atFloor = e.need !== null && e.need <= e.floor + 1e-9}
           <tr>
             <td>{e.char}</td><td class="r">{pct(e.current)}</td>
-            <td class="r">{e.need === null ? `> ${pct(e.current + 2)}` : pct(e.need)}</td>
+            <td class="r">{e.need === null ? `> ${pct(e.current + 2)}` : pct(e.need)}{#if atFloor}<span class="muted">（下限）</span>{/if}</td>
             <td class="r" class:up={e.need !== null && e.current > e.need} class:down={e.need === null || e.current < e.need}>{e.need === null ? '—' : signed(e.current - e.need, pct)}</td>
             <td class="r">{e.waitSecs > 0 ? `${e.waitSecs.toFixed(2)} 秒` : '—'}</td>
           </tr>

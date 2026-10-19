@@ -102,7 +102,7 @@ export default defineCharacter('维里奈', {
     A3: { dropRows: ['A3-无目标/3m外'], splitRows: ['A3-地面出场技'] },
     A4: { comboFrom: ['A3', 'A3-地面出场技'] },
     // 强化重击的两行是两种起手，不是先后两段：一次强化重击只消耗 1 层光合能量、回 12 协奏（nanoka 3.7）。
-    // 两行都算会变成 +24 / −2；先留与普通重击同样第 24 帧冲出的"强化冲"（连冲何时出现待查，m0-confirm §6 V2）
+    // 两行都算会变成 +24 / −2；只留与普通重击同样第 24 帧冲出的"强化冲"（连冲何时出现不重要，不建模：m0-confirm §6 V2 用户确认）
     重击: { dropRows: ['重击-强化连冲'], followUp: { after: '重击-强化冲', action: '重击-强化撞1' }, judgments: { '重击-强化冲': { heals: true } } },
     '重击-冲': { followUp: { after: '重击-冲', action: '重击-撞' } },
     QTE: { followUp: { after: 'QTE-冲', action: 'QTE-撞' }, accept: ['priorityChangeGuess'] },   // 冲刺总能撞到（m0-confirm §6 V1）；第 53 帧（输入锁结束）降到 4

@@ -61,8 +61,14 @@ dataDescribe('结论（M0 代表轴）', () => {
       expect(e.waitSecs).toBe(0)
       expect(e.need).not.toBeNull()
       expect(e.need!).toBeLessThanOrEqual(e.current + 1e-9)
-      expect(e.need!).toBeGreaterThanOrEqual(1)
+      expect(e.need!).toBeGreaterThanOrEqual(e.floor)
+      expect(e.floor).toBeGreaterThanOrEqual(1)
     }
+    // 下限 = 面板 100% + 常驻 buff（椿千古洑流 25.6%、散华轻云出月 2 件 10%）。椿、散华最低就是下限：不堆共鸣效率也够；维里奈要的比下限高
+    expect(x.energy.map(e => e.floor)).toEqual([expect.closeTo(1.256, 9), expect.closeTo(1.1, 9), 1])
+    expect(x.energy[0]!.need).toBe(x.energy[0]!.floor)
+    expect(x.energy[1]!.need).toBe(x.energy[1]!.floor)
+    expect(x.energy[2]!.need!).toBeGreaterThan(x.energy[2]!.floor)
     expect(x.tolerance[0]).toMatchObject({ delay: 0, change: 0, error: null })
     const dps = x.tolerance.map(t => t.dps!)
     expect(dps[1]!).toBeLessThan(dps[0]!)
