@@ -16,6 +16,7 @@ export interface EnergyNeed {
   char: string
   current: number                           // 现在的共鸣效率（面板 + 常驻 buff，同 pnpm sim 的显示）
   need: number | null                       // 这条轴的大招不等能量最低要多少；null = 加到 current + 2 仍要等（轴里大招放得太早）
+  floor: number                             // 能压到的最低：面板 100% + 常驻 buff。need 等于它 = 不堆共鸣效率也不等能量
   waitSecs: number                          // 现在窗口里等能量的秒数
 }
 export interface ToleranceRow { delay: number; dps: number | null; change: number | null; loopSecs: number | null; error: string | null }
@@ -60,7 +61,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[] 
     const need = ok(current)
       ? (ok(floor) ? floor : search(floor, current, ok))
       : (ok(current + 2) ? search(current, current + 2, ok) : null)
-    energy.push({ char: m.def.name, current, need, waitSecs: energyWaitFrames(base, r, m.slot, basis) / 60 })
+    energy.push({ char: m.def.name, current, need, floor, waitSecs: energyWaitFrames(base, r, m.slot, basis) / 60 })
   }
 
   // ② 操作容错
