@@ -139,6 +139,12 @@ export function convertScan(scan: ScanFile, t: NameTables): ScanResult {
   }
 }
 
+/** 缺省输出路径：一个账号一份库存（两个账号的声骸不能混用，id 也都从 scan-echo-1 起）——data/scan/<账号>-echo.json → inventory/<账号>-bag.yaml */
+export function inventoryPathFor(scanFile: string): string {
+  const base = scanFile.replace(/\\/g, '/').split('/').pop()!.replace(/\.json$/i, '').replace(/-echo$/i, '')
+  return `inventory/${base}-bag.yaml`
+}
+
 // ---------------------------------------------------------------------------
 // 写 YAML：每件一行（与 inventory/m0-equipped.yaml 同样的写法），键序 id、owner、name、set、cost、main、subs、note
 

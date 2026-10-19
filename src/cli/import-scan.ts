@@ -1,5 +1,5 @@
-// src/cli/import-scan.ts —— pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka 3.7]
-// wavescan 扫描导出（WutheringToolsScan v1）→ 声骸库存 YAML（TD-13 §2），给 pnpm optimize --inv 用。
+// src/cli/import-scan.ts —— pnpm import:scan data/scan/<账号>-echo.json [--out inventory/<账号>-bag.yaml] [--nanoka 3.7]
+// wavescan 扫描导出（WutheringToolsScan v1）→ 声骸库存 YAML（TD-13 §2），给 pnpm optimize --inv 用。一个账号一份，缺省按扫描文件名写到 inventory/<账号>-bag.yaml。
 // 英文名 → 中文名：nanoka 的 echo.json / sonata.json / character.json（缓存在 data/raw/nanoka/<版本>/，没有时联网取，
 // 与 tools/build/nanoka.py 共用缓存），对不上的写进 data/curated/scan-names.json；声骸名再按 nanoka-names.json 换成声骸表 A 列名。
 // 写完用 InventorySchema + resolveInventory 校验一遍（要有 data/generated，没有时跳过）。
@@ -8,11 +8,11 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { parse } from 'yaml'
 import { InventorySchema, resolveInventory } from '../data/inventory.schema'
 import { hasGenerated, loadGameData } from '../data/load'
-import { convertScan, inventoryYaml, ScanFileSchema, type NameTables } from '../data/scan-import'
+import { convertScan, inventoryPathFor, inventoryYaml, ScanFileSchema, type NameTables } from '../data/scan-import'
 import { parseOrThrow } from '../data/validate'
 import { argsOf } from './format'
 
-const USAGE = '用法：pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka <版本>]'
+const USAGE = '用法：pnpm import:scan data/scan/<账号>-echo.json [--out inventory/<账号>-bag.yaml] [--nanoka <版本>]'
 const NANOKA = 'https://static.nanoka.cc'
 const DATA = new URL('../../data/', import.meta.url)
 const CACHE = new URL('raw/nanoka/', DATA)
@@ -62,7 +62,7 @@ async function main(): Promise<number> {
   const file = pos.find(a => !a.startsWith('--'))
   const unknownArgs = pos.filter(a => a.startsWith('--'))
   if (!file || unknownArgs.length) { console.error(unknownArgs.length ? `不认识的参数：${unknownArgs.join(' ')}\n${USAGE}` : USAGE); return 2 }
-  const out = opt.out ?? 'inventory/scanned-bag.yaml'
+  const out = opt.out ?? inventoryPathFor(file)
   const scan = parseOrThrow(ScanFileSchema, JSON.parse(readFileSync(file, 'utf8')), file)
 
   const version = await nanokaVersion(opt.nanoka)

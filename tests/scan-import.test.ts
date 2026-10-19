@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { InventorySchema } from '../src/data/inventory.schema'
-import { convertScan, inventoryYaml, normName, ScanFileSchema, type NameTables } from '../src/data/scan-import'
+import { convertScan, inventoryPathFor, inventoryYaml, normName, ScanFileSchema, type NameTables } from '../src/data/scan-import'
 
 const tables: NameTables = {
   echo: { 'Nightmare: Crownless': '梦魇·无冠者', Kerasaur: '角鳄', 'Reminiscence: Denia': '共鸣回响·达妮娅', 'Baby Roseshroom': '刺玫菇（稚形）' },
@@ -82,5 +82,11 @@ describe('扫描导出 → 库存', () => {
     expect(inv.echoes).toHaveLength(3)
     expect(inv.echoes[2]!.name).toBe('Odd: Name, {x}')
     expect(inv.echoes[0]).toMatchObject({ owner: '椿', main: '暴击率', subs: { 暴击伤害: 0.138, 攻击: 40, '防御%': 0.118 } })
+  })
+
+  test('缺省输出：一个账号一份，data/scan/<账号>-echo.json → inventory/<账号>-bag.yaml', () => {
+    expect(inventoryPathFor('data/scan/everbird-echo.json')).toBe('inventory/everbird-bag.yaml')
+    expect(inventoryPathFor('data\\scan\\Evariste-echo.json')).toBe('inventory/Evariste-bag.yaml')   // Windows 路径
+    expect(inventoryPathFor('/tmp/导出.JSON')).toBe('inventory/导出-bag.yaml')
   })
 })
