@@ -60,7 +60,7 @@ const echoes: EchoModule[] = [
   defineEcho({
     name: '梦魇·无冠者',
     actionOverrides: {
-      // 以 nanoka 为准（2026-10-04 用户确认）："初始拥有3次可使用次数，每12秒可使用次数增加1次，可使用次数上限3次"；xlsx「冷却」列写 20 秒
+      // 以 nanoka 为准（2026-10-04 用户确认）："初始拥有3次可使用次数，每12秒可使用次数增加1次，可使用次数上限3次"；xlsx「冷却」列 20261003 版写 20 秒，20261019 版已改成 12 秒
       'Q·斩击': { cooldown: 720, charges: 3 },
     },
     mainSlotBuffs: [

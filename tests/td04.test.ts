@@ -234,7 +234,7 @@ dataDescribe('T04-13 极限闪避 → 闪避反击（连段前置 + 减速随取
   test('闪避反击不再受减速：第 49 帧命中', () => expect(brief(r.hits)).toEqual(['闪避反击@49']))
 })
 
-dataDescribe('T04-14 全量：74 个块 1721 个动作组（20261003 版），单独出招、连按两次', () => {
+dataDescribe('T04-14 全量：75 个块 1771 个动作组（20261019 版），单独出招、连按两次', () => {
   const keys = readdirSync(new URL('../data/generated/actions', import.meta.url)).map(f => f.replace(/\.json$/, ''))
   let groups = 0, spawnMismatch = 0, tickMismatch = 0, errors = 0, minusOneAfterEnd = 0
   for (const key of keys) {
@@ -257,10 +257,10 @@ dataDescribe('T04-14 全量：74 个块 1721 个动作组（20261003 版），�
       } catch { errors++ }
     }
   }
-  test('全部跑完、无异常', () => { expect(groups).toBe(1721); expect(errors).toBe(0) })
-  test('生成数 = 有发生帧的判定数（持续帧 -1 且发生帧 ≥ 结束帧的除外，23 组）', () => {
+  test('全部跑完、无异常', () => { expect(groups).toBe(1771); expect(errors).toBe(0) })
+  test('生成数 = 有发生帧的判定数（持续帧 -1 且发生帧 ≥ 结束帧的除外，26 组）', () => {
     expect(spawnMismatch).toBe(0)
-    expect(minusOneAfterEnd).toBe(23)                                       // 20261003 版（20260707 版 22）
+    expect(minusOneAfterEnd).toBe(26)                                       // 20261019 版多了心的空中重击派生、空中攻击、E（20261003 版 23，20260707 版 22）
   })
   test('结算次数 = 寿命内放得下的次数', () => expect(tickMismatch).toBe(0))
 })

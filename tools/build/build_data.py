@@ -87,12 +87,12 @@ def main() -> int:
         if settings[k] != v:
             blocking.append(f'设置区 {k} = {settings[k]!r}，期望 {v!r}（TD-01 §1.8）')
 
-    # §3 动作表
+    # §3 动作表（列按第 1 行表头名找，见 actions.ActionCols；多读几列，插列后也读得到）
     blocks = []
     for sheet, gender in (('角色-女', '女'), ('角色-男', '男')):
         ws = wb[sheet]
-        values = list(ws.iter_rows(min_row=1, max_col=46, values_only=True))
-        formulas = list(wbf[sheet].iter_rows(min_row=1, max_col=46, values_only=True))
+        values = list(ws.iter_rows(min_row=1, max_col=60, values_only=True))
+        formulas = list(wbf[sheet].iter_rows(min_row=1, max_col=60, values_only=True))
         blocks += parse_action_sheet(sheet, gender, values, formulas, merged_map(ws), issues)
 
     # §4 dmg 连接

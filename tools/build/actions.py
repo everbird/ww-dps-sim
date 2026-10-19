@@ -7,18 +7,49 @@ from parse import (Issues, as_num, blank, extract_birth_frame, extract_hints, na
                    parse_list, parse_num)
 
 ROVERS = {'光主', '暗主', '风主', '雷主'}
-NAV_LABELS = {'技能类型', '伤害计算', '输入缓存', '牵引', '快速反应', '偏谐机制'}   # §3.2：块内的跳转链接标签
+NAV_LABELS = {'技能类型', '伤害计算', '输入缓存', '牵引', '快速反应', '偏谐机制', '同奏体系'}   # §3.2：块内的跳转链接标签
 DILATION_TYPES = {'攻击顿帧', '时停', '全局时停', '极限闪避顿帧', '弹反顿帧'}
 ENEMY_TARGETS = {'目标', '目标子弹', '指定目标', '弹刀目标'}                      # §13.2：命中敌方
+# 主表（base）角色名与动作块名不同的（§5.2）：20261019 版的心分成两块，常态"应世心"用角色名，岁主形态"照世心"由角色模块并入
+BLOCK_RENAME = {'应世心': '心'}
+_MULTI_HIT = re.compile(r'^\s*(\d+)\s*F\s*/\s*(\d+)\s*次\s*$')
 
-# 列号（0 起）：A 名称 … AM 命中类型（§3.1）
-C_NAME, C_ID, C_ACTION, C_NOTE, C_SPAWN, C_LIFE, C_HS_SELF, C_HS_ENEMY = 0, 1, 2, 3, 4, 5, 6, 7
-C_PRIO_CHANGE, C_DERIVE, C_DERIVE_DUR, C_END, C_PARRY, C_PERSIST, C_FOLLOW = 10, 11, 12, 13, 14, 15, 16
-C_TOUGH, C_TUNE = 17, 18
-GAIN_COLS = [('energy', 19), ('concerto', 20), ('core0', 21), ('core1', 22), ('core2', 23)]
-C_PRIORITY, C_POSITION, C_POS_CHANGE, C_DIL_TYPE = 25, 26, 27, 28
-DIL_SIDES = [('self', 29), ('enemy', 32), ('ally', 35)]
-C_HIT_TARGET = 38
+
+class ActionCols:
+    """动作表第 1 行的表头 → 0 起列下标（§3.1），不写死列号。
+    20261019 版在"持续帧"后插了"延迟"、"顿帧-敌"后插了"多判间隔/次"，其后各列右移两列，按列号读就全错了。
+    同名表头（膨胀发生、膨胀持续：自、敌、友各一）按第几次出现区分；旧版没有的列（延迟、多判间隔/次）为 None。
+    找不到必需的表头就报错（表头改名了，构建停下来，改这里或改解析）"""
+
+    def __init__(self, header) -> None:
+        names = [str(h).strip() if h is not None else '' for h in header]
+
+        def col(name: str, nth: int = 1, required: bool = True) -> int | None:
+            hits = [i for i, n in enumerate(names) if n == name]
+            if len(hits) >= nth:
+                return hits[nth - 1]
+            if required:
+                raise ValueError(f'动作表第 1 行找不到表头 {name}' + (f'（第 {nth} 个）' if nth > 1 else ''))
+            return None
+
+        self.name, self.id, self.action, self.note = col('名称'), col('ID'), col('动作'), col('备注')
+        self.spawn, self.life, self.delay = col('发生帧'), col('持续帧'), col('延迟', required=False)
+        self.hs_self, self.hs_enemy, self.multi_hit = col('顿帧-自'), col('顿帧-敌'), col('多判间隔/次', required=False)
+        self.prio_change, self.derive, self.derive_dur, self.end = col('优先级改变'), col('派生帧'), col('派生持续帧'), col('动作结束帧')
+        self.parry, self.persist, self.follow = col('可弹刀'), col('可脱手'), col('跟随顿帧')
+        self.tough, self.tune = col('削韧值'), col('偏谐值')
+        self.gains = [('energy', col('大招回收')), ('concerto', col('协奏回收')),
+                      ('core0', col('核心回收1')), ('core1', col('核心回收2')), ('core2', col('核心回收3'))]
+        self.priority, self.position, self.pos_change = col('中断优先级'), col('位置状态'), col('状态转换时间')
+        self.dil_type = col('时间膨胀类型')
+        self.dil_sides = []
+        for k, (side, head) in enumerate((('self', '自膨胀系数'), ('enemy', '敌膨胀系数'), ('ally', '友膨胀系数'))):
+            rate, start, dur = col(head), col('膨胀发生', k + 1), col('膨胀持续', k + 1)
+            if (start, dur) != (rate + 1, rate + 2):
+                raise ValueError(f'动作表表头 {head} 后面不是"膨胀发生、膨胀持续"')
+            self.dil_sides.append((side, rate))
+        self.hit_target = col('命中类型')
+        self.width = len(names)
 
 
 def _id_text(v) -> str:
@@ -29,22 +60,24 @@ def _id_text(v) -> str:
 
 
 def block_key(name: str, gender: str) -> str:
-    """§2：漂泊者加 ·性别；通用块加 @性别"""
+    """§2：漂泊者加 ·性别；通用块加 @性别；与主表角色名不同的块改用角色名（BLOCK_RENAME）"""
     if name in ROVERS:
         return f'{name}·{gender}'
     if name.startswith('通用'):
         return f'{name}@{gender}'
-    return name
+    return BLOCK_RENAME.get(name, name)
 
 
 def parse_action_sheet(sheet: str, gender: str, values: list, formulas: list, merges: dict, issues: Issues) -> list[dict]:
-    """values / formulas：按行的单元格值列表（1 起行号 = 下标 + 1）；merges：{(行, 列1起): (首行, 末行)}"""
+    """values / formulas：按行的单元格值列表（1 起行号 = 下标 + 1，第 1 行是表头）；merges：{(行, 列1起): (首行, 末行)}"""
+    cols = ActionCols(values[0])
+    pad = [None] * cols.width
     blocks: list[dict] = []
     cur: dict | None = None
     for i in range(2, len(values) + 1):
-        r = list(values[i - 1]) + [None] * 46
-        f = list(formulas[i - 1] if i - 1 < len(formulas) else []) + [None] * 46
-        a, b, c = r[C_NAME], r[C_ID], r[C_ACTION]
+        r = list(values[i - 1]) + pad
+        f = list(formulas[i - 1] if i - 1 < len(formulas) else []) + pad
+        a, b, c = r[cols.name], r[cols.id], r[cols.action]
         where = f'{sheet} R{i}'
         if not blank(a) and not blank(b) and _id_text(b) == '1':
             name = str(a).strip()
@@ -56,7 +89,7 @@ def parse_action_sheet(sheet: str, gender: str, values: list, formulas: list, me
         if cur is None:
             continue
         if blank(c):                                                # §3.4：动作名为空 → 不是数据行
-            if any(not blank(x) for x in r[3:39]):
+            if any(not blank(x) for x in r[cols.note:cols.hit_target + 1]):
                 cur['ignoredRows'] += 1
             continue
         if not blank(b):
@@ -67,16 +100,32 @@ def parse_action_sheet(sheet: str, gender: str, values: list, formulas: list, me
         if not cur['groups']:
             issues.add('warn', '组外行', where)
             continue
-        cur['groups'][-1]['rows'].append(parse_row(i, r, f, values, merges, sheet, issues))
+        cur['groups'][-1]['rows'].append(parse_row(i, r, f, values, merges, sheet, issues, cols))
     for blk in blocks:
         name_groups(blk)
     return blocks
 
 
-def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, issues: Issues) -> dict:
+def multi_hit_hints(v, note_hints: dict, where: str, issues: Issues) -> dict:
+    """「多判间隔/次」列（20261019 版起）："nF / m次"等同备注"持续帧内每nF进行一次判定，最多m次"（附页1）。
+    备注也写了且对不上时以这一列为准并报告"""
+    if blank(v):
+        return {}
+    m = _MULTI_HIT.match(str(v))
+    if not m:
+        issues.add('warn', '多判间隔/次无法解析', f'{where}: {v!r}')
+        return {}
+    h = {'tickInterval': int(m.group(1)), 'maxTicks': int(m.group(2))}
+    old = {k: note_hints[k] for k in h if k in note_hints}
+    if old and old != {k: h[k] for k in old}:
+        issues.add('warn', '多判间隔/次与备注不同', f'{where}: 列 {v!r}，备注 {old}')
+    return h
+
+
+def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, issues: Issues, cols: ActionCols) -> dict:
     where = f'{sheet} R{i}'
     flags: list[str] = []
-    c = r[C_ACTION]
+    c = r[cols.action]
     if isinstance(c, (int, float)) and not isinstance(c, bool):
         issues.add('warn', '动作名为数字', f'{where}: {c}')
         flags.append('numericName')
@@ -84,16 +133,17 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
     else:
         name = str(c).strip()
 
-    note, note_merged = r[C_NOTE], False                            # §1.5：备注合并区复制到每一行
-    if blank(note) and (i, C_NOTE + 1) in merges:
-        top = merges[(i, C_NOTE + 1)][0]
-        note, note_merged = values[top - 1][C_NOTE], True
+    note, note_merged = r[cols.note], False                         # §1.5：备注合并区复制到每一行
+    if blank(note) and (i, cols.note + 1) in merges:
+        top = merges[(i, cols.note + 1)][0]
+        note, note_merged = values[top - 1][cols.note], True
     note = None if blank(note) else str(note).strip()
 
-    spawn = parse_num(r[C_SPAWN], where + ' 发生帧', issues)
-    life = parse_num(r[C_LIFE], where + ' 持续帧', issues)
+    spawn = parse_num(r[cols.spawn], where + ' 发生帧', issues)
+    life = parse_num(r[cols.life], where + ' 持续帧', issues)
+    delay = None if cols.delay is None else parse_num(r[cols.delay], where + ' 延迟', issues)
     gains = {}
-    for key, col in GAIN_COLS:                                      # §3.7 + §1.5：合并区的值只归首行
+    for key, col in cols.gains:                                     # §3.7 + §1.5：合并区的值只归首行
         cell = (i, col + 1)
         if cell in merges and merges[cell][0] != i:
             gains[key] = None
@@ -105,12 +155,12 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
             flags.append('gainComplex')
         gains[key] = g
 
-    dil_type = None if blank(r[C_DIL_TYPE]) else str(r[C_DIL_TYPE]).strip()
+    dil_type = None if blank(r[cols.dil_type]) else str(r[cols.dil_type]).strip()
     if dil_type is not None and dil_type not in DILATION_TYPES:
         issues.add('warn', '未知膨胀类型', f'{where}: {dil_type}')
         dil_type = None
     sides = {}
-    for side, col in DIL_SIDES:
+    for side, col in cols.dil_sides:
         rate = parse_num(r[col], f'{where} 膨胀系数-{side}', issues)
         start = parse_num(r[col + 1], f'{where} 膨胀发生-{side}', issues)
         dur = parse_num(r[col + 2], f'{where} 膨胀持续-{side}', issues)
@@ -118,10 +168,13 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
             sides[side] = {'rate': rate, 'start': start, 'duration': dur}
     dilation = ({'type': dil_type, **sides}) if (dil_type is not None or sides) else None
 
-    hit_target = None if blank(r[C_HIT_TARGET]) else str(r[C_HIT_TARGET]).strip()
-    toughness = parse_num(r[C_TOUGH], where + ' 削韧值', issues)
-    tunability = parse_num(r[C_TUNE], where + ' 偏谐值', issues)
-    persists = parse_flag(r[C_PERSIST], where + ' 可脱手', issues)
+    hit_target = None if blank(r[cols.hit_target]) else str(r[cols.hit_target]).strip()
+    toughness = parse_num(r[cols.tough], where + ' 削韧值', issues)
+    tunability = parse_num(r[cols.tune], where + ' 偏谐值', issues)
+    persists = parse_flag(r[cols.persist], where + ' 可脱手', issues)
+    hints = extract_hints(note)
+    if cols.multi_hit is not None:
+        hints.update(multi_hit_hints(r[cols.multi_hit], hints, where, issues))
 
     # §3.6 行分类
     any_gain = any(g is not None for g in gains.values()) or toughness is not None or tunability is not None
@@ -139,26 +192,27 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
     return {
         'row': i, 'name': name, 'kind': kind, 'eventSpawned': kind == 'hit' and spawn is None,
         'spawnFrame': spawn,
-        'birthFrame': extract_birth_frame(f[C_SPAWN], spawn),
+        'birthFrame': extract_birth_frame(f[cols.spawn], spawn),
         'lifeFrames': life,
-        'hitstop': {'self': parse_num(r[C_HS_SELF], where, issues), 'enemy': parse_num(r[C_HS_ENEMY], where, issues)},
-        'deriveFrame': parse_num(r[C_DERIVE], where + ' 派生帧', issues),
-        'deriveDuration': parse_num(r[C_DERIVE_DUR], where + ' 派生持续帧', issues),
-        'endFrame': parse_num(r[C_END], where + ' 动作结束帧', issues),
-        'priority': parse_list(r[C_PRIORITY], where + ' 中断优先级', issues),
-        'priorityChange': parse_list(r[C_PRIO_CHANGE], where + ' 优先级改变', issues),
-        'parry': parse_flag(r[C_PARRY], where + ' 可弹刀', issues),
+        'delayFrames': delay,
+        'hitstop': {'self': parse_num(r[cols.hs_self], where, issues), 'enemy': parse_num(r[cols.hs_enemy], where, issues)},
+        'deriveFrame': parse_num(r[cols.derive], where + ' 派生帧', issues),
+        'deriveDuration': parse_num(r[cols.derive_dur], where + ' 派生持续帧', issues),
+        'endFrame': parse_num(r[cols.end], where + ' 动作结束帧', issues),
+        'priority': parse_list(r[cols.priority], where + ' 中断优先级', issues),
+        'priorityChange': parse_list(r[cols.prio_change], where + ' 优先级改变', issues),
+        'parry': parse_flag(r[cols.parry], where + ' 可弹刀', issues),
         'persists': persists,
-        'followHitstop': parse_flag(r[C_FOLLOW], where + ' 跟随顿帧', issues),
+        'followHitstop': parse_flag(r[cols.follow], where + ' 跟随顿帧', issues),
         'toughness': toughness, 'tunability': tunability,
         'gains': {'energy': gains['energy'], 'concerto': gains['concerto'],
                   'core': [gains['core0'], gains['core1'], gains['core2']]},
-        'position': None if blank(r[C_POSITION]) else str(r[C_POSITION]).strip(),
-        'positionChange': parse_list(r[C_POS_CHANGE], where + ' 状态转换时间', issues),
+        'position': None if blank(r[cols.position]) else str(r[cols.position]).strip(),
+        'positionChange': parse_list(r[cols.pos_change], where + ' 状态转换时间', issues),
         'dilation': dilation,
         'hitTarget': hit_target,
         'note': note, 'noteMerged': note_merged,
-        'hints': extract_hints(note),
+        'hints': hints,
         'nameTags': name_tags(name),
         'flags': flags,
     }

@@ -270,6 +270,7 @@ def parse_echo_row(i: int, r: list, f: list, values: list, merges: dict, issues:
         'spawnFrame': spawn,
         'birthFrame': extract_birth_frame(f[E_SPAWN], spawn),
         'lifeFrames': life,
+        'delayFrames': None,                                         # 声骸表没有「延迟」列
         'hitstop': {'self': parse_num(r[E_HS_SELF], where, issues), 'enemy': parse_num(r[E_HS_ENEMY], where, issues)},
         'deriveFrame': None, 'deriveDuration': None,
         'endFrame': parse_num(r[E_END], where + ' 结束帧', issues),

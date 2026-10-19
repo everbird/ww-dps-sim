@@ -88,7 +88,7 @@ describe('T02-3 排轴行解析（语法见 TD-09 §2）', () => {
 // TD-01 §12.2 的散华 E 行（完整字段）
 const eRow = {
   row: 1322, name: 'E', kind: 'hit', eventSpawned: false,
-  spawnFrame: 19, birthFrame: null, lifeFrames: 12, hitstop: { self: null, enemy: 5 },
+  spawnFrame: 19, birthFrame: null, lifeFrames: 12, delayFrames: null, hitstop: { self: null, enemy: 5 },
   deriveFrame: 60, deriveDuration: null, endFrame: 96,
   priority: [4, 2], priorityChange: null,
   parry: true, persists: true, followHitstop: null,
