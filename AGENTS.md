@@ -74,7 +74,7 @@ pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加�
 pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间
 pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
-pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML
+pnpm import:scan data/scan/<账号>-echo.json [--out …] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML；一个账号一份，缺省写到 inventory/<账号>-bag.yaml
 pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的
 pnpm conformance                             # 一致性样例（总设计 §10.1）：每个场景的装配结果（去掉钩子表）与事件日志、汇总写到 out/conformance/，换实现时对拍
 pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行（可切换时间轴视图）、对比、边际、择优；pnpm web:build 打包到 out/web（含数据，不发布）
@@ -102,3 +102,4 @@ pnpm test -u                                 # 场景汇总快照（tests/scenar
 M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下的 11 处已于 2026-10-03 并回总设计 v0.1.5 等；声骸与 M5 记下的 4 处已于 2026-10-04 并回总设计 v0.1.6 等，并新写 TD-10 v0.1；M4 敌人量表（TD-06 v0.2 §17）已于 2026-10-04 并回总设计 v0.1.7 等；时间轴网页、启动轴、谐度破坏的调整（不拆连段、附页2 规则、椿两种、按比例削白条）、版本清单与换成 20261003 版这 7 处已于 2026-10-04 并回总设计 v0.1.8、TD-01 v0.1.7、TD-02 v0.1.7、TD-03 v0.1.3、TD-06 v0.2.1、TD-08 v0.1.2、TD-09 v0.1.4、TD-10 v0.1.2（各文档附录的变更历史逐条列出）；补位后缀、视频轴转正、M0 代表轴换装、调试工具与 TD-11、开局核心资源、视频时间点、核心资源改名这 7 处已于 2026-10-05 并回总设计 v0.1.9、TD-02 v0.1.8、TD-06 v0.2.2、TD-08 v0.1.3、TD-09 v0.1.5、TD-10 v0.1.3（机制设计 v0.2.9 同时标为冻结）；原型期的方向（总设计 v0.2：T4、T12、T16、§10.1）带来的假设登记、好移植的写法、操作延迟与结论、抽样模式这 4 处已于 2026-10-17 并回总设计 v0.2、TD-02 v0.1.9、TD-03 v0.1.4、TD-08 v0.1.4、TD-09 v0.1.6、TD-10 v0.1.5、TD-12 v0.2.2。2026-10-18 视频轴核对时记下的 9 处（散华 ERZ、动作给的资源与出处、写了"变奏"的切人、视频轴两份、"进入即得"改叫"起手即得"、钩子记假设、地面出场技、伤害也按谁引发的算谁、引出原因）已于 2026-10-18 并回总设计 v0.2.1、TD-01 v0.1.8、TD-02 v0.1.10、TD-04 v0.1.5、TD-06 v0.2.3、TD-08 v0.1.5、TD-09 v0.1.7、TD-10 v0.1.6、TD-11 v0.1.1、TD-12 v0.2.3（m0-confirm §11 当天已同步）。之后的新决定记在下面：
 
 1. 结论的共鸣效率需求多报下限（2026-10-19，TD-10 §6 ①）：`EnergyNeed.floor` = 面板 100% + 常驻共鸣效率 buff，是能压到的最低；最低等于它时命令行写"下限：…，不堆共鸣效率也够"，网页标"（下限）"。TD-10 §6 ① 里 M0 代表轴的"椿 125.6%、散华 110.0%"就是下限（千古洑流常驻 25.6%、轻云出月 2 件 10%），不是要堆到这么多。
+2. 声骸库存一个账号一份（2026-10-19，TD-13 §1）：`pnpm import:scan` 的缺省输出从固定的 `inventory/scanned-bag.yaml` 改成按扫描文件名，`data/scan/<账号>-echo.json` → `inventory/<账号>-bag.yaml`（`inventoryPathFor`）；原来的 `scanned-bag.yaml` 改名 `everbird-bag.yaml`，新增 `Evariste-bag.yaml`（M0 队伍所在的账号）。两个账号的声骸不能混用，id 也都从 scan-echo-1 起，不合并。
