@@ -209,9 +209,12 @@ export interface EnemyRuntime {
   tuneBreakBy?: number                      // 消耗这次失谐的谐度破坏动作实例（它的各段伤害按对失谐算）
   shift?: 'zhenxie' | 'jixie'
   interference?: { kind: 'zhenxie' | 'jixie'; stacks: number; remaining: number }
-  effects: Partial<Record<EffectName, { stacks: number; remaining: number; nextTick: number; source: Slot }>>
+  /** 目标身上的异常效应（TD-06 §18）：层数、额外层（电磁爆发）、剩余战斗帧（全部层数共用，附加时刷新）、下次结算的战斗帧、最后附加的人 */
+  effects: Partial<Record<EffectName, EffectRuntime>>
   responseCd: Partial<Record<CharName, number>>
 }
+
+export interface EffectRuntime { stacks: number; burst: number; remaining: number; nextTick: number; source: Slot }
 
 /** 一个作用在具体单位上的膨胀窗口（登记时按侧展开：self → 来源角色，ally → 另外两人，enemy → 敌人） */
 export interface DilationRuntime {
@@ -277,7 +280,12 @@ export type SimEvent =
   | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
   // 治疗：char 提供了一次治疗（标了 heals 的判定结算、钩子记的持续回复每一跳）；治疗量不建模，只用来触发"提供治疗时"的效果
   | (EventBase & { type: 'heal'; char: CharName; source: string })
-  | (EventBase & { type: 'enemyState'; change: EnemyStateChange; detail?: string })
+  // effectApplied（TD-06 §18）：by 谁附加的，added 这次加了几层、stacks 加完是几层；有额外层（电磁爆发）的效应另记 burstAdded、burst。
+  // effectEnd：effect 到时消失。by 是触发"附加…后"的发出者
+  | (EventBase & {
+    type: 'enemyState'; change: EnemyStateChange; detail?: string
+    by?: CharName; effect?: EffectName; added?: number; stacks?: number; burstAdded?: number; burst?: number
+  })
   | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
   | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
   // 可选指令（排轴里写 "?"）的条件不满足，跳过了（TD-06 §13.4）
@@ -350,6 +358,8 @@ export interface HookContext<V extends HookVars = HookVars> {
   spawnJudgment(judgment: string, opts?: { action?: ActionId; note?: string }): void
   /** 某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效（TD-08 §3.2） */
   skipJudgments(instance: number, names: string[]): void
+  /** 以本角色的名义为目标附加异常效应（TD-06 §18）：层数规则同判定的 applies，记 enemyState effectApplied；note 写进事件的 detail */
+  applyEffect(effect: EffectName, stacks: number, note?: string): void
   /** 本角色的状态量（角色模块的 vars 声明的那几个），直接读写：ctx.vars.盛绽 = true */
   readonly vars: V
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */

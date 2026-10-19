@@ -48,12 +48,14 @@ export function compileRotation(lines: string[], team: CompileMember[], onField:
   return issues.length > 0 ? { ok: false, issues } : { ok: true, commands: rot.commands, opening: open.commands }
 }
 
-/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作；遇到切人、等待或别的角色就没有 */
-function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' }> | undefined {
+/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）；
+ *  遇到别的切人、等待或别的角色就没有 */
+function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' | 'switch' }> | undefined {
   const c = list[i]
   if (c?.kind !== 'act') return undefined
   for (let j = i + 1; j < list.length; j++) {
     const n = list[j]!
+    if (n.kind === 'switch' && n.expectIntro) return n
     if (n.kind !== 'act' || n.slot !== c.slot) return undefined
     if (!n.filler) return n
   }
@@ -103,7 +105,7 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
   // 补位 "~" 后面（隔着同一角色的别的补位）要接同一角色的普通动作：它看的就是那一个（§3.2）
   commands.forEach((c, i) => {
     if (c.kind === 'act' && c.filler && !fillerTarget(commands, i))
-      issues.push({ line: c.line, item: c.item, message: `${team[c.slot]!.name} ${c.action}~：补位后面要接同一角色的动作（中间不能有切人、等待）` })
+      issues.push({ line: c.line, item: c.item, message: `${team[c.slot]!.name} ${c.action}~：补位后面要接同一角色的动作或"switch <角色> 变奏"（中间不能有别的切人、等待）` })
   })
   return { commands, issues, switchFailed }
 }
@@ -186,12 +188,16 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         startAction(s, k, ij.slot, ij.def)
         continue
       }
-      // 补位 "~"：后面那个动作的冷却、资源、角色条件都满足了，就不用补这一下（等着出手的时候也每 tick 看一次）
+      // 补位 "~"：后面那个动作的冷却、资源、角色条件都满足了，或后面是"switch <角色> 变奏"而协奏已经满了，就不用补这一下
+      // （等着出手的时候也每 tick 看一次）
       if (c.kind === 'act' && c.filler) {
         const t = fillerTarget(listOf(q), q.next)
-        if (t && stateVerdict(s, opts, t.slot, actions[t.slot]![t.action]!).go) {
+        const ready = t?.kind === 'switch' ? s.chars[c.slot].concerto >= k.rules.concertoMax
+          : t !== undefined && stateVerdict(s, opts, t.slot, actions[t.slot]![t.action]!).go
+        if (ready) {
           closeSeg(s, ref)
-          log(s, { type: 'skip', cmd: ref, code: 'filler', reason: `${t.action} 已经能放，不用补 ${c.action}` })
+          const why = t!.kind === 'switch' ? `协奏满了，变奏不用补 ${c.action}` : `${t!.action} 已经能放，不用补 ${c.action}`
+          log(s, { type: 'skip', cmd: ref, code: 'filler', reason: why })
           q.next += 1
           q.waited = 0
           q.readyAt = null
@@ -240,7 +246,12 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
       // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
       const last = s.chars[s.onField].last
       const lock = last?.def.switchLockUntil
-      if (last && lock !== undefined && last.localFrame < lock) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
+      if (last && lock !== undefined && last.localFrame < lock) {
+        if (!last.def.switchLockFromInput) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
+        // 大招没写"不能切人"，按"不响应输入"挡（假设 ult-no-switch）：每段等待记一次
+        if (q.seg?.code !== 'switchLock') assume(s, 'ult-no-switch', `${s.chars[s.onField].name}·${last.id}（第 ${lock} 帧）`)
+        return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不响应输入（按不能切人算）` }
+      }
       return afterInput(s, opts, 0)
     }
     case 'act': {

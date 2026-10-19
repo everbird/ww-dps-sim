@@ -1,7 +1,7 @@
 // tests/td06-enemy.test.ts —— 敌人量表（TD-06 §13）：偏谐值与失谐、谐度破坏（自动插入、对失谐、真空期、手写与关闭）、
-// 白条与破盾回能、瘫痪与回满、Summary.enemy。人造角色，不依赖生成数据
+// 白条与破盾回能、瘫痪与回满、Summary.enemy；异常效应的层数（§18）。人造角色，不依赖生成数据
 import { describe, expect, test } from 'vitest'
-import type { DilationDef, TuneBreakTable } from '../src/data/gamedata'
+import type { DilationDef, EffectDef, TuneBreakTable } from '../src/data/gamedata'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
@@ -173,5 +173,62 @@ describe('T06-11 白条', () => {
   })
   test('没有白条的敌人不破盾', () => {
     expect(states(run({ rotation: X(8), options: { tuneBreak: 'off' } }, 1, { whiteBar: 0 }))).toEqual([])
+  })
+})
+
+// 异常效应（§18）：规则同 data/curated/effects.ts 的电磁效应（常规 10 层、电磁爆发 10 层、15 秒、5 秒一结算）
+const 电磁: EffectDef = {
+  name: '电磁效应', element: '导电', source: 't', multipliers: [], maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300,
+}
+/** 甲的 E 第 10 帧命中、附加 4 层电磁效应，30 帧结束；乙的钩子在甲每次命中后以乙的名义附加 1 层 */
+function runEffects(rotation: string[], withRule = true): SimResult {
+  const 甲e: SynthChar = {
+    name: '甲',
+    actions: [action({ id: 'E', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'e', spawnFrame: 10, applies: { effect: '电磁效应', stacks: 4 } })] })],
+    buffs: [{
+      id: '甲.附加后', source: 't', zone: 'atkPct', value: 0.1, target: 'self', duration: 600,
+      trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '电磁效应' } },
+    }],
+  }
+  const 乙e: SynthChar = {
+    name: '乙', actions: [],
+    buffs: [{ id: '乙.谁附加都算', source: 't', target: 'self', duration: 600, trigger: { on: 'enemyState', where: { by: 'team', enemyState: 'effectApplied' } } }],
+    hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.char === '甲') ctx.applyEffect('电磁效应', 1, '乙跟着挂') } },
+  }
+  const data = synthData([甲e, 乙e, idle('丙')])
+  if (withRule) data.effects = { 电磁效应: 电磁 }
+  return simulate(resolveScenario(ScenarioSchema.parse({
+    team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
+  }), data))
+}
+const applied = (r: SimResult) => eventsOfLog(r.log, 'enemyState').filter(e => e.change === 'effectApplied')
+  .map(e => [e.f, e.by, e.added, e.stacks, e.burstAdded, e.burst])
+
+describe('T06-13 异常效应的层数（§18）', () => {
+  test('命中后附加：加到常规上限，超出的进电磁爆发，到顶不再加；到顶了也记一次附加', () => {
+    const r = runEffects(Array(4).fill('甲 E') as string[])
+    expect(applied(r)).toEqual([
+      [10, '甲', 4, 4, 0, 0], [10, '乙', 1, 5, 0, 0],
+      [40, '甲', 4, 9, 0, 0], [40, '乙', 1, 10, 0, 0],
+      [70, '甲', 0, 10, 4, 4], [70, '乙', 0, 10, 1, 5],
+      [100, '甲', 0, 10, 4, 9], [100, '乙', 0, 10, 1, 10],
+    ])
+    expect(r.summary.assumptions.map(a => a.id)).toContain('later-damage')   // 伤害还没算，只记层数
+  })
+  test('每次附加刷新持续时间，全部层数共用一个计时；到时整个消失（effectEnd）', () => {
+    const r = runEffects(['甲 E', 'wait 300', '甲 E', 'wait 1000'])     // 只剩异常效应时仿真就停了，等一会儿才看得到到时
+    const end = eventsOfLog(r.log, 'enemyState').filter(e => e.change === 'effectEnd')
+    const last = applied(r).at(-1)![0] as number
+    expect(end.map(e => [e.f, e.effect])).toEqual([[last + 899, '电磁效应']])   // 第 f 帧附加、900 帧：第 f + 899 帧的 P6 移除
+  })
+  test('触发"附加…后"：缺省只认持有者自己附加的；by: team 认任何人；钩子 applyEffect 以钩子所属角色的名义附加', () => {
+    const r = runEffects(['甲 E'])
+    const buffs = eventsOfLog(r.log, 'buffApply').map(e => [e.f, e.buff, e.target])
+    expect(buffs).toEqual([[10, '甲.附加后', '甲'], [10, '乙.谁附加都算', '乙'], [10, '乙.谁附加都算', '乙']])
+  })
+  test('没写规则的效应：提示一次，不计层数', () => {
+    const r = runEffects(['甲 E', '甲 E'], false)
+    expect(applied(r)).toEqual([])
+    expect(eventsOfLog(r.log, 'warning').filter(w => w.code === 'effect')).toHaveLength(1)
   })
 })

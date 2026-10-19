@@ -6,7 +6,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { z } from 'zod'
 import { assembleBlock } from './assemble-action'
-import type { CharacterModuleDef, EchoModule } from './define'
+import { mergeBlockKey, type CharacterModuleDef, type EchoModule } from './define'
 import type { ActionDef } from './gamedata'
 import {
   GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema, GenWeaponSchema,
@@ -14,7 +14,7 @@ import {
   GoldenZonesSchema, NanokaFileSchema, type GenEcho, type NanokaFile,
 } from './generated.schema'
 import { checkCooldowns, checkTreeStats } from './nanoka-check'
-import { buildEcho } from './registry'
+import { assembleCharacterActions, buildEcho } from './registry'
 
 const root = new URL('../../data/generated/', import.meta.url)
 if (!existsSync(new URL('meta.json', root))) {
@@ -76,7 +76,10 @@ async function listFlags(name: string): Promise<void> {
   }
   const modUrl = new URL(`../../data/curated/characters/${name}.ts`, import.meta.url)
   const mod = existsSync(modUrl) ? ((await import(modUrl.href)) as { default: CharacterModuleDef }).default : undefined
-  const assembled = assembleBlock(GenActionFileSchema.parse(read(`actions/${name}.json`)), mod?.actionOverrides)
+  // 有角色模块时连并入的块一起装配（心的照世心带前缀"照世·"）
+  const blocks = Object.fromEntries([name, ...(mod?.mergeBlocks ?? []).map(mergeBlockKey)]
+    .map(k => [k, GenActionFileSchema.parse(read(`actions/${k}.json`))]))
+  const assembled = mod ? assembleCharacterActions(blocks, mod, {}) : assembleBlock(blocks[name]!)
   const acts = Object.values(assembled)
   const { lines, nAct, nJudg } = flagLines(acts)
   console.log(`\n${name}：${acts.length} 个动作；未处理的 flag 动作级 ${nAct}、判定级 ${nJudg}${mod ? '' : '（没有角色模块）'}`)

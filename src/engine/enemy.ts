@@ -2,14 +2,15 @@
 // 每次结算的伤害（TD-03）与资源（§2–§4）之后、hit 事件记下之后调用 hitGauges；瘫痪的结束由 P6 的 enemyTimers 判断。
 // 计时一律按战斗帧：全局时停（大招、谐度破坏的演出）时战斗时钟停走，谐破冷却、按钮与瘫痪也停（2026-10-04 用户确认，m0-confirm §9.2 测5）。
 // 谐破冷却（按敌人 COST）与按钮时长取 xlsx 附页2 的偏谐通用规则（m0-confirm §10 H2、H4）。
-import type { Slot } from '../data/common'
+// 异常效应（§18）：判定的 applies 与钩子 applyEffect 附加层数、P6 计时到期；伤害结算还没接（假设 later-damage）。
+import { EFFECT_NAMES, type EffectName, type Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { assume } from './assumptions'
 import { activeFor } from './buffs'
 import type { Sim } from './context'
 import { log, SLOTS } from './kernel'
 import { grant } from './resources'
-import type { JudgmentRuntime, SimState } from './types'
+import type { JudgmentRuntime, Rates, SimState } from './types'
 
 /** 角色的谐度破坏动作，ID 为"谐度破坏"的排第一。椿另有盛绽版（组名"谐度破坏-时停"，结束帧与派生窗口不同）：
  *  哪个能放由角色钩子 canStart 按形态判断，自动插的时候挑钩子允许的那个（m0-confirm §10 H5） */
@@ -93,12 +94,48 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
   }
 }
 
-/** P6：瘫痪结束时白条回满（推断，TD-06 Q11） */
-export function enemyTimers(s: SimState): void {
+/** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18） */
+export function enemyTimers(s: SimState, rates: Rates): void {
   const e = s.enemy
   if (e.broken && s.battleFrames >= e.paralyzedUntil) {
     e.broken = false
     e.whiteBar = e.preset.whiteBarTough
     log(s, { type: 'enemyState', change: 'breakEnd' })
   }
+  for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
+    const x = e.effects[name]
+    if (!x) continue
+    x.remaining -= rates.battle
+    if (x.remaining > 0) continue
+    delete e.effects[name]
+    log(s, { type: 'enemyState', change: 'effectEnd', effect: name })
+  }
+}
+
+/** 为目标附加异常效应（§18）：层数加到常规上限（maxStacks），超出的进额外层（电磁效应的"电磁爆发"，burstMax，到顶不再加）；
+ *  每次附加把持续时间刷新为效应表的 duration（全部层数共用一个计时，"重复获得刷新持续时间"）。
+ *  到顶了也记 effectApplied：触发"附加…后"的效果（雷主延奏写的是"尝试赋予异常效应后"）。伤害还没算，只记层数（假设 later-damage） */
+export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName, stacks: number, why: string): void {
+  const def = sim.r.data.effects[effect]
+  const who = s.chars[by].name
+  if (!def) {
+    const key = `effect|${effect}`
+    if (!sim.warned.has(key)) {
+      sim.warned.add(key)
+      log(s, { type: 'warning', code: 'effect', message: `${effect} 的规则没写进 data/curated/effects.ts，${who} ${why} 附加的层数不计（TD-06 §18）` })
+    }
+    return
+  }
+  const x = (s.enemy.effects[effect] ??= { stacks: 0, burst: 0, remaining: 0, nextTick: s.battleFrames + (def.tickInterval ?? 0), source: by })
+  const added = Math.max(0, Math.min(stacks, def.maxStacks - x.stacks))
+  const burstAdded = Math.max(0, Math.min(stacks - added, def.burstMax - x.burst))
+  x.stacks += added
+  x.burst += burstAdded
+  x.remaining = def.duration
+  x.source = by
+  log(s, {
+    type: 'enemyState', change: 'effectApplied', detail: why, by: who, effect, added, stacks: x.stacks,
+    ...(def.burstMax > 0 ? { burstAdded, burst: x.burst } : {}),
+  })
+  assume(s, 'later-damage', `${effect}（只记层数）`)
 }

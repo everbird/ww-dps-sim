@@ -22,7 +22,7 @@ const 甲: SynthChar = {
 }
 function data(): GameData {
   const d = synthData([甲, idle('乙'), idle('丙'), { ...甲, name: '暗主·女' }])
-  d.echoes['角'] = { key: '角', cost: 4, actions: {}, q: 'Q·角', description: null, mainSlotBuffs: [], resourceEffects: [], curated: true, flags: [] }
+  d.echoes['角'] = { key: '角', cost: 4, actions: {}, q: 'Q·角', qFor: {}, description: null, mainSlotBuffs: [], resourceEffects: [], curated: true, flags: [] }
   const always = { target: 'self', duration: 'inf', trigger: 'always' } as const
   d.echoSets['测试套'] = {
     name: '测试套',

@@ -1,8 +1,8 @@
 // src/engine/triggers.ts —— TD-07 §4、§5、§6：事件队列与触发
 // 引擎记下的每条事件都排进本 tick 的队列（日志本身就是队列），逐条处理：① 消耗 → ② buff 触发 → ③ 资源型效果 → ④ 角色钩子 onEvent。
 // 处理中产生的新事件排到队尾，同一 tick 内处理完；一条事件引出的事件链超过 rules.maxChainDepth 层报错。
-import type { ActionId, ActionKind, DamageTag, Element, ResourceKind, Slot } from '../data/common'
-import type { BuffDef, TriggerFilter, TriggerSpec } from '../data/buff.schema'
+import type { ActionId, ActionKind, DamageTag, EffectName, Element, ResourceKind, Slot } from '../data/common'
+import type { BuffDef, EnemyStateChange, TriggerFilter, TriggerSpec } from '../data/buff.schema'
 import { applyTriggered, bookKey, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { log } from './kernel'
@@ -21,6 +21,8 @@ interface Occurrence {
   element?: Element
   resource?: ResourceKind
   to?: Slot                                 // outro：这次变奏的角色（nextIn 的去处）
+  enemyState?: EnemyStateChange             // enemyState：什么变化
+  effect?: EffectName                       // enemyState：哪种异常效应（effectApplied / effectEnd）
 }
 
 /** 处理队列里所有还没处理的事件。可重入：处理中再调用直接返回，新事件由外层循环接着处理 */
@@ -98,7 +100,10 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     case 'outro': return [{ on: 'outro', by: slot(ev.char), to: slot(ev.to) }]
     case 'switch': return [{ on: 'switchOut', by: slot(ev.from) }, { on: 'switchIn', by: slot(ev.to) }]
     case 'resourceFull': return [{ on: 'resourceFull', by: slot(ev.char), resource: ev.resource }]
-    default: return []                      // enemyState 在 M4（TD-06 v0.2）
+    // 敌人状态：记了发出者的才能触发（附加异常效应，TD-06 §18）；破盾、失谐等还没记谁造成的
+    case 'enemyState':
+      return ev.by !== undefined ? [{ on: 'enemyState', by: slot(ev.by), enemyState: ev.change, ...(ev.effect ? { effect: ev.effect } : {}) }] : []
+    default: return []
   }
 }
 
@@ -118,7 +123,8 @@ function matches(s: SimState, on: TriggerSpec['on'], where: TriggerFilter | unde
     && any(where.elements, o.element ? [o.element] : undefined)
     && (where.resource === undefined || where.resource === o.resource)
     && (where.ownerHas === undefined || (owner !== 'env' && s.buffs.some(b => b.defId === where.ownerHas && b.owner === owner && b.target === owner)))
-    && where.enemyState === undefined && where.effect === undefined   // 敌人状态类在 M4
+    && (where.enemyState === undefined || where.enemyState === o.enemyState)
+    && (where.effect === undefined || where.effect === o.effect)
 }
 
 /** 这条定义被这批触发点中的哪一个触发（数组写法任一满足即可，一条事件只触发一次）；内置冷却按（持有者, 定义）记在 lastTrigger（§4.4） */

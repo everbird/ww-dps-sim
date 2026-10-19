@@ -14,14 +14,14 @@ dataDescribe('TD-05 M0 队伍', () => {
 
   test('T05-1 普通切人：协奏没满不变奏，切出者的动作在后台照常走完，协奏不清零', () => {
     const out = m0Run(gd, { initial: { onField: 1, concerto: [0, 50, 0] }, rotation: ['散华 E', 'switch 椿'] })
-    // E 开始时：行进序曲 +8（actionStart 的触发）→ 施放资源 +15（TD-06 §7）；同一 tick 接着切人，此时 73 < 100
-    expect(at(out.log, 0)).toEqual(['loop', 'start 散华 E', '散华 concerto +8 行进序曲.协奏', '散华 concerto +15 cast', 'switch 散华→椿'])
+    // E 开始时：行进序曲（R5）+16（actionStart 的触发）→ 施放资源 +15（TD-06 §7）；同一 tick 接着切人，此时 81 < 100
+    expect(at(out.log, 0)).toEqual(['loop', 'start 散华 E', '散华 concerto +16 行进序曲.协奏', '散华 concerto +15 cast', 'switch 散华→椿'])
     expect(eventsOfLog(out.log, 'intro')).toEqual([])
     expect(eventsOfLog(out.log, 'outro')).toEqual([])
     expect(eventsOfLog(out.log, 'hit').map(h => [h.f, h.char, h.judgment])).toEqual([[19, '散华', 'E']])
-    expect(finalResources(out).concerto).toEqual([0, 73, 0])
-    // 初始 77：E 的 +8 +15 在同一 tick 先发，切人就成了变奏切人
-    const full = m0Run(gd, { initial: { onField: 1, concerto: [0, 77, 0] }, rotation: ['散华 E', 'switch 椿'] })
+    expect(finalResources(out).concerto).toEqual([0, 81, 0])
+    // 初始 69：E 的 +16 +15 在同一 tick 先发、正好 100，切人就成了变奏切人
+    const full = m0Run(gd, { initial: { onField: 1, concerto: [0, 69, 0] }, rotation: ['散华 E', 'switch 椿'] })
     expect(eventsOfLog(full.log, 'switch')[0]!.intro).toBe(true)
   })
 

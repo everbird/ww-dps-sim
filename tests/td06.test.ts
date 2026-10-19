@@ -82,9 +82,10 @@ dataDescribe('TD-06 M0 队伍', () => {
   })
 
   test('T06-7 上限与 resourceFull：溢出作废，从不满到满记一次', () => {
-    const out = m0Run(gd, { initial: { onField: 1, concerto: [0, 90, 0] }, rotation: ['散华 E', '散华 A1'] })
+    // 行进序曲 R5 +16 → 96，施放资源 +15 只加得进 4（溢出 11）
+    const out = m0Run(gd, { initial: { onField: 1, concerto: [0, 80, 0] }, rotation: ['散华 E', '散华 A1'] })
     expect(at(out.log, 0)).toEqual([
-      'loop', 'start 散华 E', '散华 concerto +8 行进序曲.协奏', '散华 concerto +2 cast', '散华 concerto 满',
+      'loop', 'start 散华 E', '散华 concerto +16 行进序曲.协奏', '散华 concerto +4 cast', '散华 concerto 满',
     ])
     expect(eventsOfLog(out.log, 'resourceFull')).toHaveLength(1)
     expect(finalResources(out).concerto[1]).toBe(100)
@@ -99,8 +100,8 @@ dataDescribe('TD-06 M0 队伍', () => {
     const out = m0Run(gd, { initial: { onField: 1, energy: 'empty' }, rotation: ['散华 E'] })
     const tl = out.summary.resourceTimeline
     expect(tl.map(x => x.f)).toEqual([0, 30, 60, 90, 95])
-    expect(tl[0]).toEqual({ f: 0, energy: [0, 0, 0], concerto: [0, 23, 0] })
-    expect(tl[1]).toEqual({ f: 30, energy: [6.28, 15.184, 7.592], concerto: [0, 23, 0] })
+    expect(tl[0]).toEqual({ f: 0, energy: [0, 0, 0], concerto: [0, 31, 0] })          // 行进序曲 R5 16 + 施放 15
+    expect(tl[1]).toEqual({ f: 30, energy: [6.28, 15.184, 7.592], concerto: [0, 31, 0] })
   })
 })
 

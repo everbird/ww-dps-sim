@@ -38,7 +38,7 @@ dataDescribe('TD-07 M0 队伍', () => {
     const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 E', '散华 E'] })
     const es = eventsOfLog(out.log, 'actionStart').filter(e => e.action === 'E').map(e => e.f)
     expect(es).toEqual([0, 600])                                   // 冷却 10 秒
-    expect(at(out.log, 0).filter(x => x.includes('concerto'))).toEqual(['散华 concerto +8 行进序曲.协奏', '散华 concerto +15 cast'])
+    expect(at(out.log, 0).filter(x => x.includes('concerto'))).toEqual(['散华 concerto +16 行进序曲.协奏', '散华 concerto +15 cast'])   // R5 16 点（nanoka）
     expect(at(out.log, 600).filter(x => x.includes('concerto'))).toEqual(['散华 concerto +15 cast'])
   })
 

@@ -35,17 +35,22 @@ export function assembleBlock(
       fresh(g, 'splitRows', n)
     }
     for (const n of overrides[g.id]?.copyAs ?? []) fresh(g, 'copyAs', n)
+    for (const n of Object.keys(overrides[g.id]?.shiftRows ?? {}))
+      if (!g.rows.some(r => r.name === n)) throw new Error(`${file.key} ${g.id} 的 shiftRows 写了不存在的行"${n}"`)
   }
   for (const id of Object.keys(overrides))
     if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
   const out: Record<string, ActionDef> = {}
   const put = (def: ActionDef) => { const ov = overrides[def.id]; out[def.id] = ov ? applyOverride(def, ov) : def }
-  for (const g of file.groups) {
+  for (const g0 of file.groups) {
+    const shift = overrides[g0.id]?.shiftRows
+    const g = shift ? { ...g0, rows: g0.rows.map(r => (shift[r.name] !== undefined ? shiftRow(r, shift[r.name]!) : r)) } : g0
     const split = overrides[g.id]?.splitRows ?? []
     const drop = [...(overrides[g.id]?.dropRows ?? []), ...split]
-    put(assembleGroup(file, g, ids, opts, drop))
-    for (const n of split) put(assembleGroup(file, { id: n, rows: g.rows.filter(r => r.name === n) }, ids, opts))
-    for (const n of overrides[g.id]?.copyAs ?? []) put(assembleGroup(file, { id: n, rows: g.rows }, ids, opts, drop))
+    const later = shift !== undefined
+    put(assembleGroup(file, g, ids, opts, drop, later))
+    for (const n of split) put(assembleGroup(file, { id: n, rows: g.rows.filter(r => r.name === n) }, ids, opts, [], later))
+    for (const n of overrides[g.id]?.copyAs ?? []) put(assembleGroup(file, { id: n, rows: g.rows }, ids, opts, drop, later))
   }
   // 前置动作一个派生窗口都没有时，连段永远接不上：不设连段前置，打 flag 交给 curated（TD-09 §8 全量检查发现 7 组）
   for (const def of Object.values(out)) {
@@ -71,9 +76,27 @@ export function forChain(actions: Record<ActionId, ActionDef>, chain: number): R
   return out
 }
 
-/** 一组 → 一个动作（TD-01 §13.1）。file 只用 key（报错与来源）；ids 是块内全部组名（推连段前置用） */
+/** 落地段的一行（ActionOverride.shiftRows）：帧数从落地起算，整体后移 offset 帧 */
+function shiftRow(r: GenRow, offset: number): GenRow {
+  const add = (x: number | null): number | null => (x === null ? null : x + offset)
+  const hints = { ...r.hints }
+  for (const k of ['outroTriggerFrame', 'endOnSwitchAfter', 'noDodgeBefore', 'noInputBefore', 'noSwitchBefore'] as const)
+    if (hints[k] !== undefined) hints[k] = hints[k]! + offset
+  if (hints.priorityChangeFrames) hints.priorityChangeFrames = hints.priorityChangeFrames.map(f => f + offset)
+  const d = r.dilation
+  const side = (w: NonNullable<GenRow['dilation']>['self']) => (w ? { ...w, start: add(w.start) } : w)
+  return {
+    ...r, spawnFrame: add(r.spawnFrame), birthFrame: add(r.birthFrame), endFrame: add(r.endFrame), deriveFrame: add(r.deriveFrame),
+    priorityChange: r.priorityChange?.map(f => f + offset) ?? null, hints,
+    dilation: d && { ...d, ...(d.self ? { self: side(d.self) } : {}), ...(d.enemy ? { enemy: side(d.enemy) } : {}), ...(d.ally ? { ally: side(d.ally) } : {}) },
+  }
+}
+
+/** 一组 → 一个动作（TD-01 §13.1）。file 只用 key（报错与来源）；ids 是块内全部组名（推连段前置用）；
+ *  laterEnd：有落地段（shiftRows）时结束帧取各行的最大值，而不是第一个有值的行 */
 export function assembleGroup(
   file: Pick<GenActionFile, 'key'>, g: Pick<GenGroup, 'id' | 'rows'>, ids: ReadonlySet<string>, opts: AssembleOptions, dropRows: string[] = [],
+  laterEnd = false,
 ): ActionDef {
   const flags = new Set<string>()                           // 组级 flag，同名只记一次
   for (const n of dropRows)
@@ -86,8 +109,9 @@ export function assembleGroup(
   // 带链标记的非判定行（膨胀 / 资源 / 标记）暂不按链筛选，交给 TD-06 / TD-08
   if (rows.some(r => r.kind !== 'hit' && r.nameTags.chain !== undefined)) flags.add('chainNonHit')
 
-  // 结束帧：第一个有值的行；都没有则 max(发生帧 + 持续帧, 派生帧)
-  let endFrame = rows.find(r => r.endFrame !== null)?.endFrame ?? null
+  // 结束帧：第一个有值的行（有落地段时取最大值）；都没有则 max(发生帧 + 持续帧, 派生帧)
+  const ends = rows.flatMap(r => (r.endFrame !== null ? [r.endFrame] : []))
+  let endFrame = laterEnd && ends.length > 0 ? Math.max(...ends) : ends[0] ?? null
   if (endFrame === null) {
     const cands = rows.flatMap(r => [
       r.spawnFrame !== null && r.lifeFrames !== null && r.lifeFrames > 0 ? r.spawnFrame + r.lifeFrames : 0,
@@ -190,8 +214,12 @@ export function assembleGroup(
   const outroRow = rows.find(r => r.hints.outroTriggerFrame !== undefined)
   const outro = outroRow?.hints.outroTriggerFrame
   if (outroRow?.hints.outroRange) flags.add('outroRange')        // 区间写法取了起点（TD-05 §4.1）
-  // 谐度破坏的备注"无敌期间不能切人"：按整个动作算（TD-06 §13.3）
-  const switchLock = maxHint('noSwitchBefore') ?? (kind === 'tuneBreak' ? endFrame : null)
+  // 谐度破坏的备注"无敌期间不能切人"：按整个动作算（TD-06 §13.3）。
+  // 大招没写"第nF前不能切人"时，"第nF前不响应输入"也挡切人：大招出招阶段不能切人（2026-10-19 用户的实战体感，待实机验证，
+  // 假设 ult-no-switch）。写了的照写的（仇远"不能切人"200 早于"不响应输入"230，凌阳 210 晚于 180）；变奏另有"不能切人"，不套
+  const noSwitch = maxHint('noSwitchBefore')
+  const lockFromInput = noSwitch === null && kind === 'liberation' && noInput !== null
+  const switchLock = noSwitch ?? (kind === 'tuneBreak' ? endFrame : lockFromInput ? noInput : null)
   const endOnSwitch = rows.find(r => r.hints.endOnSwitchAfter !== undefined)?.hints.endOnSwitchAfter
   return {
     id: g.id, owner: file.key, kind, endFrame, cancelWindows, priority,
@@ -199,6 +227,7 @@ export function assembleGroup(
     inputLocks, judgments, dilations, castGains: castGainsOf(rows, chains),
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
+    ...(lockFromInput ? { switchLockFromInput: true as const } : {}),
     ...(endOnSwitch !== undefined ? { endOnSwitchOut: endOnSwitch } : {}),
     source: { file: file.key, rows: g.rows.map(r => r.row) },
     flags: [...flags],
@@ -256,6 +285,7 @@ function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive:
 /** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
 const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
+  shiftRows: ['multiEnd'],                  // 落地段的结束帧本来就与下落段不同
   cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'],
 }
 const J_HANDLED: Record<string, string[]> = {
@@ -272,7 +302,7 @@ export function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.priority !== undefined) out.priority = ov.priority
   if (ov.cancelWindows !== undefined) out.cancelWindows = ov.cancelWindows.map(w => ({ ...w, row: 0 }))   // row 0 = 手写
   if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
-  if (ov.switchLockUntil !== undefined) out.switchLockUntil = ov.switchLockUntil
+  if (ov.switchLockUntil !== undefined) { out.switchLockUntil = ov.switchLockUntil; delete out.switchLockFromInput }   // 手写的不再算推断
   if (ov.energyCost !== undefined) out.energyCost = ov.energyCost
   if (ov.endOnSwitchOut !== undefined) out.endOnSwitchOut = ov.endOnSwitchOut
   if (ov.followUp !== undefined) out.followUp = ov.followUp

@@ -7,7 +7,7 @@ import { assume } from './assumptions'
 import { nextFloat, nextInt, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
-import { canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
+import { applyEffect, canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { log, spawnJudgment, startAction, type Kernel } from './kernel'
@@ -39,7 +39,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       castGain: (st, slot, src, i) => { castGainAt(sim, st, slot, src, i); drain(sim, st) },
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
       timers: (st, rates) => {
-        enemyTimers(st)                                           // 瘫痪结束、白条回满（TD-06 §13.2）
+        enemyTimers(st, rates)                                    // 瘫痪结束、白条回满（TD-06 §13.2）；异常效应到时（§18）
         tickBuffs(st, rates)
         drain(sim, st)
         sim.bus.spawned.clear()
@@ -184,6 +184,10 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   const e = s.enemy
   if (d.target === 'enemy' && (e.preset.tunabilityMax > 0 || e.preset.whiteBarTough > 0))
     (s.log[hitIndex] as HitEvent).enemy = { tunability: e.tunability, whiteBar: e.whiteBar }
+  if (d.applies && d.target === 'enemy') {                        // 命中后附加异常效应（TD-06 §18）
+    applyEffect(sim, s, j.owner, d.applies.effect, d.applies.stacks, `${m.def.name} ${d.name}`)
+    if (link) sim.bus.chain.set(s.log.length - 1, link)
+  }
   drain(sim, s)
   // 接续动作（TD-08 P10）：本动作的该判定第一次结算后立刻开始，继承指令出处
   const a = s.chars[j.owner].action
@@ -242,6 +246,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     },
     get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
+    applyEffect: (effect, stacks, note) => applyEffect(sim, s, self, effect, stacks, note ?? `${m.def.name} 的钩子`),
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
     assume: (id, detail) => assume(s, id, detail),
   }
