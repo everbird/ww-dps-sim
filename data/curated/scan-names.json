@@ -1,0 +1,13 @@
+{
+  "$说明": "wavescan 扫描导出（WutheringToolsScan）的英文键 → 中文名，只写 nanoka 英文名对不上的（pnpm import:scan，src/data/scan-import.ts）。一般按 nanoka 的 echo.json / character.json / sonata.json 的英文名自动对上（去掉空格与标点、不分大小写）。声骸的 PhantomX 自动取 X 再加「异相·」，这里的键也可以写去掉 Phantom 之后的 X",
+  "声骸": {
+    "YoungRoseshroom": "刺玫菇（稚形）",
+    "$Kronaclaw": "nanoka 只有「共鸣回响·冠顶苍隼」（Reminiscence: Kronaclaw），按它推的",
+    "Kronaclaw": "冠顶苍隼"
+  },
+  "角色": {
+    "$Rover": "扫描不分漂泊者的属性；optimize 时通过 isRover 与角色块名（暗主·女…）对齐，同队漂泊者算队友（--include-team 才拿），给漂泊者择优时算自己的",
+    "Rover": "漂泊者"
+  },
+  "套装": {}
+}

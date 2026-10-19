@@ -21,7 +21,7 @@ const 甲: SynthChar = {
   })],
 }
 function data(): GameData {
-  const d = synthData([甲, idle('乙'), idle('丙')])
+  const d = synthData([甲, idle('乙'), idle('丙'), { ...甲, name: '暗主·女' }])
   d.echoes['角'] = { key: '角', cost: 4, actions: {}, q: 'Q·角', description: null, mainSlotBuffs: [], resourceEffects: [], curated: true, flags: [] }
   const always = { target: 'self', duration: 'inf', trigger: 'always' } as const
   d.echoSets['测试套'] = {
@@ -99,6 +99,20 @@ describe('TD-13 搜索', () => {
     // --include-team：t1 也能用
     const all = optimize(sc, d, INV, { slot: 0, top: 1, includeTeam: true })
     expect(all.builds[0]!.pieces.some(p => p.id === 't1')).toBe(true)
+    // 漂泊者（owner: 漂泊者）在队伍有暗主·女时被视为队友保护；若为暗主·女择优时视为自己
+    const r1 = P('r1', 1, '测试套', { '攻击%': 0.18, 生命: 2280 }, { 暴击伤害: 0.3, 暴击率: 0.2 }, '漂泊者')
+    const scRoverTeam = withEchoes(ScenarioSchema.parse({
+      team: [{ char: '甲', weapon: { name: '测试武器' } }, { char: '暗主·女', weapon: { name: '测试武器' } }, { char: '丙', weapon: { name: '测试武器' } }],
+      enemy: { custom: { level: 90 } }, rotation: ['甲 X X X X'], options: { repeat: 3 },
+    }), 0, CURRENT)
+    const outProtectRover = optimize(scRoverTeam, d, [...INV, r1], { slot: 0, top: 1 })
+    expect(outProtectRover.builds.every(b => b.pieces.every(p => p.id !== 'r1'))).toBe(true)
+    const scRoverSelf = withEchoes(ScenarioSchema.parse({
+      team: [{ char: '暗主·女', weapon: { name: '测试武器' } }, { char: '乙', weapon: { name: '测试武器' } }, { char: '丙', weapon: { name: '测试武器' } }],
+      enemy: { custom: { level: 90 } }, rotation: ['暗主·女 X X X X'], options: { repeat: 3 },
+    }), 0, CURRENT)
+    const outRoverSelf = optimize(scRoverSelf, d, [...INV, r1], { slot: 0, top: 1 })
+    expect(outRoverSelf.builds[0]!.pieces.some(p => p.id === 'r1')).toBe(true)
   })
   test('库存大、预筛留得多（每类 20 件）时，组合数超过上限就少留几件（并提示），不会一跑几小时', () => {
     const d = data()
