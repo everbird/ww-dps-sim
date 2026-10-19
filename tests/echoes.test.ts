@@ -15,7 +15,7 @@ import { M0, m0Run } from './helpers/m0'
 import { eventsOfLog, idle, synthRun } from './helpers/synth'
 
 const row = (n: number, name: string, o: Partial<GenRow> = {}): GenRow => ({
-  row: n, name, kind: 'hit', eventSpawned: false, spawnFrame: 10, birthFrame: null, lifeFrames: 6,
+  row: n, name, kind: 'hit', eventSpawned: false, spawnFrame: 10, birthFrame: null, lifeFrames: 6, delayFrames: null,
   hitstop: { self: null, enemy: null }, deriveFrame: null, deriveDuration: null, endFrame: null,
   priority: [0], priorityChange: null, parry: null, persists: true, followHitstop: null, toughness: 10, tunability: null,
   gains: { energy: { total: 1 }, concerto: null, core: [null, null, null] }, position: null, positionChange: null, dilation: null,

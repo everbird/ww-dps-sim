@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 
+from actions import BLOCK_RENAME
 from parse import Issues, as_num, blank
 
 ELEMENTS = {0: '物理', 1: '冷凝', 2: '热熔', 3: '导电', 4: '气动', 5: '衍射', 6: '湮灭'}
@@ -28,7 +29,7 @@ def body_types(index_rows: list) -> dict[str, str]:
         for v in r[2:23]:
             if blank(v):
                 continue
-            name = str(v).strip()
+            name = BLOCK_RENAME.get(str(v).strip(), str(v).strip())    # 索引页写块名（应世心、照世心）
             out[f'{name}·{gender}' if name in ROVERS else name] = cur
     return out
 

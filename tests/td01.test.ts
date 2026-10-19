@@ -10,7 +10,7 @@ import 维里奈 from '../data/curated/characters/维里奈'
 import { character, dataDescribe, run } from './helpers/kernel-harness'
 
 const row = (n: number, name: string, o: Partial<GenRow> = {}): GenRow => ({
-  row: n, name, kind: 'hit', eventSpawned: false, spawnFrame: 10, birthFrame: null, lifeFrames: 1,
+  row: n, name, kind: 'hit', eventSpawned: false, spawnFrame: 10, birthFrame: null, lifeFrames: 1, delayFrames: null,
   hitstop: { self: null, enemy: null }, deriveFrame: null, deriveDuration: null, endFrame: null,
   priority: null, priorityChange: null, parry: null, persists: true, followHitstop: null, toughness: null, tunability: null,
   gains: { energy: null, concerto: null, core: [null, null, null] }, position: null, positionChange: null, dilation: null,

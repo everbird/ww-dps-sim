@@ -85,6 +85,7 @@ export const GenRowSchema = z.strictObject({
   spawnFrame: nullable(int().min(0)),
   birthFrame: nullable(int().min(0)),       // 发生帧公式 N = P + f(Q) 的 P 换算成帧；只在 < spawnFrame 时有值（TD-01 §3.1、TD-04 §5.4）
   lifeFrames: nullable(FrameCol),
+  delayFrames: nullable(int().min(0)),      // 「延迟」列（20261019 版起）：判定生成后到生效前等的帧数；旧版与声骸表为 null（TD-01 §3.1）
   hitstop: z.strictObject({ self: nullable(int().min(0)), enemy: nullable(int().min(0)) }),
   deriveFrame: nullable(int().min(0)),
   deriveDuration: nullable(FrameCol),

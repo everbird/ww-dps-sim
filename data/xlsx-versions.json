@@ -1,5 +1,5 @@
 {
- "current": "20261003",
+ "current": "20261019",
  "versions": [
   {
    "version": "20260707",
@@ -13,7 +13,14 @@
    "file": "鸣潮动作数据汇总-20261003.xlsx",
    "sha256": "58c2d9a4ca4d64586cd70f5cce6fcb59989536a5033e8f1e4c12b2f2e5d48b7f",
    "resourceVersion": "3.6.13",
-   "note": "2026-10-04 起为 current"
+   "note": "2026-10-04 至 2026-10-19 为 current（M0 三人的数值与 20261019 版相同）"
+  },
+  {
+   "version": "20261019",
+   "file": "鸣潮动作数据汇总-20261019.xlsx",
+   "sha256": "8b8c9c077aff34b1c1f7ca855945b060482e77fe76d7afd5da7ce65ba7c528f1",
+   "resourceVersion": "3.7.13",
+   "note": "2026-10-19 起为 current：新增心（应世心、照世心两块）、锁暝（占位）；动作表插了「延迟」「多判间隔/次」两列"
   }
  ]
 }
