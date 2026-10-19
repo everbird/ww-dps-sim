@@ -255,6 +255,23 @@ export default defineCharacter('心', {
           return
       }
     },
+    // 共鸣回路的状态说明（时间轴检查器）：应世相 / 照世相，心相心生、统御众机，了尘愿 / 承天则（镇红尘、镇寰宇）能不能用，
+    // 电磁+1、敕令、霆霓还有几层，额外能量，场上有没有活字心锁
+    forte(ctx) {
+      const v = ctx.vars
+      const cd = ctx.state.chars[ctx.self].cooldowns
+      const parts = [v.照世 ? '照世相' : '应世相']
+      if (ctx.buffStacks('心.心相心生') > 0) parts.push('心相心生')
+      if (ctx.buffStacks('心.统御众机') > 0) parts.push('统御众机')
+      const g = v.照世 ? '承天则' : '了尘愿'
+      parts.push(`${g}${(cd[g] ?? 0) <= 0 ? '可用' : '冷却中'}`)
+      if (v.电磁加一 > 0) parts.push(`电磁+1 ×${v.电磁加一}`)
+      if (v.敕令 > 0) parts.push(`敕令 ${v.敕令}`)
+      if (v.霆霓 > 0) parts.push(`霆霓 ${v.霆霓}`)
+      if (v.额外能量) parts.push('额外能量')
+      if (v.魔方至 > ctx.state.battleFrames) parts.push('活字心锁')
+      return parts.join(' · ')
+    },
   },
   actionOverrides: {
     // 连段（nanoka 3.7 常态攻击）：重击、空中攻击之后按普攻出第 2 段；电磁模态的变奏、共鸣技能之后出第 4 段

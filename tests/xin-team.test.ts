@@ -9,6 +9,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
+import { gainSteps, resourceTracks } from '../src/engine/trace'
 import type { SimEvent, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 import { eventsOfLog } from './helpers/synth'
@@ -107,6 +108,27 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
     const strikes = eventsOfLog(out.log, 'hit').filter(e => e.judgment === '协同-飞阙')
     expect(strikes.length).toBeGreaterThan(0)
     expect(strikes.length).toBeLessThanOrEqual(21 * eventsOfLog(out.log, 'actionStart').filter(e => e.char === '心' && e.action === '大招').length)
+  })
+
+  test('共鸣回路（时间轴检查器）：卜灵卦象的排列、少阳与阴阳相生、开阵后雷法升阶；心的形态与电磁+1；核心资源只列这次有变化的槽', () => {
+    const marks = out.log.filter(e => e.type === 'loop')
+    const [from, to] = [marks[2]!.f, marks[3]!.f]
+    const texts = (char: string) => out.forte.filter(x => x.char === char && x.f >= from && x.f < to).map(x => x.text)
+    expect(texts('卜灵').slice(0, 9)).toEqual([
+      '卦象 震○○○', '卦象 震艮○○', '卦象 震艮震○', '卦象 震艮震震',              // 空中攻击、A2、E、E 派生 A4
+      '卦象 震震○○ · 少阳', '卦象 ○○○○ · 阴阳相生', '卦象 ○○○○',                 // 雷山小过、震为雷；大招用掉阴阳相生
+      '卦象 ○○○○ · 开阵 · 雷法一气初动 · 冲击波 0/10', '卦象 ○○○○ · 开阵 · 雷法两仪交泰 · 冲击波 0/10',   // 雷主变奏升一阶
+    ])
+    expect(texts('卜灵')).toContain('卦象 ○○○○ · 开阵 · 雷法三才合一 · 冲击波 4/10')   // 心变奏再升一阶
+    const xin = texts('心')
+    const turn = xin.findIndex(t => t.startsWith('照世相'))
+    expect(xin.slice(0, turn).every(t => t.startsWith('应世相'))).toBe(true)
+    expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则可用 · 敕令 21 · 额外能量')
+    expect(xin.some(t => t.includes('统御众机') && t.includes('电磁+1 ×5'))).toBe(true)
+    const r = load()
+    expect(resourceTracks(gainSteps(out.log, r), r).map(x => [x.char, x.tracks.map(t => t.name)])).toEqual([
+      ['心', ['能量', '协奏', '应世心', '照世心']], ['雷主·男', ['能量', '协奏', '电涌']], ['卜灵', ['能量', '协奏', '卦象']],
+    ])
   })
 
   test('电磁效应：常规 10 层、电磁爆发 10 层到顶；固有1 两名队友附加后叠满 2 层', () => {

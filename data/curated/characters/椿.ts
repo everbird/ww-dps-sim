@@ -97,6 +97,15 @@ export default defineCharacter('椿', {
         d.selfEnergyScale = 2.5                                                  // 消耗蕊时自己的基础回能 +150%（G3）
       }
     },
+    // 共鸣回路的状态说明（时间轴检查器）：白椿 / 红椿（盛绽），含苞（带酣梦层数），红椿·蕾几层
+    forte(ctx) {
+      const bud = ctx.buffStacks('椿.含苞') > 0, buds = ctx.buffStacks('椿.红椿·蕾')
+      return [
+        ctx.vars.盛绽 ? '红椿（盛绽）' : '白椿',
+        ...(bud ? [`含苞 · 酣梦 ${ctx.vars.酣梦层数}`] : []),
+        ...(buds > 0 ? [`红椿·蕾 ×${buds}`] : []),
+      ].join(' · ')
+    },
   },
   actionOverrides: {
     // 固有1"重击修枝伤害视为普攻伤害"：吃普攻加成与普攻加深（TD-08 P8）；P1重击在数据里已经是普攻

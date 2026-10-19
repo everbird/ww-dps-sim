@@ -17,7 +17,7 @@ import { summarize } from './summary'
 import { onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
-  CharRuntime, EnemyRuntime, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
+  CharRuntime, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
@@ -43,6 +43,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
         tickBuffs(st, rates)
         drain(sim, st)
         sim.bus.spawned.clear()
+        captureForte(st)
         checkTick(sim, st, lastBattle)                            // 总设计 §11 第 4 条：每个 tick 结束查一次
         lastBattle = st.battleFrames
       },
@@ -53,6 +54,17 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
+  // 共鸣回路的状态说明（钩子 forte，只读）：每个 tick 结束取一次，变了才记；只供时间轴的检查器显示
+  const forte: ForteStep[] = []
+  const shown: (string | undefined)[] = r.team.map(() => undefined)
+  const captureForte = (st: SimState) => {
+    for (const m of r.team) {
+      const text = sim.hooks[m.slot]?.forte?.(sim.ctxs[m.slot]!)
+      if (text === undefined || text === shown[m.slot]) continue
+      shown[m.slot] = text
+      forte.push({ f: st.frame, char: m.def.name, text })
+    }
+  }
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
@@ -87,7 +99,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     if (!(e instanceof ScheduleError)) throw e
     error = { code: e.code, message: e.message, frame: e.frame, ...(e.cmd ? { line: e.cmd.line, loop: e.cmd.loop } : {}) }
   }
-  return { log: s.log, summary: summarize(s.log, r, s), ...(error ? { error } : {}) }
+  return { log: s.log, summary: summarize(s.log, r, s), forte, ...(error ? { error } : {}) }
 }
 
 // ---------------------------------------------------------------------------

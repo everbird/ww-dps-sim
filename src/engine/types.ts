@@ -326,12 +326,17 @@ export interface Summary {
 export interface SimResult {
   log: SimEvent[]
   summary: Summary
+  /** 共鸣回路的状态说明（钩子 forte）：每个 tick 结束取一次，变了才记；只供时间轴检查器显示，不进日志、不影响仿真 */
+  forte: ForteStep[]
   /** 运行期报错（TD-09 §3.3：等不来、等超时、超过帧数上限）；日志与汇总保留到出错为止 */
   error?: { code: string; message: string; frame: number; line?: number; loop?: number }
 }
 
 // ---------------------------------------------------------------------------
-// 角色钩子（总设计 §6.9）：只有四个，ctx 只开放受控操作
+// 角色钩子（总设计 §6.9）：规则只用四个，另有只读的显示钩子 forte；ctx 只开放受控操作
+
+/** 从第 f 个世界帧起，char 的共鸣回路状态说明是 text（"卦象 震艮震震 · 少阳"）；空串 = 没什么要说的 */
+export interface ForteStep { f: number; char: CharName; text: string }
 
 /** 钩子的状态量：名字 → 数或布尔。在角色模块的 vars 里声明初值，仿真中不能加新键（对应 Rust 的结构体字段，总设计 §10.1） */
 export type HookVars = Record<string, number | boolean>
@@ -343,6 +348,9 @@ export interface CharacterHooks<V extends HookVars = HookVars> {
   onEvent?(ctx: HookContext<V>, ev: SimEvent): void
   /** 在收集 buff 之前调用（TD-03 §4）：可改倍率、附加值、元素 / 标签，或直接补乘区值 */
   modifyHit?(ctx: HookContext<V>, hit: HitDraft): void
+  /** 共鸣回路的状态说明（只读，不能改状态）：每个 tick 结束调用，返回一行短文本，时间轴的检查器显示。
+   *  核心资源的数值检查器按日志另算，这里写状态量、状态 buff 里才有的（卜灵卦象的排列、心是应世相还是照世相…）；不随帧变的才写，免得每帧一条 */
+  forte?(ctx: HookContext<V>): string
 }
 
 export interface HookContext<V extends HookVars = HookVars> {

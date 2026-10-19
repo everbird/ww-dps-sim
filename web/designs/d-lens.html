@@ -7,7 +7,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
 <style>
   /* D 概览与透镜：画面只放"在哪、做什么"，细节按需查。顶部是全程缩略图（拖动选范围），中间是大字号泳道，
-     右侧检查器跟随光标给出那一刻每个人的动作（及这个动作给的协奏、能量与出处、打出的伤害——按引发的动作算）、能量协奏、身上的 buff 与最近一段伤害的乘区拆分。
+     右侧检查器跟随光标给出那一刻每个人的动作（及这个动作给的协奏、能量与出处、打出的伤害——按引发的动作算）、能量协奏与共鸣回路（逐帧的值、
+     角色钩子给的状态）、身上的 buff 与最近一段伤害的乘区拆分。
      刻意做成单一暗色主题（长时间盯数据不刺眼），所有颜色都显式给出 */
   :root {
     color-scheme: dark;
@@ -109,6 +110,17 @@
   .meter div { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
   .meter div i { display: block; height: 100%; background: var(--c); }
   .meter b { font: 400 12px var(--mono); color: var(--ink); text-align: right; }
+  /* 每人的资源：一排小格子（名字、值，底边的细条是满了多少，满了描边）；能量、协奏之后是共鸣回路的核心资源 */
+  .gauges { display: flex; flex-wrap: wrap; gap: 4px; }
+  .g { position: relative; display: inline-flex; align-items: baseline; gap: 4px; padding: 1px 7px 3px; border: 1px solid var(--rule); border-radius: 4px;
+       background: var(--panel2); font: 12px var(--mono); color: var(--ink); overflow: hidden; }
+  .g::after { content: ""; position: absolute; left: 0; bottom: 0; height: 2px; width: var(--p); background: var(--c); }
+  .g b { font: 400 11.5px var(--sans); color: var(--muted); }
+  .g small { font-size: 11px; color: var(--faint); }
+  .g.full { border-color: var(--c); }
+  /* 共鸣回路的状态（角色钩子给的一行，按 " · " 拆成小标签） */
+  .forte { display: flex; flex-wrap: wrap; gap: 4px; }
+  .forte i { font: normal 12px/1.5 var(--sans); color: var(--ink); padding: 0 6px; border-radius: 3px; background: var(--panel2); background: color-mix(in srgb, var(--c) 22%, transparent); }
   .chips { display: flex; flex-wrap: wrap; gap: 4px; }
   .chips span { font-size: 11.5px; padding: 1px 7px; border-radius: 4px; background: var(--panel2); border: 1px solid var(--rule); color: var(--ink); }
   .chips span.from { border-color: var(--c); }
@@ -514,21 +526,19 @@
   }
   function inspect() {
     const f = cursor ?? range[0], el = $('insp')
-    const tl = S.resourceTimeline; let rs = tl[0]
-    for (const p of tl) { if (p.f <= f) rs = p; else break }
     const on = D.onField.find(o => o.start <= f && f < o.end)
     const parts = []
     M.team.forEach((t, i) => {
       const a = D.actions.find(a => a.i === i && a.start <= f && f < a.end)
       const bs = D.buffs.filter(b => b.target === t.name && b.damage && b.spans.some(s => s.start <= f && f < s.end))
-      const cap = t.energyCap || 100
+      const fx = WW.forteAt(M, t.name, f)
       const list = bs.map(b => {
         const g = D.slot.has(b.owner) ? D.slot.get(b.owner) : null, s = b.spans.find(s => s.start <= f && f < s.end)
         return { id: b.buff, label: b.short, stacks: s ? s.stacks : 1, color: g === null ? 'var(--faint)' : `var(--c${g})` }
       })
       parts.push(`<section class="who" style="--c:var(--c${i})"><header><i></i>${WW.esc(t.name)}<em>${on && on.i === i ? '在前台' : '后台'}${a ? `，${WW.esc(a.id)}` : ''}</em></header>
-        <div class="meter"><span>能量</span><div><i style="width:${Math.min(100, 100 * rs.energy[i] / cap)}%"></i></div><b>${rs.energy[i].toFixed(1)}/${cap}</b></div>
-        <div class="meter"><span>协奏</span><div><i style="width:${Math.min(100, 100 * rs.concerto[i] / M.concertoMax)}%"></i></div><b>${rs.concerto[i].toFixed(1)}</b></div>
+        <div class="gauges">${WW.metersAt(M, i, f).map(gauge).join('')}</div>
+        ${fx ? `<div class="forte" aria-label="共鸣回路">${fx.split(' · ').map(x => `<i>${WW.esc(x)}</i>`).join('')}</div>` : ''}
         ${a ? gainBox(t.name, a) + dmgBox(t.name, a) : ''}
         ${buffBox(t.name, list, '临时加成')}</section>`)
     })
@@ -552,6 +562,15 @@
     }
     el.innerHTML = parts.join('')
     track(f)
+  }
+
+  // 资源的小格子：名字、值（协奏的上限都是 100，不写），底边的细条是满了多少，满了描边；提示里是两位小数
+  const num = v => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1))
+  function gauge(g) {
+    const p = g.cap ? Math.max(0, Math.min(100, 100 * g.v / g.cap)) : 0, full = !!g.cap && g.v >= g.cap - 1e-6
+    const tip = `<b>${WW.esc(g.name)}</b> ${+g.v.toFixed(2)}${g.cap ? ` / ${g.cap}` : ''}${full ? '（满）' : ''}`
+    return `<span class="g${full ? ' full' : ''}" style="--p:${p.toFixed(1)}%" data-tip="${WW.esc(tip)}"><b>${WW.esc(g.name)}</b>${num(g.v)}`
+      + `${g.cap && g.key !== 'concerto' ? `<small>/${g.cap}</small>` : ''}</span>`
   }
 
   // buff 折叠：一行汇总（按乘区 + 条件合计，取最大的三项），悬停浮出清单、点一下钉住就地展开（触摸屏只用点）

@@ -187,6 +187,17 @@ export default defineCharacter('卜灵', {
         ctx.vars.雷法 = 0
       }
     },
+    // 共鸣回路的状态说明（时间轴检查器）：卦象从左到右（空位写 ○），少阳 / 少阴 / 阴阳相生，开阵时雷法第几阶、五雷荡煞阵放了几次冲击波
+    forte(ctx) {
+      const v = ctx.vars
+      const syms = [0, 1, 2, 3].map(i => (i >= v.卦象数 ? '○' : (v.卦象位 >> i) & 1 ? '震' : '艮')).join('')
+      const parts = [`卦象 ${syms}`]
+      if (v.阴阳相生) parts.push('阴阳相生')
+      else for (const k of ['少阳', '少阴'] as const) if (v[k]) parts.push(k)
+      if (ctx.buffStacks('卜灵.开阵') > 0) parts.push(`开阵 · 雷法${['一气初动', '两仪交泰', '三才合一'][v.雷法]}`)
+      if (ctx.buffStacks('卜灵.五雷荡煞阵') > 0) parts.push(`冲击波 ${v.冲击波}/10`)
+      return parts.join(' · ')
+    },
   },
   actionOverrides: {
     // 落地后接 A 出的是普攻第 2 段：用户的轴"下落A（蓝符） A（黄符）"，黄符（艮）只有第 2 段给
