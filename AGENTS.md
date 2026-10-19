@@ -73,6 +73,7 @@ pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加�
 pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间
 pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
+pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML
 pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的
 pnpm conformance                             # 一致性样例（总设计 §10.1）：每个场景的装配结果（去掉钩子表）与事件日志、汇总写到 out/conformance/，换实现时对拍
 pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行（可切换时间轴视图）、对比、边际、择优；pnpm web:build 打包到 out/web（含数据，不发布）

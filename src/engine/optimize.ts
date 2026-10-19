@@ -159,8 +159,11 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   if (o.set) plan[o.set] = 5
   else for (const e of member.echoes) plan[e.set] = (plan[e.set] ?? 0) + 1
   for (const [k, v] of Object.entries(plan)) if (v < 2) delete plan[k]
+  const isRover = (n: string) => n === '漂泊者' || /^(雷|风|光|暗)主·[男女]$/.test(n)
+  const isOwnerOf = (owner: string, c: string) => owner === c || (isRover(owner) && isRover(c))
+  const isOwnerInTeam = (owner: string, t: Set<string>) => t.has(owner) || (isRover(owner) && [...t].some(isRover))
   const team = new Set(sc.team.map(m => m.char))
-  const pool = pieces.filter(p => o.includeTeam || !p.owner || p.owner === char || !team.has(p.owner))
+  const pool = pieces.filter(p => o.includeTeam || !p.owner || isOwnerOf(p.owner, char) || !isOwnerInTeam(p.owner, team))
   const mains = pool.filter(p => baseName(p.name) === baseName(main))
   if (mains.length === 0) throw new Error(`库存里没有可用的首位声骸"${main}"（首位声骸不变，轴里的 Q 是它的技能）`)
 

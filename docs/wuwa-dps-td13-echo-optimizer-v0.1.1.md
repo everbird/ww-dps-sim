@@ -20,9 +20,12 @@
 
 ```bash
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿 [--top 5] [--keep 8] [--set 沉日劫明] [--include-team]
+pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka 3.7]
 ```
 
 输出：首位声骸、套装要求、可用件数；现在的 DPS；快速重算与完整仿真的套数、耗时；前 `top` 套（完整仿真 DPS、与现在的差、估计值、面板的攻击 / 暴击 / 暴伤 / 共鸣效率、5 件的 id、名字、cost、套装、词条，在队友身上的注明）；最后给出第 1 套的 `echoes` 写法，可以直接贴回场景。退出码：0 成功；1 场景 / 库存有错；2 用法错误。
+
+`pnpm import:scan` 将 wavescan（WutheringToolsScan v1）扫描导出的全背包 JSON 转成库存 YAML，只收 +25 的 5 星声骸；名字借助 nanoka 与 `data/curated/scan-names.json` 自动转为中文名，主词条只写名字，由 `resolveInventory` 补全满级值。
 
 | 选项 | 缺省 | 含义 |
 |---|---|---|
@@ -30,6 +33,8 @@ pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿
 | `--keep` | 8 | 预筛时每个（cost、套装）留几件；越大越慢、越不容易漏 |
 | `--set` | 沿用现在的 | 指定 5 件套 |
 | `--include-team` | 不拿 | 也从队友身上拿（`owner` 是队友的） |
+| `--out` | `inventory/scanned-bag.yaml` | `import:scan` 输出文件路径 |
+| `--nanoka` | 自动匹配 | `import:scan` 用的 nanoka 数据版本 |
 
 ---
 
