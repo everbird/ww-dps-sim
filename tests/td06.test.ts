@@ -31,6 +31,7 @@ dataDescribe('TD-06 M0 队伍', () => {
     const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 R'] })
     expect(at(out.log, 0)).toEqual([
       'loop', 'start 散华 大招', '散华 energy -100 cost', '+散华.共鸣链4→散华×1 300', '散华 energy +10 散华.共鸣链4.能量',
+      '+散华.透视·一→散华×1 300', '+散华.透视·二→散华×1 300',             // 钩子给透视两层计时（层数由施放资源 core1 +2 加）
       '散华 concerto +20 cast', '散华 core1 +2 cast',
     ])
   })

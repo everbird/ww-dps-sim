@@ -1,6 +1,7 @@
 // data/curated/characters/散华.ts —— 角色模块示例（格式以 TD-08 为准）
 import type { BuffDefInput } from '../../../src/data/buff.schema'
 import { defineCharacter } from '../../../src/data/define'
+import type { HookContext } from '../../../src/engine/types'
 
 /** 三种冰（TD-08 §5.1，m0-confirm §6 S3）：技能的伤害判定生成时出现（不看命中），存在时间按 xlsx，同一种只有 1 块（再放刷新）。
  *  from = 生成它的判定名；boom = 引爆它的判定（冰绽） */
@@ -11,12 +12,37 @@ const ICES = [
 ] as const
 const iceBuffs: BuffDefInput[] = ICES.map(x => ({ id: x.buff, source: x.source, target: 'enemy', duration: x.frames, trigger: 'hook' }))
 
+/** 【透视】（共鸣回路"无明心音"，nanoka 3.7）：A5、变奏、E 各 1 层，大招 2 层，最多 2 层，每层 5 秒，重击爆裂清空；每层扩大一次【冰痕】区域。
+ *  层数就是核心资源槽 1（xlsx 核心回收1：A5 / E / QTE +1、大招 +2、重击居合 −2）；基础页把这一槽叫"指针"、上限 70，对不上（TD-06 Q6），
+ *  改名、上限 2。数据只管加减，到时由钩子扣：每层各自计时（先得的先到时），两个计时标记各管一层，满 2 层再得时刷新先得的那层。
+ *  只影响冰痕区域的大小；指针与区域没有数据，重击爆裂按总能成功算（假设 burst-release，待实测见 m0-confirm §13） */
+const VARS = { 透视一起: -1, 透视二起: -1 }        // 两层各自开始计时的战斗帧；-1 = 这层没有
+type Ctx = HookContext<typeof VARS>
+const LAYERS = [{ buff: '散华.透视·一', since: '透视一起' }, { buff: '散华.透视·二', since: '透视二起' }] as const
+/** 给透视的判定（命中时给，同 xlsx 核心回收1 所在的判定）；大招在开始时给 2 层 */
+const GAIN_ON_HIT: Readonly<Record<string, number>> = { A5: 1, E: 1, QTE: 1 }
+function gainLayers(ctx: Ctx, n: number): void {
+  for (let k = 0; k < n; k++) {
+    const v = ctx.vars
+    const free = LAYERS.findIndex(l => v[l.since] < 0)
+    const l = LAYERS[free >= 0 ? free : v.透视一起 <= v.透视二起 ? 0 : 1]!   // 满了：刷新先得的那层
+    v[l.since] = ctx.state.battleFrames
+    ctx.addBuff(l.buff)
+  }
+}
+
 export default defineCharacter('散华', {
   weaponType: '迅刀',
   treeStats: { '冷凝伤害加成': 0.12, '攻击%': 0.12 },   // 技能树属性节点合计（nanoka 3.7 skill_trees）
+  coreNames: { 1: '透视' },                            // 基础页叫"指针"，数据里加减的是透视层数（见上）
+  coreCaps: { 1: 2 },                                  // 透视最多 2 层（基础页写 70）
+  vars: VARS,
   aliases: { E: 'E', R: '大招', QTE: 'QTE', A1: 'A1', A2: 'A2', A3: 'A3', A4: 'A4', A5: 'A5' },
   buffs: [
     ...iceBuffs,
+    ...LAYERS.map((l, i): BuffDefInput => ({
+      id: l.buff, source: `透视第 ${i + 1} 层的计时：每层透视持续时间 5 秒（nanoka 3.7）`, target: 'self', duration: 300, trigger: 'hook',
+    })),
     {
       // 重击爆裂的引爆时刻：xlsx 重击居合-1"第29F～36F可引爆"，取起点，局部第 29 帧（m0-confirm §6 S4）。
       // 钩子没有按帧回调，用一个 29 帧的标记计时，到期那一刻引爆（默认总能打中冰）
@@ -87,6 +113,23 @@ export default defineCharacter('散华', {
   ],
   hooks: {
     onEvent(ctx, ev) {
+      // 透视：A5、E、变奏命中时各 1 层，大招开始时 2 层（层数由数据加，这里只管计时）；重击爆裂第一段清空
+      if (ev.type === 'hit' && ev.char === '散华') {
+        if (GAIN_ON_HIT[ev.judgment]) gainLayers(ctx, GAIN_ON_HIT[ev.judgment]!)
+        if (ev.judgment === '重击居合-1') for (const l of LAYERS) { ctx.vars[l.since] = -1; ctx.removeBuff(l.buff) }
+        return
+      }
+      if (ev.type === 'actionStart' && ev.char === '散华') {
+        if (ev.action === '大招') gainLayers(ctx, 2)
+        if (ev.action === '重击居合') ctx.assume('burst-release', '散华 重击居合')
+        return
+      }
+      const layer = ev.type === 'buffExpire' && ev.reason === 'timeout' ? LAYERS.find(l => l.buff === ev.buff) : undefined
+      if (layer) {
+        ctx.vars[layer.since] = -1
+        if (ctx.state.chars[ctx.self].core[0] > 0) ctx.addResource('core1', -1, ctx.self, '透视到时（每层 5 秒）')
+        return
+      }
       // 冰出现：对应的伤害判定生成时（不看命中）
       if (ev.type === 'judgmentSpawn' && ev.char === '散华') {
         const ice = ICES.find(x => x.from === ev.judgment)
@@ -109,6 +152,10 @@ export default defineCharacter('散华', {
         // 自爆生成的是同一个引爆判定，6 链"引爆后攻击提升"照样触发（2026-10-18 用户实测，m0-confirm §11 V8）
         ctx.spawnJudgment(ice.boom, { note: '5 链：冰到时自爆' })
       }
+    },
+    // 共鸣回路的状态说明（时间轴检查器）：场上有哪几种冰（重击爆裂会引爆的）；透视层数看核心资源
+    forte(ctx) {
+      return ICES.filter(x => ctx.buffStacks(x.buff, 'enemy') > 0).map(x => x.buff.slice('散华.'.length)).join(' · ')
     },
   },
   actionOverrides: {

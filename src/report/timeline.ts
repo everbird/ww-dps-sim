@@ -40,6 +40,8 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     // 视图 D 的检查器：光标那一帧每人的能量、协奏与共鸣回路（核心资源，只列有变化的槽）的值，与钩子给的共鸣回路状态说明（同一帧取最后的值）
     resources: resourceTracks(steps, r),
     forte: res.forte,
+    // 视图 E 的帧画面：技能冷却（"什么时候好"，战斗帧）
+    cooldowns: res.cooldowns,
     effectInfo: Object.fromEntries(r.effects.map(e => [e.def.id, { source: e.def.source }])),
     energyShare: r.rules.energyShare,
     trace: traceModel(r, res),
@@ -113,8 +115,8 @@ export function renderTimeline(template: string, model: ReturnType<typeof timeli
 }
 
 
-/** 时间轴的几种视图（TD-12 §2.1）：键是 pnpm timeline --view 的写法，值是 web/designs/ 里的模板 */
-export const TIMELINE_VIEWS: Readonly<Record<string, string>> = { a: 'a-lanes.html', b: 'b-volumes.html', c: 'c-ledger.html', d: 'd-lens.html' }
+/** 时间轴的几种视图（TD-12 §2.1；E 是 2026-10-19 加的播放器式原型）：键是 pnpm timeline --view 的写法，值是 web/designs/ 里的模板 */
+export const TIMELINE_VIEWS: Readonly<Record<string, string>> = { a: 'a-lanes.html', b: 'b-volumes.html', c: 'c-ledger.html', d: 'd-lens.html', e: 'e-player.html' }
 
 /** 视图 A–D（web/designs/*.html，2026-10）：模板里 /*@shared*\/ 换成 shared.js，数据占位换成模型；模板本身是完整的网页 */
 export function renderDesign(template: string, shared: string, model: ReturnType<typeof timelineModel>): string {

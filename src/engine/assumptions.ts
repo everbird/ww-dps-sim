@@ -124,6 +124,12 @@ export const ASSUMPTIONS = [
     adjust: { how: '实测或查证后改角色模块；逐条见各队伍的确认清单' },
   },
   {
+    id: 'burst-release', topic: '角色', tracked: true, impact: 'unknown', ref: 'TD-08 散华、TD-06 Q6、docs/m0-confirm.md §13',
+    what: '散华重击爆裂（重击居合）每次都在冰痕区域里松手，按下即松开：不算等指针进区域的时间，也不会因为没对上而打成普通重击',
+    why: '指针的速度、冰痕区域的位置与宽度（随透视 0–2 层变大）xlsx 与 nanoka 都没有数；透视每层 5 秒按各自计时（只影响显示）',
+    adjust: { how: '实测后（m0-confirm §13）在散华模块里给重击居合前加一段按住的时间，长短按按下时的透视层数' },
+  },
+  {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',
     what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）',
     why: '第 1 轮受开局资源影响；最后一轮没有下一轮起手的边界，偏高',

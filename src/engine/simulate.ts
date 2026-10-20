@@ -4,20 +4,21 @@
 import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { assume } from './assumptions'
+import { roundTo } from './num'
 import { nextFloat, nextInt, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import { applyEffect, canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
-import { log, spawnJudgment, startAction, type Kernel } from './kernel'
+import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
 import { createScheduler, newQueue, runLoop, ScheduleError } from './scheduler'
 import { summarize } from './summary'
 import { onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
-  CharRuntime, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
+  CharRuntime, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
@@ -44,6 +45,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
         drain(sim, st)
         sim.bus.spawned.clear()
         captureForte(st)
+        captureCooldowns(st, rates.battle)
         checkTick(sim, st, lastBattle)                            // 总设计 §11 第 4 条：每个 tick 结束查一次
         lastBattle = st.battleFrames
       },
@@ -63,6 +65,26 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       if (text === undefined || text === shown[m.slot]) continue
       shown[m.slot] = text
       forte.push({ f: st.frame, char: m.def.name, text })
+    }
+  }
+  // 技能冷却（时间轴视图 E 显示）：P6 扣过冷却之后取，"这一 tick 走完后的战斗帧 + 剩余"在倒计时期间不变（全局时停里也不变），
+  // 就是从哪个战斗帧起能用；变了（放了技能、充能回复一次）才记
+  const cooldowns: CooldownStep[] = []
+  const maxCharges = r.team.map(m => new Map(Object.values(m.actions).flatMap(a => (a.cooldown && (a.charges ?? 1) > 1 ? [[cooldownKey(a), a.charges!] as const] : []))))
+  const cdShown = r.team.map(() => new Map<string, { ready: number | null; charges?: number }>())
+  const captureCooldowns = (st: SimState, rate: number) => {
+    for (const m of r.team) {
+      const c = st.chars[m.slot]
+      for (const [key, left] of Object.entries(c.cooldowns)) {
+        const max = maxCharges[m.slot]!.get(key), ch = c.charges[key]
+        const charges = max !== undefined ? max - (ch?.spent ?? 0) : undefined
+        const ready = left > 1e-6 ? roundTo(st.battleFrames + rate + left, 10) : null
+        // 膨胀里战斗时钟按小数走，留半帧的余量
+        const was = cdShown[m.slot]!.get(key)
+        if (was && was.charges === charges && (was.ready === null ? ready === null : ready !== null && Math.abs(ready - was.ready) < 0.5)) continue
+        cdShown[m.slot]!.set(key, { ready, ...(charges !== undefined ? { charges } : {}) })
+        cooldowns.push({ f: st.frame, char: m.def.name, key, ready, ...(charges !== undefined ? { charges } : {}) })
+      }
     }
   }
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
@@ -99,7 +121,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     if (!(e instanceof ScheduleError)) throw e
     error = { code: e.code, message: e.message, frame: e.frame, ...(e.cmd ? { line: e.cmd.line, loop: e.cmd.loop } : {}) }
   }
-  return { log: s.log, summary: summarize(s.log, r, s), forte, ...(error ? { error } : {}) }
+  return { log: s.log, summary: summarize(s.log, r, s), forte, cooldowns, ...(error ? { error } : {}) }
 }
 
 // ---------------------------------------------------------------------------

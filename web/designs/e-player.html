@@ -1,0 +1,706 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 · E 播放器</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* E 播放器（2026-10-19，原型）：类比视频播放器 / 剪辑窗口。上面大块是"这一帧的画面"：时刻条（第几帧、轴里的哪一条、在等什么），
+     每人一张卡片（动作、能量协奏与共鸣回路、冷却、buff 与剩余时间、这个动作给的资源与打出的伤害），敌人与伤害一列；
+     中间是播放控制（步进、逐帧、0.25×–2× 播放）；下面是扁长的时间轴（全程导航 + 三人泳道 + 敌人量表）。
+     悬停时间轴只出一个预览小窗（像视频的缩略图），点一下或拖动才跳到那一帧；触摸屏没有悬停，单指横拖时在手指上方出这个小窗。单一暗色主题，同 D */
+  :root {
+    color-scheme: dark;
+    --bg: #0c0f14; --panel: #12161d; --panel2: #171c25; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #677084; --rule: #252c38; --grid: #1a2029;
+    --stop: rgba(230, 233, 239, 0.05); --alert: #f0616a; --wait: #e8a94c; --cursor: #f2f4f8;
+    --el-havoc: #d86aa4; --el-glacio: #5fa9ea; --el-spectro: #dcb94b; --el-fusion: #ec7e55; --el-electro: #a584f2; --el-aero: #52c6a5; --el-physical: #9aa3b7;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }   /* 预览小窗等自己写了 display，hidden 要压过它 */
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+  .app { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; height: 100%; min-height: 640px; }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 26px; padding: 10px 16px 8px; border-bottom: 1px solid var(--rule); }
+  .top h1 { margin: 0; font-size: 17px; font-weight: 500; }
+  .kpi { font: 500 15px var(--mono); }
+  .kpi span { font: 12px var(--sans); color: var(--muted); margin-right: 6px; }
+  .loops { display: flex; gap: 4px; margin-left: auto; }
+  .loops button, .ctl button, .ctl select { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .loops button { color: var(--muted); background: transparent; }
+  .loops button.on { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  .ctl button:hover { border-color: var(--muted); }
+  .ctl button:active { transform: translateY(1px); }
+  /* 时刻条 */
+  .timebar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 20px; align-items: center; padding: 8px 16px; border-bottom: 1px solid var(--rule); background: var(--panel); }
+  .tb-time b { font: 500 22px var(--mono); }
+  .tb-time span { display: block; font-size: 11.5px; color: var(--muted); }
+  .tb-cmd { min-width: 0; font-size: 13px; }
+  .tb-cmd > span { color: var(--muted); font-size: 12px; margin-right: 8px; }
+  .tb-cmd code { font: 13px var(--mono); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; vertical-align: bottom; }
+  .tb-cmd mark { background: color-mix(in srgb, var(--cursor) 18%, transparent); color: var(--ink); border-radius: 3px; padding: 0 3px; outline: 1px solid var(--cursor); }
+  .tb-cmd .why { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tb-cmd .why.block { color: var(--wait); }
+  .tb-state { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  .tag { font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
+  .tag.hot { color: var(--alert); border-color: var(--alert); }
+  .tag.stop { color: var(--ink); border-color: var(--faint); }
+  /* 帧画面：每人一张卡片，敌人与伤害一列 */
+  .frame { overflow: auto; padding: 12px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(250px, 0.85fr); gap: 12px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--c); border-radius: 8px; padding: 10px 12px 12px; display: grid; gap: 9px; min-width: 0; }
+  .card header { display: flex; align-items: center; gap: 8px; }
+  .card header b { font-size: 15px; font-weight: 500; }
+  .card header em { margin-left: auto; font: normal 12px var(--sans); color: var(--muted); padding: 0 8px; border: 1px solid var(--rule); border-radius: 10px; }
+  .card header em.on { color: var(--bg); background: var(--c); border-color: var(--c); }
+  .act { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-height: 22px; }
+  .act b { font-size: 14.5px; font-weight: 500; }
+  .act span { font-size: 12px; color: var(--muted); }
+  .act .idle { color: var(--faint); }
+  .sec { display: grid; gap: 4px; }
+  .sec > h3 { margin: 0; font: 500 11.5px var(--sans); color: var(--faint); letter-spacing: .04em; display: flex; justify-content: space-between; gap: 8px; }
+  .sec > h3 small { font-weight: 400; }
+  .gauges { display: flex; flex-wrap: wrap; gap: 5px; }
+  .g { position: relative; display: inline-flex; align-items: baseline; gap: 5px; padding: 2px 8px 4px; border: 1px solid var(--rule); border-radius: 4px;
+       background: var(--panel2); font: 13px var(--mono); color: var(--ink); overflow: hidden; }
+  .g::after { content: ""; position: absolute; left: 0; bottom: 0; height: 3px; width: var(--p); background: var(--c); }
+  .g b { font: 400 12px var(--sans); color: var(--muted); }
+  .g small { font-size: 11.5px; color: var(--faint); }
+  .g.full { border-color: var(--c); }
+  .forte { display: flex; flex-wrap: wrap; gap: 4px; }
+  .forte i { font: normal 12.5px/1.6 var(--sans); color: var(--ink); padding: 0 7px; border-radius: 3px; background: var(--panel2); background: color-mix(in srgb, var(--c) 24%, transparent); }
+  .cds { display: flex; flex-wrap: wrap; gap: 4px; }
+  .cds span { font: 12px var(--mono); padding: 1px 7px; border-radius: 4px; border: 1px solid var(--rule); color: var(--muted); }
+  .cds span b { font: 400 12px var(--sans); margin-right: 4px; }
+  .cds span.cd { color: var(--ink); background: var(--panel2); }
+  .blist { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12px; }
+  .blist li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) 5ch; gap: 8px; align-items: baseline; }
+  .blist li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blist li span i { display: inline-block; width: 6px; height: 6px; border-radius: 1px; background: var(--c); margin-right: 6px; vertical-align: 1px; }
+  .blist li b { font-weight: 400; color: var(--muted); font-size: 11.5px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .blist li em { font: normal 11px var(--mono); color: var(--faint); text-align: right; }
+  .small { margin: 0; font-size: 11.5px; color: var(--faint); }
+  /* 动作给的资源、打出的伤害：一行概括，点开（或悬停）看每一项（同 D） */
+  .bx { position: relative; }
+  .bsum { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; align-items: baseline; text-align: left; font: inherit; font-size: 12px;
+    color: var(--ink); background: transparent; border: 1px dashed var(--rule); border-radius: 4px; padding: 4px 8px; cursor: pointer; }
+  .bsum span { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bsum i { font-style: normal; color: var(--faint); transition: transform .15s; }
+  .bx .bpop { display: none; }
+  .bx.hover .bpop { display: grid; position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 5; background: var(--panel2); border: 1px solid var(--rule);
+    border-radius: 6px; padding: 8px 10px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  .bx.pinned .bpop { display: grid; position: static; box-shadow: none; padding: 6px 2px 0; border: 0; background: transparent; }
+  .bx.pinned .bsum { border-style: solid; }
+  .bx.pinned .bsum i { transform: rotate(90deg); }
+  .gx .bpop { gap: 3px; }
+  .gx h4 { margin: 4px 0 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font: 500 12px var(--sans); color: var(--muted); }
+  .gx h4:first-child { margin-top: 0; }
+  .gx h4 b { font: 400 11.5px var(--mono); color: var(--ink); text-align: right; }
+  .gx i.n { font: normal 11.5px var(--sans); }
+  .gl { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12px; }
+  .gl li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; align-items: baseline; }
+  .gl li span { color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .gl li small { color: var(--faint); font-size: 11px; }
+  .gl li b { font: 400 11.5px var(--mono); color: var(--ink); text-align: right; }
+  .gl li em { grid-column: 1 / -1; font: normal 11px var(--mono); color: var(--muted); padding-left: 12px; }
+  .meter { display: grid; grid-template-columns: 4ch minmax(0, 1fr) 12ch; gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+  .meter div { height: 6px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .meter div i { display: block; height: 100%; background: var(--c); }
+  .meter b { font: 400 12px var(--mono); color: var(--ink); text-align: right; }
+  .hit dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 12.5px; }
+  .hit dt { color: var(--muted); }
+  .hit dd { margin: 0; font-family: var(--mono); text-align: right; }
+  .hits { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 12px; }
+  .hits li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+  .hits li span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hits li b { font: 400 12px var(--mono); }
+  /* 播放控制 */
+  .ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 8px 16px; border-top: 1px solid var(--rule); background: var(--panel); }
+  .ctl .grp { display: flex; align-items: center; gap: 4px; }
+  .ctl .sep { width: 1px; height: 22px; background: var(--rule); }
+  .ctl #play { min-width: 64px; font-weight: 500; }
+  .ctl #play.on { color: var(--bg); background: var(--ink); border-color: var(--ink); }
+  .ctl .cur { min-width: 0; flex: 1 1 260px; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ctl .cur b { color: var(--ink); font-weight: 500; }
+  .help { width: 18px; height: 18px; flex: none; padding: 0 !important; border-radius: 50% !important; font: italic 600 11px/16px Georgia, serif !important;
+    color: var(--muted) !important; background: transparent !important; border: 1px solid var(--faint) !important; cursor: help; }
+  .help.on { color: var(--bg) !important; background: var(--ink) !important; border-color: var(--ink) !important; }
+  .helpPop { position: fixed; z-index: 20; pointer-events: none; max-width: 340px; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px;
+    padding: 8px 10px; font-size: 12px; line-height: 1.6; white-space: pre-line; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  /* 时间轴：全程导航 + 放大的一段 */
+  .tl { border-top: 1px solid var(--rule); }
+  .ov { padding: 6px 16px 0; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  .legend b { color: var(--ink); font-weight: 500; font-size: 12px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+  .zoom { margin-left: auto; display: flex; gap: 4px; }
+  .zoom button { font: inherit; font-size: 13px; line-height: 1; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 2px 9px; cursor: pointer; }
+  #ov { cursor: crosshair; }
+  #ov, #lens { touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  .lens { position: relative; overflow: hidden; cursor: pointer; }
+  svg { display: block; }
+  svg text { font-family: var(--sans); font-size: 12px; fill: var(--ink); }
+  svg .num { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  /* 悬停预览（像视频进度条上的缩略图） */
+  .hov { position: fixed; z-index: 25; pointer-events: none; width: 250px; background: var(--panel2); border: 1px solid var(--rule); border-radius: 6px; padding: 7px 9px;
+    font-size: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, .5); display: grid; gap: 3px; }
+  .hov .t { color: var(--muted); }
+  .hov .t b { font: 500 13px var(--mono); color: var(--ink); }
+  .hov .r { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1px 8px; align-items: baseline; }
+  .hov .r span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--c); }
+  .hov .r span em { font-style: normal; color: var(--muted); margin-left: 4px; }
+  .hov .r b { font: 400 11.5px var(--mono); color: var(--ink); white-space: nowrap; }
+  .hov .bars { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+  .hov .bars i { height: 3px; border-radius: 2px; background: var(--grid); overflow: hidden; display: block; }
+  .hov .bars i u { display: block; height: 100%; background: var(--c); }
+  .ww-tip { position: fixed; z-index: 30; max-width: min(360px, calc(100vw - 16px)); pointer-events: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
+  /* 窄屏：卡片上下排；时间轴挪到帧画面上面；播放控制固定在屏幕底部 */
+  @media (max-width: 1100px) { .frame { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 760px) {
+    html, body { height: auto; }
+    .app { display: flex; flex-direction: column; height: auto; min-height: 0; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+    .tl { order: 2; border-bottom: 1px solid var(--rule); }
+    .timebar { order: 1; grid-template-columns: auto minmax(0, 1fr); }
+    .tb-state { grid-column: 1 / -1; justify-content: flex-start; }
+    .frame { order: 3; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+    .ctl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 28px rgba(0, 0, 0, .5); }
+    .ctl .cur { flex-basis: 100%; order: -1; }
+    .lens { cursor: default; }
+  }
+  @media (pointer: coarse) {
+    .loops button, .zoom button, .ctl button { min-height: 36px; padding: 2px 12px; }
+    .ctl select { font-size: 16px; min-height: 36px; }
+    .help { width: 26px; height: 26px; font-size: 13px !important; line-height: 24px !important; }
+    .bsum { padding: 8px 10px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><h1 id="title"></h1><div id="kpi" style="display:flex;gap:22px;flex-wrap:wrap"></div><div class="loops" id="loops"></div></div>
+  <div class="timebar" id="timebar"></div>
+  <main class="frame" id="frame"></main>
+  <div class="ctl" id="ctl">
+    <div class="grp">
+      <button type="button" id="prev" aria-label="上一个（←）">⏮</button>
+      <select id="mode" aria-label="步进单位">
+        <option value="hit">命中</option><option value="action">动作开始</option><option value="switch">切人</option><option value="sec">战斗秒</option>
+      </select>
+      <button type="button" id="next" aria-label="下一个（→）">⏭</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button type="button" id="fprev" aria-label="上一帧（,）">◀ 帧</button>
+      <button type="button" id="fnext" aria-label="下一帧（.）">帧 ▶</button>
+    </div>
+    <span class="sep"></span>
+    <div class="grp">
+      <button type="button" id="play" aria-label="播放 / 暂停（空格）">▶ 播放</button>
+      <select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+    </div>
+    <div class="cur" id="stepnow"></div>
+    <button type="button" class="help" aria-label="操作说明" data-help="时间轴：悬停看那一帧的预览（谁在前台、各自的动作、能量与协奏）；点一下跳到那一帧，按住拖动逐帧拖着看。&#10;触摸屏：点一下跳；单指横拖逐帧拖，拖的时候手指上方出预览（从光标或顶上的把手附近拖起，光标不跳、跟着手指走）；双指捏合缩放。&#10;全程导航：拖动选范围，点一下把视窗挪过去；右边 − ＋ 缩放。&#10;步进：⏮ ⏭ 或键盘 ← →，按所选单位前后跳（Shift + ← → 按 1 战斗秒）；◀ 帧 帧 ▶ 或 , . 逐帧。&#10;播放：空格开始 / 暂停，按世界时间走（1× = 每秒 60 帧），放到视窗右边时视窗跟着走。&#10;帧画面：每人一张卡片——动作（开始后第几帧）、能量协奏与共鸣回路（逐帧精确）、共鸣回路的状态、冷却（还要几秒）、buff（剩余战斗秒）、这个动作给的资源与打出的伤害（点开看每一项）。最右一列是敌人与这一帧附近的伤害。">i</button>
+  </div>
+  <section class="tl">
+    <div class="ov"><div class="legend"><b>全程</b><span id="ovLegend" style="display:flex;gap:12px"></span><span class="zoom"><button type="button" id="zout" aria-label="缩小视窗">−</button><button type="button" id="zin" aria-label="放大视窗">＋</button></span></div><svg id="ov" data-own-tap></svg></div>
+    <div class="lens" id="lens"></div>
+  </section>
+</div>
+<div class="hov" id="hov" hidden></div>
+<script id="timeline-data" type="application/json">null</script>
+<script>/*@shared*/</script>
+<script>
+(() => {
+  const M = WW.load(); if (!M) return
+  WW.paint(M)
+  const D = M.D, S = M.summary, $ = id => document.getElementById(id)
+  const names = M.team.map(t => t.name)
+  $('title').textContent = `${names.join(' · ')}　${M.title}`
+  $('kpi').innerHTML = [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)]].filter(Boolean).map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  let range = [0, D.lastF], cursor = 0
+  const MODE_NAME = { hit: '命中', action: '动作开始', switch: '切人', sec: '战斗秒' }
+  const sec = f => D.clock.secAt(f)
+
+  // ---- 步点（同 D）：命中、动作开始、切人；战斗秒按时钟换算 ----
+  function stopsOf(items, frameOf, text) {
+    const m = new Map()
+    for (const x of items) { const f = frameOf(x); if (!m.has(f)) m.set(f, []); m.get(f).push(text(x)) }
+    return { frames: [...m.keys()].sort((a, b) => a - b), at: m }
+  }
+  const STOPS = {
+    hit: stopsOf(D.hits.filter(h => h.dmg), h => h.f, h => ({ main: `${h.char} ${h.judgment}`, slot: D.slot.get(h.char) })),
+    action: stopsOf(D.actions, a => a.start, a => ({ main: `${a.char} ${a.id}`, slot: a.i })),
+    switch: stopsOf(D.switches, e => e.f, e => ({ main: `${e.from} → ${e.to}${e.intro ? '（变奏）' : ''}`, slot: D.slot.get(e.to) })),
+  }
+  function targetOf(dir, mode, from = cursor) {
+    let g
+    if (mode === 'frame') g = from + dir
+    else if (mode === 'sec') g = D.clock.frameAt(Math.max(0, Math.round(sec(Math.round(from))) + dir))
+    else {
+      const list = STOPS[mode].frames
+      g = dir > 0 ? list.find(x => x > from + 0.5) : [...list].reverse().find(x => x < from - 0.5)
+      if (g === undefined) return null
+    }
+    return Math.max(0, Math.min(D.lastF, Math.round(g)))
+  }
+
+  // ---- 每世界秒的伤害（导航与泳道上方的细柱，同 D） ----
+  const BINS = Math.ceil(D.lastF / 60)
+  const perSec = Array.from({ length: BINS }, () => names.map(() => 0))
+  for (const h of D.hits) if (h.dmg) perSec[Math.min(BINS - 1, Math.floor(h.f / 60))][D.slot.get(h.char)] += h.dmg.expected
+  const secMax = Math.max(1, ...perSec.map(v => v.reduce((a, x) => a + x, 0)))
+  function bars(x0, x1, y0, h, from, to) {
+    const out = []
+    for (let i = Math.max(0, Math.floor(from / 60)); i < Math.min(BINS, Math.ceil(to / 60)); i++) {
+      let base = 0
+      const a = x0(i * 60), w = Math.max(1, x1((i + 1) * 60) - a - (x1((i + 1) * 60) - a > 4 ? 1 : 0))
+      names.forEach((_, k) => {
+        const v = perSec[i][k]; if (!v) return
+        const hh = h * v / secMax
+        out.push(`<rect x="${a}" y="${y0 + h - base - hh}" width="${w}" height="${hh}" style="fill:var(--c${k})"/>`)
+        base += hh
+      })
+    }
+    return out
+  }
+
+  // ---- 全程导航（同 D：拖动选范围，点一下挪视窗；选框用两条斜线连到下方放大的一段） ----
+  const geom = () => { const W = Math.max(300, $('lens').clientWidth - 2), narrow = W < 600; return { W, narrow, padL: narrow ? 64 : 84 } }
+  function overview(sel = range) {
+    const svg = $('ov'), W = svg.parentElement.clientWidth - 32, H = 62
+    svg.setAttribute('width', W); svg.setAttribute('height', H)
+    const x = f => (f / D.lastF) * W
+    const out = bars(x, x, 2, 28, 0, D.lastF)
+    for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="33" width="${Math.max(1, x(o.end) - x(o.start))}" height="5" style="fill:var(--c${o.i})"/>`)
+    for (const l of D.loops) out.push(`<line x1="${x(l.f)}" x2="${x(l.f)}" y1="0" y2="40" style="stroke:var(--faint);stroke-dasharray:3 3"/><text class="num" x="${x(l.f) + 3}" y="49">${l.loop === 0 ? '启动' : l.loop}</text>`)
+    for (const al of D.alerts) out.push(`<path d="M${x(al.f) - 5} 0 l10 0 l-5 9 z" style="fill:var(--alert)"/>`)
+    out.push(`<line x1="${x(cursor)}" x2="${x(cursor)}" y1="0" y2="40" style="stroke:var(--cursor);stroke-width:1.5"/>`)
+    const a = x(sel[0]), b = x(sel[1])
+    out.push(`<rect x="${a}" y="0" width="${Math.max(2, b - a)}" height="40" style="fill:var(--cursor);fill-opacity:.07;stroke:var(--cursor);stroke-opacity:.7;pointer-events:none"/>`)
+    const L = geom().padL - 16, R = Math.min(W, $('lens').clientWidth - 12 - 16)
+    out.push(`<path d="M${a} 40 L${L} ${H} M${b} 40 L${R} ${H}" style="stroke:var(--cursor);stroke-opacity:.4;fill:none"/>`)
+    svg.innerHTML = out.join('')
+  }
+  $('ovLegend').innerHTML = names.map((n, k) => `<span><i style="background:var(--c${k})"></i>${WW.esc(n)}</span>`).join('')
+  function setRange(lo, w) {
+    w = Math.max(60, Math.min(D.lastF, w)); lo = Math.max(0, Math.min(D.lastF - w, lo))
+    range = [lo, lo + w]; markLoop(null)
+  }
+  const ovF = clientX => { const r = $('ov').getBoundingClientRect(); return Math.max(0, Math.min(D.lastF, ((clientX - r.left) / r.width) * D.lastF)) }
+  let brush = null
+  $('ov').addEventListener('pointerdown', e => { if (e.button > 0) return; brush = { id: e.pointerId, x0: e.clientX, f0: ovF(e.clientX), moved: false }; $('ov').setPointerCapture(e.pointerId) })
+  $('ov').addEventListener('pointermove', e => {
+    if (!brush || e.pointerId !== brush.id) return
+    if (!brush.moved && Math.abs(e.clientX - brush.x0) < 6) return
+    brush.moved = true
+    const f = ovF(e.clientX); overview([Math.min(brush.f0, f), Math.max(brush.f0, f)])
+  })
+  $('ov').addEventListener('pointerup', e => {
+    if (!brush || e.pointerId !== brush.id) return
+    const b = brush, f = ovF(e.clientX); brush = null
+    if (!b.moved) setRange(f - (range[1] - range[0]) / 2, range[1] - range[0])
+    else if (Math.abs(f - b.f0) > 30) setRange(Math.min(b.f0, f), Math.abs(f - b.f0))
+    if (cursor < range[0] || cursor > range[1]) cursor = Math.round((range[0] + range[1]) / 2)
+    draw()
+  })
+  $('ov').addEventListener('pointercancel', () => { brush = null; overview() })
+  function zoom(k) {
+    const w = range[1] - range[0], c = cursor >= range[0] && cursor <= range[1] ? cursor : range[0] + w / 2
+    const nw = Math.max(60, Math.min(D.lastF, w * k))
+    setRange(c - (c - range[0]) * (nw / w), nw); draw()
+  }
+  $('zin').addEventListener('click', () => zoom(1 / 1.5))
+  $('zout').addEventListener('click', () => zoom(1.5))
+
+  // ---- 放大的一段：每秒伤害细柱 + 三人泳道 + 敌人量表（扁，细节看上面的帧画面与悬停预览） ----
+  const LANE = 36
+  let G = { padL: 84, ppf: 1, W: 0, H: 0 }
+  const xOf = f => G.padL + (f - range[0]) * G.ppf
+  const hasEnemy = M.enemy && (M.enemy.tunabilityMax > 0 || M.enemy.whiteBarTough > 0)
+  function lens() {
+    const host = $('lens'), { W, narrow, padL } = geom(), DPS_H = 22
+    const ppf = (W - padL - 12) / Math.max(60, range[1] - range[0])
+    const x = f => padL + (f - range[0]) * ppf
+    const vis = (a, b) => b > range[0] && a < range[1]
+    const top0 = 20 + DPS_H + 4
+    const H = top0 + names.length * LANE + (hasEnemy ? 40 : 0) + 6
+    G = { padL, ppf, W, H }
+    const out = []
+    for (const [a, b] of D.clock.stops) if (vis(a, b)) out.push(`<rect x="${x(a)}" y="16" width="${Math.max(1, (b - a) * ppf)}" height="${H - 16}" style="fill:var(--stop)"/>`)
+    const span = (range[1] - range[0]) / 60, step = [1, 2, 5, 10, 20].find(s => (W - padL) / (span / s) >= 70) || 30
+    for (let s = Math.ceil(sec(range[0]) / step) * step; s <= sec(range[1]); s += step) {
+      const fx = x(D.clock.frameAt(s)); out.push(`<line x1="${fx}" x2="${fx}" y1="14" y2="${H}" style="stroke:var(--grid)"/><text class="num" x="${fx + 3}" y="11">${s}s</text>`)
+    }
+    const lx = narrow ? 8 : 12
+    out.push(`<text x="${lx}" y="${20 + DPS_H - 6}" style="fill:var(--faint);font-size:11px">每秒伤害</text>`)
+    out.push(...bars(f => Math.max(padL, x(f)), f => Math.min(W - 12, x(f)), 20, DPS_H, range[0], range[1]))
+    names.forEach((n, i) => {
+      const y = top0 + i * LANE, c = `var(--c${i})`
+      out.push(`<text x="${lx}" y="${y + 20}" style="font-weight:500;fill:${c}">${WW.esc(n)}</text>`, `<line x1="0" x2="${W}" y1="${y + LANE - 2}" y2="${y + LANE - 2}" style="stroke:var(--rule)"/>`)
+      for (const o of D.onField) if (o.i === i && vis(o.start, o.end)) out.push(`<rect x="${Math.max(padL, x(o.start))}" y="${y + 1}" width="${Math.max(1, x(o.end) - Math.max(padL, x(o.start)))}" height="2" style="fill:${c}"/>`)
+      for (const a of D.actions) if (a.i === i && vis(a.start, a.end)) {
+        const bx = Math.max(padL, x(a.start)), w = Math.max(2, x(a.end) - bx), by = y + 6
+        const op = { liberation: 1, skill: 0.85, heavy: 0.68, normal: 0.45, echo: 0.3, intro: 0, outro: 0, tuneBreak: 0.95 }[a.kind] ?? 0.3
+        out.push(`<rect x="${bx}" y="${by}" width="${w}" height="22" rx="3" style="fill:${a.kind === 'tuneBreak' ? 'var(--alert)' : op ? c : 'var(--bg)'};fill-opacity:${op || 1};stroke:${op ? 'none' : c};stroke-width:1.5"/>`)
+        if (WW.textWidth(a.id, 11.5) + 8 <= w) out.push(`<text x="${bx + 4}" y="${by + 15.5}" style="font-size:11.5px;fill:${op >= 0.68 ? '#0c0f14' : 'var(--ink)'};font-weight:500">${WW.esc(a.id)}</text>`)
+      }
+    })
+    if (hasEnemy) {
+      const y = top0 + names.length * LANE, top = y + 6, h = 26, en = M.enemy
+      out.push(`<text x="${lx}" y="${y + 23}" style="fill:var(--muted)">敌人</text>`)
+      const stepP = (key, max) => { let d = `M${x(range[0])} ${top + h - (key === 'whiteBar' ? h : 0)}`; for (const hit of D.hits) if (hit.enemy) d += ` H${Math.max(padL, x(hit.f))} V${top + h - h * Math.min(1, hit.enemy[key] / max)}`; return d + ` H${x(range[1])}` }
+      if (en.whiteBarTough > 0) out.push(`<path d="${stepP('whiteBar', en.whiteBarTough)}" style="fill:none;stroke:var(--el-physical);stroke-width:1.2"/>`)
+      if (en.tunabilityMax > 0) out.push(`<path d="${stepP('tunability', en.tunabilityMax)}" style="fill:none;stroke:var(--alert);stroke-width:1.4"/>`)
+    }
+    for (const al of D.alerts) if (vis(al.f, al.f + 1)) out.push(`<line x1="${x(al.f)}" x2="${x(al.f)}" y1="14" y2="${H}" style="stroke:var(--alert);stroke-width:1.5;stroke-dasharray:5 3"/>`)
+    // 当前步标出来：命中画圈、动作描边、切人画三角
+    const mode = $('mode').value, g = Math.round(cursor)
+    if (vis(g, g + 1)) {
+      if (mode === 'hit') for (const h of D.hits) { if (h.f === g && h.dmg) out.push(`<circle cx="${x(g)}" cy="${top0 + D.slot.get(h.char) * LANE + 17}" r="8" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
+      if (mode === 'action') for (const a of D.actions) { if (a.start === g) out.push(`<rect x="${Math.max(padL, x(a.start)) - 2}" y="${top0 + a.i * LANE + 4}" width="${Math.max(6, x(a.end) - Math.max(padL, x(a.start))) + 4}" height="26" rx="4" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
+      if (mode === 'switch') for (const e of D.switches) { if (e.f === g) out.push(`<path d="M${x(g) - 6} 14 l12 0 l-6 9 z" style="fill:var(--cursor)"/>`) }
+    }
+    out.push(`<line id="hl" x1="-9" x2="-9" y1="14" y2="${H}" style="stroke:var(--cursor);stroke-opacity:.35;stroke-dasharray:3 3;pointer-events:none"/>`)
+    out.push(`<line id="cl" x1="${x(cursor)}" x2="${x(cursor)}" y1="14" y2="${H}" style="stroke:var(--cursor);stroke-width:1.5;pointer-events:none"/>`)
+    out.push(`<path id="ck" d="M-6 1 h12 v8 l-6 6 l-6 -6 z" transform="translate(${x(cursor)} 0)" style="fill:var(--cursor);pointer-events:none"/>`)   // 播放头的把手
+    host.innerHTML = `<svg width="${W}" height="${H}" id="lsvg">${out.join('')}</svg>`
+  }
+  const moveLine = (id, px) => { const ln = document.getElementById(id); if (ln) { ln.setAttribute('x1', px); ln.setAttribute('x2', px) } }
+  const moveCur = px => { moveLine('cl', px); const k = document.getElementById('ck'); if (k) k.setAttribute('transform', `translate(${px} 0)`) }
+
+  // ---- 帧画面 ----
+  const KIND = WW.KIND_NAME
+  const num = v => (Math.abs(v - Math.round(v)) < 0.05 ? String(Math.round(v)) : v.toFixed(1))
+  function gauge(gm) {
+    const p = gm.cap ? Math.max(0, Math.min(100, 100 * gm.v / gm.cap)) : 0, full = !!gm.cap && gm.v >= gm.cap - 1e-6
+    const tip = `<b>${WW.esc(gm.name)}</b> ${+gm.v.toFixed(2)}${gm.cap ? ` / ${gm.cap}` : ''}${full ? '（满）' : ''}`
+    return `<span class="g${full ? ' full' : ''}" style="--p:${p.toFixed(1)}%" data-tip="${WW.esc(tip)}"><b>${WW.esc(gm.name)}</b>${num(gm.v)}${gm.cap && gm.key !== 'concerto' ? `<small>/${gm.cap}</small>` : ''}</span>`
+  }
+  // 这一帧身上的 buff：加成（有乘区的）与状态（标记）分开，按给的人、名字排；剩余按战斗秒
+  function buffsAt(name, g) {
+    const out = []
+    for (const b of D.buffs) {
+      if (b.target !== name) continue
+      const s = b.spans.find(s => s.start <= g && g < s.end)
+      if (s) out.push({ b, s, left: Math.max(0, sec(s.end) - sec(g)), zone: !!(M.buffInfo[b.buff] || {}).zone })
+    }
+    const order = x => (D.slot.has(x.b.owner) ? D.slot.get(x.b.owner) : 9)
+    return out.sort((p, q) => order(p) - order(q) || p.b.short.localeCompare(q.b.short))
+  }
+  function buffList(list) {
+    return `<ul class="blist">${list.map(({ b, s, left }) => {
+      const color = D.slot.has(b.owner) ? `var(--c${D.slot.get(b.owner)})` : 'var(--faint)'
+      const info = M.buffInfo[b.buff] || {}
+      const eff = WW.buffEffect(M, b.buff, s.stacks)
+      const tip = `<b>${WW.esc(b.buff)}</b>（${WW.esc(b.owner)} 给的）${eff ? `<br>${WW.esc(eff)}` : ''}，还剩 ${left.toFixed(2)} 战斗秒${info.source ? `<br>${WW.attr(info.source)}` : ''}`
+      return `<li style="--c:${color}" data-tip="${WW.esc(tip)}"><span><i></i>${WW.esc(b.short)}${s.stacks > 1 ? ` ×${s.stacks}` : ''}</span><b>${WW.esc(WW.buffEffect(M, b.buff, s.stacks) || '')}</b><em>${left.toFixed(1)}s</em></li>`
+    }).join('')}</ul>`
+  }
+  const pinned = new Set()
+  function dmgBox(name, a) {
+    if (!a.damage) return ''
+    const key = `dmg|${name}`
+    const rows = a.dmg.map(it => `<li><span>${WW.esc(it.judgment)}${it.note ? `<small>（${WW.esc(it.note)}）</small>` : ''}${it.n > 1 ? `<small> ${it.n} 段</small>` : ''}</span><b>${WW.fmt(it.v)}</b>`
+      + `${WW.dmgItemNote(a, it) ? `<em>${WW.esc(WW.dmgItemNote(a, it))}</em>` : ''}</li>`).join('')
+    return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>打出的</b><span>伤害 ${WW.fmt(a.damage)}（${a.hits} 段）</span><i>▸</i></button>`
+      + `<div class="bpop"><ul class="gl">${rows}</ul><div class="small">${WW.esc(WW.DMG_NOTE)}</div></div></div>`
+  }
+  function gainBox(name, a) {
+    const g = a.gains
+    if (!g || !g.items.length) return ''
+    const key = `gain|${name}`, totals = WW.gainTotals(M, g)
+    const who = (n, v) => `<i class="n" style="color:${D.slot.has(n) ? `var(--c${D.slot.get(n)})` : 'var(--muted)'}">${WW.esc(n)}</i> ${WW.signedNum(v)}`
+    const sum = Object.entries(totals).map(([res, d]) => {
+      const mates = Object.entries(d).filter(([n]) => n !== name).reduce((x, [, v]) => x + v, 0)
+      return `${WW.RES_NAME[res] || res} ${WW.signedNum(d[name] || 0)}${mates ? `（队友 ${WW.signedNum(mates)}）` : ''}`
+    }).join(' · ')
+    const groups = Object.entries(totals).map(([res, d]) => {
+      const rows = g.items.filter(it => it.resource === res).map(it => {
+        const rest = WW.byTeam(M, it.deltas).filter(([n]) => n !== name)
+        return `<li data-tip="${WW.esc(WW.gainTip(M, g, it))}"><span>${WW.esc(WW.gainName(it))}${it.dt > 0 ? `<small> +${it.dt.toFixed(2)} 秒</small>` : ''}</span>`
+          + `<b>${it.deltas[name] !== undefined ? WW.signedNum(it.deltas[name]) : ''}</b>${rest.length ? `<em>${rest.map(([n, v]) => who(n, v)).join('　')}</em>` : ''}</li>`
+      }).join('')
+      return `<h4><span>${WW.RES_NAME[res] || res}</span><b>${Object.entries(d).map(([n, v]) => who(n, v)).join('　')}</b></h4><ul class="gl">${rows}</ul>`
+    }).join('')
+    return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${WW.esc(key)}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>给的</b><span>${WW.esc(sum)}</span><i>▸</i></button><div class="bpop">${groups}</div></div>`
+  }
+  function card(i, g) {
+    const t = M.team[i]
+    const on = D.onField.find(o => o.start <= g && g < o.end)
+    const a = D.actions.find(a => a.i === i && a.start <= g && g < a.end)
+    const fx = WW.forteAt(M, t.name, g), cds = WW.cooldownsAt(M, t.name, g), bs = buffsAt(t.name, g)
+    const always = [...D.always].filter(k => k.endsWith(`→${t.name}`)).length
+    const plus = bs.filter(x => x.zone), marks = bs.filter(x => !x.zone)
+    return `<section class="card" style="--c:var(--c${i})">
+      <header><b>${WW.esc(t.name)}</b><em class="${on && on.i === i ? 'on' : ''}">${on && on.i === i ? '前台' : '后台'}</em></header>
+      <div class="act">${a ? `<b>${WW.esc(a.id)}</b><span>${KIND[a.kind] || a.kind} · 开始后第 ${g - a.start} 帧${a.cmd ? '' : ' · 不是轴里写的'}</span>` : '<span class="idle">空闲</span>'}</div>
+      <div class="sec"><h3>资源与共鸣回路</h3><div class="gauges">${WW.metersAt(M, i, g).map(gauge).join('')}</div>
+        ${fx ? `<div class="forte" aria-label="共鸣回路">${fx.split(' · ').map(x => `<i>${WW.esc(x)}</i>`).join('')}</div>` : ''}</div>
+      ${cds.length ? `<div class="sec"><h3>冷却</h3><div class="cds">${cds.map(cd => `<span class="${cd.left > 0.5 ? 'cd' : ''}"><b>${WW.esc(cd.name)}</b>${cd.left > 0.5 ? `${(cd.left / 60).toFixed(1)}s` : '可用'}${cd.charges !== undefined ? ` ×${cd.charges}` : ''}</span>`).join('')}</div></div>` : ''}
+      ${a ? `<div class="sec"><h3>这个动作</h3>${gainBox(t.name, a)}${dmgBox(t.name, a)}${!a.gains && !a.damage ? '<p class="small">没有资源变化与伤害</p>' : ''}</div>` : ''}
+      <div class="sec"><h3>加成 ${plus.length} 个<small>${always ? `另有常驻 ${always} 个` : ''}</small></h3>${plus.length ? buffList(plus) : '<p class="small">没有</p>'}</div>
+      ${marks.length ? `<div class="sec"><h3>状态 ${marks.length} 个</h3>${buffList(marks)}</div>` : ''}
+    </section>`
+  }
+  function enemyAt(g) {
+    let last = null
+    for (const h of D.hits) { if (h.f > g) break; if (h.enemy) last = h.enemy }
+    let dis = false, para = false
+    const fx = new Map()
+    for (const e of D.enemy) {
+      if (e.f > g) break
+      if (e.change === 'disharmony') dis = true
+      if (e.change === 'harmonyBreak') dis = false
+      if (e.change === 'break') para = true
+      if (e.change === 'breakEnd') para = false
+      if (e.change === 'effectApplied' && e.effect) fx.set(e.effect, { stacks: e.stacks, burst: e.burst })
+      if (e.change === 'effectEnd' && e.effect) fx.delete(e.effect)
+    }
+    return { last, dis, para, fx }
+  }
+  function enemyCard(g) {
+    const parts = []
+    const st = enemyAt(g)
+    if (hasEnemy) {
+      const en = M.enemy, v = st.last || { tunability: 0, whiteBar: en.whiteBarTough }
+      parts.push(`<div class="sec"><h3>敌人<small>${st.dis ? '失谐中' : st.para ? '瘫痪中' : '正常'}</small></h3>
+        ${en.tunabilityMax > 0 ? `<div class="meter" style="--c:var(--alert)"><span>偏谐</span><div><i style="width:${Math.min(100, 100 * v.tunability / en.tunabilityMax)}%"></i></div><b>${WW.fmt(v.tunability)}/${WW.fmt(en.tunabilityMax)}</b></div>` : ''}
+        ${en.whiteBarTough > 0 ? `<div class="meter" style="--c:var(--el-physical)"><span>白条</span><div><i style="width:${Math.min(100, 100 * v.whiteBar / en.whiteBarTough)}%"></i></div><b>${WW.fmt(v.whiteBar)}/${WW.fmt(en.whiteBarTough)}</b></div>` : ''}
+        ${[...st.fx].map(([k, x]) => `<div class="small" style="color:var(--ink)">${WW.esc(k)} ${x.stacks} 层${x.burst ? ` · 爆发 ${x.burst} 层` : ''}</div>`).join('')}</div>`)
+    }
+    const here = D.hits.filter(h => h.f === g && h.dmg)
+    if (here.length) parts.push(`<div class="sec"><h3>这一帧的命中 ${here.length} 段</h3><ul class="hits">${here.map(h => `<li style="color:var(--c${D.slot.get(h.char)})"><span>${WW.esc(`${h.char} ${h.judgment}`)}</span><b>${WW.fmt(h.dmg.expected)}</b></li>`).join('')}</ul></div>`)
+    let best = null
+    for (const h of D.hits) if (h.dmg && h.factors && Math.abs(h.f - g) <= 40 && (!best || Math.abs(h.f - g) < Math.abs(best.f - g))) best = h
+    if (best) {
+      const F = best.factors
+      parts.push(`<div class="sec hit"><h3>最近一段伤害<small>${(sec(best.f)).toFixed(2)} 秒</small></h3><div style="font-size:12.5px">${WW.esc(best.char)} ${WW.esc(best.judgment)}${WW.hitBy(best) ? `<span class="small">（${WW.esc(WW.hitBy(best))}）</span>` : ''}</div><dl>
+        <dt>期望</dt><dd>${WW.fmt(best.dmg.expected)}</dd><dt>不暴击 / 暴击</dt><dd>${WW.fmt(best.dmg.nonCrit)} / ${WW.fmt(best.dmg.crit)}</dd>
+        <dt>基础（倍率 × 攻击）</dt><dd>${WW.fmt(F.base)}</dd><dt>伤害加成</dt><dd>×${F.bonus.toFixed(3)}</dd><dt>加深</dt><dd>×${F.amplify.toFixed(3)}</dd>
+        <dt>防御</dt><dd>×${F.def.toFixed(3)}</dd><dt>抗性</dt><dd>×${F.res.toFixed(3)}</dd><dt>暴击率 / 暴伤</dt><dd>${WW.pct(F.critRate)} / ${WW.pct(F.critDamage)}</dd></dl>
+        <h3 style="margin-top:4px">这一段生效的加成 ${best.buffs.length} 个</h3><ul class="blist">${best.buffs.map(id => {
+          const m = id.match(/^(.*?)(?:×(\d+))?$/), o = M.buffOwners[m[1]], c = D.slot.has(o) ? `var(--c${D.slot.get(o)})` : 'var(--faint)'
+          const eff = WW.buffEffect(M, m[1], m[2] ? +m[2] : 1) || '', info = M.buffInfo[m[1]] || {}
+          const tip = `<b>${WW.esc(m[1])}</b>${eff ? ` ${WW.esc(eff)}` : ''}${info.source ? `<br>${WW.attr(info.source)}` : ''}`
+          return `<li style="--c:${c}" data-tip="${WW.esc(tip)}"><span><i></i>${WW.esc(m[1])}${m[2] ? ` ×${m[2]}` : ''}</span><b>${WW.esc(eff)}</b><em></em></li>`
+        }).join('')}</ul></div>`)
+    }
+    return `<section class="card" style="--c:var(--alert)">${parts.join('') || '<p class="small">没有敌人量表与伤害</p>'}</section>`
+  }
+  // 时刻条：第几帧；轴里的哪一条（在等的那一条，或最近执行的那一条，高亮第几个）；在等什么；时停、失谐、警告
+  function waitAt(g) { return D.waits.find(w => w.from <= g && g < w.f) || null }
+  function cmdAt(g) {
+    let c = null
+    for (const a of D.actions) if (a.cmd && a.start <= g && (!c || a.start >= c.f)) c = { f: a.start, cmd: a.cmd }
+    for (const s of D.switches) if (s.cmd && s.f <= g && (!c || s.f >= c.f)) c = { f: s.f, cmd: s.cmd }
+    return c && c.cmd
+  }
+  function cmdLine(c) {
+    const text = WW.cmdText(M, c).replace(/#.*$/, '').trim(), toks = text.split(/\s+/)
+    if (!text) return ''
+    if (['switch', 'wait', 'at'].includes(toks[0])) return `<code><mark>${WW.esc(text)}</mark></code>`
+    return `<code>${WW.esc(toks[0])} ${toks.slice(1).map((t, k) => (k + 1 === c.item ? `<mark>${WW.esc(t)}</mark>` : WW.esc(t))).join(' ')}</code>`
+  }
+  function timebar(g) {
+    const w = waitAt(g), c = w ? w.cmd : cmdAt(g)
+    const stop = D.clock.stops.some(([a, b]) => a <= g && g < b), en = enemyAt(g)
+    const al = D.alerts.find(a => Math.abs(a.f - g) <= 1)
+    const why = w ? `<span class="why${WW.RHYTHM.has(w.code) ? '' : ' block'}">${WW.RHYTHM.has(w.code) ? '出招节奏：' : '在等：'}${WW.esc(w.reason)}（已等 ${g - w.from} 帧）</span>` : ''
+    $('timebar').innerHTML = `<div class="tb-time"><b>${sec(g).toFixed(2)}</b><span>战斗秒 · 第 ${g} 帧</span></div>
+      <div class="tb-cmd">${c ? `<span>${WW.cmdWhere(c)}${w ? '（队首）' : ''}</span>${cmdLine(c)}` : '<span>还没开始执行</span>'}${why}</div>
+      <div class="tb-state">${stop ? '<span class="tag stop">时停中（战斗时钟停）</span>' : ''}${en.dis ? '<span class="tag hot">失谐</span>' : ''}${en.para ? '<span class="tag">瘫痪</span>' : ''}${al ? '<span class="tag hot">写了变奏没变奏</span>' : ''}</div>`
+  }
+  function frameView() {
+    const g = Math.round(cursor)
+    timebar(g)
+    $('frame').innerHTML = M.team.map((_, i) => card(i, g)).join('') + enemyCard(g)
+    const mode = $('mode').value, st = STOPS[mode]
+    const xs = st && st.at.get(g)
+    $('stepnow').innerHTML = mode === 'sec' ? `按战斗秒步进` : xs ? `<b style="color:var(--c${xs[0].slot})">${WW.esc(xs[0].main)}</b>${xs.length > 1 ? ` 等 ${xs.length} 个` : ''} · 第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个${MODE_NAME[mode]}`
+      : `不在${MODE_NAME[mode]}上（第 ${st.frames.filter(x => x < g).length}–${st.frames.filter(x => x < g).length + 1} 个之间）`
+    for (const [id, dir] of [['prev', -1], ['next', 1]]) {
+      const t = targetOf(dir, mode); const xs2 = t !== null && st ? st.at.get(t) : null
+      $(id).title = t === null ? '没有了' : `${xs2 ? xs2[0].main : `第 ${t} 帧`}（${(sec(t) - sec(g) >= 0 ? '+' : '−') + Math.abs(sec(t) - sec(g)).toFixed(2)} 秒）`
+    }
+  }
+  // 帧画面里的折叠框：点一下钉住，悬停浮出（同 D）
+  $('frame').addEventListener('click', e => {
+    const box = e.target.closest('.bx'); if (!box || !e.target.closest('.bsum')) return
+    const k = box.dataset.key
+    if (pinned.has(k)) pinned.delete(k); else pinned.add(k)
+    box.classList.toggle('pinned', pinned.has(k)); box.classList.remove('hover')
+  })
+  if (matchMedia('(hover: hover)').matches) {
+    $('frame').addEventListener('mouseover', e => { const box = e.target.closest('.bx'); if (box && !box.classList.contains('pinned')) box.classList.add('hover') })
+    $('frame').addEventListener('mouseout', e => { const box = e.target.closest('.bx'); if (box && !box.contains(e.relatedTarget)) box.classList.remove('hover') })
+  }
+
+  // ---- 悬停预览：像视频进度条上的缩略图——那一帧谁在前台、各自在做什么、能量与协奏 ----
+  // 鼠标：放在时间轴上沿之上（clientY 传时间轴的上沿）；触摸：放在手指上方，上面放不下就放手指下方（clientY 传手指）
+  function preview(f, clientX, clientY, touch = false) {
+    const g = Math.round(f), el = $('hov')
+    const on = D.onField.find(o => o.start <= g && g < o.end)
+    const rows = M.team.map((t, i) => {
+      const a = D.actions.find(a => a.i === i && a.start <= g && g < a.end)
+      const ms = WW.metersAt(M, i, g), en = ms.find(x => x.key === 'energy'), co = ms.find(x => x.key === 'concerto')
+      const pct = x => (x && x.cap ? Math.min(100, 100 * x.v / x.cap) : 0)
+      return `<div class="r" style="--c:var(--c${i})"><span>${WW.esc(t.name)}${on && on.i === i ? '<em>前台</em>' : ''}<em>${a ? WW.esc(a.id) : '—'}</em></span>`
+        + `<b>${en ? num(en.v) : '—'} · ${co ? num(co.v) : '—'}</b><div class="bars"><i><u style="width:${pct(en)}%"></u></i><i><u style="width:${pct(co)}%"></u></i></div></div>`
+    }).join('')
+    el.innerHTML = `<div class="t"><b>${sec(g).toFixed(2)}</b> 秒 · 第 ${g} 帧<span style="float:right">能量 · 协奏</span></div>${rows}`
+    el.hidden = false
+    const w = el.offsetWidth, h = el.offsetHeight
+    el.style.left = Math.max(8, Math.min(innerWidth - w - 8, clientX - w / 2)) + 'px'
+    el.style.top = (touch ? (clientY - h - 44 >= 8 ? clientY - h - 44 : clientY + 44) : Math.max(8, clientY - h - 16)) + 'px'
+  }
+  const hideHover = () => { $('hov').hidden = true; moveLine('hl', -9) }
+
+  // ---- 跳帧、拖动、触摸（主图）----
+  const LZ = $('lens')
+  const lensF = clientX => range[0] + (clientX - LZ.getBoundingClientRect().left - G.padL) / G.ppf
+  const inRange = f => Math.max(range[0], Math.min(range[1], f))
+  let raf = 0
+  const soon = fn => { cancelAnimationFrame(raf); raf = requestAnimationFrame(fn) }
+  function seek(f, live = false) {
+    cursor = Math.round(Math.max(0, Math.min(D.lastF, f)))
+    moveCur(xOf(cursor))
+    if (live) soon(() => { frameView(); overview() }); else { lens(); frameView(); overview() }
+  }
+  let drag = null
+  LZ.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button > 0) return
+    drag = e.pointerId; LZ.setPointerCapture(e.pointerId); hideHover(); seek(inRange(lensF(e.clientX)), true)
+  })
+  LZ.addEventListener('pointermove', e => {
+    if (e.pointerType !== 'mouse') return
+    const f = inRange(lensF(e.clientX))
+    if (drag !== null) { seek(f, true); return }
+    moveLine('hl', xOf(f)); preview(f, e.clientX, LZ.getBoundingClientRect().top)
+  })
+  LZ.addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && drag !== null) { drag = null; lens() } })
+  LZ.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') hideHover() })
+  // 触摸：点一下跳；单指横拖逐帧拖，拖的时候手指上方出预览（没有悬停，只在拖时出），松手收起——
+  // 从光标（或顶上的把手）左右 GRAB 像素内拖起时记下手指与光标差多少，光标不跳、跟着手指走；别处拖起光标跳到手指下。
+  // 双指捏合缩放、平移视窗（同 D）
+  const GRAB = 24
+  const fingers = new Map()
+  let gesture = null
+  LZ.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return
+    fingers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX })
+    if (fingers.size === 1) { const off = xOf(cursor) - (e.clientX - LZ.getBoundingClientRect().left); gesture = { kind: 'tap', off: Math.abs(off) <= GRAB ? off : 0 } }
+    else if (fingers.size === 2) { hideHover(); const [a, b] = [...fingers.values()]; gesture = { kind: 'pinch', d0: Math.max(24, Math.abs(a.x - b.x)), w0: range[1] - range[0], fm: lensF((a.x + b.x) / 2) } }
+  })
+  addEventListener('pointermove', e => {
+    const p = fingers.get(e.pointerId); if (!p || !gesture) return
+    p.x = e.clientX; p.y = e.clientY
+    if (gesture.kind === 'pinch') {
+      if (fingers.size < 2) return
+      const [a, b] = [...fingers.values()], d = Math.max(24, Math.abs(a.x - b.x)), m = (a.x + b.x) / 2
+      const w = Math.max(60, Math.min(D.lastF, gesture.w0 * gesture.d0 / d))
+      setRange(gesture.fm - (m - LZ.getBoundingClientRect().left - G.padL) * w / (G.W - G.padL - 12), w)
+      soon(() => { overview(); lens() })
+      return
+    }
+    if (gesture.kind === 'tap' && Math.abs(p.x - p.x0) > 8) gesture.kind = 'scrub'
+    if (gesture.kind === 'scrub') { const f = inRange(lensF(p.x + gesture.off)); seek(f, true); preview(f, p.x, p.y, true) }
+  })
+  const lift = (e, cancel) => {
+    const p = fingers.get(e.pointerId); if (!p) return
+    fingers.delete(e.pointerId)
+    hideHover()
+    if (fingers.size) return
+    const g = gesture; gesture = null
+    if (!g || cancel && g.kind === 'tap') return
+    if (g.kind === 'tap') seek(inRange(lensF(p.x)))
+    else { if (cursor < range[0] || cursor > range[1]) cursor = Math.round((range[0] + range[1]) / 2); draw() }
+  }
+  addEventListener('pointerup', e => lift(e, false))
+  addEventListener('pointercancel', e => lift(e, true))
+
+  // ---- 步进、逐帧、播放 ----
+  function follow(g) {   // 光标走出视窗：视窗跟着平移
+    const w = range[1] - range[0]
+    if (g < range[0] || g > range[1]) { range = g > range[1] ? [g - w * 0.2, g + w * 0.8] : [g - w * 0.8, g + w * 0.2]; range = [Math.max(0, range[0]), Math.max(0, range[0]) + w]; markLoop(null) }
+  }
+  function stepTo(dir, mode) {
+    const g = targetOf(dir, mode); if (g === null) return
+    cursor = g; follow(g); draw()
+  }
+  $('prev').addEventListener('click', () => stepTo(-1, $('mode').value))
+  $('next').addEventListener('click', () => stepTo(1, $('mode').value))
+  $('fprev').addEventListener('click', () => stepTo(-1, 'frame'))
+  $('fnext').addEventListener('click', () => stepTo(1, 'frame'))
+  $('mode').addEventListener('change', () => { lens(); frameView() })
+  let playing = false, lastTs = 0, lastPaint = 0
+  function setPlay(on) {
+    playing = on
+    $('play').classList.toggle('on', on); $('play').textContent = on ? '⏸ 暂停' : '▶ 播放'
+    if (on) { if (cursor >= D.lastF) { cursor = range[0]; draw() } lastTs = performance.now(); requestAnimationFrame(tickPlay) }
+    else { lens(); frameView(); overview() }
+  }
+  function tickPlay(ts) {
+    if (!playing) return
+    const dt = Math.min(100, ts - lastTs); lastTs = ts
+    cursor = Math.min(D.lastF, cursor + (+$('speed').value) * dt * 60 / 1000)
+    const w = range[1] - range[0]
+    if (cursor > range[1] - w * 0.02) { range = [cursor - w * 0.1, cursor - w * 0.1 + w]; if (range[1] > D.lastF) range = [Math.max(0, D.lastF - w), D.lastF]; markLoop(null); lens(); overview() }
+    else moveCur(xOf(cursor))
+    if (ts - lastPaint > 60) { lastPaint = ts; frameView() }
+    if (cursor >= D.lastF) { setPlay(false); return }
+    requestAnimationFrame(tickPlay)
+  }
+  $('play').addEventListener('click', () => setPlay(!playing))
+  addEventListener('keydown', e => {
+    if (e.target && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { stepTo(e.key === 'ArrowRight' ? 1 : -1, e.shiftKey ? 'sec' : $('mode').value); e.preventDefault() }
+    else if (e.key === '.' || e.key === ',') { stepTo(e.key === '.' ? 1 : -1, 'frame'); e.preventDefault() }
+    else if (e.key === ' ') { setPlay(!playing); e.preventDefault() }
+  })
+
+  // 说明图标（同 D）
+  const helpPop = document.createElement('div'); helpPop.className = 'helpPop'; helpPop.hidden = true; document.body.appendChild(helpPop)
+  let helpPinned = null
+  const showHelp = btn => {
+    helpPop.textContent = btn.dataset.help; helpPop.hidden = false
+    const r = btn.getBoundingClientRect(), w = helpPop.offsetWidth, h = helpPop.offsetHeight
+    let x = Math.min(innerWidth - w - 8, Math.max(8, r.left + r.width / 2 - w / 2)), y = r.top - h - 6
+    if (y < 8) y = r.bottom + 6
+    helpPop.style.left = x + 'px'; helpPop.style.top = y + 'px'
+  }
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('.help')
+    if (helpPinned) helpPinned.classList.remove('on')
+    if (!btn || btn === helpPinned) { helpPinned = null; helpPop.hidden = true; return }
+    helpPinned = btn; btn.classList.add('on'); showHelp(btn)
+  })
+  if (matchMedia('(hover: hover)').matches) {
+    document.addEventListener('mouseover', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) showHelp(btn) })
+    document.addEventListener('mouseout', e => { const btn = e.target.closest('.help'); if (btn && !helpPinned) helpPop.hidden = true })
+  }
+
+  function markLoop(k) { for (const b of $('loops').children) b.classList.toggle('on', b.dataset.k === String(k)) }
+  $('loops').innerHTML = `<button type="button" data-k="all">全程</button>` + D.loops.map(l => `<button type="button" data-k="${l.loop}">${WW.loopName(l.loop)}</button>`).join('')
+  $('loops').addEventListener('click', e => {
+    const k = e.target.dataset && e.target.dataset.k; if (!k) return
+    const l = D.loops.find(l => String(l.loop) === k); range = l ? [l.f, l.end] : [0, D.lastF]; cursor = Math.round(range[0]); markLoop(k); draw()
+  })
+  function draw() { overview(); lens(); frameView() }
+  WW.mountAlerts(M, document.querySelector('.top'), a => {
+    const l = D.loops.find(l => a.f >= l.f && a.f < l.end)
+    range = l ? [l.f, l.end] : [0, D.lastF]; markLoop(l ? l.loop : 'all')
+    cursor = a.f; $('mode').value = 'switch'; draw()
+  })
+  WW.tips($('frame'))
+  const first = WW.defaultLoop(M), l = D.loops.find(l => l.loop === first)
+  if (l) range = [l.f, l.end]
+  markLoop(l ? first : 'all')
+  cursor = Math.round(range[0] + (range[1] - range[0]) * 0.55)
+  draw()
+  let lastW = innerWidth
+  addEventListener('resize', () => { if (innerWidth !== lastW) { lastW = innerWidth; draw() } })
+})()
+</script>
+</body>
+</html>

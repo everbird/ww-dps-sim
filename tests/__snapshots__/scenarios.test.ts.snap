@@ -10,6 +10,7 @@ exports[`场景回归快照 > m0-team.yaml 1`] = `
     "white-bar ×2",
     "tune-break-auto ×4",
     "tunability-base ×410",
+    "burst-release ×4",
   ],
   "byAction": [
     "椿 E3：722683.2（18.41%，4 段）",
@@ -84,6 +85,7 @@ exports[`场景回归快照 > m0-video.yaml 1`] = `
     "tune-break-auto ×5",
     "tunability-base ×303",
     "data-guess ×10",
+    "burst-release ×5",
   ],
   "byAction": [
     "椿 E3：903354（17.87%，5 段）",
@@ -155,6 +157,7 @@ exports[`场景回归快照 > m0-video-eq.yaml 1`] = `
     "tune-break-auto ×5",
     "tunability-base ×290",
     "data-guess ×10",
+    "burst-release ×5",
   ],
   "byAction": [
     "椿 E3：903354（17.35%，5 段）",

@@ -56,11 +56,18 @@ window.WW = (() => {
       concertoMax: raw.concertoMax || 100, rotation: raw.rotation || [], opening: raw.opening || [], options: raw.options || {},
       kinds: raw.kinds || {}, buffOwners: raw.buffOwners || {}, buffInfo: raw.buffInfo || {}, summary: raw.summary, trace: raw.trace || [], video: raw.video || null, error: raw.error || null,
       effectInfo: raw.effectInfo || {}, energyShare: raw.energyShare || null,
-      resources: raw.resources || null, forteBy: new Map(),
+      resources: raw.resources || null, forteBy: new Map(), cooldownsBy: new Map(),
       log: raw.log.filter(e => e.type !== 'judgmentSpawn'),
     }
     // 共鸣回路的状态说明（SimResult.forte）按人分开：[世界帧, 文本]
     for (const x of raw.forte || []) { if (!m.forteBy.has(x.char)) m.forteBy.set(x.char, []); m.forteBy.get(x.char).push([x.f, x.text]) }
+    // 技能冷却（SimResult.cooldowns）按人、按冷却 key 分开：[世界帧, { ready, charges }]
+    for (const x of raw.cooldowns || []) {
+      if (!m.cooldownsBy.has(x.char)) m.cooldownsBy.set(x.char, new Map())
+      const keys = m.cooldownsBy.get(x.char)
+      if (!keys.has(x.key)) keys.set(x.key, [])
+      keys.get(x.key).push([x.f, { ready: x.ready, charges: x.charges }])
+    }
     const slot = new Map(m.team.map((t, i) => [t.name, i]))
     // 每个动作给的资源（src/engine/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
     const gainsOf = new Map((raw.gains || []).filter(g => !g.outro).map(g => [g.instance, g]))
@@ -178,6 +185,19 @@ window.WW = (() => {
     for (const p of tl) { if (p.f <= f) rs = p; else break }
     if (!rs) return []
     return [{ key: 'energy', name: '能量', cap: m.team[i].energyCap || 100, v: rs.energy[i] }, { key: 'concerto', name: '协奏', cap: m.concertoMax, v: rs.concerto[i] }]
+  }
+  /** char 在 f 帧的技能冷却：[{ key, name, left（还要多少战斗帧，0 = 能用）, charges? }]，按第一次用到的先后；
+   *  这一帧之前还没用过的不列。"能用"的时刻是战斗帧，按时钟换成 f 帧时的战斗帧来比 */
+  function cooldownsAt(m, char, f) {
+    const keys = m.cooldownsBy.get(char)
+    if (!keys) return []
+    const now = m.D.clock.secAt(f) * 60, out = []
+    for (const [key, xs] of keys) {
+      if (xs[0][0] > f) continue
+      const v = valueAt(xs, f)
+      out.push({ key, name: key === 'echo' ? '声骸' : key, left: v.ready === null ? 0 : Math.max(0, v.ready - now), ...(v.charges !== undefined ? { charges: v.charges } : {}) })
+    }
+    return out
   }
   /** char 在 f 帧的共鸣回路状态说明（角色钩子 forte 给的一行），没有时为空串 */
   function forteAt(m, char, f) {
@@ -334,5 +354,5 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { valueAt, metersAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()
