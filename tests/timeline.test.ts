@@ -81,6 +81,22 @@ describe('时间轴网页', () => {
     expect(own.tracks.find(t => t.key === 'concerto')!.steps).toEqual([[0, 0], [10, 6], [40, 12]])
     expect(res3.forte.map(x => [x.f, x.char, x.text])).toEqual([[0, '丁', '第 0 段'], [10, '丁', '第 1 段'], [40, '丁', '第 2 段']])
   })
+  test('冷却（视图 E 的帧画面）：放了技能记"从第几战斗帧起能用"，倒计时与全局时停里不再记，好了记 null；按次数充能的另记还剩几次', () => {
+    const 戊: SynthChar = {
+      name: '戊',
+      actions: [
+        action({ id: 'Y', kind: 'skill', endFrame: 30, cooldown: 100 }),
+        action({ id: 'T', kind: 'other', endFrame: 60, dilations: [{ type: '全局时停', anchor: 'action', start: 1, ally: { rate: 0, duration: 50 }, enemy: { rate: 0, duration: 50 } }] }),
+        action({ id: 'C', kind: 'echo', endFrame: 10, cooldown: 120, charges: 2 }),
+      ],
+    }
+    const sc4 = ScenarioSchema.parse({ team: ['戊', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['戊 Y T Y', '戊 C C', 'wait 300'] })
+    const res4 = simulate(resolveScenario(sc4, synthData([戊, idle('乙'), idle('丙')])))
+    // T 的 50 帧全局时停：Y 的"第 100 战斗帧起能用"不变，世界第 150 帧第二次放出
+    expect(res4.cooldowns.filter(x => x.key === 'Y').map(x => [x.f, x.ready])).toEqual([[0, 100], [149, null], [150, 200], [249, null]])
+    expect(res4.cooldowns.filter(x => x.key === 'echo').map(x => [x.f, x.ready, x.charges])).toEqual([[180, 250, 1], [190, 250, 0], [299, 370, 1], [419, null, 2]])
+    expect(timelineModel('scenarios/demo.yaml', sc4, resolveScenario(sc4, synthData([戊, idle('乙'), idle('丙')])), res4).cooldowns).toBe(res4.cooldowns)
+  })
   test('视图 A–D（pnpm timeline --view）：模板都在、共用脚本内联、数据带上 buff 的给予者与定义', () => {
     const m = timelineModel('scenarios/demo.yaml', sc, r, res)
     const shared = readFileSync(new URL('../web/designs/shared.js', import.meta.url), 'utf8')

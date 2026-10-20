@@ -328,6 +328,8 @@ export interface SimResult {
   summary: Summary
   /** 共鸣回路的状态说明（钩子 forte）：每个 tick 结束取一次，变了才记；只供时间轴检查器显示，不进日志、不影响仿真 */
   forte: ForteStep[]
+  /** 技能冷却（时间轴视图 E 显示）：每个 tick 结束取一次，"什么时候好"或剩几次变了才记；不进日志、不影响仿真 */
+  cooldowns: CooldownStep[]
   /** 运行期报错（TD-09 §3.3：等不来、等超时、超过帧数上限）；日志与汇总保留到出错为止 */
   error?: { code: string; message: string; frame: number; line?: number; loop?: number }
 }
@@ -337,6 +339,9 @@ export interface SimResult {
 
 /** 从第 f 个世界帧起，char 的共鸣回路状态说明是 text（"卦象 震艮震震 · 少阳"）；空串 = 没什么要说的 */
 export interface ForteStep { f: number; char: CharName; text: string }
+/** 从第 f 个世界帧起，char 的冷却 key（cooldownKey：动作 ID、冷却组名或 'echo'）从第 ready 个战斗帧起能用（倒计时期间不变）；
+ *  null = 现在就能用。按次数充能的另给 charges：现在还剩几次（ready 是下一次回复的时刻，满了为 null） */
+export interface CooldownStep { f: number; char: CharName; key: string; ready: number | null; charges?: number }
 
 /** 钩子的状态量：名字 → 数或布尔。在角色模块的 vars 里声明初值，仿真中不能加新键（对应 Rust 的结构体字段，总设计 §10.1） */
 export type HookVars = Record<string, number | boolean>

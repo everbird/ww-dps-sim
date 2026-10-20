@@ -31,8 +31,8 @@ dataDescribe('网页的 Worker', () => {
     expect(opt.yaml).toContain('梦魇·无冠者')
     await expect(handlers.run({ scenario: { name: 'x.yaml', text: 'team: 1' } })).rejects.toThrow(/x\.yaml/)
   }, 60000)
-  test('设计备选 A–D 都能生成：共用脚本内联、数据带上 buff 的给予者', async () => {
-    for (const file of ['a-lanes.html', 'b-volumes.html', 'c-ledger.html', 'd-lens.html']) {
+  test('设计备选 A–E 都能生成：共用脚本内联、数据带上 buff 的给予者', async () => {
+    for (const file of ['a-lanes.html', 'b-volumes.html', 'c-ledger.html', 'd-lens.html', 'e-player.html']) {
       const { html } = await handlers.design({ scenario: src('scenarios/m0-team.yaml'), file })
       expect(html).toContain('window.WW')
       expect(html).not.toContain('/*@shared*/')
