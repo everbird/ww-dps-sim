@@ -287,8 +287,16 @@ window.WW = (() => {
   }
   const cmdText = (m, c) => ((c.loop === 0 ? m.opening : m.rotation) || [])[c.line - 1] || ''
   const cmdWhere = c => `${c.loop === 0 ? '启动' : `第 ${c.loop} 轮`}第 ${c.line} 条`
-  /** 每个角色的颜色：--c0..--c2 指向元素色 */
-  function paint(m) { m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`)) }
+  /** 每个角色的颜色：--c0..--c2 指向元素色。同元素的换深浅（心 · 雷主 · 卜灵都是导电）：第一个用元素色，第二个往 --ink 调 35%
+   *  （深色主题变亮、浅色主题变暗），第三个往 --panel 调 25%（反过来）；跟着主题走，三个都看得清 */
+  function teamColors(m) {
+    const seen = {}
+    return m.team.map(t => {
+      const v = `var(${ELEMENT_VAR[t.element] || '--el-physical'})`, k = (seen[v] = (seen[v] || 0) + 1)
+      return k === 1 ? v : k === 2 ? `color-mix(in oklab, ${v} 65%, var(--ink))` : `color-mix(in oklab, ${v} 75%, var(--panel))`
+    })
+  }
+  function paint(m) { teamColors(m).forEach((c, i) => document.documentElement.style.setProperty(`--c${i}`, c)) }
   // ---- 轴可能有问题（TD-09 §3.5、TD-12 §2.1）：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏。
   // 引擎记成 warning 事件（code introMissed，带指令出处 cmd）；各视图顶上一条提示条（点一条跳过去），切人处画标记 ----
   /** 警告正文：去掉开头的"启动第 11 条 switch 椿 变奏："（行号、指令各视图自己写） */
@@ -354,5 +362,5 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, teamColors, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()

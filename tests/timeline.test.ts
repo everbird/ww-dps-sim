@@ -97,6 +97,14 @@ describe('时间轴网页', () => {
     expect(res4.cooldowns.filter(x => x.key === 'echo').map(x => [x.f, x.ready, x.charges])).toEqual([[180, 250, 1], [190, 250, 0], [299, 370, 1], [419, null, 2]])
     expect(timelineModel('scenarios/demo.yaml', sc4, resolveScenario(sc4, synthData([戊, idle('乙'), idle('丙')])), res4).cooldowns).toBe(res4.cooldowns)
   })
+  test('角色颜色（web/designs/shared.js 的 teamColors）：同元素的第一个用元素色，第二个往 --ink 调、第三个往 --panel 调；不同元素不动', () => {
+    const win: { WW?: { teamColors: (m: { team: { element: string }[] }) => string[] } } = {}
+    new Function('window', readFileSync(new URL('../web/designs/shared.js', import.meta.url), 'utf8'))(win)
+    const colors = (...els: string[]) => win.WW!.teamColors({ team: els.map(element => ({ element })) })
+    expect(colors('导电', '导电', '导电')).toEqual(['var(--el-electro)', 'color-mix(in oklab, var(--el-electro) 65%, var(--ink))', 'color-mix(in oklab, var(--el-electro) 75%, var(--panel))'])
+    expect(colors('湮灭', '衍射', '湮灭')).toEqual(['var(--el-havoc)', 'var(--el-spectro)', 'color-mix(in oklab, var(--el-havoc) 65%, var(--ink))'])
+    expect(colors('冷凝', '湮灭', '衍射')).toEqual(['var(--el-glacio)', 'var(--el-havoc)', 'var(--el-spectro)'])
+  })
   test('视图 A–D（pnpm timeline --view）：模板都在、共用脚本内联、数据带上 buff 的给予者与定义', () => {
     const m = timelineModel('scenarios/demo.yaml', sc, r, res)
     const shared = readFileSync(new URL('../web/designs/shared.js', import.meta.url), 'utf8')

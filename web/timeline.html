@@ -803,7 +803,12 @@
 
   function load(raw) {
     const m = normalize(raw)
-    m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`))
+    // 同元素的换深浅（同 web/designs/shared.js 的 teamColors）：第二个往 --ink 调 35%，第三个往 --panel 调 25%
+    const seen = {}
+    m.team.forEach((t, i) => {
+      const v = `var(${ELEMENT_VAR[t.element] || '--el-physical'})`, k = (seen[v] = (seen[v] || 0) + 1)
+      document.documentElement.style.setProperty(`--c${i}`, k === 1 ? v : k === 2 ? `color-mix(in oklab, ${v} 65%, var(--ink))` : `color-mix(in oklab, ${v} 75%, var(--panel))`)
+    })
     m.D = build(m)
     M = m
     renderHeader(m)
