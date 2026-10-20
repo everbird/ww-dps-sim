@@ -42,7 +42,12 @@ export default [
         zone: 'RoleIgnoreResistance', value: [0.1, 0.135, 0.17, 0.205, 0.24], filter: { tags: ['共鸣技能'], elements: ['导电'] },
         target: 'self', duration: 1800, icd: 6, trigger: ELECTRO,
       },
-      // 第 4 条"30秒内若装备者处于前台，半径50米内的目标受到电磁效应伤害加深30%"只加在电磁效应自身的伤害上，等结算接上时再写（TD-06 §18）
+      {
+        // 挂在目标身上、只加在电磁效应自身的伤害上（TD-06 §18）；"若装备者处于前台"= ownerOnField。"同名效果之间取最高值"：一个人装备，不用管
+        id: '玉阙玄华.电磁加深', source: '附加电磁效应后或响应同奏后，30秒内若装备者处于前台，半径50米内的目标受到电磁效应伤害加深30%，每0.1秒可触发1次。同名效果之间取最高值。',
+        zone: 'DamageAmplify0', value: [0.3, 0.375, 0.45, 0.525, 0.6], filter: { effects: ['电磁效应'] },
+        target: 'enemy', duration: 1800, icd: 6, trigger: ELECTRO, ownerOnField: true,
+      },
     ],
   }),
   // 行进序曲（散华）、奇幻变奏（维里奈、卜灵）：被动都是回复协奏，写成资源型触发效果（TD-07 §9）

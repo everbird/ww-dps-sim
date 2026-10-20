@@ -454,8 +454,13 @@
       if (e.change === 'harmonyBreak') dis = false
       if (e.change === 'break') para = true
       if (e.change === 'breakEnd') para = false
-      if (e.change === 'effectApplied' && e.effect) fx.set(e.effect, { stacks: e.stacks, burst: e.burst })
-      if (e.change === 'effectEnd' && e.effect) fx.delete(e.effect)
+    }
+    // 异常效应的层数：附加、被消耗、到时，与定时结算后剩下的（电磁爆发清零，TD-06 §18）
+    for (const e of D.effects) {
+      if (e.f > g) break
+      if (e.type === 'effectTick') fx.set(e.effect, { stacks: e.left, burst: 0 })
+      else if (e.change === 'effectEnd') fx.delete(e.effect)
+      else if (e.change === 'effectApplied' || e.change === 'effectConsumed') fx.set(e.effect, { stacks: e.stacks, burst: e.burst })
     }
     return { last, dis, para, fx }
   }

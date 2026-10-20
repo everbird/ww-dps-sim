@@ -8,7 +8,7 @@ window.WW = (() => {
   const INTENDED = new Set(['delay', 'wait', 'at', 'input'])   // input：操作延迟（options.inputDelay）
   /** 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick、写轴要求的），不算"卡住" */
   const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at', 'input'])
-  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
+  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应', effectEnd: '异常效应消失', effectConsumed: '异常效应被消耗' }
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'
   const sec = f => (f / 60).toFixed(2)
@@ -72,6 +72,7 @@ window.WW = (() => {
     // 每个动作给的资源（src/engine/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
     const gainsOf = new Map((raw.gains || []).filter(g => !g.outro).map(g => [g.instance, g]))
     const actions = [], open = new Map(), byInst = new Map(), hits = [], waits = [], skips = [], loops = [], enemy = [], switches = [], alerts = []
+    const effects = []   // 异常效应的层数变化（附加、消耗、到时，与定时结算 effectTick），按日志顺序（TD-06 §18）
     const buffRows = new Map(), always = new Set(), damaging = new Set()
     for (const e of m.log) {
       switch (e.type) {
@@ -94,7 +95,8 @@ window.WW = (() => {
         case 'wait': waits.push(e); break
         case 'skip': skips.push(e); break
         case 'loop': loops.push(e); break
-        case 'enemyState': enemy.push(e); break
+        case 'enemyState': enemy.push(e); if (e.effect) effects.push(e); break
+        case 'effectTick': effects.push(e); break
         case 'buffApply': case 'buffExpire': {
           if (e.type === 'buffApply' && e.remaining === 'inf') { always.add(`${e.buff}→${e.target}`); break }
           const key = `${e.buff}→${e.target}`
@@ -136,7 +138,7 @@ window.WW = (() => {
       owner: m.buffOwners[r.buff] || (r.buff.includes('.') ? r.buff.slice(0, r.buff.indexOf('.')) : r.buff),
       uptime: (m.summary.buffUptime || {})[r.key] ?? null,
     })).sort((a, b) => (slot.has(a.target) ? slot.get(a.target) : 9) - (slot.has(b.target) ? slot.get(b.target) : 9) || a.spans[0].start - b.spans[0].start)
-    m.D = { slot, actions, hits, waits, skips, loops: loopSpans, enemy, switches, alerts, onField, buffs, always, clock, lastF,
+    m.D = { slot, actions, hits, waits, skips, loops: loopSpans, enemy, effects, switches, alerts, onField, buffs, always, clock, lastF,
       maxHit: Math.max(1, ...hits.map(h => (h.dmg ? h.dmg.expected : 0))) }
     return m
   }

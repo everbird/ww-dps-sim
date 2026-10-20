@@ -93,8 +93,8 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
       const kind = sim.r.team[by].actions[ev.action]?.kind
       return [{ on: 'actionStart', by, action: ev.action, ...(kind ? { kind } : {}) }]
     }
-    case 'hit':
-      return [{ on: 'judgmentSettle', by: slot(ev.char), action: ev.action, judgment: ev.judgment, tags: ev.tags, element: ev.element }]
+    case 'hit':                                     // 异常效应自身的伤害不是判定结算，不触发"命中时"（TD-06 §18）
+      return ev.effect ? [] : [{ on: 'judgmentSettle', by: slot(ev.char), action: ev.action, judgment: ev.judgment, tags: ev.tags, element: ev.element }]
     case 'heal': return [{ on: 'heal', by: slot(ev.char) }]
     case 'intro': return [{ on: 'intro', by: slot(ev.char), action: ev.action }]
     case 'outro': return [{ on: 'outro', by: slot(ev.char), to: slot(ev.to) }]

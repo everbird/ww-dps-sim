@@ -27,6 +27,7 @@ from characters import build_characters  # noqa: E402
 from dmg import index_dmg, join_block  # noqa: E402
 from echo_stats import build_echo_stats  # noqa: E402
 from tune_break import build_tune_break  # noqa: E402
+from effects import build_effects  # noqa: E402
 from versions import pick_xlsx  # noqa: E402
 from base_cols import BaseCols  # noqa: E402
 from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
@@ -117,8 +118,10 @@ def main() -> int:
 
     # §11.3 谐度破坏表（TD-03 §6）；规则（谐破冷却、按钮时长）取「附页2」"偏谐机制·通用"的说明文字
     notes = [(c.coordinate, c.value) for row in wb['附页2'].iter_rows() for c in row if isinstance(c.value, str)]
-    tune = build_tune_break(dmg, list(wb['伤害计算'].iter_rows(min_row=1, max_col=7, values_only=True)), base_rows, bcol,
-                            issues, notes)
+    calc_rows = list(wb['伤害计算'].iter_rows(min_row=1, max_col=7, values_only=True))
+    tune = build_tune_break(dmg, calc_rows, base_rows, bcol, issues, notes)
+    # §4.3、§11.2 异常效应：逐层倍率（dmg「异常伤害」行）、说明、按等级的异常伤害基础值（TD-03 §5）
+    effects = build_effects(dmg, calc_rows, base_rows, bcol, issues)
 
     # §5.4 声骸属性：主词条满级值、固定副主属性、副词条各档
     echo_stats = build_echo_stats(list(b.iter_rows(min_row=55, max_row=90, max_col=240, values_only=True)), issues)
@@ -188,6 +191,7 @@ def main() -> int:
     _dump(out / 'echo-stats.json', echo_stats)
     _dump_lines(out / 'enemies.json', enemies)
     _dump(out / 'tune-break.json', tune)
+    _dump(out / 'effects.json', effects)
     if nk is not None:
         _dump(out / 'nanoka.json', nk)
     (out / 'fixtures').mkdir(exist_ok=True)
@@ -213,6 +217,7 @@ def main() -> int:
         '声骸副词条（echo-stats.json）': len(echo_stats['subTiers']),
         '敌人（enemies.json）': len(enemies),
         '谐度破坏变体（tune-break.json）': len(tune['variants']),
+        '异常效应（effects.json）': len(effects['effects']),
         'golden 条目（带 dmgKey）': f"{len(golden_damage['entries'])}（{sum(1 for e in golden_damage['entries'] if 'dmgKey' in e)}）",
         'golden 乘区格': len(golden_zones),
     }

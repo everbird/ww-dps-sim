@@ -2,12 +2,15 @@
 // 每次结算的伤害（TD-03）与资源（§2–§4）之后、hit 事件记下之后调用 hitGauges；瘫痪的结束由 P6 的 enemyTimers 判断。
 // 计时一律按战斗帧：全局时停（大招、谐度破坏的演出）时战斗时钟停走，谐破冷却、按钮与瘫痪也停（2026-10-04 用户确认，m0-confirm §9.2 测5）。
 // 谐破冷却（按敌人 COST）与按钮时长取 xlsx 附页2 的偏谐通用规则（m0-confirm §10 H2、H4）。
-// 异常效应（§18）：判定的 applies 与钩子 applyEffect 附加层数、P6 计时到期；伤害结算还没接（假设 later-damage）。
+// 异常效应（§18）：判定的 applies 与钩子 applyEffect 附加层数；P6 定时结算（伤害按 TD-03 §5，之后减层、电磁爆发清零）、计时到期；
+// 钩子主动触发的效应伤害（心的踏月归心）与消耗电磁爆发（心的霆心域）也在这里。
 import { EFFECT_NAMES, type EffectName, type Slot } from '../data/common'
-import type { ActionDef } from '../data/gamedata'
+import type { ActionDef, EffectDef } from '../data/gamedata'
 import { assume } from './assumptions'
 import { activeFor } from './buffs'
 import type { Sim } from './context'
+import { abnormalBase, abnormalHit, accumulate, contributes, type HitView } from './formula'
+import { checkHit } from './invariants'
 import { log, SLOTS } from './kernel'
 import { grant } from './resources'
 import type { JudgmentRuntime, Rates, SimState } from './types'
@@ -94,7 +97,7 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
   }
 }
 
-/** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18） */
+/** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18）。定时结算在它之前（effectTicks） */
 export function enemyTimers(s: SimState, rates: Rates): void {
   const e = s.enemy
   if (e.broken && s.battleFrames >= e.paralyzedUntil) {
@@ -114,7 +117,7 @@ export function enemyTimers(s: SimState, rates: Rates): void {
 
 /** 为目标附加异常效应（§18）：层数加到常规上限（maxStacks），超出的进额外层（电磁效应的"电磁爆发"，burstMax，到顶不再加）；
  *  每次附加把持续时间刷新为效应表的 duration（全部层数共用一个计时，"重复获得刷新持续时间"）。
- *  到顶了也记 effectApplied：触发"附加…后"的效果（雷主延奏写的是"尝试赋予异常效应后"）。伤害还没算，只记层数（假设 later-damage） */
+ *  到顶了也记 effectApplied：触发"附加…后"的效果（雷主延奏写的是"尝试赋予异常效应后"）。伤害在定时结算时算（effectTicks） */
 export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName, stacks: number, why: string): void {
   const def = sim.r.data.effects[effect]
   const who = s.chars[by].name
@@ -137,5 +140,73 @@ export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName,
     type: 'enemyState', change: 'effectApplied', detail: why, by: who, effect, added, stacks: x.stacks,
     ...(def.burstMax > 0 ? { burstAdded, burst: x.burst } : {}),
   })
-  assume(s, 'later-damage', `${effect}（只记层数）`)
+}
+
+/** 第 k 层的倍率（effects.json 的逐层倍率；k 超出表的按最后一层，0 层或没有表为 0） */
+const multOf = (def: EffectDef, k: number): number => (k > 0 && def.multipliers.length ? def.multipliers[Math.min(k, def.multipliers.length) - 1]! : 0)
+
+/** 异常效应自身的一段伤害（TD-03 §5）：定时结算与钩子主动触发都走这里。记一条 hit（action 是效应名、标签"异常效应"、带 effect），
+ *  算在 by 名下：吃 by 身上与目标身上、过滤对得上的 buff（加深与最终伤害；不吃伤害加成、不暴击，出伤者的减防不算）；不给资源。返回伤害 */
+function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multiplier: number, judgment: string): number {
+  const r = sim.r
+  const def = r.data.effects[effect]!
+  const view: HitView = {
+    element: def.element, tags: ['异常效应'], action: effect, judgment, effect, enemyEffects: new Set(Object.keys(s.enemy.effects) as EffectName[]),
+  }
+  const active = activeFor(s, sim.book, by)
+  const { value, factors } = abnormalHit({
+    base: abnormalBase(r.data.abnormalBaseByLevel, r.rules.charLevel), multiplier, level: r.rules.charLevel,
+    enemy: { def: r.enemy.def, res: r.enemy.res[def.element] },
+  }, accumulate(view, active), r.rules)
+  const dmg = { nonCrit: value, crit: value, expected: value }
+  checkHit(s, dmg, s.chars[by].name, `${effect} ${judgment}`)
+  log(s, {
+    type: 'hit', char: s.chars[by].name, action: effect, judgment, id: s.nextId++, tick: 0, element: def.element, tags: ['异常效应'],
+    dmg, factors, buffs: active.filter(b => contributes(b, view)).map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id)),
+    gains: { energy: {}, concerto: 0, core: [0, 0, 0] }, effect,
+  })
+  return value
+}
+
+/** P6 定时结算（§18，假设 effect-tick）：从第一次附加起每 tickInterval 个战斗帧一次，之后再附加不重置；按当时的层数倍率出一段伤害，
+ *  有额外层（电磁爆发）时另加额外层数对应的倍率（假设 effect-burst），记在最后附加的人名下（假设 effect-owner）；之后移除
+ *  ⌊层数 × decay⌋ 层（角色模块的 effectRules 可让它不减）、额外层清零，记 effectTick。在到期判断之前：到期那一刻赶上的先结算 */
+export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
+  for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
+    const x = s.enemy.effects[name]
+    const def = sim.r.data.effects[name]
+    if (!x || !def || def.tickInterval === null || s.battleFrames + rates.battle < x.nextTick - 1e-6) continue
+    x.nextTick += def.tickInterval
+    const { stacks, burst } = x
+    const who = s.chars[x.source].name
+    assume(s, 'effect-tick', name)
+    assume(s, 'effect-owner', `${name} → ${who}`)
+    if (burst > 0) assume(s, 'effect-burst', `${name} 结算时有 ${burst} 层额外层`)
+    if (!def.multipliers.length && !sim.warned.has(`effect-rate|${name}`)) {
+      sim.warned.add(`effect-rate|${name}`)
+      log(s, { type: 'warning', code: 'effect', message: `${name} 没有逐层倍率（data/generated/effects.json，先 pnpm build:data），结算的伤害记 0（TD-06 §18）` })
+    }
+    const damage = stacks > 0 ? effectHit(sim, s, x.source, name, multOf(def, stacks) + multOf(def, burst), `${name}·定时结算`) : 0
+    x.stacks = sim.keepStacks.has(name) ? stacks : stacks - Math.floor(stacks * def.decay)
+    x.burst = 0
+    log(s, { type: 'effectTick', effect: name, stacks, ...(def.burstMax > 0 ? { burst } : {}), left: x.stacks, damage, source: who })
+  }
+}
+
+/** 钩子主动触发一次效应伤害（心的踏月归心）：倍率 = scale × 目标当前层数的倍率（不含额外层）；不算一次结算。目标没有该效应时为 0 */
+export function effectDamage(sim: Sim, s: SimState, by: Slot, effect: EffectName, scale: number, judgment: string): number {
+  const x = s.enemy.effects[effect]
+  const def = sim.r.data.effects[effect]
+  if (!x || !def || x.stacks <= 0 || scale <= 0) return 0
+  return effectHit(sim, s, by, effect, scale * multOf(def, x.stacks), judgment)
+}
+
+/** 消耗目标该效应全部的额外层（电磁爆发），返回消耗了几层；有消耗时记 enemyState effectConsumed（心：添加的电磁爆发转成霆心域） */
+export function takeBurst(s: SimState, by: Slot, effect: EffectName, why: string): number {
+  const x = s.enemy.effects[effect]
+  if (!x || x.burst <= 0) return 0
+  const n = x.burst
+  x.burst = 0
+  log(s, { type: 'enemyState', change: 'effectConsumed', detail: why, by: s.chars[by].name, effect, stacks: x.stacks, burst: 0 })
+  return n
 }

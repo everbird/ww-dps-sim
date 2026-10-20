@@ -127,14 +127,30 @@ export interface AbnormalContext {
 }
 
 export function computeAbnormal(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules): number {
+  return abnormalHit(ctx, acc, rules).value
+}
+
+/** 同 computeAbnormal，另给各项系数（时间轴的乘区拆分用；暴击两项为 0）。乘法顺序照 xlsx，不能改 */
+export function abnormalHit(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules): { value: number; factors: HitFactors } {
   const z = acc.zones
   const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
-  return Math.ceil(ctx.base * ctx.multiplier * def * res
-    * (1 - Math.min(z.TargetDamageReduce, 1)) * (1 - Math.min(z.TargetElementDamageReduce, 1))
-    * (1 + Math.max(z.SpecialDamageChange, -1))
-    * clamp0(ampClasses(z)) * clamp0(finalClasses(z)) * clamp0(1 + z.FinalDamage1001)
-    * clamp0(1 + z.DamageAmplify0) * clamp0(1 + z.DamageAmplify1002))
+  const dr1 = 1 - Math.min(z.TargetDamageReduce, 1)
+  const dr2 = 1 - Math.min(z.TargetElementDamageReduce, 1)
+  const special = 1 + Math.max(z.SpecialDamageChange, -1)
+  const amp19 = clamp0(ampClasses(z))
+  const fin07 = clamp0(finalClasses(z))
+  const fin1001 = clamp0(1 + z.FinalDamage1001)
+  const amp0 = clamp0(1 + z.DamageAmplify0)
+  const amp1002 = clamp0(1 + z.DamageAmplify1002)
+  const value = Math.ceil(ctx.base * ctx.multiplier * def * res * dr1 * dr2 * special * amp19 * fin07 * fin1001 * amp0 * amp1002)
+  return {
+    value,
+    factors: {
+      base: ctx.base * ctx.multiplier, def, bonus: 1, res, reduce: dr1 * dr2, special, amplify: amp0 * amp19 * amp1002, final: fin07 * fin1001,
+      critRate: 0, critDamage: 0,
+    },
+  }
 }
 
 export const abnormalBase = (table: number[], level: number): number => table[level - 1] ?? 0
@@ -217,16 +233,25 @@ function skipForAbnormal(b: ActiveBuff): boolean {
   return b.def.zone !== undefined && DEF_ZONES.has(b.def.zone) && b.def.target !== 'enemy' && b.owner !== 'env' && !b.def.filter?.tags?.includes('异常效应')
 }
 
+/** 异常效应伤害用得到的乘区（TD-03 §5）：不吃面板、伤害加成、倍率提升与附加伤害 */
+const ABNORMAL_ZONES: ReadonlySet<ZoneId> = new Set<ZoneId>([
+  'TargetDefRate', 'RoleIgnoreDefRate', 'TargetElementResistant', 'RoleIgnoreResistance', 'TargetDamageReduce', 'TargetElementDamageReduce',
+  'SpecialDamageChange', ...AMPLIFY_ZONES, 'DamageAmplify1002', ...FINAL_ZONES,
+])
+
+/** 这个 buff 计不计入这一段：有乘区（标记型不参与伤害，TD-07 §7）、过滤对得上；异常效应伤害只算它用得到的乘区，且有防御例外 */
+export function contributes(b: ActiveBuff, h: HitView): boolean {
+  if (b.def.zone === undefined || !matchesFilter(b.def.filter, h)) return false
+  return !h.tags.includes('异常效应') || (ABNORMAL_ZONES.has(b.def.zone) && !skipForAbnormal(b))
+}
+
 /** 按 zone 把 value × stacks 累加；critOnly 的进暴击专属桶；最后并入钩子直接补的值 */
 export function accumulate(h: HitView, buffs: readonly ActiveBuff[], draft?: Pick<HitDraft, 'zones' | 'critOnly'>): ZoneAccumulator {
   const acc = emptyAccumulator()
-  const abnormal = h.tags.includes('异常效应')
   for (const b of buffs) {
-    if (b.def.zone === undefined) continue                    // 标记型 buff 不参与伤害（TD-07 §7）
-    if (!matchesFilter(b.def.filter, h)) continue
-    if (abnormal && skipForAbnormal(b)) continue
+    if (!contributes(b, h)) continue
     const bucket = b.def.filter?.critOnly ? acc.critOnly : acc.zones
-    bucket[b.def.zone] += b.value * b.stacks
+    bucket[b.def.zone!] += b.value * b.stacks
   }
   if (draft) {
     acc.zones = addZones(acc.zones, draft.zones)

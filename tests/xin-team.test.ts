@@ -1,5 +1,5 @@
 // tests/xin-team.test.ts —— 心 · 雷主 · 卜灵 队伍（2026-10-19）：带前缀并入的岁主形态、落地段、按角色换技能版本的声骸、
-// 三个角色模块的机制（卦象与四式重击、雷法、电髓、两种形态、敕令、电磁+1）。机制用 5 阶奇幻变奏那份（xin-team-r5.yaml，每次都变奏）；
+// 三个角色模块的机制（卦象与四式重击、雷法、电髓、两种形态、敕令、电磁+1），电磁效应的结算（第二步：不减层、霆心域、踏月归心）。机制用 5 阶奇幻变奏那份（xin-team-r5.yaml，每次都变奏）；
 // 1 阶那份（xin-team.yaml）看工具报出"卜灵切雷主没变奏"（docs/xin-confirm.md X1）。依赖 data/generated（缺数据时跳过）
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
@@ -123,12 +123,35 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
     const xin = texts('心')
     const turn = xin.findIndex(t => t.startsWith('照世相'))
     expect(xin.slice(0, turn).every(t => t.startsWith('应世相'))).toBe(true)
-    expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则可用 · 敕令 21 · 额外能量')
+    // 霆霓：电磁爆发一加上就被心收成霆心域，队友之后的附加又能进电磁爆发，转相前已攒满 10 层（固有2，含进了电磁爆发的）
+    expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则可用 · 敕令 21 · 霆霓 10 · 霆心域 49 · 额外能量')
     expect(xin.some(t => t.includes('统御众机') && t.includes('电磁+1 ×5'))).toBe(true)
     const r = load()
     expect(resourceTracks(gainSteps(out.log, r), r).map(x => [x.char, x.tracks.map(t => t.name)])).toEqual([
       ['心', ['能量', '协奏', '应世心', '照世心']], ['雷主·男', ['能量', '协奏', '电涌']], ['卜灵', ['能量', '协奏', '卦象']],
     ])
+  })
+
+  test('电磁效应的结算（第二步，TD-06 §18）：心在队伍里时不减层；电磁爆发一加上就被心收成霆心域；踏月归心在应世 E-落地 / 照世 E-2 出伤害；'
+    + '霆心域 ≥ 50 才停滞目标；玉阙玄华第 4 条只在心在前台时加在结算上', () => {
+    const ticks = eventsOfLog(out.log, 'effectTick')
+    expect(ticks.length).toBeGreaterThan(30)
+    expect(ticks.every(t => t.effect === '电磁效应' && t.left === t.stacks && t.stacks === 10)).toBe(true)   // 一直顶在 10 层
+    const st = eventsOfLog(out.log, 'enemyState')
+    const burst = st.filter(e => e.change === 'effectApplied' && (e.burstAdded ?? 0) > 0)
+    const taken = st.filter(e => e.change === 'effectConsumed')
+    expect(taken).toHaveLength(burst.length)
+    expect(taken.every(e => e.by === '心' && e.burst === 0)).toBe(true)
+    const hits = eventsOfLog(out.log, 'hit')
+    const last = hits.filter(h => h.char === '心' && ((h.action === 'E' && h.judgment === 'E-落地') || (h.action === '照世·E' && h.judgment === 'E-2')))
+    const tread = hits.filter(h => h.judgment === '踏月归心·电磁效应')
+    expect(tread.length).toBeGreaterThan(0)
+    expect(tread.every(h => h.char === '心' && h.effect === '电磁效应' && h.dmg!.expected > 0 && last.some(x => x.f === h.f))).toBe(true)
+    const stall = eventsOfLog(out.log, 'judgmentSpawn').filter(e => e.judgment === 'E-停滞')
+    expect(stall.length).toBeLessThan(eventsOfLog(out.log, 'actionStart').filter(e => e.char === '心' && e.action === '照世·E').length)
+    const settled = hits.filter(h => h.judgment === '电磁效应·定时结算')
+    expect(settled.some(h => h.buffs.includes('玉阙玄华.电磁加深'))).toBe(true)
+    expect(settled.some(h => !h.buffs.includes('玉阙玄华.电磁加深'))).toBe(true)
   })
 
   test('电磁效应：常规 10 层、电磁爆发 10 层到顶；固有1 两名队友附加后叠满 2 层', () => {

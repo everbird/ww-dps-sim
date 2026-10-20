@@ -13,7 +13,7 @@ _RAND = 'PhantomModel.SubAttribute.Rand'
 REFERENCE = {
     'M': 'PropExtraRateId', 'O': 'PropExtraRate.Tough&Rage',
     'R': 'WeaknessDamageMonsterCost', 'T': 'WeaknessDamageMinus', 'U': 'WeaknessDamageMinusRatio',
-    'AM': 'AbnormalDamageLv', 'AO': 'WeaknessDamageBaseValue',
+    'AM': 'AbnormalDamageLv', 'AN': 'AbnomalDamage', 'AO': 'WeaknessDamageBaseValue',
     'AP': 'RolePropertyGrowth.Level', 'AQ': 'RolePropertyGrowth.BreachLevel', 'AR': 'RolePropertyGrowth.LifeMaxRatio',
     'AS': 'RolePropertyGrowth.AtkRatio', 'AT': 'RolePropertyGrowth.DefRatio',
     'BB': 'PhantomBase.MainProp.Desc', 'BC': 'PhantomBase.MainProp.Cost',

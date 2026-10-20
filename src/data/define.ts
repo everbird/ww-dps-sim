@@ -2,7 +2,7 @@
 // define* 只做类型约束、原样返回；buff 在注册层装载时再用 BuffDefSchema 校验并补默认值。
 import type { ActionId, ActionKind, BodyType, CharName, EffectName, Element, Frame, StatKey, WeaponType } from './common'
 import type { BuffDefInput, ResourceEffectInput } from './buff.schema'
-import type { CancelWindow, JudgmentDef, PriorityStep } from './gamedata'
+import type { CancelWindow, EffectRule, JudgmentDef, PriorityStep } from './gamedata'
 import type { CharacterHooks, HookVars } from '../engine/types'
 
 /** 对单个动作的装配结果做覆盖（TD-01 §13.4）；只改装配结果，不回写生成数据。
@@ -57,6 +57,8 @@ export interface CharacterModule<V extends HookVars = HookVars> {
   vars?: V
   hooks?: CharacterHooks<V>
   actionOverrides?: Record<ActionId, ActionOverride>
+  /** 角色在队伍里时改的异常效应规则（TD-06 §18）：心·共鸣模态·电磁的"电磁效应每次触发时不再减少层数"= { 电磁效应: { keepStacks: true } } */
+  effectRules?: Partial<Record<EffectName, EffectRule>>
 }
 
 export interface MergeBlock { block: string; prefix: string }
@@ -81,7 +83,7 @@ export const defineEchoSet = (m: EchoSetModule): EchoSetModule => m
 export interface WeaponModule { name: string; passives: BuffDefInput[]; resourceEffects?: ResourceEffectInput[] }
 export const defineWeapon = (m: WeaponModule): WeaponModule => m
 
-/** data/curated/effects.ts 的一项：异常效应的规则（TD-06 §18），取「伤害计算」页各效应的说明；逐层倍率以后从 dmg 的「异常伤害」行来 */
+/** data/curated/effects.ts 的一项：异常效应的规则（TD-06 §18），取「伤害计算」页各效应的说明；逐层倍率由构建从 dmg 的「异常伤害」行抽进 effects.json */
 export interface EffectModule {
   name: EffectName
   element: Element
@@ -90,6 +92,7 @@ export interface EffectModule {
   burstMax?: number                         // 到上限后还能额外叠的层数（电磁爆发）；缺省 0
   duration: Frame                           // 每次附加刷新的持续时间
   tickInterval: Frame | null                // 结算周期
+  decay?: number                            // 每次结算后移除当前层数的比例（电磁效应"移除当前层数50%"= 0.5）；缺省 0
 }
 export const defineEffect = (m: EffectModule): EffectModule => m
 

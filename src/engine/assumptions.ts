@@ -38,8 +38,29 @@ export const ASSUMPTIONS = [
   },
   {
     id: 'later-damage', topic: '公式', tracked: true, impact: 'unknown', ref: 'TD-03 §5、§6，总设计 §13',
-    what: '异常效应、震谐响应、骇破响应的伤害还没算，记 0',
+    what: '震谐响应、骇破响应，以及动作表里标了"异常效应"的直接判定，伤害还没算，记 0（异常效应的定时结算与钩子主动触发的已经算了，TD-06 §18）',
     why: '公式已定，触发时机要等加了用得到的角色再做（TD-06）；现在的队伍不出这几类伤害',
+  },
+  {
+    id: 'effect-tick', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18，docs/xin-confirm.md §4',
+    what: '定时结算（电磁效应 5 秒一次）从第一次附加起按战斗帧计时，之后再附加不重置；按当时的层数倍率出一段伤害，'
+      + '之后移除 ⌊层数 × 50%⌋ 层（5 层剩 3 层）；到期那一刻赶上结算的先结算再消失',
+    why: '原文只写"每5秒结算1次对应层数倍率异常伤害、移除当前层数50%的异常层数"，没说计时从哪一刻起、单数层怎么取整；'
+      + '心·共鸣模态·电磁下不减层，心 · 雷主 · 卜灵不受取整影响',
+    adjust: { how: '实测后改 src/engine/enemy.ts 的 effectTicks（计时起点、取整）' },
+  },
+  {
+    id: 'effect-owner', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18、TD-03 §5',
+    what: '定时结算的伤害记在最后一次附加的人名下，吃他身上与目标身上、过滤对得上的加深与最终伤害（元素对得上的"导电伤害加深"也算），'
+      + '不吃伤害加成、不暴击、出伤者的减防不算',
+    why: '原文没说异常伤害算谁的、吃谁身上的 buff；各人身上的加深不同时（心的延奏只给心以外的人），记在谁名下会改变结算的伤害',
+    adjust: { how: '查证后改 effectTicks 里记在谁名下（EffectRuntime.source），或给效应伤害单独定 buff 的来源' },
+  },
+  {
+    id: 'effect-burst', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18',
+    what: '电磁爆发（额外层）：结算时另加"电磁爆发层数对应的倍率"，与常规层数的倍率相加；结算后清零',
+    why: '原文"下次结算电磁效应伤害时，额外附加当前电磁爆发层数倍率"，没说怎么叠、结算后留不留；'
+      + '心在队伍里时添加的电磁爆发当场被消耗成霆心域，碰不到',
   },
   {
     id: 'single-target', topic: '范围', tracked: false, impact: 'none', ref: '总设计 T5',

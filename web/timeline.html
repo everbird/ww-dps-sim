@@ -258,7 +258,7 @@
   const INTENDED = new Set(['delay', 'wait', 'at', 'input'])   // input：操作延迟（options.inputDelay）
   // 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick、写轴要求的）：时间轴上画成灰色，表里收起
   const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at', 'input'])
-  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束、白条回满', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
+  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束、白条回满', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应', effectEnd: '异常效应消失', effectConsumed: '异常效应被消耗' }
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
