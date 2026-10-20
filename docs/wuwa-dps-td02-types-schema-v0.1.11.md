@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.10
+# 鸣潮 DPS 引擎 · TD-02 类型与 Schema v0.1.11
 
-> **状态**：v0.1.10（2026-10-18），已实现。v0.1.10 并回视频轴核对时新增的类型与字段（以"v0.1.10"标出）；v0.1.9（2026-10-17）v0.1.9 并回假设登记与好移植的写法（总设计 v0.2 T16、§10.1；以"v0.1.9"标出）；v0.1.8（2026-10-05）v0.1.8 并回补位、开局核心资源、视频时间点与核心资源改名（以"v0.1.8"标出）；v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
+> **状态**：v0.1.11（2026-10-20），已实现。v0.1.11 并回心 · 雷主 · 卜灵带来的类型与字段：异常效应、判定的延迟、带前缀并入与落地段、显示钩子与冷却、两个规则开关（以"v0.1.11"标出）；v0.1.10（2026-10-18）v0.1.10 并回视频轴核对时新增的类型与字段（以"v0.1.10"标出）；v0.1.9（2026-10-17）v0.1.9 并回假设登记与好移植的写法（总设计 v0.2 T16、§10.1；以"v0.1.9"标出）；v0.1.8（2026-10-05）v0.1.8 并回补位、开局核心资源、视频时间点与核心资源改名（以"v0.1.8"标出）；v0.1.7 并回启动轴、谐度破坏的调整、按比例削白条、时间轴网页与换版新增的类型与字段（以"v0.1.7"标出）；v0.1.6 并回 M4 敌人量表新增的类型与字段（以"v0.1.6"标出）；v0.1.5 并回声骸与 M5 新增的类型与字段（以"v0.1.5"标出），见附录；v0.1.4 并回 M1–M3 新增的类型与字段，代码块改为类型一览（代码以仓库为准）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§2、§3.3、§5、§6.2–6.9、§8、§9、§10；《TD-01 数据字典与抽取规格 v0.1》（下称"TD-01"）§12、§13；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、6.1；v0.1.1 按《TD-03 伤害公式规格 v0.1》（下称"TD-03"）§12.1 修订；v0.1.2 按《TD-04 仿真内核规格 v0.1》（下称"TD-04"）§12.2 修订；v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》（下称"TD-09"）§9.2 与 M0 确认（`docs/m0-confirm.md`）修订
 > **下游**：全部模块的代码；TD-03（伤害公式，已据其定稿乘区清单）、TD-04（仿真内核，已据其定稿运行时字段）、TD-07 定 BuffDef 语义、TD-09 定排轴语义、TD-10 定事件与汇总字段
 > **验证**：本文代码以文件形式放在一起，用 TypeScript 6.0 严格模式编译通过；第 9 节 22 个用例全部通过（同一工程里 TD-01 的 14 个、TD-03 的 20 个、TD-04 的 35 个、TD-09 的 33 个用例也全部通过）；构建脚本在 20260707 全量数据上产出的生成文件，逐一用本文的 schema 校验通过（9.2）
@@ -141,13 +141,13 @@ flowchart LR
 | `GenEchoStatsSchema` | `echo-stats.json` | v0.1.5：mains、fixedSubs（`{ cost, stat, value }`）、subTiers（属性 → 各档，从低到高）（TD-01 §12.6） |
 | `GenEnemySchema` | `enemies.json` | 防御、抗性、白条、韧性、偏谐上限；v0.1.6：`whiteBarTough`（白条按削韧值，可为 null，TD-01 §9） |
 | `GenTuneBreakSchema` | `tune-break.json` | v0.1.6 已产出：variants（key、weaponType、seq、multiplier、ticks、golden）、costRows、baseByLevel、costFactors（TD-01 §11.3）；v0.1.7：`rules`（可为 null）：lockSec（按 COST 1 / 3 / 4，秒）、lockSecRedName、buttonSec、source（TD-01 §11.4） |
-| `GenEffectsFileSchema` | `effects.json` | 异常效应，未产出 |
+| `GenEffectsFileSchema` | `effects.json` | v0.1.11 已产出：effects（`GenEffectSchema`：name、element、subType、multipliers（第 k 项 = k 层）、maxStacks、desc、golden?）、abnormalBaseByLevel（TD-01 §11.2） |
 | `GenBuffTextSchema` | `buff-texts.json` | 按需 |
 | `GenMetaSchema` | `meta.json` | xlsx 文件、sha256、资源版本、设置区、计数 |
 | **`NanokaFileSchema`** | `nanoka.json` | 技能冷却、技能文本、共鸣链、技能树属性（TD-01 §12.5）；v0.1.5 新增 `echoes`（`NanokaEchoSchema`：id、name、desc、cooldown、damage（id、element、relatedProperty、type、rateLv、energy、toughLv、weaknessLvl、hardnessLv）、sets）与 `echoSets` |
 | `GoldenDamageSchema`、`GoldenZonesSchema` | `fixtures/` | TD-01 §11.1、TD-03 §10 |
 
-v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `Damage.Percent0` ÷ 10000，只在不为 0 时有，TD-01 §4.1）。
+v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `Damage.Percent0` ÷ 10000，只在不为 0 时有，TD-01 §4.1）。v0.1.11：行新增 `delayFrames`（可为 null："延迟"列，列空时取备注"脱手后延迟nF生效"，TD-01 §3.1），提示新增 `maxTicks`（"多判间隔/次"）。
 
 ---
 
@@ -159,16 +159,17 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 
 | 类型 | 主要字段 |
 |---|---|
-| `GameData` | version、meta、characters、commonActions、weapons、echoes、echoSets、echoStats（v0.1.5，可为 null）、enemies、effects / abnormalBaseByLevel（异常效应，未接）、tuneBreak（v0.1.6：由 `tune-break.json` 装配，没有文件时全 0）、envBuffs、rules、**hooks**（v0.1.9：钩子表，角色名 → 钩子；GameData 里唯一的代码，其余都是纯数据，总设计 §10.1） |
-| `CharacterDef` | name、element、weaponType、bodyType、commonBlock、base、energyCost、coreResources、tunabilityRate、harmonyBreakBoost、**treeStats**、actions、aliases、buffs、**resourceEffects**、**vars**（v0.1.9：钩子的状态量与初值；钩子本身挪到 `GameData.hooks`）、flags |
-| `ActionDef` | id、owner、kind、endFrame、cancelWindows、priority、comboFrom?、inputLocks、judgments、dilations、castGains、outroTriggerFrame?、switchLockUntil?、cooldown?、**cooldownGroup?**、charges?（v0.1.5）、**energyCost?**、**endOnSwitchOut?**、**followUp?**、summon?（v0.1.5）、source、flags |
+| `GameData` | version、meta、characters、commonActions、weapons、echoes、echoSets、echoStats（v0.1.5，可为 null）、enemies、effects / abnormalBaseByLevel（v0.1.11：规则来自 `data/curated/effects.ts`、逐层倍率与基础值来自 `effects.json`，TD-06 §18）、tuneBreak（v0.1.6：由 `tune-break.json` 装配，没有文件时全 0）、envBuffs、rules、**hooks**（v0.1.9：钩子表，角色名 → 钩子；GameData 里唯一的代码，其余都是纯数据，总设计 §10.1） |
+| `CharacterDef` | name、element、weaponType、bodyType、commonBlock、base、energyCost、coreResources、tunabilityRate、harmonyBreakBoost、**treeStats**、actions、aliases、buffs、**resourceEffects**、**vars**（v0.1.9：钩子的状态量与初值；钩子本身挪到 `GameData.hooks`）、effectRules?（v0.1.11：`EffectRule` = `{ keepStacks: true; source }`，TD-06 §18.1）、flags |
+| `ActionDef` | id、owner、kind、endFrame、cancelWindows、priority、comboFrom?、inputLocks、judgments、dilations、castGains、outroTriggerFrame?、switchLockUntil?、cooldown?、**cooldownGroup?**、charges?（v0.1.5）、**energyCost?**、**endOnSwitchOut?**、**followUp?**、summon?（v0.1.5）、switchLockFromInput?（v0.1.11：切人锁取自大招的"不响应输入"，TD-05 §2）、source、flags |
 | `CastGain` | atFrame、resource、amount、**chainRange?** |
-| `JudgmentDef` | name、row、spawnFrame、birthFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、followHitstop、target、calc、multiplier、relatedAttr、element、tags、gains、coreOncePerAction?、gauges（toughness、tunability；v0.1.7：whiteBarRatio?，按白条上限的比例削）、hitstop、formula?、cureBase?、chainRange?、heals?（v0.1.5）、flags |
+| `JudgmentDef` | name、row、spawnFrame、birthFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、followHitstop、target、calc、multiplier、relatedAttr、element、tags、gains、coreOncePerAction?、gauges（toughness、tunability；v0.1.7：whiteBarRatio?，按白条上限的比例削）、hitstop、formula?、cureBase?、chainRange?、heals?（v0.1.5）、delayFrames?（v0.1.11：生成后到生效前要等的帧数，TD-04 §5.2）、applies?（v0.1.11：`{ effect, stacks }`，每次结算附加异常效应，TD-06 §18.2）、flags |
 | `WeaponDef` | key、rarity、type、main、sub、effects（原始被动文本）、passives（BuffDef[]）、**resourceEffects** |
 | `EchoDef` | v0.1.5：key、cost（可为 null）、actions（`Q·<组名>`，按体型分组的带 `@体型`）、q（别名 Q 指向的动作）、description、mainSlotBuffs、resourceEffects、curated、flags |
 | `EnemyPreset` | 同 v0.1.3；v0.1.6 新增 `whiteBarTough`（白条按削韧值，0 = 没有白条）、`paralysisFrames`（白条打空后瘫痪几帧） |
 | `TuneBreakTable` | variants、baseByLevel、costFactor；v0.1.7：`rules`（`{ lockFrames: Record<1 \| 3 \| 4, Frame>; buttonFrames }` 或 null，由 `tune-break.json` 的秒换成战斗帧） |
-| `EchoSetDef`、`EffectDef`、`InputLock`、`DilationDef`、`DilationRule`、`ChainRange` | 同 v0.1.3 |
+| `EffectDef` | v0.1.11：name、element、source、multipliers（来自 `effects.json`，没有时为空）、maxStacks（常规上限）、burstMax（额外层上限，电磁爆发）、duration、tickInterval、decay（每次结算移除的比例）、debuff? |
+| `EchoSetDef`、`InputLock`、`DilationDef`、`DilationRule`、`ChainRange` | 同 v0.1.3 |
 | `Rules` / `DEFAULT_RULES` | 见 4.2 |
 
 ### 4.1 要点
@@ -202,6 +203,8 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 | `critRateCap` | 1 | 总设计 §6.6 | — |
 | `defFactorCap` | 2 | `CalculateHurt` 的 `min(2, …)` | — |
 | `defFloor`（v0.1.9） | false | 减防、无视防御之后的目标防御先取整（TD-03 Q1；缺省不取整，假设 `def-no-floor`） | — |
+| `effectTickReset`（v0.1.11） | false | 异常效应每次附加都把定时结算重新计时（假设 `effect-tick` 的另一种读法，TD-06 §18.3） | 实测 |
+| `effectOwner`（v0.1.11） | `'last'` | 定时结算记在最后附加的人 / 第一次附加的人 / 结算时在前台的人名下（`'last'`、`'first'`、`'onField'`，假设 `effect-owner`） | 实测 |
 | `highResThreshold` | 0.8 | 总设计附录 A-5 | — |
 | `maxWait` | 600 | 总设计 §6.5 | 场景 `options.maxWait` |
 | `maxChainDepth` | 16 | 总设计 §6.3 | — |
@@ -228,6 +231,7 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 | trigger | `'always'`（常驻）/ **`'hook'`（只由钩子施加）** / `{ on, where? }`（`TriggerSpecSchema`）/ **它的数组（任一事件）**。v0.1.5：事件目录新增 `heal`，`where` 新增 `ownerHas`（持有者身上有这个 buff 时才触发，TD-07 §4） |
 | **consume?** | "下次…"：`{ on, where?, stacks }`（TD-07 §6） |
 | requires? | `{ chain }` 共鸣链门槛 |
+| ownerOnField?（v0.1.11） | 给的人在前台时才算（"若装备者处于前台"，TD-07 §1） |
 
 **`ResourceEffectSchema`**（TD-07 §9）：id、source、resource、amount（数组 = R1–R5）、target（self / team / teamExceptSelf / onField）、trigger（同上，不含 'always' / 'hook'）、icd?、scaledByRegen?、requires?。
 
@@ -246,11 +250,12 @@ v0.1.7：行上连 dmg 的 `GenDmgSchema` 新增 `whiteBarRatio?`（dmg CZ 列 `
 
 | 类型 | 字段 |
 |---|---|
-| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、splitRows、copyAs（v0.1.10：行拆成单独的动作、整组另存为新动作，TD-01 §13.4）、judgments（`JudgmentOverride`）、accept |
-| `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange；v0.1.5 新增 element、relatedAttr、heals |
-| `CharacterModule` | weaponType、bodyType?、mergeBlocks?、coreCaps?、coreNames?（v0.1.8：改核心资源槽名，如椿槽 1"红椿·蕊1"→"红椿·蕊"；写了不存在的槽、改完重名都报错）、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides? |
+| `ActionOverride` | dropRows、kind、endFrame、priority、cancelWindows、outroTriggerFrame、switchLockUntil、comboFrom、cooldown、**cooldownGroup**、charges（v0.1.5）、**energyCost**、**endOnSwitchOut**、**followUp**、summon（v0.1.5）、splitRows、copyAs（v0.1.10：行拆成单独的动作、整组另存为新动作，TD-01 §13.4）、shiftRows（v0.1.11：落地段，行名 → 落地的局部帧，TD-01 §13.4）、judgments（`JudgmentOverride`）、accept |
+| `JudgmentOverride` | spawnFrame、lifeFrames、ticks、tickInterval、persistsOnCancel、multiplier、tags、target、chainRange；v0.1.5 新增 element、relatedAttr、heals；v0.1.11 新增 delayFrames、applies |
+| `CharacterModule` | weaponType、bodyType?、mergeBlocks?（v0.1.11：一项可写 `{ block, prefix }`，`MergeBlock`）、coreCaps?、coreNames?（v0.1.8：改核心资源槽名，如椿槽 1"红椿·蕊1"→"红椿·蕊"；写了不存在的槽、改完重名都报错）、**treeStats?**、aliases?、buffs?、**resourceEffects?**、hooks?、actionOverrides?、effectRules?（v0.1.11） |
 | `WeaponModule` | name、passives、**resourceEffects?** |
-| `EchoModule` | v0.1.5：name、cost?、mainSlotBuffs?、resourceEffects?、actionOverrides?（键是声骸动作 ID；去掉了 v0.1.3 的 `multipliers`，倍率改在 `judgments` 里写或连 nanoka，TD-01 §13.3） |
+| `EchoModule` | v0.1.5：name、cost?、mainSlotBuffs?、resourceEffects?、actionOverrides?（键是声骸动作 ID；去掉了 v0.1.3 的 `multipliers`，倍率改在 `judgments` 里写或连 nanoka，TD-01 §13.3）；v0.1.11：qFor?（角色名 → 动作 ID：首位声骸按装配的角色换技能版本） |
+| `EffectModule` | v0.1.11（`data/curated/effects.ts`）：name、element、source、maxStacks、burstMax?、duration、tickInterval、decay? |
 | `EchoSetModule`、`DmgJoinMap` | 同 v0.1.3 |
 
 
@@ -335,14 +340,14 @@ rotation:
 | `ActionRuntime` | id、def、instance、localFrame、startedAt、cursor、ended、coreGranted、**cmd?**、**skip?** |
 | `TailRuntime` | owner、action、def、instance、localFrame、events、**detached?**、**skip?** |
 | `JudgmentRuntime` | id、owner、action、actionInstance、def、spawnedAt、age、ticksDone、**detached?** |
-| `EnemyRuntime` | preset、whiteBar（v0.1.6 起按削韧值）、broken、paralyzedUntil（v0.1.6）、poise、tunability、disharmony、tunabilityLockedUntil、tuneButtonUntil（v0.1.7：谐度破坏按钮亮到这一战斗帧）、tuneBreakBy?（v0.1.6：消耗这次失谐的谐度破坏动作实例）、shift?、interference?、effects、responseCd |
+| `EnemyRuntime` | preset、whiteBar（v0.1.6 起按削韧值）、broken、paralyzedUntil（v0.1.6）、poise、tunability、disharmony、tunabilityLockedUntil、tuneButtonUntil（v0.1.7：谐度破坏按钮亮到这一战斗帧）、tuneBreakBy?（v0.1.6：消耗这次失谐的谐度破坏动作实例）、shift?、interference?、effects（v0.1.11：`EffectRuntime` = stacks、burst、remaining、nextTick、source、origin，TD-06 §18）、responseCd |
 | `QueueState` | 同 v0.1.3；v0.1.7：`opening`（启动轴的指令；有启动轴时从第 0 轮开始）；v0.1.9：`extra`（队首的操作延迟，第一次全部合法时定下） |
 | `BuffRuntime`、`DilationRuntime`、`Rates`、`WaitSegment`、`WaitCode`、`CommandRef`、`TimelineEvent` | 同 v0.1.3；v0.1.8：`WaitCode` 加 `filler`（只用于 skip 事件）；v0.1.9：`WaitCode` 加 `input`（操作延迟，与 `delay`、`wait`、`at` 同属不计入 maxWait 的 `INTENDED`） |
-| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn（v0.1.10：**note?**）/ hit（**element、tags**）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource（v0.1.10：**note?**）/ **resourceFull** / heal（v0.1.5：char、source）/ enemyState（v0.1.6：change 新增 `breakEnd`，`ENEMY_STATE_CHANGES`）/ effectTick / wait / skip（v0.1.6：cmd、code、reason，可选指令被跳过）/ loop / warning（v0.1.10：**cmd?**） |
+| `SimEvent` | actionStart / actionEnd / actionCancel / judgmentSpawn（v0.1.10：**note?**）/ hit（**element、tags**；v0.1.11：effect?——异常效应自身的伤害）/ switch / intro / outro（**to、instance?**）/ buffApply / buffExpire / resource（v0.1.10：**note?**）/ **resourceFull** / heal（v0.1.5：char、source）/ enemyState（v0.1.6：change 新增 `breakEnd`，`ENEMY_STATE_CHANGES`；v0.1.11：`effectApplied`、`effectEnd`、`effectConsumed`，字段 by、effect、added、stacks、burstAdded、burst）/ effectTick（v0.1.11：effect、stacks、burst?、left、damage、source）/ wait / skip（v0.1.6：cmd、code、reason，可选指令被跳过）/ loop / warning（v0.1.10：**cmd?**） |
 | `Summary` | totalDamage、windowFrames、dps、overflowDamage、byChar、byAction、resourceTimeline、buffUptime、waits、warnings、perLoop?（v0.1.5：loop、start、frames、damage、dps、energyDelta、concertoDelta）、steady?（v0.1.5：from、to、frames、damage、dps）、enemy（v0.1.6：disharmony、tuneBreaks、tuneBreakDamage、breaks）、skipped（v0.1.6：line、item、loop、reason）、**assumptions**（v0.1.9：id、count、firstFrame、detail，按假设表的顺序）（TD-10） |
-| `SimResult` | log、summary、error?（code：comboBroken / timeout / maxFrames / notOnField / switchSelf / **chainDepth** / **invariant**） |
-| `CharacterHooks` | onResolve?、canStart?、onEvent?、modifyHit? |
-| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource（v0.1.10：第 4 个参数 `note`）、spawnJudgment（v0.1.10：选项 `note`）、**skipJudgments**、**vars**（v0.1.9，取代 setFlag、getFlag）、heal（v0.1.5：记一次本角色提供的治疗）、warn、**assume**（v0.1.10：记一次碰到的假设，总设计 T16）；`CharacterHooks<V>` / `HookContext<V>` 按模块声明的 `vars` 定型（`HookVars`） |
+| `SimResult` | log、summary、forte、cooldowns（v0.1.11：`ForteStep` = f、char、text；`CooldownStep` = f、char、key、ready、charges?；都不进日志，TD-10 §5.1）、error?（code：comboBroken / timeout / maxFrames / notOnField / switchSelf / **chainDepth** / **invariant**） |
+| `CharacterHooks` | onResolve?、canStart?、onEvent?、modifyHit?、forte?（v0.1.11：只读的显示钩子，TD-08 §3.1） |
+| `HookContext` | self、**chain**、state、buffStacks、addBuff、removeBuff、addResource（v0.1.10：第 4 个参数 `note`）、spawnJudgment（v0.1.10：选项 `note`）、**skipJudgments**、**vars**（v0.1.9，取代 setFlag、getFlag）、heal（v0.1.5：记一次本角色提供的治疗）、applyEffect、effectDamage、takeBurst（v0.1.11，TD-06 §18）、warn、**assume**（v0.1.10：记一次碰到的假设，总设计 T16）；`CharacterHooks<V>` / `HookContext<V>` 按模块声明的 `vars` 定型（`HookVars`） |
 | `HitDraft` | judgment、char、multiplier、extraFlat、element、tags、effect?、**selfEnergyScale**、zones、critOnly |
 | `ZoneAccumulator` | zones、critOnly |
 
@@ -477,3 +482,4 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1.9（2026-10-17）**：并回总设计 v0.2 的 T16 与 §10.1（AGENTS.md 差异 1、2）。假设登记：`src/engine/assumptions.ts`（`Assumption`、`ASSUMPTIONS`、`assume`），`SimState.assumed`、`Summary.assumptions`，`Rules.defFloor`。好移植：钩子表 `GameData.hooks`（`CharacterDef.hooks` 去掉），`CharacterDef.vars` / `CharacterModule.vars`、`CharRuntime.vars`（原 `flags`）、`HookContext.vars`（取代 `setFlag` / `getFlag`），`HookVars`；`src/engine/num.ts`（取整）、`src/engine/portable.ts`（`portable`、`withHooks`）。操作延迟：场景 `options.inputDelay`、`ResolvedScenario.options.inputDelay`、`QueueState.extra`、`WaitCode` 的 `input`、`SchedulerOptions.inputDelay`（AGENTS.md 差异 3）；结论的类型（`Insight`、`EnergyNeed`、`ToleranceRow`、`SensitivityRow`、`WaitCost`）在 `src/engine/insight.ts`（TD-10 §6）。抽样模式（总设计 T4）：`SimOptions.sample`（`seed`、`jitter?`）、`SimState.rng`（`RngState`，期望模式为 null）、`HitEvent.dmg.isCrit?`；`src/engine/rng.ts`（`seedRng`、`nextU32`、`nextFloat`、`nextInt`、`runSeeds`）、`src/engine/sample.ts`（`sampleRuns`、`statsOf`、`Sampling`）、`summary.ts` 的 `hitValue`。
 - **v0.1.8（2026-10-05）**：并回 AGENTS.md 差异 1、5–7。`RotationItem` / `Command` 加 `filler`，`WaitCode` 加 `filler`（TD-09 v0.1.5）；场景 `initial.core`（`ResolvedScenario.initial.core`）与 `video`；`CharacterModule.coreNames`。调试表的类型（`LoopSpan`、`SegmentRow`、`CommandRow`、`LedgerRow`、`MarkCmp`）在 `src/engine/trace.ts`，见 TD-11 §6。声骸库存择优（TD-13 §5）：`simulate(r, opts?)` 的 `SimOptions.onHit` 与 `HitRecord`；`InventorySchema` / `InvPiece`；`scenario.schema` 导出 `StatValuesSchema`。
 - **v0.1.10（2026-10-18）**：并回视频轴核对时新增的类型与字段（AGENTS.md 差异 2、3、5–9）。`ActionOverride` 加 `splitRows`、`copyAs`（TD-01 §13.4）；`RotationItem` / `Command` 的 switch 加 `expectIntro`（TD-09 §2.1）；事件：`resource`、`judgmentSpawn` 加 `note`，`warning` 加 `cmd`，code `introMissed`；`HookContext.addResource` 加 `note` 参数、`spawnJudgment` 加 `note` 选项、新增 `assume`；出处的类型（`trace.ts` 的 `GainStep` / `GainItem` / `ActionGains`、`HitTrigger` / `HitOrigin` / `HitCause`）与时间轴模型的新字段；`CastGain.atFrame = 0` 改称"起手即得"。
+- **v0.1.11（2026-10-20）**：并回心 · 雷主 · 卜灵带来的类型与字段。生成 schema：行的 `delayFrames`、`GenEffectsFileSchema` 已产出；`EffectDef`（multipliers、decay）、`EffectModule`、`EffectRule` / `CharacterDef.effectRules`、`JudgmentDef.delayFrames` / `applies`、`ActionDef.switchLockFromInput`；`Rules.effectTickReset`、`effectOwner`；`BuffDef.ownerOnField`；`ActionOverride.shiftRows`、`JudgmentOverride` 的 delayFrames / applies、`CharacterModule.mergeBlocks` 的 `{ block, prefix }`、`EchoModule.qFor`；`EffectRuntime`（含 origin）、`ENEMY_STATE_CHANGES` 加 `effectApplied`、`effectEnd`、`effectConsumed`，`effectTick` 事件、`hit.effect`；`SimResult.forte`、`cooldowns`；`CharacterHooks.forte`；`HookContext` 的 applyEffect、effectDamage、takeBurst。结论的 `Insight.notHit`（`src/engine/insight.ts`，TD-10 §6 ③）。

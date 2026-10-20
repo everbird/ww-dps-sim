@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1.5
+# 鸣潮 DPS 引擎 · TD-08 角色模块编写指南 v0.1.6
 
-> **状态**：v0.1.5（2026-10-18；钩子接口加 `addResource` / `spawnJudgment` 的说明与 `ctx.assume`，覆盖字段 `splitRows` / `copyAs`，M0 三人的地面出场技与散华 5 链自爆）；v0.1.4（2026-10-17；钩子的状态量改成在模块里声明的 `vars`，钩子放进钩子表，总设计 v0.2 §10.1）；v0.1.3（2026-10-05；模块字段 `coreNames`，椿槽 1 改叫"红椿·蕊"）；v0.1.2（2026-10-04；椿的谐度破坏也分常态 / 盛绽）；v0.1.1（2026-10-04；新增 `ctx.heal` 与写法 P12，维里奈补治疗）；v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
+> **状态**：v0.1.6（2026-10-20；带前缀并入的块、落地段、`effectRules`，只读的显示钩子 `forte`，`ctx` 加 `applyEffect` / `effectDamage` / `takeBurst`，散华的透视，心 · 雷主 · 卜灵的模块 §5.4）；v0.1.5（2026-10-18；钩子接口加 `addResource` / `spawnJudgment` 的说明与 `ctx.assume`，覆盖字段 `splitRows` / `copyAs`，M0 三人的地面出场技与散华 5 链自爆）；v0.1.4（2026-10-17；钩子的状态量改成在模块里声明的 `vars`，钩子放进钩子表，总设计 v0.2 §10.1）；v0.1.3（2026-10-05；模块字段 `coreNames`，椿槽 1 改叫"红椿·蕊"）；v0.1.2（2026-10-04；椿的谐度破坏也分常态 / 盛绽）；v0.1.1（2026-10-04；新增 `ctx.heal` 与写法 P12，维里奈补治疗）；v0.1（2026-09-28 起草）。通用能力已实现（2026-09-30，`tests/td08.test.ts`）；§5 的问题已全部确认，M0 三人的模块已按 §5 实现（2026-10-03，`data/curated/characters/*.ts`，用例 `tests/m0-team.test.ts`）；代表轴 `scenarios/m0-team.yaml`（第一版，按机制排）与场景汇总快照 `tests/scenarios.test.ts`（2026-10-03）
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§4 T8、§6.9、§3.3；《TD-01 数据字典 v0.1.3》§13.4；《TD-02 类型与 Schema v0.1.3》§5.2、§7.4、Q5；《TD-03 伤害公式规格 v0.1》§3.2、§3.4、§4、Q6、Q7、Q13；《TD-05 切人与变奏 / 延奏 v0.1》；《TD-06 资源 v0.1》；《TD-07 Buff 系统 v0.1》；`docs/m0-confirm.md`
 > **下游**：每个角色的 `data/curated/characters/<角色>.ts` 与它的测试
 > **验证**：§5 的机制逐条对照了 nanoka 3.7 技能描述、xlsx 动作表备注与「伤害计算」页的公式写法
@@ -30,16 +30,19 @@
 ```ts
 // data/curated/characters/<角色>.ts
 export default defineCharacter('<角色>', {
-  weaponType, bodyType?, mergeBlocks?, coreCaps?,   // 数据层修正（TD-01 §5、Q2、Q22）
+  weaponType, bodyType?, mergeBlocks?, coreCaps?,   // 数据层修正（TD-01 §5、Q2、Q22）；mergeBlocks 的一项可写 { block, prefix }（v0.1.6）
   coreNames?,                                       // 核心资源槽名（v0.1.3）：主表槽名带编号的改成游戏叫法，如椿 { 1: '红椿·蕊' }
+  effectRules?,                                     // 角色在队伍里时改的异常效应规则（v0.1.6，TD-06 §18）：心 { 电磁效应: { keepStacks: true } }
   treeStats,                                        // 技能树属性节点合计（M2，与 nanoka 核对）
   aliases,                                          // 排轴别名；约定键见 §1.1
   buffs,                                            // BuffDef[]（TD-07）
   resourceEffects,                                  // ResourceEffect[]（TD-07 §9）
   actionOverrides,                                  // 动作覆盖（TD-01 §13.4，§1.2）
-  hooks,                                            // 至多四个钩子（§3）
+  hooks,                                            // 至多四个钩子（§3），另有只读的显示钩子 forte
 })
 ```
+
+- **带前缀并入的块**（v0.1.6，TD-01 Q2）：心的岁主形态"照世心"单独一块、组名与常态重名，`mergeBlocks: [{ block: '照世心', prefix: '照世·' }]` 并入后动作叫"照世·A1"…；它的 `actionOverrides` 按带前缀的 ID 写，连段前置、接续动作、另存为里指块内动作的也写带前缀的（装配前去掉、装配后加回），连段前置只能指同一块。
 
 ### 1.1 别名约定
 
@@ -52,7 +55,7 @@ export default defineCharacter('<角色>', {
 
 ### 1.2 动作覆盖（`actionOverrides`）
 
-TD-01 §13.4 已有：`dropRows`、`splitRows`、`copyAs`（v0.1.5）、`kind`、`endFrame`、`priority`、`cancelWindows`、`outroTriggerFrame`、`switchLockUntil`、`comboFrom`、`cooldown`、`cooldownGroup`、`judgments`（改 `spawnFrame`、`lifeFrames`、`ticks`、`tickInterval`、`persistsOnCancel`、`multiplier`、`tags`、`target`、`chainRange`）、`accept`。本轮新增：
+TD-01 §13.4 已有：`dropRows`、`splitRows`、`copyAs`（v0.1.5）、`shiftRows`（v0.1.6，下落攻击的落地段，TD-01 §13.3）、`kind`、`endFrame`、`priority`、`cancelWindows`、`outroTriggerFrame`、`switchLockUntil`、`comboFrom`、`cooldown`、`cooldownGroup`、`judgments`（改 `spawnFrame`、`lifeFrames`、`delayFrames`（v0.1.6）、`ticks`、`tickInterval`、`persistsOnCancel`、`multiplier`、`tags`、`target`、`chainRange`、`applies`（v0.1.6，"命中后赋予目标n层电磁效应"））、`accept`。本轮新增：
 
 | 字段 | 作用 | 出处 |
 |---|---|---|
@@ -87,7 +90,9 @@ TD-01 §13.4 已有：`dropRows`、`splitRows`、`copyAs`（v0.1.5）、`kind`�
 | `onEvent(ctx, ev)` | 事件队列处理每条事件的最后一步（TD-07 §5 ④）：buff 触发与资源型效果之后 | 用 `ctx` 的全部写操作 | 直接改 `ctx.state` |
 | `modifyHit(ctx, draft)` | 每次结算、收集 buff 之前（TD-03 §4） | 改倍率、`extraFlat`、元素、标签、`selfEnergyScale`，往 `zones` / `critOnly` 补值 | 用 `ctx` 的写操作（结算中途改状态会让顺序难以追溯；要改就在随后的 `hit` 事件里改） |
 
-`onEvent` 收到**所有**事件（不只是 TD-07 的触发目录），包括自己与队友的 `hit`、`actionStart`、`buffExpire`、`resource`、`judgmentSpawn`、`switch`、`intro`、`outro`。每个角色都会收到全队的事件，按 `ev.char` 判断是谁的。
+`onEvent` 收到**所有**事件（不只是 TD-07 的触发目录），包括自己与队友的 `hit`、`actionStart`、`buffExpire`、`resource`、`judgmentSpawn`、`switch`、`intro`、`outro`。每个角色都会收到全队的事件，按 `ev.char` 判断是谁的。异常效应自身的伤害也是 `hit`（带 `effect`，TD-06 §18.3）；"造成伤害后"一类的机制要不要认它，模块里写清（心的敕令不认）。
+
+另有一个**只读的显示钩子** `forte(ctx) → string`（v0.1.6，总设计 T8、§6.9 补记）：每个 tick 结束调用，返回共鸣回路说不清的状态（卜灵卦象的排列、心的形态与霆心域、椿的白椿 / 红椿…），变了才记进 `SimResult.forte`，时间轴的检查器按" · "拆成小标签（TD-12 §2.1）。它不改状态、不进事件日志，一致性样例不比。
 
 ### 3.2 受控接口 `ctx`
 
@@ -102,8 +107,11 @@ TD-01 §13.4 已有：`dropRows`、`splitRows`、`copyAs`（v0.1.5）、`kind`�
 | `spawnJudgment(name, { action?, note? })` | 生成自己的一个判定（事件生成的判定，如散华的引爆）；同一 tick 内结算。`note` 写为什么生成（如散华"重击爆裂引爆""5 链：冰到时自爆"），记进 `judgmentSpawn` 事件，时间轴与调试表标"引出原因"用（v0.1.5） |
 | `skipJudgments(instance, names)` ★ | 在某个动作实例（或延奏的独立时间线）里不生成这些判定；只对还没生成的有效。在 `actionStart` / `outro` 事件里调用，TD-06 的协奏汇总也会排除它们 |
 | `heal(source)` ★ | 记一次本角色提供的治疗（`heal` 事件，触发"提供治疗时"的效果，TD-07 §4.1）：给不在任何判定上的治疗用，如持续回复的每一跳；带治疗的判定改在 `actionOverrides` 里标 `heals`（v0.1.1） |
+| `applyEffect(effect, stacks, note?)` ★ | 以本角色的名义为目标附加异常效应（v0.1.6，TD-06 §18.2）：层数规则同判定的 `applies`，记 `effectApplied` |
+| `effectDamage(effect, scale, judgment)` ★ | 主动触发一次异常效应伤害（v0.1.6，TD-06 §18.4）：倍率 = `scale` × 目标当前层数的倍率；不算一次结算。心的踏月归心 |
+| `takeBurst(effect, note?)` ★ | 消耗目标该效应全部的额外层（电磁爆发），返回几层，记 `effectConsumed`（v0.1.6）。心：电磁爆发转霆心域 |
 | `warn(message)` | 记一条警告 |
-| `assume(id, detail?)` ★ | 记一次碰到的假设（总设计 T16）：模块里推断着写、还没查证的机制，碰到时记一笔，列进"这次碰到的假设"；`id` 是假设表里 tracked 的那些。查证之后从假设表去掉、删掉调用（散华"5 链自爆也触发 6 链"曾登记为 `c5-boom-c6`，2026-10-18 用户实测后去掉）（v0.1.5） |
+| `assume(id, detail?)` ★ | 记一次碰到的假设（总设计 T16）：模块里推断着写、还没查证的机制，碰到时记一笔，列进"这次碰到的假设"；`id` 是假设表里 tracked 的那些。查证之后从假设表去掉、删掉调用（散华"5 链自爆也触发 6 链"曾登记为 `c5-boom-c6`，2026-10-18 用户实测后去掉）（v0.1.5）。按原文推断、还没实测的时序与条件统一记 `module-guess`（v0.1.6），逐条列在各队伍的确认清单里 |
 
 `HitDraft` 新增 `selfEnergyScale`（缺省 1）★：这次结算出伤者自己那份能量的倍率，队友那 50% 不受影响（TD-06 §2.1）。
 
@@ -161,8 +169,8 @@ onEvent(ctx, ev) {
 | 重击爆裂引爆范围内的冰棱、冰棘、冰川（冰绽，共鸣技能伤害）；数据：重击居合-1"第29F～36F可引爆" | P4：重击居合局部第 29 帧（xlsx"第29F～36F可引爆"的起点；钩子没有按帧回调，用重击居合开始时挂上的 29 帧标记 `散华.引爆计时`，到期那一刻引爆），场上有哪种冰就生成对应的引爆判定（E-引爆冰棱 / QTE-引爆冰棘 / 大招-引爆冰川），移除该冰；生成时附说明"重击爆裂引爆"（v0.1.5） | ② 已确认（2026-10-03）：按 xlsx 在重击居合局部第 29 帧（"第29F～36F可引爆"的起点）引爆，默认总能打中冰；③ 已确认：重击居合两行是一次爆裂的两段（nanoka"186.29%*2"），都打 |
 | C5"冰棱、冰川、冰棘消失时直接爆炸" | P2：收到 `散华.冰*` 的 `buffExpire`（`timeout`）→ 生成对应引爆判定，附说明"5 链：冰到时自爆"（v0.1.5）；生成的就是同一个引爆判定，6 链"引爆后攻击提升"照样触发 | 已确认（2026-10-18 用户实测）：自爆也触发 6 链（m0-confirm §11 V8） |
 | C5"冰绽的暴击伤害 +100%"、C6、固有 2、C1、C4 | 数据（TD-07 §12），都已写 | —— |
-| 【透视】层数、指针（核心资源 1） | 不建模（只影响冰痕区域大小，不影响伤害；TD-06 Q6） | —— |
-| 重击爆裂需要松开时指针落在冰痕区域 | 视为总能成功 | —— |
+| 【透视】层数（核心资源 1） | v0.1.6：槽 1 改叫"透视"、上限 2（`coreNames`、`coreCaps`）；A5 / E / 变奏 +1、大招 +2、重击居合清空；"最多 2 层、每层 5 秒"由钩子扣：两个计时标记 `散华.透视·一` / `散华.透视·二` 各管一层，满 2 层再得时刷新先得的那层（T08-散华-5）；状态说明（`forte`）列出场上的冰 | TD-06 Q6 关闭 |
+| 重击爆裂需要松开时指针落在冰痕区域 | 视为总能成功，按下即松开（假设 `burst-release`，每次重击居合记一次） | 指针速度、冰痕区域的位置与宽度待实测（m0-confirm §13 P1–P5） |
 
 ### 5.2 椿（0 链）
 
@@ -193,6 +201,14 @@ onEvent(ctx, ev) {
 | 治疗（nanoka 3.7：写了回复生命值、或倍率表里有治疗量的都算，2026-10-04 用户确认）：星星花绽放（强化重击 / 强化空中攻击）、大招草木生长、协同攻击；延奏盛放"每秒回复…持续6秒"、共鸣链1"每5秒回复…持续30秒" | 前三者在 `actionOverrides` 里给判定标 `heals`（重击-强化冲、强化空中A1–A3、大招-标记、大招-协同伤害）；持续回复用 P12，每跳 `ctx.heal`（计时 buff 施加那一帧算第 1 帧，第一跳在延奏后第 59 帧）。治疗量不建模，只为触发隐世回光等 | 已写（`tests/m0-team.test.ts` T08-维里奈-4） |
 
 ---
+
+### 5.4 心 · 雷主 · 卜灵（v0.1.6，2026-10-19 起）
+
+三人的模块按原文写，推断的部分逐条列在 `docs/xin-confirm.md` §2（Y1–Y17）、电磁效应的结算在 §4（Z1–Z8），这里只记用到的写法：
+
+- **心**（0 链）：常态"应世心"、岁主形态"照世心"两块，后者带前缀并入（§1）。`canStart` 按形态与核心资源挡（应世相 / 照世相、统御众机、步红尘 / 镇红尘、临寰宇 / 镇寰宇；了尘愿 / 承天则挂在冷却上）；敕令的协同攻击用标记型 buff 计时（P12）；电磁+1、额外能量、活字心锁、霆霓记在 `vars`。共鸣模态·电磁：`effectRules` 让电磁效应结算不减层；任何人添加电磁爆发时 `takeBurst` 收成霆心域（上限 100）；踏月归心（应世 E-落地、照世 E-2）命中时 `effectDamage`（35% × 霆心域），之后清空；霆心域 ≥ 50 才生成照世 E 的停滞（`skipJudgments`）。
+- **雷主**（男，1 链）：电涌、超负荷（短按）、延奏的电髓（变奏里第一次附加电磁效应换成全伤害加深）。
+- **卜灵**（6 链）：卦象的排列记在 `vars`（艮 / 震按位），重击按最左边两枚选式子（`canStart`）；少阳、少阴、阴阳相生；五雷荡煞阵的冲击波与雷法（标记型 buff 计时，变奏升阶）。变奏伤害"脱手后延迟54F生效"改由数据的"延迟"表达（TD-04 §5.2），模块里手写的结算帧去掉。
 
 ## 6. 每个角色必须带的测试
 
@@ -236,3 +252,4 @@ M0 三人的用例在实现时写进 `tests/m0-team.test.ts`，编号 T08-散华
 - **v0.1.4（2026-10-17）**：总设计 v0.2 §10.1（好移植的写法）：钩子的状态量从 `setFlag` / `getFlag`（任意字符串键）改成模块里声明的 `vars`，钩子里 `ctx.vars.<名字>` 读写，名字写错编译就报错、运行时不能加新键；装配时钩子放进钩子表 `GameData.hooks`，`CharacterDef` 只留数据（含 `vars` 的初值）。M0 三人：椿 `盛绽 / 酣梦层数 / 蕊消耗 / 切走时含苞`，维里奈 `盛放跳数 / 共鸣链1跳数 / 协同上次`，散华没有状态量；结果不变（场景快照相同）。
 - **v0.1.3（2026-10-05）**：§1 模块字段新增 `coreNames`（AGENTS.md 差异 7）：主表槽名带编号的（"红椿·蕊1""韶光1"…）在角色进队时改成游戏叫法；写了不存在的槽、改完重名都报错。§5 椿：槽 1 改叫"红椿·蕊"（槽 2"红椿·蕊2"动作表与钩子都不用）。
 - **v0.1.5（2026-10-18）**：并回视频轴核对时的决定（AGENTS.md 差异 2、6、7、9）。§1.2 覆盖字段新增 `splitRows`、`copyAs`（TD-01 v0.1.8 §13.4）；§3.2 `addResource` 加 `note`、`spawnJudgment` 加 `note`（记进事件，时间轴与调试表显示出处、引出原因），新增 `assume`；§5.1 散华两种引爆附说明，C5 自爆也触发 6 链（用户实测）；§5.2 椿的地面出场技就是 A2（`copyAs`，用户实测），"每消耗 10 点红椿·蕊"附说明；§5.3 维里奈的地面出场技拆成单独的动作、之后接 A4、A5。
+- **v0.1.6（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。§1 模块字段 `effectRules`、`mergeBlocks` 的 `{ block, prefix }`；§1.2 覆盖字段 `shiftRows`、判定的 `delayFrames`、`applies`；§3.1 只读的显示钩子 `forte`、异常效应自身的伤害也是 `hit`；§3.2 `ctx.applyEffect`、`effectDamage`、`takeBurst`，`module-guess`；§5.1 散华的透视（槽 1 改名、上限 2、每层 5 秒，T08-散华-5）与假设 `burst-release`；新增 §5.4 心 · 雷主 · 卜灵的写法。

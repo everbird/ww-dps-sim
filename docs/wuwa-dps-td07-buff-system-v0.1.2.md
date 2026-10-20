@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-07 Buff 系统 v0.1.1
+# 鸣潮 DPS 引擎 · TD-07 Buff 系统 v0.1.2
 
-> **状态**：v0.1.1（2026-10-04；v0.1.1 新增治疗事件、`where.ownerHas`，§12 补声骸与套装）；v0.1（2026-09-28 起草）；已按本文实现（2026-09-30，`src/engine/buffs.ts`、`src/engine/triggers.ts`，§10.2 的用例在 `tests/td07.test.ts`）。§12 的清单与 §13 的待定问题仍待确认
+> **状态**：v0.1.2（2026-10-20；`ownerOnField`、敌人状态的异常效应事件、资源型效果按阶取值、异常效应伤害不触发"命中时"）；v0.1.1（2026-10-04；v0.1.1 新增治疗事件、`where.ownerHas`，§12 补声骸与套装）；v0.1（2026-09-28 起草）；已按本文实现（2026-09-30，`src/engine/buffs.ts`、`src/engine/triggers.ts`，§10.2 的用例在 `tests/td07.test.ts`）。§12 的清单与 §13 的待定问题仍待确认
 > **依据**：《技术总体设计 v0.1.4》（下称"总设计"）§3.2、§4 T8 / T14、§6.3、§6.4 不变量 6、§6.8；《设计文档 v0.2.9》（下称"机制设计"）§6、§6.1；《TD-02 类型与 Schema v0.1.3》§5.1、§7；《TD-03 伤害公式规格 v0.1》§2.3、§4、§9.4；《TD-01 数据字典 v0.1.3》§1.6、§10.2、§13.1；《TD-05 切人与变奏 / 延奏 v0.1》§2、§4.2；《TD-06 资源 v0.1》§5、§6
 > **下游**：TD-08（钩子怎么加 buff、用标记型 buff 表示状态）、TD-10（buff 覆盖率的展示）
 > **验证**：§11 的 M0 队伍清单逐条对照了 nanoka 3.7 原文与 xlsx「伤害配置」buff 库；规则尚无实现，§10 的用例是实现时的验收标准
@@ -47,6 +47,7 @@
 | `trigger` ★可为数组 | `'always'`（常驻）；`'hook'`（只由角色钩子施加，如散华的冰、椿的红椿·蕾，2026-10-03 新增）；`{ on, where? }`；或它的数组，任一事件都触发（维里奈固有：重击星星花绽放、大招、延奏三处都给攻击） |
 | `consume` ★ | "下次…"：`{ on, where?, stacks? }`，满足时移除（§6） |
 | `requires.chain` | 共鸣链门槛，装配时过滤 |
+| `ownerOnField` ★（v0.1.2） | 给的人（持有者）在前台时才算（结算时判断）："若装备者处于前台"——玉阙玄华第 4 条"附加电磁效应后，30秒内若装备者处于前台，目标受到电磁效应伤害加深30%"写成挂在目标身上、`filter.effects` 是电磁效应、`ownerOnField` |
 
 ---
 
@@ -97,11 +98,12 @@ pendingNextIn: { owner: Slot | 'env'; defId: string; stacks: number }[]
 | `outro` | `outro` | 延奏的发出者（切出者） | —— |
 | `switchIn` | `switch` 的 `to` | 切入者 | —— |
 | `switchOut` | `switch` 的 `from` | 切出者 | —— |
-| `enemyState` | `enemyState`（TD-06 v0.2） | 造成变化的角色 | `enemyState`、`effect` |
+| `enemyState` | `enemyState`（TD-06 v0.2） | 造成变化的角色（记了 `by` 的才触发：附加、消耗异常效应；破盾、失谐等还没记谁造成的） | `enemyState`（`effectApplied`、`effectEnd`、`effectConsumed`…，TD-06 §18）、`effect` |
 | `resourceFull` | `resourceFull`（TD-06 §6） | 该角色 | `resource` |
 | `heal`（v0.1.1） | `heal`：标了 `heals` 的判定结算后、钩子 `ctx.heal()` 记的（持续回复每跳一次） | 提供治疗的角色 | —— |
 
-- `judgmentSettle` 的 `tags` / `elements` 按这次结算**最终**的标签与元素（`modifyHit` 可能改过，TD-03 §4）。为此 `hit` 事件新增 `element`、`tags` 两个字段（TD-02 §7.3）。
+- `judgmentSettle` 的 `tags` / `elements` 按这次结算**最终**的标签与元素（`modifyHit` 可能改过，TD-03 §4）。为此 `hit` 事件新增 `element`、`tags` 两个字段（TD-02 §7.3）。异常效应自身的伤害（`hit` 带 `effect`，TD-06 §18.3）不是判定结算，不触发 `judgmentSettle`（v0.1.2）。
+- 附加异常效应：`{ on: 'enemyState', where: { enemyState: 'effectApplied', effect: '电磁效应' } }`；到顶了加 0 层也算一次附加（雷主延奏写的是"尝试赋予"）。`by: 'team'` 认任何人附加的（v0.1.2，TD-06 §18.2）。
 - `actions` / `judgments` 写动作 ID / 判定名，原样匹配（AGENTS.md：不做模糊匹配）。
 - `where` 里各字段之间是"且"，同一字段的多个值是"或"（与 TD-03 §4 的过滤规则一致）。对这种事件没有意义的字段（如 `outro` 上写 `judgments`）不满足。
 - **`where.ownerHas`**（v0.1.1，任何事件都可用）：持有者身上有这个 buff（持有者与目标都是他的实例，多为标记型）时才触发。用于"在此后 N 秒内，若…"：无常凶鹭"幻形后 15 秒内若施放延奏，下一位变奏登场的角色伤害 +12%"= 施放时挂 15 秒的标记 + `outro` 触发、`ownerHas` 该标记。指向没登记的 buff 时装配报错。
@@ -208,7 +210,7 @@ export const ResourceEffectSchema = z.strictObject({
 
 - 角色模块、武器模块新增 `resourceEffects?: ResourceEffectInput[]`（TD-02 §5.2；不叫 `effects`：`WeaponDef.effects` 已是原始被动文本）；声骸套装以后需要时再加。装配时同 buff：按共鸣链过滤、按谐振阶取值，登记为 `ResolvedScenario.effects`。
 - 触发、`by`、内置冷却与 buff 完全相同（§4）；满足时调 TD-06 的 `grant(s, slot, resource, amount, id, scaledByRegen)`，给每个目标各一次；定值回复默认不乘共鸣效率（TD-06 Q3）。
-- 例：行进序曲 / 奇幻变奏 `{ resource: 'concerto', amount: 8, trigger: { on: 'actionStart', where: { actionKinds: ['skill'] } }, icd: 1200 }`；散华 C4 `{ resource: 'energy', amount: 10, trigger: { on: 'actionStart', where: { actions: ['大招'] } }, requires: { chain: 4 } }`。
+- 例：行进序曲 / 奇幻变奏 `{ resource: 'concerto', amount: [8, 10, 12, 14, 16], trigger: { on: 'actionStart', where: { actionKinds: ['skill'] } }, icd: 1200 }`（v0.1.2：按阶；xlsx 武器表只有 1 阶的文本"回复8点协奏能量"，各阶数值取 nanoka 3.7，武器 21020024、21050024）；散华 C4 `{ resource: 'energy', amount: 10, trigger: { on: 'actionStart', where: { actions: ['大招'] } }, requires: { chain: 4 } }`。
 
 ---
 
@@ -337,3 +339,4 @@ AI 起草（带 `source` 原文）→ 人工核对乘区与触发条件（有 xl
 - **v0.1（2026-09-28）**：初版。
 - **v0.1（2026-09-30 修订，随实现）**：模块字段 `effects` 改名 `resourceEffects`；§4.3 技能归类只认 0–5，延奏按组名（12 里有非延奏的组）；内置冷却记在 `SimState.lastTrigger`；`nextIn` 挂起时再次触发累加层数；部分消耗记 `buffApply`；连锁报错走 `SimResult.error`，钩子生成的判定接在原链上；覆盖率的到期帧算在内；T07-2 改轴、T07-4 / T07-5 改用人造角色，补 nextIn 挂起、`where.by`、标记型的用例；§12 更新状态；新增 Q8、Q9。
 - **v0.1.1（2026-10-04）**：并回声骸用到的两处（AGENTS.md 差异 2）：触发事件目录新增 `heal`（治疗事件：判定标 `heals`、钩子 `ctx.heal`），`where` 新增 `ownerHas`（§4.1）；登记顺序补"首位声骸"（§5）；§12 补 M0 三人的首位声骸与套装。
+- **v0.1.2（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。§1 新增 `ownerOnField`（给的人在前台时才算；玉阙玄华第 4 条）；§4.1 `enemyState` 的异常效应事件（`effectApplied`、`effectEnd`、`effectConsumed`，TD-06 v0.2.4 §18）与 `by: 'team'`，异常效应自身的伤害不触发 `judgmentSettle`；§9 行进序曲 / 奇幻变奏的协奏按阶（8 / 10 / 12 / 14 / 16，原来当成各阶 8 点，是数据错误：xlsx 武器表只有 1 阶的文本；用例 TD-05 T05-1、TD-06 T06-7、T07-3 的 +8 改成 +16）。

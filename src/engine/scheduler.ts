@@ -179,7 +179,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
       // 插在队首之前的动作：与出招指令同样的检查（不强制、不延迟）；等的时候记在队首指令名下。开始后不带指令出处，回到循环再看队首。
       // 队首是连段的后续（comboFrom）时先不插：谐度破坏会打断当前角色的动作，插进去连段就断了，等这串连段打完再插
-      // （TD-09 §3.2 插队；m0-confirm §10 H1；AGENTS.md 差异 3）
+      // （TD-09 §3.2 插队；m0-confirm §10 H1）
       const ij = c.kind === 'act' && actions[c.slot]![c.action]!.comboFrom?.length ? null : opts.interject?.(s)
       if (ij) {
         const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref, false)
