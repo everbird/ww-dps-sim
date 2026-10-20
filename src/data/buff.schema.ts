@@ -13,9 +13,9 @@ export const TRIGGER_EVENTS = [
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 
 // break = 白条打空（破盾），breakEnd = 瘫痪结束、白条回满；disharmony = 偏谐值满（失谐），harmonyBreak = 谐度破坏命中（TD-06 §13）；
-// effectApplied = 为目标附加了异常效应（到顶了也算），effectEnd = 异常效应到时消失（TD-06 §18）
+// effectApplied = 为目标附加了异常效应（到顶了也算），effectEnd = 异常效应到时消失，effectConsumed = 层数被技能消耗（TD-06 §18）
 export const ENEMY_STATE_CHANGES = [
-  'break', 'breakEnd', 'poiseBreak', 'disharmony', 'harmonyBreak', 'shift', 'interference', 'effectApplied', 'effectEnd',
+  'break', 'breakEnd', 'poiseBreak', 'disharmony', 'harmonyBreak', 'shift', 'interference', 'effectApplied', 'effectEnd', 'effectConsumed',
 ] as const
 export type EnemyStateChange = (typeof ENEMY_STATE_CHANGES)[number]
 
@@ -76,6 +76,7 @@ export const BuffDefSchema = z.strictObject({
     stacks: z.union([z.number().int().min(1), z.literal('all')]).default('all'),
   }).optional(),
   requires: Requires.optional(),                                     // 共鸣链门槛
+  ownerOnField: z.literal(true).optional(),                          // 给的人在前台时才算（"若装备者处于前台"，玉阙玄华第 4 条）
 }).superRefine((b, ctx) => {
   if ((b.zone === undefined) !== (b.value === undefined))
     ctx.addIssue({ code: 'custom', path: ['value'], message: '乘区与数值要么都写，要么都不写（都不写 = 标记型 buff）' })

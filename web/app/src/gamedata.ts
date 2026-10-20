@@ -4,8 +4,8 @@ import { z } from 'zod'
 import { mergeBlockKey, type CharacterModuleDef } from '../../../src/data/define'
 import type { GameData } from '../../../src/data/gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema,
-  GenWeaponSchema, type GenActionFile,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEffectsFileSchema, GenEnemySchema, GenMetaSchema,
+  GenTuneBreakSchema, GenWeaponSchema, type GenActionFile,
 } from '../../../src/data/generated.schema'
 import { buildGameData } from '../../../src/data/registry'
 import { parseOrThrow } from '../../../src/data/validate'
@@ -44,6 +44,7 @@ export async function loadGameData(): Promise<GameData> {
   }
   const echoStats = await read(GenEchoStatsSchema, 'echo-stats.json', true)
   const tuneBreak = await read(GenTuneBreakSchema, 'tune-break.json', true)
+  const effectsFile = await read(GenEffectsFileSchema, 'effects.json', true)
   return buildGameData(
     {
       meta: (await read(GenMetaSchema, 'meta.json'))!, characters: (await read(GenCharactersSchema, 'characters.json'))!, actions,
@@ -52,6 +53,7 @@ export async function loadGameData(): Promise<GameData> {
       ...(echoStats ? { echoStats } : {}),
       enemies: (await read(z.array(GenEnemySchema), 'enemies.json'))!,
       ...(tuneBreak ? { tuneBreak } : {}),
+      ...(effectsFile ? { effects: effectsFile } : {}),
     },
     { characters, weapons, echoes, echoSets, effects, envBuffs: [] },
   )

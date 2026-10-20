@@ -88,7 +88,8 @@ export function tickBuffs(s: SimState, rates: Rates): void {
   }
 }
 
-/** 对这次结算有效的实例（TD-03 §4 第 3 步）：挂在出伤者身上的、挂在敌人身上的；前台限定的只在出伤者在前台时算。
+/** 对这次结算有效的实例（TD-03 §4 第 3 步）：挂在出伤者身上的、挂在敌人身上的；前台限定的只在出伤者在前台时算，
+ *  ownerOnField 的只在给的人在前台时算。
  *  标记型（没有乘区）也在里面，收集乘区时跳过（formula.accumulate） */
 export function activeFor(s: SimState, book: BuffBook, dealer: Slot): ActiveBuff[] {
   const out: ActiveBuff[] = []
@@ -97,6 +98,7 @@ export function activeFor(s: SimState, book: BuffBook, dealer: Slot): ActiveBuff
     const reg = book.get(bookKey(b.owner, b.defId))
     if (!reg) continue
     if (reg.def.target === 'onField' && dealer !== s.onField) continue
+    if (reg.def.ownerOnField && b.owner !== s.onField) continue
     out.push({ def: reg.def, value: reg.value, stacks: b.stacks, owner: b.owner })
   }
   return out

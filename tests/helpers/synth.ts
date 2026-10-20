@@ -18,6 +18,7 @@ export interface SynthChar {
   vars?: HookVars                           // 钩子的状态量与初值（总设计 §10.1）
   energyCost?: number                       // 缺省 100
   core?: CoreResourceDef[]
+  effectRules?: CharacterDef['effectRules']  // 角色在队伍里时改的异常效应规则（TD-06 §18）
 }
 
 export function synthData(chars: SynthChar[]): GameData {
@@ -30,7 +31,7 @@ export function synthData(chars: SynthChar[]): GameData {
       actions: Object.fromEntries(c.actions.map(a => [a.id, a])), aliases: c.aliases ?? {},
       buffs: (c.buffs ?? []).map(b => BuffDefSchema.parse(b)),
       resourceEffects: (c.effects ?? []).map(e => ResourceEffectSchema.parse(e)),
-      vars: c.vars ?? {}, flags: [],
+      vars: c.vars ?? {}, flags: [], ...(c.effectRules ? { effectRules: c.effectRules } : {}),
     }
   }
   return {

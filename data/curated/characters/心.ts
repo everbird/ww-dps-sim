@@ -3,6 +3,8 @@
 // characters.json 的共鸣链 / 固有文本。只写共鸣模态·电磁（队伍里有雷主，固有1 有雷主的加成）；同奏模态没写。
 // 动作分两块：常态"应世心"（构建改叫"心"）与岁主形态"照世心"，后者并入时动作 ID 加前缀"照世·"（照世·A1、照世·大招…）。
 // 只写到 0 链：2 链、3 链的倍率提升写了（与 dmg 里 C2 / C3 两版的倍率相同），4 链的全属性加成写了；1 链、3 链的电磁结算、5 / 6 链没写。
+// 共鸣模态·电磁的电磁效应结算（TD-06 §18，docs/xin-confirm.md §4）：目标的电磁效应结算时不减层（effectRules）；电磁爆发转成霆心域，
+// 踏月归心（应世 E、照世 E）最后一段按霆心域主动触发一次电磁效应伤害；霆心域 ≥ 50 时照世 E 停滞目标。
 import { defineCharacter } from '../../../src/data/define'
 import type { HookContext } from '../../../src/engine/types'
 
@@ -29,6 +31,7 @@ const VARS = {
   霆霓: 0,                  // 固有2：不在心相心生时，队友每附加 1 层电磁效应 +1，上限 10
   固有1角色: 0,             // 固有1：哪几位角色已经触发过（槽位的位）
   敕令: 0,                  // 协同攻击还剩几次（转相时 21 层，45 秒）
+  霆心域: 0,                // 共鸣模态·电磁：队伍中的角色每添加 1 层电磁爆发 +1（上限 100），踏月归心最后一段用掉
 }
 type Ctx = HookContext<typeof VARS>
 const me = (ctx: Ctx): string => ctx.state.chars[ctx.self].name
@@ -48,6 +51,17 @@ function strike(ctx: Ctx): void {
   if (ctx.vars.敕令 > 0) ctx.addBuff('心.协同计时')
   ctx.assume('module-guess', '心：协同攻击在监听触发时立即出第一次、之后每秒一次，飞阙的 18 帧出手时间不计')
 }
+
+/** 踏月归心（共鸣技能，应世 E、照世 E）最后一段攻击时：主动触发一次电磁效应伤害，倍率 35% × 霆心域 × 目标当前层数的倍率；之后清空霆心域
+ *  （xlsx"E-落地 / E-2 命中、持续帧结束、技能中断后，清空霆心域"） */
+function tread(ctx: Ctx): void {
+  const n = ctx.vars.霆心域
+  ctx.vars.霆心域 = 0
+  if (n <= 0) return
+  ctx.effectDamage('电磁效应', 0.35 * n, '踏月归心·电磁效应')
+  ctx.assume('module-guess', '心：踏月归心在应世 E-落地、照世 E-2 命中时主动触发电磁效应伤害（35% × 霆心域 × 当前层数倍率），之后清空霆心域')
+}
+const TREAD = new Map([['E', 'E-落地'], [`${P}E`, 'E-2']])     // 踏月归心的最后一段
 
 function onAction(ctx: Ctx, id: string, instance: number): void {
   const v = ctx.vars
@@ -80,6 +94,9 @@ function onAction(ctx: Ctx, id: string, instance: number): void {
     case `${P}A1`:
       v.魔方至 = -1                                            // "A1-前置：第1F销毁场上A1-魔方"（新的第 1 帧生成）
       return
+    case `${P}E`:                                            // "E-停滞：电磁模态下，持有霆心域>49层时生成"
+      if (v.霆心域 < 50) ctx.skipJudgments(instance, ['E-停滞'])
+      return
   }
   // 强化A：有【电磁+1】才生成"赋予1层电磁"那一段
   if (COMMAND.has(id) && v.电磁加一 <= 0) ctx.skipJudgments(instance, ENDOW)
@@ -96,6 +113,7 @@ export default defineCharacter('心', {
     万阙连衡: `${P}强化E`, 临寰宇: `${P}强化重击`, 镇寰宇: `${P}增幅强化重击`,
   },
   vars: VARS,
+  effectRules: { 电磁效应: { keepStacks: true, source: '共鸣模态·电磁：心进入战斗状态时，一定范围内的目标【电磁效应】每次触发时不再减少层数。' } },
   buffs: [
     { id: '心.心相心生', source: '心相心生：施放应世心大招后获得该状态，持续45秒', target: 'self', duration: 2700, trigger: 'hook' },
     {
@@ -181,7 +199,9 @@ export default defineCharacter('心', {
           if (ev.char === self) onAction(ctx, ev.action, ev.instance)
           return
         case 'actionEnd': case 'actionCancel':
-          if (ev.char === self && ev.action === '大招') v.电磁加一 = 5   // "技能结束或中断后，获得5层【电磁+1】"
+          if (ev.char !== self) return
+          if (ev.action === '大招') v.电磁加一 = 5                  // "技能结束或中断后，获得5层【电磁+1】"
+          if (TREAD.has(ev.action)) v.霆心域 = 0                     // 踏月归心没打到最后一段就结束（被打断、切走）：霆心域照样清空
           return
         case 'judgmentSpawn': {
           if (ev.char !== self) return
@@ -211,9 +231,10 @@ export default defineCharacter('心', {
               v.电磁加一 -= 1
               ctx.applyEffect('电磁效应', 1, '心 照世·强化A4-2（电磁+1）')
             }
+            if (TREAD.get(ev.action) === ev.judgment && ev.tick === 0) tread(ctx)
           }
-          // 敕令：前台角色造成声骸技能、协同攻击以外的伤害后，3 秒内每秒消耗 1 层召唤飞阙
-          if (ev.dmg === null || ev.char !== onField || ev.tags.includes('声骸技能') || ev.judgment === '协同-飞阙') return
+          // 敕令：前台角色造成声骸技能、协同攻击以外的伤害后，3 秒内每秒消耗 1 层召唤飞阙（异常效应自身的伤害不算，同"命中时"的触发）
+          if (ev.dmg === null || ev.effect || ev.char !== onField || ev.tags.includes('声骸技能') || ev.judgment === '协同-飞阙') return
           if (v.敕令 <= 0 || ctx.buffStacks('心.协同') === 0) return
           const idle = ctx.buffStacks('心.协同计时') === 0
           ctx.addBuff('心.协同前置')
@@ -232,6 +253,11 @@ export default defineCharacter('心', {
           // 固有2：不在心相心生时，队友每附加 1 层（含进了电磁爆发的）霆霓 +1
           if (ev.by !== self && ctx.buffStacks('心.心相心生') === 0)
             v.霆霓 = Math.min(10, v.霆霓 + (ev.added ?? 0) + (ev.burstAdded ?? 0))
+          // 共鸣模态·电磁：队伍中的角色（含心自己）每添加 1 层电磁爆发，心得 1 层霆心域（上限 100），并消耗目标全部的电磁爆发
+          if ((ev.burstAdded ?? 0) > 0) {
+            v.霆心域 = Math.min(100, v.霆心域 + ev.burstAdded!)
+            ctx.takeBurst('电磁效应', '心 共鸣模态·电磁：电磁爆发转成霆心域')
+          }
           return
         }
         case 'intro':
@@ -256,7 +282,7 @@ export default defineCharacter('心', {
       }
     },
     // 共鸣回路的状态说明（时间轴检查器）：应世相 / 照世相，心相心生、统御众机，了尘愿 / 承天则（镇红尘、镇寰宇）能不能用，
-    // 电磁+1、敕令、霆霓还有几层，额外能量，场上有没有活字心锁
+    // 电磁+1、敕令、霆霓、霆心域还有几层，额外能量，场上有没有活字心锁
     forte(ctx) {
       const v = ctx.vars
       const cd = ctx.state.chars[ctx.self].cooldowns
@@ -268,6 +294,7 @@ export default defineCharacter('心', {
       if (v.电磁加一 > 0) parts.push(`电磁+1 ×${v.电磁加一}`)
       if (v.敕令 > 0) parts.push(`敕令 ${v.敕令}`)
       if (v.霆霓 > 0) parts.push(`霆霓 ${v.霆霓}`)
+      if (v.霆心域 > 0) parts.push(`霆心域 ${v.霆心域}`)
       if (v.额外能量) parts.push('额外能量')
       if (v.魔方至 > ctx.state.battleFrames) parts.push('活字心锁')
       return parts.join(' · ')

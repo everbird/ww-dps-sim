@@ -1,14 +1,16 @@
 // src/engine/simulate.ts —— simulate(ResolvedScenario) → { 事件日志, 汇总 }（总设计 §3.4、§6）
 // 把内核（TD-04）、调度器（TD-09）、伤害公式（TD-03）、切人（TD-05）、资源与敌人量表（TD-06）、buff 与触发（TD-07）、角色钩子（TD-08）接在一起：
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
-import type { ActionId, DamageTag, EffectName, Slot } from '../data/common'
+import { EFFECT_NAMES, type ActionId, type DamageTag, type EffectName, type Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { assume } from './assumptions'
 import { roundTo } from './num'
 import { nextFloat, nextInt, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
-import { applyEffect, canTuneBreak, enemyTimers, hitGauges, onTuneBreakStart, tuneBreakActionsOf } from './enemy'
+import {
+  applyEffect, canTuneBreak, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
+} from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
@@ -40,6 +42,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       castGain: (st, slot, src, i) => { castGainAt(sim, st, slot, src, i); drain(sim, st) },
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
       timers: (st, rates) => {
+        effectTicks(sim, st, rates)                               // 异常效应定时结算（§18）：到期那一刻赶上的先结算
         enemyTimers(st, rates)                                    // 瘫痪结束、白条回满（TD-06 §13.2）；异常效应到时（§18）
         tickBuffs(st, rates)
         drain(sim, st)
@@ -53,6 +56,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
   }
   const sim: Sim = {
     r, k, book: makeBook(r.buffs), hooks: r.team.map(m => r.data.hooks[m.def.name]), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
+    keepStacks: new Set(r.team.flatMap(m => EFFECT_NAMES.filter(e => m.def.effectRules?.[e]?.keepStacks))),
     ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
@@ -148,7 +152,8 @@ function initialState(r: ResolvedScenario): SimState {
 // ---------------------------------------------------------------------------
 // P4 一次结算（TD-03 §4、TD-06 §7）：草稿 → modifyHit → 收集 buff → computeHit → 资源 → hit 事件 → 触发 → 接续动作
 
-/** 这几类伤害走另外的公式（TD-03 §5、§6）与触发时机（TD-06 v0.2 之后），还没接上；不按直接伤害算，只提示一次 */
+/** 这几类判定的伤害走另外的公式（TD-03 §5、§6）与触发时机，还没接上；不按直接伤害算，只提示一次。
+ *  异常效应自身的伤害（定时结算、钩子主动触发）在 enemy.ts，不经过判定（TD-06 §18） */
 const LATER: readonly DamageTag[] = ['异常效应', '震谐响应', '骇破响应']
 
 function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
@@ -281,6 +286,8 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
     applyEffect: (effect, stacks, note) => applyEffect(sim, s, self, effect, stacks, note ?? `${m.def.name} 的钩子`),
+    effectDamage: (effect, scale, judgment) => effectDamage(sim, s, self, effect, scale, judgment),
+    takeBurst: (effect, note) => takeBurst(s, self, effect, note ?? `${m.def.name} 的钩子`),
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
     assume: (id, detail) => assume(s, id, detail),
   }

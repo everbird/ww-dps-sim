@@ -255,6 +255,8 @@ export interface HitEvent extends EventBase {
   buffs: string[]                           // 生效的 buff，"id×层数"
   gains: { energy: Partial<Record<CharName, number>>; concerto: number; core: number[] }
   enemy?: { tunability: number; whiteBar: number }   // 这次结算之后敌人的偏谐值与白条（有量表的敌人才记，TD-06 §14；时间轴网页画曲线用）
+  /** 异常效应自身的伤害（定时结算、钩子主动触发，TD-06 §18）：action 是效应名，没有判定（id 是新编号）；不给资源、不触发"命中时"的效果 */
+  effect?: EffectName
 }
 
 /** 公式各项系数（TD-03 §8：非暴击分支的各项；critDamage 是暴击分支的暴伤） */
@@ -281,12 +283,15 @@ export type SimEvent =
   // 治疗：char 提供了一次治疗（标了 heals 的判定结算、钩子记的持续回复每一跳）；治疗量不建模，只用来触发"提供治疗时"的效果
   | (EventBase & { type: 'heal'; char: CharName; source: string })
   // effectApplied（TD-06 §18）：by 谁附加的，added 这次加了几层、stacks 加完是几层；有额外层（电磁爆发）的效应另记 burstAdded、burst。
-  // effectEnd：effect 到时消失。by 是触发"附加…后"的发出者
+  // effectEnd：effect 到时消失。effectConsumed：被技能消耗了层数（心消耗电磁爆发），stacks、burst 是之后剩下的。
+  // by 是触发"附加…后"的发出者
   | (EventBase & {
     type: 'enemyState'; change: EnemyStateChange; detail?: string
     by?: CharName; effect?: EffectName; added?: number; stacks?: number; burstAdded?: number; burst?: number
   })
-  | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; damage: number; source: CharName })
+  // 异常效应定时结算了一次（TD-06 §18）：stacks、burst 是结算时的层数，left 是结算后剩下的层数（电磁爆发清零）；
+  // 伤害另记一条 hit（effect 字段），这里的 damage 只是抄一份，汇总不算它；source 是记在谁名下
+  | (EventBase & { type: 'effectTick'; effect: EffectName; stacks: number; burst?: number; left: number; damage: number; source: CharName })
   | (EventBase & { type: 'wait'; cmd: CommandRef; code: WaitCode; reason: string; from: number; frames: number; battleFrames: number })
   // 可选指令（排轴里写 "?"）的条件不满足，跳过了（TD-06 §13.4）
   | (EventBase & { type: 'skip'; cmd: CommandRef; code: WaitCode; reason: string })
@@ -373,6 +378,11 @@ export interface HookContext<V extends HookVars = HookVars> {
   skipJudgments(instance: number, names: string[]): void
   /** 以本角色的名义为目标附加异常效应（TD-06 §18）：层数规则同判定的 applies，记 enemyState effectApplied；note 写进事件的 detail */
   applyEffect(effect: EffectName, stacks: number, note?: string): void
+  /** 以本角色的名义主动触发一次异常效应伤害（心的踏月归心）：倍率 = scale × 目标当前层数对应的倍率（不含电磁爆发）。
+   *  不算一次结算（不减层、不动电磁爆发、不改下次结算的时刻）；目标没有该效应时不出伤害。judgment 是 hit 事件里的名字，返回伤害 */
+  effectDamage(effect: EffectName, scale: number, judgment: string): number
+  /** 消耗目标该效应全部的额外层（电磁爆发），返回消耗了几层；有消耗时记 enemyState effectConsumed */
+  takeBurst(effect: EffectName, note?: string): number
   /** 本角色的状态量（角色模块的 vars 声明的那几个），直接读写：ctx.vars.盛绽 = true */
   readonly vars: V
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */

@@ -44,8 +44,12 @@ export interface CharacterDef {
   buffs: BuffDef[]                                  // 被动 / 共鸣链 / 延奏 / 回路（curated）
   resourceEffects: ResourceEffect[]                 // 资源型触发效果（curated，TD-07 §9）
   vars: HookVars                                    // 钩子的状态量与初值（curated；钩子本身在 GameData.hooks，总设计 §10.1）
+  effectRules?: Partial<Record<EffectName, EffectRule>>   // 角色在队伍里时改的异常效应规则（curated，TD-06 §18）
   flags: string[]                                   // 装配时未处理的数据问题汇总
 }
+
+/** 角色在队伍里时改的异常效应规则（TD-06 §18）。keepStacks：结算后不减层（心·共鸣模态·电磁"目标【电磁效应】每次触发时不再减少层数"） */
+export interface EffectRule { keepStacks: true; source: string }
 
 export interface CoreResourceDef { slot: 1 | 2 | 3 | 4 | 5; name: string; cap: number }
 
@@ -185,12 +189,13 @@ export interface EffectDef {
   name: EffectName
   element: Element
   source: string                                    // 规则原文出处
-  multipliers: number[]                             // 第 k 项 = k 层（dmg「异常伤害」行；还没接时为空）
+  multipliers: number[]                             // 第 k 项 = k 层（effects.json，dmg「异常伤害」行；没有时为空）
   maxStacks: number                                 // 常规上限
   /** 达到上限后还能额外叠的层数（电磁效应的"电磁爆发"）；0 = 没有 */
   burstMax: number
   duration: Frame                                   // 每次附加刷新的持续时间（全部层数共用一个计时）
   tickInterval: Frame | null                        // 结算周期
+  decay: number                                     // 每次结算后移除当前层数的比例（0 = 不减；角色模块的 effectRules 可让它不减）
   debuff?: BuffDef                                  // 如虚湮减防
 }
 

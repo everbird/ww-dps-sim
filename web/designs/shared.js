@@ -8,7 +8,7 @@ window.WW = (() => {
   const INTENDED = new Set(['delay', 'wait', 'at', 'input'])   // input：操作延迟（options.inputDelay）
   /** 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick、写轴要求的），不算"卡住" */
   const RHYTHM = new Set(['derive', 'priority', 'combo', 'started', 'delay', 'wait', 'at', 'input'])
-  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应' }
+  const ENEMY_CHANGE = { disharmony: '失谐', harmonyBreak: '谐度破坏命中', break: '破盾', breakEnd: '瘫痪结束', poiseBreak: '破韧', shift: '偏移', interference: '干涉', effectApplied: '异常效应', effectEnd: '异常效应消失', effectConsumed: '异常效应被消耗' }
   const fmt = x => Math.round(x).toLocaleString('en-US')
   const pct = x => (x * 100).toFixed(1) + '%'
   const sec = f => (f / 60).toFixed(2)
@@ -72,6 +72,7 @@ window.WW = (() => {
     // 每个动作给的资源（src/engine/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
     const gainsOf = new Map((raw.gains || []).filter(g => !g.outro).map(g => [g.instance, g]))
     const actions = [], open = new Map(), byInst = new Map(), hits = [], waits = [], skips = [], loops = [], enemy = [], switches = [], alerts = []
+    const effects = []   // 异常效应的层数变化（附加、消耗、到时，与定时结算 effectTick），按日志顺序（TD-06 §18）
     const buffRows = new Map(), always = new Set(), damaging = new Set()
     for (const e of m.log) {
       switch (e.type) {
@@ -94,7 +95,8 @@ window.WW = (() => {
         case 'wait': waits.push(e); break
         case 'skip': skips.push(e); break
         case 'loop': loops.push(e); break
-        case 'enemyState': enemy.push(e); break
+        case 'enemyState': enemy.push(e); if (e.effect) effects.push(e); break
+        case 'effectTick': effects.push(e); break
         case 'buffApply': case 'buffExpire': {
           if (e.type === 'buffApply' && e.remaining === 'inf') { always.add(`${e.buff}→${e.target}`); break }
           const key = `${e.buff}→${e.target}`
@@ -136,7 +138,7 @@ window.WW = (() => {
       owner: m.buffOwners[r.buff] || (r.buff.includes('.') ? r.buff.slice(0, r.buff.indexOf('.')) : r.buff),
       uptime: (m.summary.buffUptime || {})[r.key] ?? null,
     })).sort((a, b) => (slot.has(a.target) ? slot.get(a.target) : 9) - (slot.has(b.target) ? slot.get(b.target) : 9) || a.spans[0].start - b.spans[0].start)
-    m.D = { slot, actions, hits, waits, skips, loops: loopSpans, enemy, switches, alerts, onField, buffs, always, clock, lastF,
+    m.D = { slot, actions, hits, waits, skips, loops: loopSpans, enemy, effects, switches, alerts, onField, buffs, always, clock, lastF,
       maxHit: Math.max(1, ...hits.map(h => (h.dmg ? h.dmg.expected : 0))) }
     return m
   }
@@ -287,8 +289,16 @@ window.WW = (() => {
   }
   const cmdText = (m, c) => ((c.loop === 0 ? m.opening : m.rotation) || [])[c.line - 1] || ''
   const cmdWhere = c => `${c.loop === 0 ? '启动' : `第 ${c.loop} 轮`}第 ${c.line} 条`
-  /** 每个角色的颜色：--c0..--c2 指向元素色 */
-  function paint(m) { m.team.forEach((t, i) => document.documentElement.style.setProperty(`--c${i}`, `var(${ELEMENT_VAR[t.element] || '--el-physical'})`)) }
+  /** 每个角色的颜色：--c0..--c2 指向元素色。同元素的换深浅（心 · 雷主 · 卜灵都是导电）：第一个用元素色，第二个往 --ink 调 35%
+   *  （深色主题变亮、浅色主题变暗），第三个往 --panel 调 25%（反过来）；跟着主题走，三个都看得清 */
+  function teamColors(m) {
+    const seen = {}
+    return m.team.map(t => {
+      const v = `var(${ELEMENT_VAR[t.element] || '--el-physical'})`, k = (seen[v] = (seen[v] || 0) + 1)
+      return k === 1 ? v : k === 2 ? `color-mix(in oklab, ${v} 65%, var(--ink))` : `color-mix(in oklab, ${v} 75%, var(--panel))`
+    })
+  }
+  function paint(m) { teamColors(m).forEach((c, i) => document.documentElement.style.setProperty(`--c${i}`, c)) }
   // ---- 轴可能有问题（TD-09 §3.5、TD-12 §2.1）：写了"变奏"（switch <角色> 变奏）的切人，切出者协奏没满、没变奏。
   // 引擎记成 warning 事件（code introMissed，带指令出处 cmd）；各视图顶上一条提示条（点一条跳过去），切人处画标记 ----
   /** 警告正文：去掉开头的"启动第 11 条 switch 椿 变奏："（行号、指令各视图自己写） */
@@ -354,5 +364,5 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, teamColors, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()

@@ -5,7 +5,8 @@ import type { DilationDef, EffectDef, TuneBreakTable } from '../src/data/gamedat
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import type { SimResult } from '../src/engine/types'
+import { computeAbnormal, emptyAccumulator } from '../src/engine/formula'
+import type { ResolvedScenario, SimResult } from '../src/engine/types'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
 
@@ -176,9 +177,9 @@ describe('T06-11 白条', () => {
   })
 })
 
-// 异常效应（§18）：规则同 data/curated/effects.ts 的电磁效应（常规 10 层、电磁爆发 10 层、15 秒、5 秒一结算）
+// 异常效应（§18）：规则同 data/curated/effects.ts 的电磁效应（常规 10 层、电磁爆发 10 层、15 秒、5 秒一结算、结算后移除 50%）
 const 电磁: EffectDef = {
-  name: '电磁效应', element: '导电', source: 't', multipliers: [], maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300,
+  name: '电磁效应', element: '导电', source: 't', multipliers: [], maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300, decay: 0.5,
 }
 /** 甲的 E 第 10 帧命中、附加 4 层电磁效应，30 帧结束；乙的钩子在甲每次命中后以乙的名义附加 1 层 */
 function runEffects(rotation: string[], withRule = true): SimResult {
@@ -213,7 +214,7 @@ describe('T06-13 异常效应的层数（§18）', () => {
       [70, '甲', 0, 10, 4, 4], [70, '乙', 0, 10, 1, 5],
       [100, '甲', 0, 10, 4, 9], [100, '乙', 0, 10, 1, 10],
     ])
-    expect(r.summary.assumptions.map(a => a.id)).toContain('later-damage')   // 伤害还没算，只记层数
+    expect(r.summary.assumptions.map(a => a.id)).not.toContain('later-damage')   // 伤害由定时结算算（T06-14）
   })
   test('每次附加刷新持续时间，全部层数共用一个计时；到时整个消失（effectEnd）', () => {
     const r = runEffects(['甲 E', 'wait 300', '甲 E', 'wait 1000'])     // 只剩异常效应时仿真就停了，等一会儿才看得到到时
@@ -230,5 +231,91 @@ describe('T06-13 异常效应的层数（§18）', () => {
     const r = runEffects(['甲 E', '甲 E'], false)
     expect(applied(r)).toEqual([])
     expect(eventsOfLog(r.log, 'warning').filter(w => w.code === 'effect')).toHaveLength(1)
+  })
+})
+
+// 定时结算（§18）：同上的电磁效应，带逐层倍率（dmg「异常伤害 / 电磁效应」1–10 层）；异常伤害基础值 90 级 3674（TD-03 §5）
+const 倍率 = [0.5, 0.9065, 1.313, 1.7195, 2.126, 2.5325, 2.939, 3.3455, 3.752, 4.1585]
+/** 甲的 E 第 10 帧命中、附加 4 层；乙按 extra 加规则、buff、钩子；丙记"命中时"触发了几次 */
+function runTicks(rotation: string[], extra: Partial<SynthChar> = {}): { res: SimResult; R: ResolvedScenario } {
+  const 甲e: SynthChar = {
+    name: '甲', actions: [action({ id: 'E', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'e', spawnFrame: 10, applies: { effect: '电磁效应', stacks: 4 } })] })],
+  }
+  const 丙e: SynthChar = {
+    name: '丙', actions: [], buffs: [{ id: '丙.命中时', source: 't', target: 'self', duration: 600, trigger: { on: 'judgmentSettle', where: { by: 'team' } } }],
+  }
+  const data = synthData([甲e, { name: '乙', actions: [], ...extra }, 丙e])
+  data.effects = { 电磁效应: { ...电磁, multipliers: 倍率 } }
+  data.abnormalBaseByLevel = Array.from({ length: 100 }, (_, i) => (i === 89 ? 3674 : 0))
+  const R = resolveScenario(ScenarioSchema.parse({
+    team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
+  }), data)
+  return { res: simulate(R), R }
+}
+const ticks = (r: SimResult) => eventsOfLog(r.log, 'effectTick').map(e => [e.f, e.stacks, e.burst, e.left, e.source])
+const effectHits = (r: SimResult) => eventsOfLog(r.log, 'hit').filter(h => h.effect).map(h => [h.f, h.char, h.judgment, h.dmg!.expected])
+/** 期望的异常伤害：基础值 × 倍率 × 防御 × 抗性（× 0 类加深） */
+const abn = (R: ResolvedScenario, multiplier: number, amp0 = 0): number => {
+  const acc = emptyAccumulator()
+  acc.zones.DamageAmplify0 = amp0
+  return computeAbnormal({ base: 3674, multiplier, level: 90, enemy: { def: R.enemy.def, res: R.enemy.res['导电'] } }, acc, R.rules)
+}
+const 跟着挂: Partial<SynthChar> = { hooks: { onEvent: (ctx, ev) => { if (ev.type === 'hit' && ev.char === '甲') ctx.applyEffect('电磁效应', 1, '乙跟着挂') } } }
+
+describe('T06-14 异常效应的定时结算（§18）', () => {
+  test('从第一次附加起每 300 战斗帧一次：按当时的层数倍率出伤害，记在最后附加的人名下；之后移除 ⌊层数 × 50%⌋；到期那一帧先结算再消失', () => {
+    const { res, R } = runTicks(['甲 E', 'wait 1000'], 跟着挂)          // 第 10 帧：甲 4 层、乙 1 层 → 5 层，最后附加的是乙
+    expect(ticks(res)).toEqual([[309, 5, 0, 3, '乙'], [609, 3, 0, 2, '乙'], [909, 2, 0, 1, '乙']])
+    expect(effectHits(res)).toEqual([
+      [309, '乙', '电磁效应·定时结算', abn(R, 倍率[4]!)], [609, '乙', '电磁效应·定时结算', abn(R, 倍率[2]!)], [909, '乙', '电磁效应·定时结算', abn(R, 倍率[1]!)],
+    ])
+    const tick3 = res.log.findIndex(e => e.type === 'effectTick' && e.f === 909)
+    expect(res.log.findIndex(e => e.type === 'enemyState' && e.change === 'effectEnd')).toBeGreaterThan(tick3)   // 第 10 帧附加、900 帧
+    const h = eventsOfLog(res.log, 'hit').find(x => x.effect)!
+    expect([h.action, h.element, h.tags, h.gains]).toEqual(['电磁效应', '导电', ['异常效应'], { energy: {}, concerto: 0, core: [0, 0, 0] }])
+    expect(eventsOfLog(res.log, 'buffApply').filter(b => b.buff === '丙.命中时')).toHaveLength(1)   // 只有甲那一下算"命中时"
+    expect(res.summary.byAction.find(a => a.action === '电磁效应')).toMatchObject({ char: '乙', hits: 3 })
+    expect(res.summary.assumptions.map(a => a.id)).toEqual(expect.arrayContaining(['effect-tick', 'effect-owner']))
+  })
+  test('电磁爆发：结算时另加电磁爆发层数的倍率，结算后清零（假设 effect-burst）', () => {
+    const { res, R } = runTicks([...Array(4).fill('甲 E') as string[], 'wait 1000'])   // 4 → 8 → 10 + 2 → 10 + 6
+    expect(ticks(res)).toEqual([[309, 10, 6, 5, '甲'], [609, 5, 0, 3, '甲'], [909, 3, 0, 2, '甲']])
+    expect(effectHits(res)[0]![3]).toBe(abn(R, 倍率[9]! + 倍率[5]!))
+    expect(res.summary.assumptions.map(a => a.id)).toContain('effect-burst')
+  })
+  test('角色模块的 effectRules 写了 keepStacks：结算后不减层（心·共鸣模态·电磁）', () => {
+    const { res } = runTicks(['甲 E', 'wait 1000'], { ...跟着挂, effectRules: { 电磁效应: { keepStacks: true, source: 't' } } })
+    expect(ticks(res).map(t => t.slice(0, 4))).toEqual([[309, 5, 0, 5], [609, 5, 0, 5], [909, 5, 0, 5]])
+  })
+  test('钩子：takeBurst 消耗目标全部的电磁爆发（记 effectConsumed）；effectDamage 按"scale × 当前层数倍率"出伤害，不算一次结算', () => {
+    const { res, R } = runTicks([...Array(4).fill('甲 E') as string[], 'wait 400'], {
+      hooks: {
+        onEvent: (ctx, ev) => {
+          if (ev.type !== 'enemyState' || ev.change !== 'effectApplied' || !ev.burstAdded) return
+          const n = ctx.takeBurst('电磁效应', '乙收走')
+          ctx.effectDamage('电磁效应', 0.35 * n, '测试·电磁效应')
+        },
+      },
+    })
+    expect(eventsOfLog(res.log, 'enemyState').filter(e => e.change === 'effectConsumed').map(e => [e.f, e.by, e.stacks, e.burst]))
+      .toEqual([[70, '乙', 10, 0], [100, '乙', 10, 0]])
+    expect(effectHits(res)).toEqual([
+      [70, '乙', '测试·电磁效应', abn(R, 0.35 * 2 * 倍率[9]!)], [100, '乙', '测试·电磁效应', abn(R, 0.35 * 4 * 倍率[9]!)],
+      [309, '甲', '电磁效应·定时结算', abn(R, 倍率[9]!)],
+    ])
+    expect(ticks(res)).toEqual([[309, 10, 0, 5, '甲']])                // 电磁爆发已被收走；主动触发不改结算的时刻与层数
+  })
+  test('buff 的 ownerOnField：给的人在前台时才算（玉阙玄华"若装备者处于前台，目标受到电磁效应伤害加深"）；filter.effects 只加在效应自身的伤害上', () => {
+    const 加深: Partial<SynthChar> = {
+      buffs: [{
+        id: '乙.电磁加深', source: 't', zone: 'DamageAmplify0', value: 0.3, filter: { effects: ['电磁效应'] },
+        target: 'enemy', duration: 'inf', trigger: 'always', ownerOnField: true,
+      }],
+    }
+    const off = runTicks(['甲 E', 'wait 400'], 加深)
+    const on = runTicks(['甲 E', 'switch 乙', 'wait 400'], 加深)
+    expect(effectHits(off.res)).toEqual([[309, '甲', '电磁效应·定时结算', abn(off.R, 倍率[3]!)]])
+    expect(effectHits(on.res)).toEqual([[309, '甲', '电磁效应·定时结算', abn(on.R, 倍率[3]!, 0.3)]])
+    expect(eventsOfLog(on.res.log, 'hit').filter(h => h.effect).map(h => h.buffs)).toEqual([['乙.电磁加深']])
   })
 })

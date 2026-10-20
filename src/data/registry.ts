@@ -9,7 +9,7 @@ import {
   BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
 } from './buff.schema'
 import { mergeBlockKey, type ActionOverride, type CharacterModuleDef, type EchoModule, type EchoSetModule, type EffectModule, type WeaponModule } from './define'
-import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEnemy, GenMeta, GenTuneBreak, GenWeapon } from './generated.schema'
+import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEffectsFile, GenEnemy, GenMeta, GenTuneBreak, GenWeapon } from './generated.schema'
 import {
   DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EffectDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
@@ -25,6 +25,7 @@ export interface GeneratedFiles {
   echoStats?: GenEchoStats                          // echo-stats.json（TD-01 §5.4）
   enemies: GenEnemy[]
   tuneBreak?: GenTuneBreak                          // tune-break.json（TD-01 §11.3）；没有时谐度破坏伤害为 0
+  effects?: GenEffectsFile                          // effects.json（TD-01 §11.2）：逐层倍率与异常伤害基础值；没有时异常效应伤害为 0
 }
 
 export interface CuratedModules {
@@ -80,8 +81,8 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     meta: gen.meta,
     characters, commonActions, weapons,
     echoes, echoSets, echoStats: gen.echoStats ?? null, enemies,
-    effects: Object.fromEntries(cur.effects.map(e => [e.name, effectDef(e)])),
-    abnormalBaseByLevel: [],                        // 异常伤害的基础值、逐层倍率：结算接上时从构建产出（TD-06 §18）
+    effects: Object.fromEntries(cur.effects.map(e => [e.name, effectDef(e, gen.effects)])),
+    abnormalBaseByLevel: gen.effects?.abnormalBaseByLevel ?? [],   // 异常伤害基础值（base 页 AbnomalDamage，TD-03 §5）
     tuneBreak: tuneBreakTable(gen.tuneBreak),
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
     rules: DEFAULT_RULES,
@@ -106,11 +107,12 @@ function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
   }
 }
 
-/** 异常效应的规则（TD-06 §18）；逐层倍率还没从 dmg 构建，先空着 */
-function effectDef(e: EffectModule): EffectDef {
+/** 异常效应：规则取手写的（data/curated/effects.ts，TD-06 §18），逐层倍率取 effects.json（dmg「异常伤害」行，TD-01 §4.3）；
+ *  没有 effects.json 或里面没有这个效应时倍率为空，结算的伤害为 0 */
+function effectDef(e: EffectModule, gen: GenEffectsFile | undefined): EffectDef {
   return {
-    name: e.name, element: e.element, source: e.source, multipliers: [], maxStacks: e.maxStacks, burstMax: e.burstMax ?? 0,
-    duration: e.duration, tickInterval: e.tickInterval,
+    name: e.name, element: e.element, source: e.source, multipliers: gen?.effects.find(x => x.name === e.name)?.multipliers ?? [],
+    maxStacks: e.maxStacks, burstMax: e.burstMax ?? 0, duration: e.duration, tickInterval: e.tickInterval, decay: e.decay ?? 0,
   }
 }
 
@@ -165,6 +167,7 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     buffs: (mod.buffs ?? []).map(b => buff(b, mod.name)),
     resourceEffects: (mod.resourceEffects ?? []).map(e => effect(e, mod.name)),
     vars: { ...(mod.vars ?? {}) },
+    ...(mod.effectRules ? { effectRules: mod.effectRules } : {}),
     flags,
   }
 }
