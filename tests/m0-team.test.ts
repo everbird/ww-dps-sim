@@ -9,7 +9,7 @@ import { ScenarioSchema } from '../src/data/scenario.schema'
 import { composeStat } from '../src/engine/formula'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { actionGains, gainSteps } from '../src/engine/trace'
+import { actionGains, gainSteps, resourceTracks } from '../src/engine/trace'
 import { dataDescribe } from './helpers/kernel-harness'
 import { M0, m0Run } from './helpers/m0'
 import { eventsOfLog } from './helpers/synth'
@@ -73,6 +73,25 @@ dataDescribe('M0 三人的钩子', () => {
     ])
     // 只放 E：冰棱是 E 命中时挂上的，到时自爆（5 链）算 E
     expect(gainsOf(['散华 E', 'wait 400'])('E', 'concerto')).toEqual([['effect', '行进序曲.协奏', 16, null], ['cast', '', 15, null], ['hit', 'E-引爆冰棱', 15, null]])
+  })
+
+  test('T08-散华-5 透视（核心资源槽 1，基础页叫"指针"）：E 命中 +1，每层 5 秒各自到时；大招 +2 封顶 2 层、刷新先得的那层；重击爆裂清空、计时撤掉', () => {
+    const core1 = (rotation: string[]) => {
+      const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
+      const out = simulate(r)
+      const t = resourceTracks(gainSteps(out.log, r), r).find(x => x.char === '散华')!.tracks.find(x => x.key === 'core1')!
+      const timers = out.log.flatMap(e => ((e.type === 'buffApply' || e.type === 'buffExpire') && e.buff.startsWith('散华.透视')
+        ? [[e.f, e.type === 'buffApply' ? '+' : `-${e.reason}`, e.buff]] : []))
+      return { name: t.name, cap: t.cap, steps: t.steps, timers }
+    }
+    const one = core1(['散华 E', 'wait 330'])
+    expect([one.name, one.cap, one.steps]).toEqual(['透视', 2, [[0, 0], [19, 1], [318, 0]]])
+    const full = core1(['散华 E', '散华 R', '散华 重击居合', 'wait 400'])
+    expect(full.steps).toEqual([[0, 0], [19, 1], [20, 2], [153, 0]])
+    expect(full.timers).toEqual([
+      [19, '+', '散华.透视·一'], [20, '+', '散华.透视·二'], [20, '+', '散华.透视·一'],
+      [153, '-removed', '散华.透视·一'], [153, '-removed', '散华.透视·二'],
+    ])
   })
 
   test('T08-椿-0 核心资源槽 1 改叫"红椿·蕊"（主表是"红椿·蕊1"），场景按它写开局值', () => {
