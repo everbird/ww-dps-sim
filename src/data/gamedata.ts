@@ -105,7 +105,9 @@ export interface JudgmentDef {
   row: number
   spawnFrame: Frame | null                          // null = 事件生成（钩子 spawnJudgment）
   birthFrame: Frame | null                          // 出现帧：发生帧公式 N = P + f(Q) 的 P（TD-04 §5.4）；null = 同 spawnFrame
-  lifeFrames: Frame                                 // -1 = 直到动作结束（必定不可脱手）
+  lifeFrames: Frame                                 // -1 = 直到动作结束（必定不可脱手）；从生效时算（附页1：持续帧 = 判定生效后的持续时长）
+  /** 生成后到生效前要等的帧数（附页1"延迟"；老角色写在备注"脱手后延迟nF生效"，构建一并抽出）；第一次结算在生成后第这么多帧，缺省 0（TD-04 §5） */
+  delayFrames?: Frame
   ticks: number                                     // 结算次数，≥1
   tickInterval: Frame | null                        // null 且 ticks > 1 时在寿命内均分（TD-04 §5.2）
   persistsOnCancel: boolean                         // 可脱手

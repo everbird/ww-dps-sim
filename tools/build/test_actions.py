@@ -67,6 +67,16 @@ class 新列(unittest.TestCase):
         self.assertEqual(x['delayFrames'], 4)
         self.assertEqual(x['hints'], {'tickInterval': 6, 'maxTicks': 2})
 
+    def test_延迟写在备注里(self):
+        # 老角色把延迟写在备注"脱手后延迟nF生效"：列空时按备注；列与备注都有、对不上时以列为准并报告
+        out = []
+        for head, extra in ((H1003, {}), (H1019, {'延迟': 7}), (H1019, {'延迟': 6})):
+            iss = Issues()
+            r = row(head, 名称='卜灵', ID=1, 动作='QTE-伤害', 备注='脱手后延迟7F生效', 发生帧=7, 持续帧=6, **extra, **{'命中类型': '目标'})
+            blk = parse_action_sheet('角色-女', '女', [head, r], [head, [None] * len(head)], {}, iss)
+            out.append((blk[0]['groups'][0]['rows'][0]['delayFrames'], [k for (_, k) in iss.items]))
+        self.assertEqual(out, [(7, []), (7, []), (6, ['延迟与备注不同'])])
+
     def test_多判与备注(self):
         iss = Issues()
         self.assertEqual(multi_hit_hints('8F / 4次', {}, 'x', iss), {'tickInterval': 8, 'maxTicks': 4})

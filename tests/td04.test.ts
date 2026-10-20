@@ -140,6 +140,16 @@ dataDescribe('T04-7 多段判定与不可脱手：散华 A3（发生帧 18，每
     expect(at(r, 'c')).toEqual([2, 8, 14])
     expect(events(r, 'actionStart').map(e => e.f)).toEqual([0, 15])
   })
+  test('延迟（附页1"判定生成后到生效前要等的时长"）：第 2 帧生成、延迟 10 帧，第 12 帧第一次结算；间隔与持续帧从生效时算；不可脱手的结算完才就绪', () => {
+    const defs = {
+      P: action({ id: 'P', endFrame: 40, judgments: [judgment({ name: 'd', spawnFrame: 2, delayFrames: 10, lifeFrames: 12, ticks: 4, tickInterval: 5, persistsOnCancel: false })] }),
+      Q: action({ id: 'Q', endFrame: 5, priority: [{ fromFrame: 0, value: 6 }] }),
+    }
+    expect(at(run(solo(defs), [{ act: 0, action: 'P' }]), 'd')).toEqual([12, 17, 22])   // 第 4 次在生效后 15 帧，超出持续帧 12
+    const r = run(solo(defs), [{ act: 0, action: 'P' }, { act: 0, action: 'Q' }])
+    expect(at(r, 'd')).toEqual([12, 17, 22])
+    expect(events(r, 'actionStart').map(e => e.f)).toEqual([0, 23])
+  })
 })
 
 dataDescribe('T04-8 尾部：仇远 强化A3（结束帧 50；强化A3-3…6 出生帧 20、发生帧 56/74/92/110）', () => {

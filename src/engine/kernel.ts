@@ -291,7 +291,8 @@ export function ticksWithinLife(j: JudgmentDef): number {
 export const judgmentRate = (j: JudgmentRuntime, rates: Rates): number =>
   j.def.followHitstop ? rates.chars[j.owner] : rates.battle
 
-/** P4：按槽位、生成顺序结算到点的判定；然后推进年龄，移除到期的 */
+/** P4：按槽位、生成顺序结算到点的判定；然后推进年龄，移除到期的。
+ *  延迟（delayFrames，附页1"判定生成后到生效前要等的时长"）：第 n 次结算在年龄"延迟 + n × 间隔"，持续帧从生效时算 */
 export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
   const queue = [...s.judgments].sort((a, b) => a.owner - b.owner || a.id - b.id)
   settleQueue = queue
@@ -301,12 +302,13 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
       if (!s.judgments.includes(j)) continue           // 连锁中被移除
       const r = judgmentRate(j, rates)
       const spacing = tickSpacing(j.def)
+      const delay = j.def.delayFrames ?? 0
       while (j.ticksDone < j.def.ticks) {
         const n = j.ticksDone
-        const at = n * spacing
-        const due = n === 0
+        const at = delay + n * spacing
+        const due = n === 0 && delay === 0
           ? j.age === 0                                   // 第一次：生成的那个 tick，不看速率
-          : within(at, j.age, r) && (j.def.lifeFrames === -1 || at < j.def.lifeFrames)
+          : within(at, j.age, r) && (j.def.lifeFrames === -1 || n * spacing < j.def.lifeFrames)
         if (!due) break
         j.ticksDone++
         k.hooks.settle(s, j, n)
@@ -320,7 +322,7 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
     settleQueue = null
   }
   for (const j of s.judgments) j.age = snap4(j.age + judgmentRate(j, rates))
-  s.judgments = s.judgments.filter(j => j.def.lifeFrames === -1 || j.age < j.def.lifeFrames)
+  s.judgments = s.judgments.filter(j => j.def.lifeFrames === -1 || j.age < (j.def.delayFrames ?? 0) + j.def.lifeFrames)
 }
 
 // ---------------------------------------------------------------------------
