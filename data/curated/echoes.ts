@@ -58,6 +58,25 @@ const echoes: EchoModule[] = [
   }),
 
   defineEcho({
+    name: '天演溯心',                       // 心、雷主的首位
+    cost: 4,                                // `索引` 页查不到 COST（构建报告），扫描库存写 4
+    qFor: { 心: 'Q·心召唤' },               // "若装配角色为心，则声骸技能将变为对更大范围内的敌人造成至多五段…和一段…的导电伤害"
+    actionOverrides: { 'Q·心召唤': { accept: ['persistsGuess'] } },   // 召唤物的几段，脱手（同常规召唤）
+    mainSlotBuffs: [
+      {
+        id: '天演溯心.首位', source: '在首位装配该声骸技能时，自身导电伤害加成提升10.00%',
+        zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['导电'] }, target: 'self', duration: 'inf', trigger: 'always',
+      },
+      {
+        // xlsx 伤害配置 R243"装备者赋予目标电磁效应、获得同奏/响应同奏后,雷伤加成+10%"；同奏的没写
+        id: '天演溯心.附加后', source: '自身为目标附加【电磁效应】后，或自身获得同奏、响应同奏时，自身导电伤害加成额外提升10.00%，持续30秒。',
+        zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['导电'] }, target: 'self', duration: 1800,
+        trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '电磁效应' } },
+      },
+    ],
+  }),
+
+  defineEcho({
     name: '梦魇·无冠者',
     actionOverrides: {
       // 以 nanoka 为准（2026-10-04 用户确认）："初始拥有3次可使用次数，每12秒可使用次数增加1次，可使用次数上限3次"；xlsx「冷却」列 20261003 版写 20 秒，20261019 版已改成 12 秒

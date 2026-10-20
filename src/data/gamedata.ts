@@ -66,6 +66,7 @@ export interface ActionDef {
   castGains: CastGain[]                             // 施放类资源（"大招-前置"协奏 +20 等）
   outroTriggerFrame?: Frame                         // 变奏动作：上一角色的延奏在此帧触发
   switchLockUntil?: Frame                           // 此帧前不能切人
+  switchLockFromInput?: true                        // 切人锁是大招的"第nF前不响应输入"推出来的（没写"不能切人"，假设 ult-no-switch）
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖
   cooldownGroup?: string                            // 共用冷却的组名（椿 E1 / E2 共用 'E'）；缺省按动作 ID
   charges?: number                                  // 按次数充能：最多存几次（初始满），每 cooldown 帧回复 1 次（梦魇·无冠者 3 次 / 12 秒）
@@ -118,6 +119,8 @@ export interface JudgmentDef {
   formula?: { type: number; rate: number }          // dmg FormulaType ≠ 0：rate = FormulaParam5（已 × 0.0001），钩子据此算 Formula1
   cureBase?: number                                 // 治疗 / 护盾的固定值 CureBaseValue（calc = 'heal'）
   heals?: boolean                                   // 这次结算同时为友方回复生命：结算后记一条 heal 事件（治疗量不建模，角色模块标）
+  /** 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"）：动作表只写在备注里，角色模块按原文标（TD-06 §18） */
+  applies?: { effect: EffectName; stacks: number }
   chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
   flags: string[]
 }
@@ -145,6 +148,7 @@ export interface EchoDef {
   /** 动作 ID 是 'Q·<组名>'（kind 'echo'）；按体型分组的（鸣钟之龟）带 '@<体型前缀>'，装配时只留匹配体型的一组并去掉后缀 */
   actions: Record<ActionId, ActionDef>
   q: ActionId                                       // 别名 Q：第一个技能版本的第一段
+  qFor: Record<CharName, ActionId>                  // 按装配的角色换的技能版本（curated，天演溯心装在心身上）
   description: string | null                        // 技能说明原文
   mainSlotBuffs: BuffDef[]                          // 首位加成与技能附带的 buff（curated）
   resourceEffects: ResourceEffect[]                 // 技能附带的资源型效果（curated）
@@ -176,13 +180,17 @@ export interface EnemyPreset {
   tunabilityMax: number
 }
 
+/** 异常效应的规则（TD-06 §18）：层数上限、持续、结算周期取「伤害计算」页的说明（data/curated/effects.ts） */
 export interface EffectDef {
   name: EffectName
   element: Element
-  multipliers: number[]                             // 第 k 项 = k 层
-  maxStacks: number
-  duration: Frame | null                            // 每层持续（由说明文本 curated，TD-06）
-  tickInterval: Frame | null
+  source: string                                    // 规则原文出处
+  multipliers: number[]                             // 第 k 项 = k 层（dmg「异常伤害」行；还没接时为空）
+  maxStacks: number                                 // 常规上限
+  /** 达到上限后还能额外叠的层数（电磁效应的"电磁爆发"）；0 = 没有 */
+  burstMax: number
+  duration: Frame                                   // 每次附加刷新的持续时间（全部层数共用一个计时）
+  tickInterval: Frame | null                        // 结算周期
   debuff?: BuffDef                                  // 如虚湮减防
 }
 

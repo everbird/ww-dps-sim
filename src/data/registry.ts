@@ -2,16 +2,16 @@
 // 纯函数，不读文件：Node 侧由 load.ts 读盘后调用，网页将来 fetch 之后调用同一个函数。
 // 只有写了角色模块（data/curated/characters/<角色>.ts）的角色进 GameData：武器类型、别名、buff、技能树属性都在模块里，
 // 没有模块的角色算不对（总设计 T10：一次一支队伍）。
-import { STAT_BY_PROP_ID, type BlockKey, type StatKey } from './common'
-import { assembleBlock } from './assemble-action'
+import { STAT_BY_PROP_ID, type ActionId, type BlockKey, type StatKey } from './common'
+import { assembleBlock, type AssembleOptions } from './assemble-action'
 import { assembleEchoActions } from './assemble-echo'
 import {
   BuffDefSchema, ResourceEffectSchema, type BuffDef, type BuffDefInput, type ResourceEffect, type ResourceEffectInput,
 } from './buff.schema'
-import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
+import { mergeBlockKey, type ActionOverride, type CharacterModuleDef, type EchoModule, type EchoSetModule, type EffectModule, type WeaponModule } from './define'
 import type { GenActionFile, GenCharacter, GenEcho, GenEchoStats, GenEnemy, GenMeta, GenTuneBreak, GenWeapon } from './generated.schema'
 import {
-  DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EnemyPreset, type GameData, type WeaponDef,
+  DEFAULT_RULES, type ActionDef, type CharacterDef, type EchoDef, type EchoSetDef, type EffectDef, type EnemyPreset, type GameData, type WeaponDef,
 } from './gamedata'
 import { parseOrThrow } from './validate'
 import { round } from '../engine/num'
@@ -32,6 +32,7 @@ export interface CuratedModules {
   weapons: WeaponModule[]
   echoes: EchoModule[]                              // data/curated/echoes.ts
   echoSets: EchoSetModule[]
+  effects: EffectModule[]                           // data/curated/effects.ts：异常效应的规则（TD-06 §18）
   envBuffs: BuffDefInput[]
 }
 
@@ -79,7 +80,8 @@ export function buildGameData(gen: GeneratedFiles, cur: CuratedModules): GameDat
     meta: gen.meta,
     characters, commonActions, weapons,
     echoes, echoSets, echoStats: gen.echoStats ?? null, enemies,
-    effects: {}, abnormalBaseByLevel: [],           // M4
+    effects: Object.fromEntries(cur.effects.map(e => [e.name, effectDef(e)])),
+    abnormalBaseByLevel: [],                        // 异常伤害的基础值、逐层倍率：结算接上时从构建产出（TD-06 §18）
     tuneBreak: tuneBreakTable(gen.tuneBreak),
     envBuffs: Object.fromEntries(cur.envBuffs.map(b => [b.id, buff(b, '场景 buff')])),
     rules: DEFAULT_RULES,
@@ -104,6 +106,14 @@ function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
   }
 }
 
+/** 异常效应的规则（TD-06 §18）；逐层倍率还没从 dmg 构建，先空着 */
+function effectDef(e: EffectModule): EffectDef {
+  return {
+    name: e.name, element: e.element, source: e.source, multipliers: [], maxStacks: e.maxStacks, burstMax: e.burstMax ?? 0,
+    duration: e.duration, tickInterval: e.tickInterval,
+  }
+}
+
 /** 装载一条手写 buff：补默认值并校验（TD-02 §5.1） */
 function buff(b: BuffDefInput, where: string): BuffDef {
   return parseOrThrow(BuffDefSchema, b, `${where} 的 buff ${b.id}`)
@@ -120,15 +130,7 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
   const file = gen.actions[mod.name]
   if (!file) throw new Error(`没有 ${mod.name} 的动作文件`)
   const tuneTicks = Object.fromEntries((gen.tuneBreak?.variants ?? []).filter(v => v.ticks !== null).map(v => [v.key, v.ticks!]))
-  const opts = { element: g.element, charNames, tuneTicks }
-  let actions = assembleBlock(file, mod.actionOverrides, opts)
-  for (const key of mod.mergeBlocks ?? []) {                  // 并入其他动作块（TD-01 Q2）
-    const extra = gen.actions[key]
-    if (!extra) throw new Error(`${mod.name} 的 mergeBlocks 写了不存在的块"${key}"`)
-    const more = assembleBlock(extra, {}, opts)
-    for (const id of Object.keys(more)) if (actions[id]) throw new Error(`${mod.name} 并入 ${key} 时动作重名：${id}`)
-    actions = { ...actions, ...more }
-  }
+  let actions = assembleCharacterActions(gen.actions, mod, { element: g.element, charNames, tuneTicks })
   for (const [alias, id] of Object.entries(mod.aliases ?? {}))
     if (!actions[id]) throw new Error(`${mod.name} 的别名 ${alias} 指向不存在的动作"${id}"`)
   // 别名 R 指向的动作收大招能量（TD-06 §2.3）；actionOverrides 里写了 energyCost（含 0）的以它为准
@@ -167,6 +169,57 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
   }
 }
 
+/** 角色的动作：本块 + 并入的块（TD-01 Q2），各自带上角色模块的覆盖（pnpm check:data --flags 也用它）。
+ *  带前缀的块（心的照世心）：动作 ID 加前缀，它的覆盖按加了前缀的 ID 写，装配前去掉前缀 */
+export function assembleCharacterActions(
+  blocks: Readonly<Record<BlockKey, GenActionFile>>, mod: CharacterModuleDef, opts: AssembleOptions,
+): Record<ActionId, ActionDef> {
+  const file = blocks[mod.name]
+  if (!file) throw new Error(`没有 ${mod.name} 的动作文件`)
+  const merges = (mod.mergeBlocks ?? []).map(m => ({ key: mergeBlockKey(m), prefix: typeof m === 'string' ? '' : m.prefix }))
+  const own: Record<ActionId, ActionOverride> = {}
+  const merged = new Map<string, Record<ActionId, ActionOverride>>(merges.filter(m => m.prefix).map(m => [m.prefix, {}]))
+  for (const [id, ov] of Object.entries(mod.actionOverrides ?? {})) {
+    const m = merges.find(x => x.prefix && id.startsWith(x.prefix))
+    if (m) merged.get(m.prefix)![id.slice(m.prefix.length)] = unprefixOverride(ov, m.prefix)
+    else own[id] = ov
+  }
+  let actions = assembleBlock(file, own, opts)
+  for (const { key, prefix } of merges) {
+    const extra = blocks[key]
+    if (!extra) throw new Error(`${mod.name} 的 mergeBlocks 写了不存在的块"${key}"`)
+    const more = prefixActions(assembleBlock(extra, merged.get(prefix) ?? {}, opts), prefix)
+    for (const id of Object.keys(more)) if (actions[id]) throw new Error(`${mod.name} 并入 ${key} 时动作重名：${id}`)
+    actions = { ...actions, ...more }
+  }
+  return actions
+}
+
+/** 带前缀并入的块：覆盖里指向块内动作的 ID（连段前置、接续动作、另存为）去掉前缀，装配完再由 prefixActions 加回 */
+function unprefixOverride(ov: ActionOverride, prefix: string): ActionOverride {
+  const strip = (id: ActionId) => (id.startsWith(prefix) ? id.slice(prefix.length) : id)
+  return {
+    ...ov,
+    ...(ov.comboFrom ? { comboFrom: ov.comboFrom.map(strip) } : {}),
+    ...(ov.followUp ? { followUp: { ...ov.followUp, action: strip(ov.followUp.action) } } : {}),
+    ...(ov.copyAs ? { copyAs: ov.copyAs.map(strip) } : {}),
+  }
+}
+
+/** 动作 ID 与块内的引用（连段前置、接续动作）加前缀；判定名不变。连段前置只能指同一块里的动作 */
+function prefixActions(actions: Record<ActionId, ActionDef>, prefix: string): Record<ActionId, ActionDef> {
+  if (!prefix) return actions
+  const out: Record<ActionId, ActionDef> = {}
+  for (const a of Object.values(actions)) {
+    out[prefix + a.id] = {
+      ...a, id: prefix + a.id,
+      ...(a.comboFrom ? { comboFrom: a.comboFrom.map(x => prefix + x) } : {}),
+      ...(a.followUp ? { followUp: { ...a.followUp, action: prefix + a.followUp.action } } : {}),
+    }
+  }
+  return out
+}
+
 /** 一个声骸：装配动作、登记 echoes.ts 的效果；echoes.ts 处理过的声骸级 flag 去掉（check:data 也用它） */
 export function buildEcho(e: GenEcho, mod: EchoModule | undefined): EchoDef {
   const { actions, q } = assembleEchoActions(e, mod?.actionOverrides)
@@ -177,8 +230,10 @@ export function buildEcho(e: GenEcho, mod: EchoModule | undefined): EchoDef {
     ...(ov?.cooldown !== undefined ? ['cooldownText'] : []),
     ...(ov?.charges !== undefined ? ['charges'] : []),
   ])
+  for (const [who, id] of Object.entries(mod?.qFor ?? {}))
+    if (!actions[id]) throw new Error(`声骸 ${e.key} 的 qFor 给 ${who} 写了不存在的动作"${id}"（现有：${Object.keys(actions).join('、')}）`)
   return {
-    key: e.key, cost: mod?.cost ?? e.cost, actions, q, description: e.description,
+    key: e.key, cost: mod?.cost ?? e.cost, actions, q, qFor: { ...(mod?.qFor ?? {}) }, description: e.description,
     mainSlotBuffs: (mod?.mainSlotBuffs ?? []).map(b => buff(b, `声骸 ${e.key}`)),
     resourceEffects: (mod?.resourceEffects ?? []).map(x => effect(x, `声骸 ${e.key}`)),
     curated: mod !== undefined,

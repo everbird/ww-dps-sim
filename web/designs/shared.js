@@ -56,8 +56,11 @@ window.WW = (() => {
       concertoMax: raw.concertoMax || 100, rotation: raw.rotation || [], opening: raw.opening || [], options: raw.options || {},
       kinds: raw.kinds || {}, buffOwners: raw.buffOwners || {}, buffInfo: raw.buffInfo || {}, summary: raw.summary, trace: raw.trace || [], video: raw.video || null, error: raw.error || null,
       effectInfo: raw.effectInfo || {}, energyShare: raw.energyShare || null,
+      resources: raw.resources || null, forteBy: new Map(),
       log: raw.log.filter(e => e.type !== 'judgmentSpawn'),
     }
+    // 共鸣回路的状态说明（SimResult.forte）按人分开：[世界帧, 文本]
+    for (const x of raw.forte || []) { if (!m.forteBy.has(x.char)) m.forteBy.set(x.char, []); m.forteBy.get(x.char).push([x.f, x.text]) }
     const slot = new Map(m.team.map((t, i) => [t.name, i]))
     // 每个动作给的资源（src/engine/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
     const gainsOf = new Map((raw.gains || []).filter(g => !g.outro).map(g => [g.instance, g]))
@@ -157,6 +160,31 @@ window.WW = (() => {
     const p = buffParts(m, id, stacks)
     return p ? `${p.name} ${signedVal(p.v, p.flat)}${p.cond ? `（${p.cond}）` : ''}` : null
   }
+  // ---- 光标那一帧的资源与共鸣回路状态（视图 D 的检查器）----
+  /** steps 是 [世界帧, 那一帧结束时的值]（按帧升序，第一项是开局），取 f 帧时的值 */
+  function valueAt(steps, f) {
+    let lo = 0, hi = steps.length - 1
+    if (f < steps[0][0]) return steps[0][1]
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (steps[mid][0] <= f) lo = mid; else hi = mid - 1 }
+    return steps[lo][1]
+  }
+  /** 第 i 人在 f 帧的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）：[{ key, name, cap, v }]（src/engine/trace.ts 的 resourceTracks）；
+   *  模型里没有逐帧值时退回资源曲线的采样（30 帧一次，只有能量与协奏） */
+  function metersAt(m, i, f) {
+    const own = (m.resources || []).find(x => x.char === m.team[i].name)
+    if (own) return own.tracks.map(t => ({ key: t.key, name: t.name, cap: t.cap, v: valueAt(t.steps, f) }))
+    const tl = m.summary.resourceTimeline || []
+    let rs = tl[0]
+    for (const p of tl) { if (p.f <= f) rs = p; else break }
+    if (!rs) return []
+    return [{ key: 'energy', name: '能量', cap: m.team[i].energyCap || 100, v: rs.energy[i] }, { key: 'concerto', name: '协奏', cap: m.concertoMax, v: rs.concerto[i] }]
+  }
+  /** char 在 f 帧的共鸣回路状态说明（角色钩子 forte 给的一行），没有时为空串 */
+  function forteAt(m, char, f) {
+    const xs = m.forteBy.get(char)
+    return xs && xs[0][0] <= f ? valueAt(xs, f) : ''
+  }
+
   // ---- 动作给的资源：出处的名字、数值、合计、一行概括、提示 ----
   const RES_NAME = { concerto: '协奏', energy: '能量' }
   /** 带符号的资源数：+15、+7.2、−125（10 以下留两位小数，去掉末尾的 0） */
@@ -306,5 +334,5 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { valueAt, metersAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()

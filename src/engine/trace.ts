@@ -163,6 +163,34 @@ export function traceLedger(
   return out
 }
 
+/** 一个人一种资源的逐帧值（视图 D 的检查器取光标那一帧的值）：steps 是 [世界帧, 那一帧结束时的值]，第一项是开局值（帧 0），
+ *  只在值变了的帧记；cap 是上限（能量 = 大招耗能，协奏 = concertoMax，核心资源 = 上限），没有时为 null */
+export interface ResourceTrack { key: ResourceKind; name: string; cap: number | null; steps: [number, number][] }
+
+/** 每人的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）逐帧值：从开局值出发按 gainSteps 重放（同 traceLedger），值取两位小数 */
+export function resourceTracks(steps: readonly GainStep[], r: ResolvedScenario): { char: CharName; tracks: ResourceTrack[] }[] {
+  const slotOf = new Map(r.team.map(m => [m.def.name, m.slot]))
+  const all = r.team.map(m => [
+    { key: 'energy' as ResourceKind, name: '能量', cap: m.def.energyCost ?? null, v: r.initial.energy[m.slot] },
+    { key: 'concerto' as ResourceKind, name: '协奏', cap: r.rules.concertoMax, v: r.initial.concerto[m.slot] },
+    ...m.def.coreResources.map(c => ({ key: `core${c.slot}` as ResourceKind, name: c.name, cap: c.cap ?? null, v: r.initial.core[m.slot]![c.slot - 1] ?? 0 })),
+  ].map(t => ({ ...t, steps: [[0, roundTo(t.v, 100)]] as [number, number][] })))
+  for (const g of steps) {
+    for (const [n, d] of Object.entries(g.deltas)) {
+      const t = all[slotOf.get(n)!]!.find(x => x.key === g.resource)
+      if (!t) continue
+      t.v = g.value ?? t.v + d!
+      const last = t.steps[t.steps.length - 1]!, v = roundTo(t.v, 100)
+      if (last[0] === g.f) last[1] = v                       // 同一帧几次变化，只留最后的值
+      else if (v !== last[1]) t.steps.push([g.f, v])
+    }
+  }
+  return r.team.map(m => ({
+    char: m.def.name,
+    tracks: all[m.slot]!.filter(t => !t.key.startsWith('core') || t.steps.length > 1).map(({ key, name, cap, steps }) => ({ key, name, cap, steps })),
+  }))
+}
+
 // ---------------------------------------------------------------------------
 // 资源出处与伤害归属（TD-11 §6、TD-12 §2.1 视图 D 的检查器）：每次资源变化、每次命中归到引起它的动作上。只读日志，不影响仿真
 

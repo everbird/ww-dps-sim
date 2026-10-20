@@ -7,7 +7,7 @@ import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
 import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
-import { idle, synthData } from './helpers/synth'
+import { idle, synthData, type SynthChar } from './helpers/synth'
 
 const 甲 = { name: '甲', actions: [action({ id: 'X', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'x', spawnFrame: 10, gauges: { toughness: 10, tunability: 10 } })] })] }
 const sc = ScenarioSchema.parse({
@@ -62,6 +62,24 @@ describe('时间轴网页', () => {
       marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60 }],
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
+  })
+  test('视图 D 的检查器：每人能量、协奏与有变化的核心资源逐帧值（只在变了的帧记），钩子 forte 给的共鸣回路状态变了才记', () => {
+    const 丁: SynthChar = {
+      name: '丁', core: [{ slot: 1, name: '蓄', cap: 10 }, { slot: 2, name: '没用到', cap: 5 }], vars: { 段: 0 },
+      actions: [action({ id: 'Y', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'y', spawnFrame: 10, gains: { energy: 0, concerto: 6, core: [3, 0, 0] } })] })],
+      hooks: {
+        onEvent: (ctx, ev) => { if (ev.type === 'hit') ctx.vars.段 = Number(ctx.vars.段) + 1 },
+        forte: ctx => `第 ${ctx.vars.段} 段`,
+      },
+    }
+    const sc3 = ScenarioSchema.parse({ team: ['丁', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['丁 Y Y'] })
+    const r3 = resolveScenario(sc3, synthData([丁, idle('乙'), idle('丙')]))
+    const res3 = simulate(r3)
+    const own = timelineModel('scenarios/demo.yaml', sc3, r3, res3).resources.find(x => x.char === '丁')!
+    expect(own.tracks.map(t => [t.key, t.name, t.cap])).toEqual([['energy', '能量', 100], ['concerto', '协奏', 100], ['core1', '蓄', 10]])   // 没变过的槽不列
+    expect(own.tracks.find(t => t.key === 'core1')!.steps).toEqual([[0, 0], [10, 3], [40, 6]])
+    expect(own.tracks.find(t => t.key === 'concerto')!.steps).toEqual([[0, 0], [10, 6], [40, 12]])
+    expect(res3.forte.map(x => [x.f, x.char, x.text])).toEqual([[0, '丁', '第 0 段'], [10, '丁', '第 1 段'], [40, '丁', '第 2 段']])
   })
   test('视图 A–D（pnpm timeline --view）：模板都在、共用脚本内联、数据带上 buff 的给予者与定义', () => {
     const m = timelineModel('scenarios/demo.yaml', sc, r, res)

@@ -49,7 +49,7 @@ export const ASSUMPTIONS = [
   {
     id: 'earliest-frame', topic: '调度', tracked: false, impact: 'large', ref: '总设计 T6、TD-09 §3',
     what: '每条指令在最早合法的那一帧执行，没有反应时间',
-    why: '算的是理论上限，人手做不到帧帧精确；每个决策点晚 6 帧，M0 代表轴 DPS 约 −9.5%、视频轴（EQ 版）约 −7.2%，见"操作容错"（pnpm insight，TD-10 §6；docs/m0-conclusions.md）',
+    why: '算的是理论上限，人手做不到帧帧精确；每个决策点晚 6 帧，M0 代表轴 DPS 约 −7.4%、视频轴（EQ 版）约 −7.2%，见"操作容错"（pnpm insight，TD-10 §6；docs/m0-conclusions.md）',
     adjust: { how: '场景里 options.inputDelay: N（帧）：切人与不是连段后续的出招，在合法之后再晚 N 帧', path: 'options.inputDelay', values: [6] },
   },
   {
@@ -67,6 +67,12 @@ export const ASSUMPTIONS = [
     id: 'switch-no-lock', topic: '切人', tracked: false, impact: 'unknown', ref: '总设计 §13、TD-05 Q6',
     what: '备注里"第 n 帧前切人不消失 / 不离场"与没写帧数的"不能切人"，按"切人不打断、没有锁"处理',
     why: '数据没给结构化的帧数；做到相关角色时逐个确认',
+  },
+  {
+    id: 'ult-no-switch', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §6.3，docs/xin-confirm.md Y2',
+    what: '大招没写"第 n 帧前不能切人"时，"第 n 帧前不响应输入"也挡切人（椿第 239 帧、卜灵第 238 帧…）；写了"不能切人"的照写的',
+    why: '大招出招阶段不能切人是实战体感（2026-10-19），待实机验证；xlsx 有的大招两种都写、帧数不同（仇远 200 / 230、凌阳 210 / 180）',
+    adjust: { how: '实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖' },
   },
   {
     id: 'dilation-rules', topic: '时间', tracked: true, impact: 'small', ref: 'TD-04 §3.3、Q1–Q6',
@@ -110,6 +116,12 @@ export const ASSUMPTIONS = [
     what: '数据里推断出来、还没确认的值照推断用（优先级变化帧、段数、动作类别…）',
     why: '构建时打了 flag；列出的是这次用到的动作，确认后在角色模块里覆盖或 accept',
     adjust: { how: 'pnpm check:data -- --flags <角色> 列出全部；角色模块的 actionOverrides 里覆盖或 accept' },
+  },
+  {
+    id: 'module-guess', topic: '角色', tracked: true, impact: 'unknown', ref: 'TD-08 §3、docs/xin-confirm.md',
+    what: '角色模块里按原文推断、还没实测的时序与条件（卜灵五雷荡煞阵的冲击波从什么时候起、心的协同攻击怎么计时…）',
+    why: 'xlsx 与 nanoka 只有文字说明，没有帧数；先按最直接的读法写',
+    adjust: { how: '实测或查证后改角色模块；逐条见各队伍的确认清单' },
   },
   {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',

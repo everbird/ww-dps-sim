@@ -1,7 +1,7 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments, type HitTrigger } from '../engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, type HitTrigger } from '../engine/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>
@@ -11,6 +11,7 @@ export const DATA_TAG = '<script id="timeline-data" type="application/json">null
 /** 网页要的数据：仿真结果，加上画图用的队伍、敌人、排轴原文与各动作的类别（事件日志里没有的） */
 export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, res: SimResult) {
   const e = r.enemy
+  const steps = gainSteps(res.log, r)
   return {
     title: basename(file, extname(file)),
     scenario: file,
@@ -35,7 +36,10 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
       ...(b.def.filter ? { filter: b.def.filter } : {}),
     }])),
     // 每个动作给的协奏、能量，各从哪来（视图 D 的检查器、动作条的提示）；资源型效果的原文；能量的分配比例（出伤者 / 队友）
-    gains: actionGains(gainSteps(res.log, r)),
+    gains: actionGains(steps),
+    // 视图 D 的检查器：光标那一帧每人的能量、协奏与共鸣回路（核心资源，只列有变化的槽）的值，与钩子给的共鸣回路状态说明（同一帧取最后的值）
+    resources: resourceTracks(steps, r),
+    forte: res.forte,
     effectInfo: Object.fromEntries(r.effects.map(e => [e.def.id, { source: e.def.source }])),
     energyShare: r.rules.energyShare,
     trace: traceModel(r, res),

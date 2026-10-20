@@ -1,7 +1,7 @@
 // web/app/src/gamedata.ts —— 浏览器里装配 GameData：同 src/data/load.ts，只是文件由 Vite 的 import.meta.glob 读
 // （生成文件按需加载，动作文件只读用得到的块）。没有 data/generated 时报"先 pnpm build:data"。
 import { z } from 'zod'
-import type { CharacterModuleDef } from '../../../src/data/define'
+import { mergeBlockKey, type CharacterModuleDef } from '../../../src/data/define'
 import type { GameData } from '../../../src/data/gamedata'
 import {
   GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema,
@@ -11,6 +11,7 @@ import { buildGameData } from '../../../src/data/registry'
 import { parseOrThrow } from '../../../src/data/validate'
 import echoSets from '../../../data/curated/echo-sets'
 import echoes from '../../../data/curated/echoes'
+import effects from '../../../data/curated/effects'
 import weapons from '../../../data/curated/weapons'
 
 const characters = Object.values(import.meta.glob<{ default: CharacterModuleDef }>('../../../data/curated/characters/*.ts', { eager: true }))
@@ -35,7 +36,7 @@ export async function loadGameData(): Promise<GameData> {
     const k = path.slice(`${GEN}actions/`.length, -'.json'.length)
     if (k.startsWith('通用-')) keys.add(k)
   }
-  for (const m of characters) { keys.add(m.name); for (const k of m.mergeBlocks ?? []) keys.add(k) }
+  for (const m of characters) { keys.add(m.name); for (const k of m.mergeBlocks ?? []) keys.add(mergeBlockKey(k)) }
   const actions: Record<string, GenActionFile> = {}
   for (const k of keys) {
     const load = actionFiles[`${GEN}actions/${k}.json`]
@@ -52,6 +53,6 @@ export async function loadGameData(): Promise<GameData> {
       enemies: (await read(z.array(GenEnemySchema), 'enemies.json'))!,
       ...(tuneBreak ? { tuneBreak } : {}),
     },
-    { characters, weapons, echoes, echoSets, envBuffs: [] },
+    { characters, weapons, echoes, echoSets, effects, envBuffs: [] },
   )
 }

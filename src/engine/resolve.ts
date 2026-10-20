@@ -187,7 +187,7 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
     const picked = echoActionsFor(main, def.bodyType)
     echoActions = picked.actions
     if (aliases.Q !== undefined) issues.push(`${where}：角色模块的别名 Q 与首位声骸技能冲突`)
-    aliases.Q = picked.q
+    aliases.Q = main.qFor[m.char] ?? picked.q                     // 按装配的角色换技能版本（天演溯心装在心身上）
     if (picked.note) warnings.push(`${m.char}：首位声骸 ${main.key} ${picked.note}`)
     for (const b of main.mainSlotBuffs) buffs.push({ def: b, value: pick(b.value, 1), owner: slot })
     for (const e of main.resourceEffects) effects.push({ def: e, amount: pick(e.amount, 1), owner: slot })

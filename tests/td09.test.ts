@@ -176,6 +176,20 @@ describe('T09-6 切人（§3.5）', () => {
       expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([70])
       expect(waits(r)).toEqual(['2:switchLock 0+70'])
     })
+    test('大招没写"不能切人"：椿"第239F前不响应输入"也挡切人，记一次假设 ult-no-switch；写了的照写的（仇远 200 早于不响应输入 230，卜灵变奏 60 早于 70）', () => {
+      const c = block('椿')
+      const r = run([c, c, c], [{ act: 0, action: '大招' }, { switch: 1 }], { names: ['椿', '乙', '丙'] })
+      // 局部第 239 帧在世界第 242 帧（大招自己的攻击顿帧），战斗时钟只走了 2 帧（全局时停 240 帧）
+      expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([242])
+      expect(eventsOf(r, 'wait').map(e => [e.code, e.reason, e.frames, e.battleFrames])).toEqual([['switchLock', '大招 第 239 帧前不响应输入（按不能切人算）', 242, 2]])
+      expect(r.s.assumed['ult-no-switch']?.n).toBe(1)
+      expect([c['大招']!.switchLockUntil, c['大招']!.switchLockFromInput]).toEqual([239, true])
+      const q = block('仇远')['大招']!
+      expect([q.switchLockUntil, q.switchLockFromInput, q.inputLocks.find(l => l.kinds === 'all')?.until]).toEqual([200, undefined, 230])
+      const b = block('卜灵')
+      expect([b['QTE']!.switchLockUntil, b['QTE']!.switchLockFromInput]).toEqual([60, undefined])
+      expect(eventsOf(run([b, b, b], [{ act: 0, action: 'QTE' }, { switch: 1 }]), 'wait').map(e => e.reason)).toEqual(['QTE 第 60 帧前不能切人'])
+    })
   })
 })
 
@@ -344,6 +358,16 @@ describe('T09-补位 "~"：后面那个动作因为状态条件放不出来时�
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.issues[0]).toMatchObject({ line: 1, item: 1 })
     expect(compileRotation(['甲 E A1~'], fake, 0).ok).toBe(false)                // 行尾的补位后面没有动作
+    expect(compileRotation(['甲 A1~ A2~', 'switch 乙 变奏', '乙 E'], fake, 0).ok).toBe(true)   // 也可以接"switch <角色> 变奏"
+  })
+  test('补位后面接"switch <角色> 变奏"：切出者协奏满了就不补（2026-10-19，心 · 雷主 · 卜灵 的轴）', () => {
+    // 甲的 A 每下 +40 协奏（起手即得），开局 30：补两下到 100，第三下跳过，变奏切乙
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'A', endFrame: 20, castGains: [{ atFrame: 0, resource: 'concerto', amount: 40 }] })] }
+    const 乙: SynthChar = { name: '乙', aliases: { QTE: 'QTE' }, actions: [action({ id: 'QTE', kind: 'intro', endFrame: 30 })] }
+    const out = synthRun([甲, 乙, idle('丙')], { rotation: ['甲 A~ A~ A~', 'switch 乙 变奏', 'switch 甲'], initial: { concerto: [30, 0, 0] } })
+    expect(eventsOfLog(out.log, 'actionStart').map(e => `${e.char}${e.action}@${e.f}`)).toEqual(['甲A@0', '甲A@20', '乙QTE@20'])   // 第二下起手协奏就满了，同一帧切
+    expect(eventsOfLog(out.log, 'skip').map(e => e.reason)).toEqual(['协奏满了，变奏不用补 A'])
+    expect(eventsOfLog(out.log, 'switch').map(e => e.intro)).toEqual([true, false])
   })
   // E 要到第 from 帧才满足角色条件（模拟"一日花要协奏满"）；A1 → A2 连段，A2 第 10 帧起可派生
   const gateE = (from: number) => ({ canStart: (st: { frame: number }, _slot: number, def: ActionDef) => def.id !== 'E' || st.frame >= from ? true as const : '协奏不够' })

@@ -3,7 +3,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { z } from 'zod'
 import type { BuffDefInput } from './buff.schema'
-import type { CharacterModuleDef, EchoModule, EchoSetModule, WeaponModule } from './define'
+import { mergeBlockKey, type CharacterModuleDef, type EchoModule, type EchoSetModule, type EffectModule, type WeaponModule } from './define'
 import type { GameData } from './gamedata'
 import {
   GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEnemySchema, GenMetaSchema, GenTuneBreakSchema,
@@ -27,7 +27,7 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
   const generatedChars = read(GenCharactersSchema, 'characters.json')
   // 只读用得到的动作文件：有角色模块的角色、它们并入的块、全部通用块
   const keys = new Set<string>(readdirSync(new URL('actions/', gen)).filter(f => f.startsWith('通用-')).map(f => f.replace(/\.json$/, '')))
-  for (const m of characters) { keys.add(m.name); for (const k of m.mergeBlocks ?? []) keys.add(k) }
+  for (const m of characters) { keys.add(m.name); for (const k of m.mergeBlocks ?? []) keys.add(mergeBlockKey(k)) }
   const actions: Record<string, GenActionFile> = {}
   for (const k of keys) if (existsSync(new URL(`actions/${k}.json`, gen))) actions[k] = read(GenActionFileSchema, `actions/${k}.json`)
 
@@ -46,6 +46,7 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
       weapons: await importList<WeaponModule>(new URL('weapons.ts', cur)),
       echoes: await importList<EchoModule>(new URL('echoes.ts', cur)),
       echoSets: await importList<EchoSetModule>(new URL('echo-sets.ts', cur)),
+      effects: await importList<EffectModule>(new URL('effects.ts', cur)),
       envBuffs: await importList<BuffDefInput>(new URL('env-buffs.ts', cur)),
     },
   )
