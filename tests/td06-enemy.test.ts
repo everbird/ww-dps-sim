@@ -236,8 +236,8 @@ describe('T06-13 异常效应的层数（§18）', () => {
 
 // 定时结算（§18）：同上的电磁效应，带逐层倍率（dmg「异常伤害 / 电磁效应」1–10 层）；异常伤害基础值 90 级 3674（TD-03 §5）
 const 倍率 = [0.5, 0.9065, 1.313, 1.7195, 2.126, 2.5325, 2.939, 3.3455, 3.752, 4.1585]
-/** 甲的 E 第 10 帧命中、附加 4 层；乙按 extra 加规则、buff、钩子；丙记"命中时"触发了几次 */
-function runTicks(rotation: string[], extra: Partial<SynthChar> = {}): { res: SimResult; R: ResolvedScenario } {
+/** 甲的 E 第 10 帧命中、附加 4 层；乙按 extra 加规则、buff、钩子；丙记"命中时"触发了几次；rules 覆盖场景的 options.rules */
+function runTicks(rotation: string[], extra: Partial<SynthChar> = {}, rules: Record<string, unknown> = {}): { res: SimResult; R: ResolvedScenario } {
   const 甲e: SynthChar = {
     name: '甲', actions: [action({ id: 'E', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'e', spawnFrame: 10, applies: { effect: '电磁效应', stacks: 4 } })] })],
   }
@@ -248,7 +248,7 @@ function runTicks(rotation: string[], extra: Partial<SynthChar> = {}): { res: Si
   data.effects = { 电磁效应: { ...电磁, multipliers: 倍率 } }
   data.abnormalBaseByLevel = Array.from({ length: 100 }, (_, i) => (i === 89 ? 3674 : 0))
   const R = resolveScenario(ScenarioSchema.parse({
-    team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
+    team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation, options: { rules },
   }), data)
   return { res: simulate(R), R }
 }
@@ -304,6 +304,13 @@ describe('T06-14 异常效应的定时结算（§18）', () => {
       [309, '甲', '电磁效应·定时结算', abn(R, 倍率[9]!)],
     ])
     expect(ticks(res)).toEqual([[309, 10, 0, 5, '甲']])                // 电磁爆发已被收走；主动触发不改结算的时刻与层数
+  })
+  test('另两种读法（假设敏感度能翻）：rules.effectTickReset 每次附加都重新计时；rules.effectOwner 记在第一次附加的人 / 结算时在前台的人名下', () => {
+    const rot = ['甲 E', 'wait 200', '甲 E', 'wait 1000']              // 第 10、210 帧附加
+    expect(ticks(runTicks(rot).res).map(t => t[0])).toEqual([309, 609, 909])
+    expect(ticks(runTicks(rot, {}, { effectTickReset: true }).res).map(t => t[0])).toEqual([509, 809, 1109])
+    const who = (rules: Record<string, unknown>) => ticks(runTicks(['甲 E', 'switch 丙', 'wait 400'], 跟着挂, rules).res).map(t => t[4])
+    expect([who({}), who({ effectOwner: 'first' }), who({ effectOwner: 'onField' })]).toEqual([['乙'], ['甲'], ['丙']])
   })
   test('buff 的 ownerOnField：给的人在前台时才算（玉阙玄华"若装备者处于前台，目标受到电磁效应伤害加深"）；filter.effects 只加在效应自身的伤害上', () => {
     const 加深: Partial<SynthChar> = {

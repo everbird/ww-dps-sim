@@ -224,6 +224,10 @@ export interface Rules {
   critRateCap: number
   defFactorCap: number
   defFloor: boolean                                 // 减防、无视防御之后的目标防御先取整（TD-03 Q1；缺省不取整，假设 def-no-floor）
+  /** 异常效应每次附加都把定时结算的计时重置为一个周期（缺省 false：从第一次附加起算、之后不重置；假设 effect-tick，TD-06 §18） */
+  effectTickReset: boolean
+  /** 异常效应定时结算的伤害记在谁名下（吃谁身上的 buff）：最后附加的人（缺省）、第一次附加的人、结算时在前台的人（假设 effect-owner） */
+  effectOwner: 'last' | 'first' | 'onField'
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -249,6 +253,8 @@ export const DEFAULT_RULES: Rules = {
   critRateCap: 1,
   defFactorCap: 2,                                  // min(2, …)（TD-03 §3.2）
   defFloor: false,                                  // xlsx 多数公式不取整（TD-03 Q1）；true = 物理、谐度破坏公式那样先取整
+  effectTickReset: false,                           // 原文"每5秒结算1次"没说计时从哪一刻起（TD-06 §18）
+  effectOwner: 'last',
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,
