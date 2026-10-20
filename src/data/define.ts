@@ -34,7 +34,7 @@ export interface ActionOverride {
 }
 
 export type JudgmentOverride = Partial<Pick<JudgmentDef,
-  'spawnFrame' | 'lifeFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target' | 'chainRange' |
+  'spawnFrame' | 'lifeFrames' | 'delayFrames' | 'ticks' | 'tickInterval' | 'persistsOnCancel' | 'multiplier' | 'tags' | 'target' | 'chainRange' |
   'element' | 'relatedAttr' |               // 元素、相关属性：倍率连不上、手写 multiplier 时一并写（声骸按技能说明）
   'heals' |                                 // 这段同时治疗（动作表没有治疗判定，触发"提供治疗时"的效果用）
   'applies'>>                               // 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"，TD-06 §18）

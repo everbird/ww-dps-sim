@@ -207,8 +207,6 @@ export default defineCharacter('卜灵', {
     // 优先级 6 → 3 没写哪帧变：按落地段"第3F前不能闪避"（落地后第 3 帧，第 41 帧）
     空中攻击: { shiftRows: { '空中攻击-落地': 38 }, accept: ['priorityChangeGuess'] },
     E: { cooldown: 900, accept: ['persistsGuess'] },    // 共鸣技能冷却 15 秒（nanoka 3.7）；E-0 是"无伤害"的标记段，脱不脱手都一样
-    // 变奏伤害"脱手后延迟54F生效"：第 7 帧出手、第 61 帧结算
-    QTE: { judgments: { 'QTE-伤害': { spawnFrame: 61 } } },
     大招: {
       cooldown: 1440,                                   // 共鸣解放冷却 24 秒（nanoka 3.7）
       // 优先级 10 → 2 没写哪帧变：按"第238F前不响应输入"；大招-C5异常 是 5 链额外多出的一段（不是替换），见 applies

@@ -27,6 +27,8 @@ export interface Insight {
   energy: EnergyNeed[]
   tolerance: ToleranceRow[]
   sensitivity: SensitivityRow[]
+  /** 能翻、但这次仿真没碰到的假设（tracked 的要碰到才有影响）：不跑，翻了也一样 */
+  notHit: string[]
   waits: WaitCost[]
   runs: number                              // 一共跑了几次仿真
 }
@@ -76,11 +78,14 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[] 
     }
   })
 
-  // ③ 假设敏感度
+  // ③ 假设敏感度：tracked 的只翻这次碰到过的（没碰到的翻了也一样，列进 notHit）
   const sensitivity: SensitivityRow[] = []
+  const notHit: string[] = []
+  const hit = new Set(base.summary.assumptions.map(x => x.id))
   for (const a of ASSUMPTIONS) {
     const adj = 'adjust' in a ? a.adjust : undefined
     if (!adj || !('path' in adj) || !adj.path) continue
+    if (a.tracked && !hit.has(a.id)) { notHit.push(a.id); continue }
     for (const v of adj.values ?? []) {
       const res = run(adjusted(r, adj.path, v))
       const change = `${adj.path} = ${String(v)}`
@@ -90,7 +95,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[] 
     }
   }
 
-  return { basis, energy, tolerance, sensitivity, waits: waitCosts(base, r, basis), runs }
+  return { basis, energy, tolerance, sensitivity, notHit, waits: waitCosts(base, r, basis), runs }
 }
 
 /** 在 (lo, hi] 里找最小的满足 ok 的值（ok(hi) 为真）；按单调假设二分，精确到 0.25% */

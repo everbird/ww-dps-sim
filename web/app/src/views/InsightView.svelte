@@ -86,6 +86,7 @@
         {/each}
       </tbody>
     </table></div>
+    {#if out.notHit.length}<p class="muted">这次没碰到、翻了也一样（不跑）：{out.notHit.join('、')}</p>{/if}
 
     <h3>指令被挡住的时间</h3>
     <p class="muted">窗口里队首指令在等什么（前一招可能还在打，不等于空闲）；写轴要求的、操作延迟、正常出招节奏（派生窗口、优先级）不算。</p>

@@ -129,7 +129,8 @@ export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName,
     }
     return
   }
-  const x = (s.enemy.effects[effect] ??= { stacks: 0, burst: 0, remaining: 0, nextTick: s.battleFrames + (def.tickInterval ?? 0), source: by })
+  const x = (s.enemy.effects[effect] ??= { stacks: 0, burst: 0, remaining: 0, nextTick: s.battleFrames + (def.tickInterval ?? 0), source: by, origin: by })
+  if (sim.r.rules.effectTickReset) x.nextTick = s.battleFrames + (def.tickInterval ?? 0)   // 每次附加都重新计时（假设 effect-tick 的另一种读法）
   const added = Math.max(0, Math.min(stacks, def.maxStacks - x.stacks))
   const burstAdded = Math.max(0, Math.min(stacks - added, def.burstMax - x.burst))
   x.stacks += added
@@ -168,8 +169,9 @@ function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multipli
   return value
 }
 
-/** P6 定时结算（§18，假设 effect-tick）：从第一次附加起每 tickInterval 个战斗帧一次，之后再附加不重置；按当时的层数倍率出一段伤害，
- *  有额外层（电磁爆发）时另加额外层数对应的倍率（假设 effect-burst），记在最后附加的人名下（假设 effect-owner）；之后移除
+/** P6 定时结算（§18，假设 effect-tick）：从第一次附加起每 tickInterval 个战斗帧一次，之后再附加不重置（rules.effectTickReset 改成每次重置）；
+ *  按当时的层数倍率出一段伤害，有额外层（电磁爆发）时另加额外层数对应的倍率（假设 effect-burst），记在 rules.effectOwner 指的人名下
+ *  （缺省最后附加的人，假设 effect-owner）；之后移除
  *  ⌊层数 × decay⌋ 层（角色模块的 effectRules 可让它不减）、额外层清零，记 effectTick。在到期判断之前：到期那一刻赶上的先结算 */
 export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
   for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
@@ -178,7 +180,8 @@ export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
     if (!x || !def || def.tickInterval === null || s.battleFrames + rates.battle < x.nextTick - 1e-6) continue
     x.nextTick += def.tickInterval
     const { stacks, burst } = x
-    const who = s.chars[x.source].name
+    const owner = sim.r.rules.effectOwner === 'first' ? x.origin : sim.r.rules.effectOwner === 'onField' ? s.onField : x.source
+    const who = s.chars[owner].name
     assume(s, 'effect-tick', name)
     assume(s, 'effect-owner', `${name} → ${who}`)
     if (burst > 0) assume(s, 'effect-burst', `${name} 结算时有 ${burst} 层额外层`)
@@ -186,7 +189,7 @@ export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
       sim.warned.add(`effect-rate|${name}`)
       log(s, { type: 'warning', code: 'effect', message: `${name} 没有逐层倍率（data/generated/effects.json，先 pnpm build:data），结算的伤害记 0（TD-06 §18）` })
     }
-    const damage = stacks > 0 ? effectHit(sim, s, x.source, name, multOf(def, stacks) + multOf(def, burst), `${name}·定时结算`) : 0
+    const damage = stacks > 0 ? effectHit(sim, s, owner, name, multOf(def, stacks) + multOf(def, burst), `${name}·定时结算`) : 0
     x.stacks = sim.keepStacks.has(name) ? stacks : stacks - Math.floor(stacks * def.decay)
     x.burst = 0
     log(s, { type: 'effectTick', effect: name, stacks, ...(def.burstMax > 0 ? { burst } : {}), left: x.stacks, damage, source: who })

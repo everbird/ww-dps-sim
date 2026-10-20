@@ -48,6 +48,7 @@ async function main(): Promise<number> {
     console.log(s.error ? `  ${s.id}（${s.change}）跑不通：${s.error}`
       : `  ${padEnd(`${s.id}（${s.change}）`, 40)}${padStart(signedPct(s.pct!), 10)}  估计影响${IMPACT_NAME[a.impact]}：${a.what}`)
   }
+  if (x.notHit.length) console.log(`  这次没碰到、翻了也一样（不跑）：${x.notHit.join('、')}`)
 
   console.log('\n④ 指令被挡住的时间：窗口里队首指令在等什么（前一招可能还在打，不等于空闲；写轴要求的、操作延迟、正常出招节奏不算）')
   if (x.waits.length === 0) console.log('  没有')

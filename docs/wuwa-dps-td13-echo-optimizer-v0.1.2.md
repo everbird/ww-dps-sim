@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-13 声骸库存择优 v0.1.1
+# 鸣潮 DPS 引擎 · TD-13 声骸库存择优 v0.1.2
 
-> **状态**：v0.1.1（2026-10-12）：组合数上限与按套装剪枝、标出"就是现在这套"；v0.1（2026-10-05）随实现写成（`src/data/inventory.schema.ts`、`src/engine/optimize.ts`、`src/cli/optimize.ts`，用例 `tests/optimize.test.ts`）。用户定的范围：库存手写 YAML、一次一个角色（2026-10-05）。
+> **状态**：v0.1.2（2026-10-20）：声骸库存一个账号一份（§1、§2）；v0.1.1（2026-10-12）：组合数上限与按套装剪枝、标出"就是现在这套"；v0.1（2026-10-05）随实现写成（`src/data/inventory.schema.ts`、`src/engine/optimize.ts`、`src/cli/optimize.ts`，用例 `tests/optimize.test.ts`）。用户定的范围：库存手写 YAML、一次一个角色（2026-10-05）。
 > **依据**：《技术总体设计 v0.1.9》（下称"总设计"）§3.5（稳态口径）、第 12 节 M5 / M7；《TD-10 输出与报告 v0.1.3》§3（对比口径 `basisOf`）、§4（副词条边际）；《TD-03 伤害公式规格》（`computeHit`）；《TD-07 Buff 系统》（`accumulate` 与过滤条件）
 > **不讲**：轴怎么排（轴固定，排轴搜索属于 M7）；声骸词条的强化与概率
 
@@ -20,7 +20,7 @@
 
 ```bash
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿 [--top 5] [--keep 8] [--set 沉日劫明] [--include-team]
-pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka 3.7]
+pnpm import:scan data/scan/<账号>-echo.json [--out inventory/<账号>-bag.yaml] [--nanoka 3.7]
 ```
 
 输出：首位声骸、套装要求、可用件数；现在的 DPS；快速重算与完整仿真的套数、耗时；前 `top` 套（完整仿真 DPS、与现在的差、估计值、面板的攻击 / 暴击 / 暴伤 / 共鸣效率、5 件的 id、名字、cost、套装、词条，在队友身上的注明）；最后给出第 1 套的 `echoes` 写法，可以直接贴回场景。退出码：0 成功；1 场景 / 库存有错；2 用法错误。
@@ -33,14 +33,14 @@ pnpm import:scan <扫描.json> [--out inventory/scanned-bag.yaml] [--nanoka 3.7]
 | `--keep` | 8 | 预筛时每个（cost、套装）留几件；越大越慢、越不容易漏 |
 | `--set` | 沿用现在的 | 指定 5 件套 |
 | `--include-team` | 不拿 | 也从队友身上拿（`owner` 是队友的） |
-| `--out` | `inventory/scanned-bag.yaml` | `import:scan` 输出文件路径 |
+| `--out` | 按扫描文件名：`data/scan/<账号>-echo.json` → `inventory/<账号>-bag.yaml`（`inventoryPathFor`，v0.1.2） | `import:scan` 输出文件路径 |
 | `--nanoka` | 自动匹配 | `import:scan` 用的 nanoka 数据版本 |
 
 ---
 
 ## 2. 库存文件
 
-`inventory/<名字>.yaml`（进 git，和场景一样是用户的数据）：
+`inventory/<名字>.yaml`（进 git，和场景一样是用户的数据）。v0.1.2：扫描来的库存**一个账号一份**（`everbird-bag.yaml`、`Evariste-bag.yaml`，原来的 `scanned-bag.yaml` 改名 `everbird-bag.yaml`）；两个账号的声骸不能混用，id 也都从 scan-echo-1 起，不合并。M0 队伍在 Evariste 账号，心 · 雷主 · 卜灵在 everbird 账号：
 
 ```yaml
 echoes:
@@ -126,3 +126,4 @@ optimize(sc, data, pieces, { slot, top?, keep?, set?, includeTeam? }) → Optimi
 
 - **v0.1（2026-10-05）**：初版，随实现写成。
 - **v0.1.1（2026-10-12）**：§4 按套装要求剪枝、组合数上限 `MAX_EVAL` 与自动少留预筛件数（套装混搭、库存大时原来可能跑几个小时）；结果标出"就是现在这套"；择优页：5 件套可从库存里的套装选，没有组合时明确提示。修正：有启动轴时快速重算取的命中窗口偏一轮（TD-10 v0.1.4 §2）。
+- **v0.1.2（2026-10-20）**：并回"声骸库存一个账号一份"（2026-10-19）：`pnpm import:scan` 的缺省输出按扫描文件名（`data/scan/<账号>-echo.json` → `inventory/<账号>-bag.yaml`，`inventoryPathFor`）；`scanned-bag.yaml` 改名 `everbird-bag.yaml`，新增 `Evariste-bag.yaml`（§1、§2）。

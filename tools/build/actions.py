@@ -13,6 +13,7 @@ ENEMY_TARGETS = {'目标', '目标子弹', '指定目标', '弹刀目标'}      
 # 主表（base）角色名与动作块名不同的（§5.2）：20261019 版的心分成两块，常态"应世心"用角色名，岁主形态"照世心"由角色模块并入
 BLOCK_RENAME = {'应世心': '心'}
 _MULTI_HIT = re.compile(r'^\s*(\d+)\s*F\s*/\s*(\d+)\s*次\s*$')
+_NOTE_DELAY = re.compile(r'延迟\s*(\d+)\s*F\s*生效')
 
 
 class ActionCols:
@@ -142,6 +143,12 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
     spawn = parse_num(r[cols.spawn], where + ' 发生帧', issues)
     life = parse_num(r[cols.life], where + ' 持续帧', issues)
     delay = None if cols.delay is None else parse_num(r[cols.delay], where + ' 延迟', issues)
+    # 老角色把延迟写在备注里："脱手后延迟54F生效"（附页1：延迟 = 判定生成后到生效前要等的时长）；列空时按备注，两处都有对不上时以列为准并报告
+    note_delay = _NOTE_DELAY.search(note) if note else None
+    if note_delay and delay is None:
+        delay = int(note_delay.group(1))
+    elif note_delay and int(note_delay.group(1)) != delay:
+        issues.add('warn', '延迟与备注不同', f'{where}: 列 {delay}，备注"{note_delay.group(0)}"')
     gains = {}
     for key, col in cols.gains:                                     # §3.7 + §1.5：合并区的值只归首行
         cell = (i, col + 1)

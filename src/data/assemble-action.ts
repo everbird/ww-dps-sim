@@ -197,6 +197,7 @@ export function assembleGroup(
       spawnFrame: r.eventSpawned ? null : r.spawnFrame,
       birthFrame: r.birthFrame,
       lifeFrames: life,
+      ...(r.delayFrames ? { delayFrames: r.delayFrames } : {}),   // 生成后过这么多帧才第一次结算（附页1"延迟"）
       ticks,
       tickInterval: iv,
       persistsOnCancel: life === -1 ? false : (r.persists ?? true),

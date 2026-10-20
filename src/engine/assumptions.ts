@@ -9,7 +9,7 @@ export type Impact = 'none' | 'tiny' | 'small' | 'medium' | 'large' | 'unknown'
 export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小', small: '小', medium: '中', large: '大', unknown: '未知' }
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
-export type AdjustPath = 'rules.defFloor' | 'options.inputDelay' | 'options.tuneBreak'
+export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -47,14 +47,14 @@ export const ASSUMPTIONS = [
       + '之后移除 ⌊层数 × 50%⌋ 层（5 层剩 3 层）；到期那一刻赶上结算的先结算再消失',
     why: '原文只写"每5秒结算1次对应层数倍率异常伤害、移除当前层数50%的异常层数"，没说计时从哪一刻起、单数层怎么取整；'
       + '心·共鸣模态·电磁下不减层，心 · 雷主 · 卜灵不受取整影响',
-    adjust: { how: '实测后改 src/engine/enemy.ts 的 effectTicks（计时起点、取整）' },
+    adjust: { how: '场景里 options.rules.effectTickReset: true 改成每次附加都重新计时；取整在 src/engine/enemy.ts 的 effectTicks', path: 'rules.effectTickReset', values: [true] },
   },
   {
     id: 'effect-owner', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18、TD-03 §5',
     what: '定时结算的伤害记在最后一次附加的人名下，吃他身上与目标身上、过滤对得上的加深与最终伤害（元素对得上的"导电伤害加深"也算），'
       + '不吃伤害加成、不暴击、出伤者的减防不算',
     why: '原文没说异常伤害算谁的、吃谁身上的 buff；各人身上的加深不同时（心的延奏只给心以外的人），记在谁名下会改变结算的伤害',
-    adjust: { how: '查证后改 effectTicks 里记在谁名下（EffectRuntime.source），或给效应伤害单独定 buff 的来源' },
+    adjust: { how: '场景里 options.rules.effectOwner: first（第一次附加的人）或 onField（结算时在前台的人）', path: 'rules.effectOwner', values: ['first', 'onField'] },
   },
   {
     id: 'effect-burst', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18',

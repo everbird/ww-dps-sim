@@ -214,7 +214,8 @@ export interface EnemyRuntime {
   responseCd: Partial<Record<CharName, number>>
 }
 
-export interface EffectRuntime { stacks: number; burst: number; remaining: number; nextTick: number; source: Slot }
+/** source：最后附加的人；origin：第一次附加的人（这一次出现以来）。定时结算记在谁名下按 rules.effectOwner（TD-06 §18） */
+export interface EffectRuntime { stacks: number; burst: number; remaining: number; nextTick: number; source: Slot; origin: Slot }
 
 /** 一个作用在具体单位上的膨胀窗口（登记时按侧展开：self → 来源角色，ally → 另外两人，enemy → 敌人） */
 export interface DilationRuntime {

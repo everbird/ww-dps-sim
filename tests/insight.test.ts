@@ -73,8 +73,8 @@ dataDescribe('结论（M0 代表轴）', () => {
     const dps = x.tolerance.map(t => t.dps!)
     expect(dps[1]!).toBeLessThan(dps[0]!)
     expect(dps[2]!).toBeLessThan(dps[1]!)
-    expect(x.sensitivity.map(s => s.id)).toEqual(['def-no-floor', 'earliest-frame', 'tune-break-auto'])
-    expect(x.sensitivity[0]!.delta).toBe(0)                                     // M0 没有减防：取不取整都一样
+    expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'tune-break-auto'])
+    expect(x.notHit).toEqual(['def-no-floor', 'effect-tick', 'effect-owner'])    // M0 没有减防、没有异常效应：翻了也一样，不跑
     for (const w of x.waits) expect(w.share).toBeGreaterThan(0)
   })
 
