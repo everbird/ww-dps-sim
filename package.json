@@ -26,6 +26,7 @@
     "conformance": "tsx src/cli/conformance.ts",
     "insight": "tsx src/cli/insight.ts",
     "search": "tsx src/cli/search.ts",
+    "cards": "tsx src/cli/cards.ts",
     "web": "vite web/app",
     "web:build": "vite build web/app",
     "check:web": "svelte-check --tsconfig web/app/tsconfig.json"
