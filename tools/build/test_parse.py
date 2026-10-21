@@ -98,6 +98,12 @@ class T01_12_备注并列写法(unittest.TestCase):
     def test_switch_ends_action(self):
         """TD-05 §5：切人会结束的动作"""
         self.assertEqual(extract_hints('第72F后切人立即结束技能'), {'endOnSwitchAfter': 72})
+        # 2026-10-21：前面先有"霸体、"的（心 强化重击）；没写帧数的"无敌期间…不能切人"
+        self.assertEqual(extract_hints('第114F前霸体、不能切人，第114F解锁大招'), {'noSwitchBefore': 114})
+        self.assertEqual(extract_hints('无敌期间不能切人\n结束帧前禁用E技能'), {'noSwitchWhileInvincible': True})
+        self.assertEqual(extract_hints('无敌期间霸体、不能切人'), {'noSwitchWhileInvincible': True})
+        self.assertEqual(extract_hints('无敌期间不响应输入、不能切人'), {'noSwitchWhileInvincible': True})
+        self.assertEqual(extract_hints('无敌期间不会被命中；第28F前不能闪避'), {'noDodgeBefore': 28})
         self.assertEqual(extract_hints('第24F后切人结束技能；持续帧内每6F进行一次判定，最多19次'),
                          {'endOnSwitchAfter': 24, 'tickInterval': 6, 'maxTicks': 19})
         self.assertEqual(extract_hints('第80F后切人消失'), {'endOnSwitchAfter': 80})

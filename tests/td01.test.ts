@@ -11,7 +11,7 @@ import { character, dataDescribe, run } from './helpers/kernel-harness'
 
 const row = (n: number, name: string, o: Partial<GenRow> = {}): GenRow => ({
   row: n, name, kind: 'hit', eventSpawned: false, spawnFrame: 10, birthFrame: null, lifeFrames: 1, delayFrames: null,
-  hitstop: { self: null, enemy: null }, deriveFrame: null, deriveDuration: null, endFrame: null,
+  hitstop: { self: null, enemy: null }, deriveFrame: null, deriveDuration: null, endFrame: null, invincible: null,
   priority: null, priorityChange: null, parry: null, persists: true, followHitstop: null, toughness: null, tunability: null,
   gains: { energy: null, concerto: null, core: [null, null, null] }, position: null, positionChange: null, dilation: null,
   hitTarget: '目标', note: null, noteMerged: false, hints: {}, nameTags: {}, flags: [], ...o,

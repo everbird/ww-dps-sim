@@ -274,6 +274,7 @@ def parse_echo_row(i: int, r: list, f: list, values: list, merges: dict, issues:
         'hitstop': {'self': parse_num(r[E_HS_SELF], where, issues), 'enemy': parse_num(r[E_HS_ENEMY], where, issues)},
         'deriveFrame': None, 'deriveDuration': None,
         'endFrame': parse_num(r[E_END], where + ' 结束帧', issues),
+        'invincible': None,                                          # 声骸表没有无敌两列
         'priority': parse_list(r[E_PRIORITY], where + ' 中断优先级', issues),
         'priorityChange': None,
         'parry': parse_flag(r[E_PARRY], where + ' 可弹刀', issues),

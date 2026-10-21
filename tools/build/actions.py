@@ -37,6 +37,7 @@ class ActionCols:
         self.spawn, self.life, self.delay = col('发生帧'), col('持续帧'), col('延迟', required=False)
         self.hs_self, self.hs_enemy, self.multi_hit = col('顿帧-自'), col('顿帧-敌'), col('多判间隔/次', required=False)
         self.prio_change, self.derive, self.derive_dur, self.end = col('优先级改变'), col('派生帧'), col('派生持续帧'), col('动作结束帧')
+        self.inv_start, self.inv_dur = col('无敌启动帧', required=False), col('无敌持续帧', required=False)
         self.parry, self.persist, self.follow = col('可弹刀'), col('可脱手'), col('跟随顿帧')
         self.tough, self.tune = col('削韧值'), col('偏谐值')
         self.gains = [('energy', col('大招回收')), ('concerto', col('协奏回收')),
@@ -206,6 +207,7 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
         'deriveFrame': parse_num(r[cols.derive], where + ' 派生帧', issues),
         'deriveDuration': parse_num(r[cols.derive_dur], where + ' 派生持续帧', issues),
         'endFrame': parse_num(r[cols.end], where + ' 动作结束帧', issues),
+        'invincible': invincible(r, cols, where, issues),
         'priority': parse_list(r[cols.priority], where + ' 中断优先级', issues),
         'priorityChange': parse_list(r[cols.prio_change], where + ' 优先级改变', issues),
         'parry': parse_flag(r[cols.parry], where + ' 可弹刀', issues),
@@ -223,6 +225,17 @@ def parse_row(i: int, r: list, f: list, values: list, merges: dict, sheet: str, 
         'nameTags': name_tags(name),
         'flags': flags,
     }
+
+
+def invincible(r: list, cols: ActionCols, where: str, issues: Issues) -> dict | None:
+    """「无敌启动帧」「无敌持续帧」两列（2026-10-21 起抽）：都空 → None；备注"无敌期间不能切人"的切人锁按它算（TD-05 §2）"""
+    if cols.inv_start is None or cols.inv_dur is None:
+        return None
+    start = parse_num(r[cols.inv_start], where + ' 无敌启动帧', issues)
+    dur = parse_num(r[cols.inv_dur], where + ' 无敌持续帧', issues)
+    if start is None and dur is None:
+        return None
+    return {'start': start, 'duration': dur}
 
 
 def name_groups(blk: dict) -> None:

@@ -89,7 +89,7 @@ describe('T02-3 排轴行解析（语法见 TD-09 §2）', () => {
 const eRow = {
   row: 1322, name: 'E', kind: 'hit', eventSpawned: false,
   spawnFrame: 19, birthFrame: null, lifeFrames: 12, delayFrames: null, hitstop: { self: null, enemy: 5 },
-  deriveFrame: 60, deriveDuration: null, endFrame: 96,
+  deriveFrame: 60, deriveDuration: null, endFrame: 96, invincible: null,
   priority: [4, 2], priorityChange: null,
   parry: true, persists: true, followHitstop: null,
   toughness: 100, tunability: 80,
