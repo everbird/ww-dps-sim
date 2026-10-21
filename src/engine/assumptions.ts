@@ -146,9 +146,10 @@ export const ASSUMPTIONS = [
   },
   {
     id: 'burst-release', topic: '角色', tracked: true, impact: 'unknown', ref: 'TD-08 散华、TD-06 Q6、docs/m0-confirm.md §13',
-    what: '散华重击爆裂（重击居合）每次都在冰痕区域里松手，按下即松开：不算等指针进区域的时间，也不会因为没对上而打成普通重击',
-    why: '指针的速度、冰痕区域的位置与宽度（随透视 0–2 层变大）xlsx 与 nanoka 都没有数；透视每层 5 秒按各自计时（只影响显示）',
-    adjust: { how: '实测后（m0-confirm §13）在散华模块里给重击居合前加一段按住的时间，长短按按下时的透视层数' },
+    what: '散华重击爆裂（重击居合）按住普攻半秒（30 帧）再松手，每次都在冰痕区域里：按住的时间不分透视层数，也不会因为没对上而打成普通重击；' +
+      '重击居合各行的帧从松手算（xlsx「蓄力」那一行就是按住的这一段），松手前不能切人',
+    why: '指针的速度、冰痕区域的位置与宽度（随透视 0–2 层变大）xlsx 与 nanoka 都没有数，按半秒简化（2026-10-20 用户定）；透视每层 5 秒按各自计时（只影响显示）',
+    adjust: { how: '改 data/curated/characters/散华.ts 的 HOLD（帧）；要按透视层数分长短，得先实测指针与区域（m0-confirm §13 P1、P2）' },
   },
   {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',

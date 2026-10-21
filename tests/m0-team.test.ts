@@ -22,13 +22,13 @@ dataDescribe('M0 三人的钩子', () => {
   // ---------------------------------------------------------------------------
   // 散华
 
-  test('T08-散华-1 冰在技能判定生成时出现，存在时间按 xlsx；重击居合第 29 帧引爆场上所有的冰', () => {
+  test('T08-散华-1 冰在技能判定生成时出现，存在时间按 xlsx；重击居合松手后第 29 帧（按住半秒，从按下算第 59 帧）引爆场上所有的冰', () => {
     const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 E 重击居合'] })
     const ice = eventsOfLog(out.log, 'buffApply').find(e => e.buff === '散华.冰棱')!
     expect([ice.f, ice.target, ice.remaining]).toEqual([19, 'enemy', 342])
     const start = eventsOfLog(out.log, 'actionStart').find(e => e.action === '重击居合')!.f
     const boom = eventsOfLog(out.log, 'hit').find(h => h.judgment === 'E-引爆冰棱')!
-    expect(boom.f).toBe(start + 29)
+    expect(boom.f).toBe(start + 30 + 29)
     expect(boom.buffs).toContain('散华.共鸣链5')                                // 冰绽暴伤 +100%
     expect(boom.gains.concerto).toBe(15)                                          // 引爆自己的协奏
     expect(eventsOfLog(out.log, 'buffExpire').find(e => e.buff === '散华.冰棱')!.reason).toBe('removed')
@@ -87,11 +87,22 @@ dataDescribe('M0 三人的钩子', () => {
     const one = core1(['散华 E', 'wait 330'])
     expect([one.name, one.cap, one.steps]).toEqual(['透视', 2, [[0, 0], [19, 1], [318, 0]]])
     const full = core1(['散华 E', '散华 R', '散华 重击居合', 'wait 400'])
-    expect(full.steps).toEqual([[0, 0], [19, 1], [20, 2], [153, 0]])
+    expect(full.steps).toEqual([[0, 0], [19, 1], [20, 2], [183, 0]])      // 重击爆裂先按住半秒（T08-散华-6），第一段在第 183 帧
     expect(full.timers).toEqual([
       [19, '+', '散华.透视·一'], [20, '+', '散华.透视·二'], [20, '+', '散华.透视·一'],
-      [153, '-removed', '散华.透视·一'], [153, '-removed', '散华.透视·二'],
+      [183, '-removed', '散华.透视·一'], [183, '-removed', '散华.透视·二'],
     ])
+  })
+
+  test('T08-散华-6 重击爆裂先按住半秒再松手（m0-confirm §13 P1、P5，假设 burst-release）：重击居合的帧从松手算，松手（第 30 帧）前不能切人；松手就切，后台照样打完、引爆', () => {
+    const out = m0Run(gd, { initial: { onField: 1 }, rotation: ['散华 E 重击居合', 'switch 椿'] })
+    const start = eventsOfLog(out.log, 'actionStart').find(e => e.action === '重击居合')!.f
+    expect(eventsOfLog(out.log, 'switch')[0]!.f - start).toBe(30)
+    expect(eventsOfLog(out.log, 'wait').some(w => w.reason === '重击居合 第 30 帧前不能切人')).toBe(true)
+    // 第一段松手后第 26 帧；第二段第 75 帧，被第一段的自身顿帧（12 帧 × 0.8 减速）拖后 2 帧
+    const hits = eventsOfLog(out.log, 'hit').filter(h => h.char === '散华' && h.f >= start).map(h => [h.judgment, h.f - start])
+    expect(hits).toEqual([['重击居合-1', 56], ['E-引爆冰棱', 59], ['重击居合-2', 107]])
+    expect(out.summary.assumptions.find(a => a.id === 'burst-release')?.count).toBe(1)
   })
 
   test('T08-椿-0 核心资源槽 1 改叫"红椿·蕊"（主表是"红椿·蕊1"），场景按它写开局值', () => {
@@ -241,7 +252,12 @@ dataDescribe('M0 三人的钩子', () => {
   test('视频轴两份（m0-confirm §11 V7）：行进序曲按阶回协奏，5 阶 16 点时 AQ、EQ 两版每次"switch 椿 变奏"都变奏；按 1 阶（8 点）算，AQ 版两处没变奏有警告', () => {
     const alerts = (file: string, rank?: number) => {
       const raw = parse(readFileSync(new URL(`../scenarios/${file}`, import.meta.url), 'utf8'))
-      if (rank !== undefined) raw.team.find((m: { char: string }) => m.char === '散华').weapon.rank = rank
+      if (rank !== undefined) {
+        raw.team.find((m: { char: string }) => m.char === '散华').weapon.rank = rank
+        // 当时一日花前还写着补位"A1~ A2~"（2026-10-20 去掉，m0-confirm §11 V2、V9）：按 8 点算，启动轴和第 1 轮椿不是变奏入场，
+        // 不补协奏不够、一日花放不出来，这里加回去
+        for (const k of ['opening', 'rotation'] as const) raw[k] = raw[k].map((l: string) => l.replace('椿 大招 E3 ', '椿 大招 A1~ A2~ E3 '))
+      }
       return eventsOfLog(simulate(resolveScenario(ScenarioSchema.parse(raw), gd)).log, 'warning').filter(w => w.code === 'introMissed')
         .map(w => [w.cmd!.loop, w.cmd!.line, /协奏 ([\d.]+)/.exec(w.message)![1]])
     }

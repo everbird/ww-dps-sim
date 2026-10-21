@@ -15,8 +15,12 @@ const iceBuffs: BuffDefInput[] = ICES.map(x => ({ id: x.buff, source: x.source, 
 /** 【透视】（共鸣回路"无明心音"，nanoka 3.7）：A5、变奏、E 各 1 层，大招 2 层，最多 2 层，每层 5 秒，重击爆裂清空；每层扩大一次【冰痕】区域。
  *  层数就是核心资源槽 1（xlsx 核心回收1：A5 / E / QTE +1、大招 +2、重击居合 −2）；基础页把这一槽叫"指针"、上限 70，对不上（TD-06 Q6），
  *  改名、上限 2。数据只管加减，到时由钩子扣：每层各自计时（先得的先到时），两个计时标记各管一层，满 2 层再得时刷新先得的那层。
- *  只影响冰痕区域的大小；指针与区域没有数据，重击爆裂按总能成功算（假设 burst-release，待实测见 m0-confirm §13） */
+ *  只影响冰痕区域的大小；指针与区域没有数据，重击爆裂按总能成功算（假设 burst-release，m0-confirm §13） */
 const VARS = { 透视一起: -1, 透视二起: -1 }        // 两层各自开始计时的战斗帧；-1 = 这层没有
+/** 重击爆裂要先按住普攻、等指针走进冰痕区域再松手：xlsx「蓄力」那一行（只有名字）就是按住的这一段，重击居合各行的帧从松手算
+ *  （m0-confirm §13 P5）。指针的速度、区域的位置与宽度没有数据，按住的时间不分透视层数，一律按半秒（P1、P2，2026-10-20 用户定；
+ *  假设 burst-release）。松手前切人就没有重击爆裂，所以这段不能切人 */
+const HOLD = 30
 type Ctx = HookContext<typeof VARS>
 const LAYERS = [{ buff: '散华.透视·一', since: '透视一起' }, { buff: '散华.透视·二', since: '透视二起' }] as const
 /** 给透视的判定（命中时给，同 xlsx 核心回收1 所在的判定）；大招在开始时给 2 层 */
@@ -44,10 +48,10 @@ export default defineCharacter('散华', {
       id: l.buff, source: `透视第 ${i + 1} 层的计时：每层透视持续时间 5 秒（nanoka 3.7）`, target: 'self', duration: 300, trigger: 'hook',
     })),
     {
-      // 重击爆裂的引爆时刻：xlsx 重击居合-1"第29F～36F可引爆"，取起点，局部第 29 帧（m0-confirm §6 S4）。
-      // 钩子没有按帧回调，用一个 29 帧的标记计时，到期那一刻引爆（默认总能打中冰）
+      // 重击爆裂的引爆时刻：xlsx 重击居合-1"第29F～36F可引爆"，取起点，松手后第 29 帧（m0-confirm §6 S4），从按下算是 HOLD + 29。
+      // 钩子没有按帧回调，用一个标记计时，到期那一刻引爆（默认总能打中冰）
       id: '散华.引爆计时', source: '重击居合-1：第29F～36F可引爆',
-      target: 'self', duration: 29, trigger: { on: 'actionStart', where: { actions: ['重击居合'] } },
+      target: 'self', duration: HOLD + 29, trigger: { on: 'actionStart', where: { actions: ['重击居合'] } },
     },
     {
       id: '散华.固有1',
@@ -174,8 +178,11 @@ export default defineCharacter('散华', {
     '大招-引爆冰川': { accept: ['noEnd', 'noPriority'] },
     // 6 链"引爆后攻击提升"已写成 buff 散华.共鸣链6，这一组标记行不会被当成动作放
     'C6-引爆触发器': { accept: ['noEnd', 'noPriority', 'kindGuess', 'chainAdditive'] },
-    // 推断值按默认接受（m0-confirm §12 甲类，2026-10-18 用户同意）：蓄力只有名字的一行标记，没有帧数据，不会被当成动作放；
-    // 普通重击（不是重击居合）第 47 帧（派生帧）降到 2
+    // 按住半秒再松手（见 HOLD）：两行的帧从松手算，整体后移（同下落攻击的落地段，TD-04 §7 ⑩）；松手前不能切人，
+    // 视频轴的"重击一出手就切"就是松手就切
+    重击居合: { shiftRows: { '重击居合-1': HOLD, '重击居合-2': HOLD }, switchLockUntil: HOLD },
+    // 推断值按默认接受（m0-confirm §12 甲类，2026-10-18 用户同意）：蓄力只有名字的一行标记，没有帧数据，不会被当成动作放
+    // （按住的这一段算进了重击居合，见 HOLD）；普通重击（不是重击居合）第 47 帧（派生帧）降到 2
     蓄力: { accept: ['noEnd', 'noPriority', 'kindGuess'] },
     重击: { accept: ['priorityChangeGuess'] },
   },

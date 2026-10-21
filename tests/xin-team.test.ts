@@ -48,9 +48,20 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
       .toEqual([39, 48, [[46, 79]]])
   })
 
-  test('天演溯心按装配的角色换技能版本：心是心召唤，雷主是常规召唤', () => {
-    const r = load()
-    expect(r.team.map(m => m.aliases.Q)).toEqual(['Q·心召唤', 'Q·常规召唤', 'Q·爆气'])
+  test('天演溯心按装配的角色换技能版本：心是心召唤，雷主是常规召唤；对照场景里雷主的首位是绝息魄（xin-confirm §6 C1）', () => {
+    expect(load().team.map(m => m.aliases.Q)).toEqual(['Q·心召唤', 'Q·常规召唤', 'Q·爆气'])
+    expect(load('xin-team-r5-绝息魄.yaml').team.map(m => m.aliases.Q)).toEqual(['Q·心召唤', 'Q·伤害', 'Q·爆气'])
+  })
+
+  test('绝息魄在雷主首位（对照场景，只差这一处）：放完 15 秒内雷主延奏，变奏登场的心导电伤害加成 +12%（15 秒），心吃到；天演溯心的首位加成不在雷主身上', () => {
+    const jx = simulate(load('xin-team-r5-绝息魄.yaml'))
+    const k2 = loopEvents(jx.log, 2)
+    expect(eventsOfLog(k2, 'buffApply').filter(e => e.buff === '绝息魄.导电').map(e => [e.target, e.remaining])).toEqual([['心', 900]])
+    expect(eventsOfLog(k2, 'hit').some(h => h.char === '心' && h.buffs.includes('绝息魄.导电'))).toBe(true)
+    expect(eventsOfLog(jx.log, 'buffApply').some(e => e.buff.startsWith('天演溯心.') && e.target === '雷主·男')).toBe(false)
+    // 主场景（天演溯心在首位）没有绝息魄的加成，雷主有天演溯心的首位加成
+    expect(eventsOfLog(out.log, 'buffApply').some(e => e.buff === '绝息魄.导电')).toBe(false)
+    expect(eventsOfLog(out.log, 'buffApply').some(e => e.buff === '天演溯心.首位' && e.target === '雷主·男')).toBe(true)
   })
 
   test('整条轴跑完；循环里三次切人都是变奏（雷主 ← 心、雷主 ← 卜灵、心 ← 雷主）', () => {
