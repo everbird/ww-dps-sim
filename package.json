@@ -27,6 +27,7 @@
     "insight": "tsx src/cli/insight.ts",
     "search": "tsx src/cli/search.ts",
     "cards": "tsx src/cli/cards.ts",
+    "plan": "tsx src/cli/plan.ts",
     "web": "vite web/app",
     "web:build": "vite build web/app",
     "check:web": "svelte-check --tsconfig web/app/tsconfig.json"
