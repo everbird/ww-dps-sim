@@ -7,7 +7,8 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
 <style>
   /* E 播放器（2026-10-19，原型）：类比视频播放器 / 剪辑窗口。上面大块是"这一帧的画面"：时刻条（第几帧、轴里的哪一条、在等什么），
-     每人一张卡片（动作、能量协奏与共鸣回路、冷却、buff 与剩余时间、这个动作给的资源与打出的伤害），敌人与伤害一列；
+     最上面一条是敌人（像打 boss 时的血条：全程伤害当血量、偏谐、白条、异常效应、最近一段伤害；2026-10-20 用户提议），下面每人一张卡片
+     （动作、能量协奏与共鸣回路、冷却、buff 与剩余时间、这个动作给的资源与打出的伤害）；
      中间是播放控制（步进、逐帧、0.25×–2× 播放）；下面是扁长的时间轴（全程导航 + 三人泳道 + 敌人量表）。
      悬停时间轴只出一个预览小窗（像视频的缩略图），点一下或拖动才跳到那一帧；触摸屏没有悬停，单指横拖时在手指上方出这个小窗。单一暗色主题，同 D */
   :root {
@@ -47,8 +48,27 @@
   .tag { font-size: 12px; padding: 1px 8px; border-radius: 10px; border: 1px solid var(--rule); color: var(--muted); white-space: nowrap; }
   .tag.hot { color: var(--alert); border-color: var(--alert); }
   .tag.stop { color: var(--ink); border-color: var(--faint); }
-  /* 帧画面：每人一张卡片，敌人与伤害一列 */
-  .frame { overflow: auto; padding: 12px 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(250px, 0.85fr); gap: 12px; align-items: start; }
+  /* 帧画面：最上面一条敌人（boss 条），下面每人一张卡片 */
+  .frame { overflow: auto; padding: 12px 16px; display: grid; gap: 12px; align-content: start; }
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+  /* 敌人：像打 boss 时屏幕上方的血条。没有血量这个数，"血条"按全程总伤害当血量，已打的部分从满往下扣 */
+  .boss { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--alert); border-radius: 8px; padding: 8px 12px 10px;
+    display: grid; grid-template-columns: minmax(140px, auto) minmax(0, 1fr) minmax(250px, 0.62fr); gap: 6px 18px; align-items: start; }
+  .boss-id { display: grid; gap: 2px; align-content: start; }
+  .boss-id b { font-size: 15px; font-weight: 500; }
+  .boss-id span { font-size: 11.5px; color: var(--muted); }
+  .boss-id .tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+  .boss-bars { display: grid; gap: 5px; min-width: 0; }
+  .bb { display: grid; grid-template-columns: 4ch minmax(0, 1fr) minmax(15ch, auto); gap: 8px; align-items: center; font-size: 12px; color: var(--muted); }
+  .bb div { height: 7px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+  .bb.hp div { height: 13px; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--alert) 40%, transparent); }
+  .bb div i { display: block; height: 100%; background: var(--c); }
+  .bb.hp div i { background: linear-gradient(180deg, color-mix(in srgb, var(--alert) 82%, white), var(--alert)); }
+  .bb b { font: 400 12px var(--mono); color: var(--ink); text-align: right; white-space: nowrap; }
+  .bb b small { font: 11px var(--sans); color: var(--muted); margin-left: 4px; }
+  .boss-fx { display: flex; flex-wrap: wrap; gap: 4px; padding-left: calc(4ch + 8px); }
+  .boss-fx i { font: normal 12px/1.6 var(--sans); padding: 0 7px; border-radius: 3px; background: var(--panel2); color: var(--ink); }
+  .boss-hit { min-width: 0; display: grid; gap: 4px; }
   .card { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--c); border-radius: 8px; padding: 10px 12px 12px; display: grid; gap: 9px; min-width: 0; }
   .card header { display: flex; align-items: center; gap: 8px; }
   .card header b { font-size: 15px; font-weight: 500; }
@@ -156,14 +176,17 @@
   .hov .bars i u { display: block; height: 100%; background: var(--c); }
   .ww-tip { position: fixed; z-index: 30; max-width: min(360px, calc(100vw - 16px)); pointer-events: none; background: var(--panel2); color: var(--ink); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 10px 28px rgba(0, 0, 0, .45); }
   /* 窄屏：卡片上下排；时间轴挪到帧画面上面；播放控制固定在屏幕底部 */
-  @media (max-width: 1100px) { .frame { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 1100px) { .boss { grid-template-columns: minmax(130px, auto) minmax(0, 1fr); } .boss-hit { grid-column: 1 / -1; } }
+  @media (max-width: 860px) { .cards { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 760px) {
     html, body { height: auto; }
     .app { display: flex; flex-direction: column; height: auto; min-height: 0; padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
     .tl { order: 2; border-bottom: 1px solid var(--rule); }
     .timebar { order: 1; grid-template-columns: auto minmax(0, 1fr); }
     .tb-state { grid-column: 1 / -1; justify-content: flex-start; }
-    .frame { order: 3; grid-template-columns: minmax(0, 1fr); overflow: visible; }
+    .frame { order: 3; overflow: visible; }
+    .boss { grid-template-columns: minmax(0, 1fr); }
+    .boss-fx { padding-left: 0; }
     .ctl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 28px rgba(0, 0, 0, .5); }
     .ctl .cur { flex-basis: 100%; order: -1; }
     .lens { cursor: default; }
@@ -200,7 +223,7 @@
       <select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
     </div>
     <div class="cur" id="stepnow"></div>
-    <button type="button" class="help" aria-label="操作说明" data-help="时间轴：悬停看那一帧的预览（谁在前台、各自的动作、能量与协奏）；点一下跳到那一帧，按住拖动逐帧拖着看。&#10;触摸屏：点一下跳；单指横拖逐帧拖，拖的时候手指上方出预览（从光标或顶上的把手附近拖起，光标不跳、跟着手指走）；双指捏合缩放。&#10;全程导航：拖动选范围，点一下把视窗挪过去；右边 − ＋ 缩放。&#10;步进：⏮ ⏭ 或键盘 ← →，按所选单位前后跳（Shift + ← → 按 1 战斗秒）；◀ 帧 帧 ▶ 或 , . 逐帧。&#10;播放：空格开始 / 暂停，按世界时间走（1× = 每秒 60 帧），放到视窗右边时视窗跟着走。&#10;帧画面：每人一张卡片——动作（开始后第几帧）、能量协奏与共鸣回路（逐帧精确）、共鸣回路的状态、冷却（还要几秒）、buff（剩余战斗秒）、这个动作给的资源与打出的伤害（点开看每一项）。最右一列是敌人与这一帧附近的伤害。">i</button>
+    <button type="button" class="help" aria-label="操作说明" data-help="时间轴：悬停看那一帧的预览（谁在前台、各自的动作、能量与协奏）；点一下跳到那一帧，按住拖动逐帧拖着看。&#10;触摸屏：点一下跳；单指横拖逐帧拖，拖的时候手指上方出预览（从光标或顶上的把手附近拖起，光标不跳、跟着手指走）；双指捏合缩放。&#10;全程导航：拖动选范围，点一下把视窗挪过去；右边 − ＋ 缩放。&#10;步进：⏮ ⏭ 或键盘 ← →，按所选单位前后跳（Shift + ← → 按 1 战斗秒）；◀ 帧 帧 ▶ 或 , . 逐帧。&#10;播放：空格开始 / 暂停，按世界时间走（1× = 每秒 60 帧），放到视窗右边时视窗跟着走。&#10;帧画面：每人一张卡片——动作（开始后第几帧）、能量协奏与共鸣回路（逐帧精确）、共鸣回路的状态、冷却（还要几秒）、buff（剩余战斗秒）、这个动作给的资源与打出的伤害（点开看每一项）。最上面一条是敌人，像打 boss 时的血条：全程总伤害当血量（已打的部分往下扣）、偏谐、白条、异常效应层数；右边是这一帧的命中或最近一段伤害（点开看乘区拆分与生效的加成）。">i</button>
   </div>
   <section class="tl">
     <div class="ov"><div class="legend"><b>全程</b><span id="ovLegend" style="display:flex;gap:12px"></span><span class="zoom"><button type="button" id="zout" aria-label="缩小视窗">−</button><button type="button" id="zin" aria-label="放大视窗">＋</button></span></div><svg id="ov" data-own-tap></svg></div>
@@ -464,20 +487,25 @@
     }
     return { last, dis, para, fx }
   }
-  function enemyCard(g) {
-    const parts = []
-    const st = enemyAt(g)
-    if (hasEnemy) {
-      const en = M.enemy, v = st.last || { tunability: 0, whiteBar: en.whiteBarTough }
-      parts.push(`<div class="sec"><h3>敌人<small>${st.dis ? '失谐中' : st.para ? '瘫痪中' : '正常'}</small></h3>
-        ${en.tunabilityMax > 0 ? `<div class="meter" style="--c:var(--alert)"><span>偏谐</span><div><i style="width:${Math.min(100, 100 * v.tunability / en.tunabilityMax)}%"></i></div><b>${WW.fmt(v.tunability)}/${WW.fmt(en.tunabilityMax)}</b></div>` : ''}
-        ${en.whiteBarTough > 0 ? `<div class="meter" style="--c:var(--el-physical)"><span>白条</span><div><i style="width:${Math.min(100, 100 * v.whiteBar / en.whiteBarTough)}%"></i></div><b>${WW.fmt(v.whiteBar)}/${WW.fmt(en.whiteBarTough)}</b></div>` : ''}
-        ${[...st.fx].map(([k, x]) => `<div class="small" style="color:var(--ink)">${WW.esc(k)} ${x.stacks} 层${x.burst ? ` · 爆发 ${x.burst} 层` : ''}</div>`).join('')}</div>`)
-    }
+  // 敌人的"血条"：没有血量，按全程总伤害当血量，第 g 帧已打出的（f ≤ g 的命中）从满往下扣
+  const DEALT = (() => { const fs = [], vs = []; let sum = 0; for (const h of D.hits) if (h.dmg) { sum += h.dmg.expected; fs.push(h.f); vs.push(sum) } return { fs, vs, total: sum } })()
+  function dealtAt(g) {
+    let lo = 0, hi = DEALT.fs.length - 1, k = -1
+    while (lo <= hi) { const mid = (lo + hi) >> 1; if (DEALT.fs[mid] <= g) { k = mid; lo = mid + 1 } else hi = mid - 1 }
+    return k < 0 ? 0 : DEALT.vs[k]
+  }
+  // 这一帧的命中，或附近（40 帧内）最近的一段：一行概括，点开（或悬停）看乘区拆分与生效的加成
+  function hitBox(g) {
     const here = D.hits.filter(h => h.f === g && h.dmg)
-    if (here.length) parts.push(`<div class="sec"><h3>这一帧的命中 ${here.length} 段</h3><ul class="hits">${here.map(h => `<li style="color:var(--c${D.slot.get(h.char)})"><span>${WW.esc(`${h.char} ${h.judgment}`)}</span><b>${WW.fmt(h.dmg.expected)}</b></li>`).join('')}</ul></div>`)
     let best = null
     for (const h of D.hits) if (h.dmg && h.factors && Math.abs(h.f - g) <= 40 && (!best || Math.abs(h.f - g) < Math.abs(best.f - g))) best = h
+    if (!here.length && !best) return '<p class="small">附近没有伤害</p>'
+    const when = h => (h.f === g ? '这一帧' : `${Math.abs(sec(h.f) - sec(g)).toFixed(2)} 秒${h.f < g ? '前' : '后'}`)
+    const sum = here.length
+      ? `这一帧 ${here.length} 段 · ${WW.fmt(here.reduce((x, h) => x + h.dmg.expected, 0))}`
+      : `${when(best)}：${best.char} ${best.judgment} ${WW.fmt(best.dmg.expected)}`
+    const parts = []
+    if (here.length) parts.push(`<div class="sec"><h3>这一帧的命中 ${here.length} 段</h3><ul class="hits">${here.map(h => `<li style="color:var(--c${D.slot.get(h.char)})"><span>${WW.esc(`${h.char} ${h.judgment}`)}</span><b>${WW.fmt(h.dmg.expected)}</b></li>`).join('')}</ul></div>`)
     if (best) {
       const F = best.factors
       parts.push(`<div class="sec hit"><h3>最近一段伤害<small>${(sec(best.f)).toFixed(2)} 秒</small></h3><div style="font-size:12.5px">${WW.esc(best.char)} ${WW.esc(best.judgment)}${WW.hitBy(best) ? `<span class="small">（${WW.esc(WW.hitBy(best))}）</span>` : ''}</div><dl>
@@ -491,7 +519,28 @@
           return `<li style="--c:${c}" data-tip="${WW.esc(tip)}"><span><i></i>${WW.esc(m[1])}${m[2] ? ` ×${m[2]}` : ''}</span><b>${WW.esc(eff)}</b><em></em></li>`
         }).join('')}</ul></div>`)
     }
-    return `<section class="card" style="--c:var(--alert)">${parts.join('') || '<p class="small">没有敌人量表与伤害</p>'}</section>`
+    const key = 'hit|near'
+    return `<div class="bx gx${pinned.has(key) ? ' pinned' : ''}" data-key="${key}"><button type="button" class="bsum" aria-expanded="${pinned.has(key)}"><b>伤害</b><span>${WW.esc(sum)}</span><i>▸</i></button><div class="bpop">${parts.join('')}</div></div>`
+  }
+  // 敌人：帧画面最上面一条，像打 boss 时屏幕上方的血条（2026-10-20 用户提议）
+  function bossBar(g) {
+    const st = enemyAt(g), en = M.enemy
+    const id = String(en.id || '敌人'), cut = id.lastIndexOf('/')
+    const name = cut >= 0 ? id.slice(cut + 1) : id, from = cut >= 0 ? id.slice(0, cut) : ''
+    const v = st.last || { tunability: 0, whiteBar: en.whiteBarTough }
+    const dealt = dealtAt(g), left = DEALT.total > 0 ? Math.max(0, 1 - dealt / DEALT.total) : 1
+    const bar = (cls, label, c, frac, text, tip) => `<div class="bb ${cls}" style="--c:${c}"${tip ? ` title="${WW.esc(tip)}"` : ''}><span>${label}</span><div><i style="width:${(100 * Math.min(1, Math.max(0, frac))).toFixed(2)}%"></i></div><b>${text}</b></div>`
+    const tags = [st.dis ? '<span class="tag hot">失谐</span>' : '', st.para ? '<span class="tag">瘫痪</span>' : '', !st.dis && !st.para ? '<span class="tag">正常</span>' : ''].join('')
+    return `<section class="boss">
+      <div class="boss-id"><b>${WW.esc(name)}</b><span>${WW.esc([from, en.level ? `${en.level} 级` : ''].filter(Boolean).join(' · '))}</span><div class="tags">${tags}</div></div>
+      <div class="boss-bars">
+        ${bar('hp', '血条', 'var(--alert)', left, `${WW.fmt(DEALT.total - dealt)}<small>剩 ${(100 * left).toFixed(1)}%</small>`, '没有血量：按全程总伤害当血量，已打出的部分从满往下扣')}
+        ${en.tunabilityMax > 0 ? bar('', '偏谐', 'var(--wait)', v.tunability / en.tunabilityMax, `${WW.fmt(v.tunability)} / ${WW.fmt(en.tunabilityMax)}`) : ''}
+        ${en.whiteBarTough > 0 ? bar('', '白条', 'var(--el-physical)', v.whiteBar / en.whiteBarTough, `${WW.fmt(v.whiteBar)} / ${WW.fmt(en.whiteBarTough)}`) : ''}
+        ${st.fx.size ? `<div class="boss-fx">${[...st.fx].map(([k, x]) => `<i>${WW.esc(k)} ${x.stacks} 层${x.burst ? ` · 爆发 ${x.burst} 层` : ''}</i>`).join('')}</div>` : ''}
+      </div>
+      <div class="boss-hit">${hitBox(g)}</div>
+    </section>`
   }
   // 时刻条：第几帧；轴里的哪一条（在等的那一条，或最近执行的那一条，高亮第几个）；在等什么；时停、失谐、警告
   function waitAt(g) { return D.waits.find(w => w.from <= g && g < w.f) || null }
@@ -519,7 +568,7 @@
   function frameView() {
     const g = Math.round(cursor)
     timebar(g)
-    $('frame').innerHTML = M.team.map((_, i) => card(i, g)).join('') + enemyCard(g)
+    $('frame').innerHTML = bossBar(g) + `<div class="cards">${M.team.map((_, i) => card(i, g)).join('')}</div>`
     const mode = $('mode').value, st = STOPS[mode]
     const xs = st && st.at.get(g)
     $('stepnow').innerHTML = mode === 'sec' ? `按战斗秒步进` : xs ? `<b style="color:var(--c${xs[0].slot})">${WW.esc(xs[0].main)}</b>${xs.length > 1 ? ` 等 ${xs.length} 个` : ''} · 第 ${st.frames.indexOf(g) + 1} / ${st.frames.length} 个${MODE_NAME[mode]}`

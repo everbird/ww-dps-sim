@@ -58,7 +58,7 @@ const echoes: EchoModule[] = [
   }),
 
   defineEcho({
-    name: '天演溯心',                       // 心、雷主的首位
+    name: '天演溯心',                       // 心、雷主的首位（雷主另有绝息魄在首位的对照场景 xin-team-r5-绝息魄.yaml）
     cost: 4,                                // `索引` 页查不到 COST（构建报告），扫描库存写 4
     qFor: { 心: 'Q·心召唤' },               // "若装配角色为心，则声骸技能将变为对更大范围内的敌人造成至多五段…和一段…的导电伤害"
     actionOverrides: { 'Q·心召唤': { accept: ['persistsGuess'] } },   // 召唤物的几段，脱手（同常规召唤）
@@ -72,6 +72,25 @@ const echoes: EchoModule[] = [
         id: '天演溯心.附加后', source: '自身为目标附加【电磁效应】后，或自身获得同奏、响应同奏时，自身导电伤害加成额外提升10.00%，持续30秒。',
         zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['导电'] }, target: 'self', duration: 1800,
         trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '电磁效应' } },
+      },
+    ],
+  }),
+
+  defineEcho({
+    // 雷主特意放首位的 3 COST（2026-10-20 用户说明：延奏后给变奏登场的心导电伤害加成），对照场景 xin-team-r5-绝息魄.yaml；同无常凶鹭的写法
+    name: '绝息魄',
+    cost: 3,                                // `索引` 页查不到 COST（构建报告），扫描库存写 3
+    // xlsx 没写结束帧，按最后一段推成 288 帧（noEnd）：召唤类，三段走独立时间线，角色自己这段优先级 0、什么都能打断，结束帧用不到
+    actionOverrides: { 'Q·伤害': { accept: ['noEnd'] } },
+    mainSlotBuffs: [
+      {
+        id: '绝息魄.监听', source: '使用声骸技能，召唤绝息魄……在此后15秒内，若自身施放延奏技能，使下一个变奏技能登场的角色导电伤害加成提升12.00%，持续15秒。',
+        target: 'self', duration: 900, trigger: { on: 'actionStart', where: { actions: ['Q·伤害'] } },
+      },
+      {
+        id: '绝息魄.导电', source: '在此后15秒内，若自身施放延奏技能，使下一个变奏技能登场的角色导电伤害加成提升12.00%，持续15秒。',
+        zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['导电'] }, target: 'nextIn', duration: 900,
+        trigger: { on: 'outro', where: { ownerHas: '绝息魄.监听' } },
       },
     ],
   }),

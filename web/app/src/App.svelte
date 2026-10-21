@@ -1,4 +1,4 @@
-<!-- web/app/src/App.svelte —— 网页（M6）：场景 / 对比 / 边际 / 择优四页，配色沿用 web/timeline.html -->
+<!-- web/app/src/App.svelte —— 网页（M6）：场景 / 结论 / 对比 / 边际 / 择优 / 轴搜索 / 视图说明，配色沿用 web/timeline.html -->
 <script lang="ts">
   import { call } from './api'
   import { ofKind } from './docs.svelte'
@@ -8,14 +8,18 @@
   import MarginalView from './views/MarginalView.svelte'
   import OptimizeView from './views/OptimizeView.svelte'
   import RunView from './views/RunView.svelte'
+  import SearchView from './views/SearchView.svelte'
 
-  const TABS = [['run', '场景'], ['insight', '结论'], ['compare', '对比'], ['marginal', '副词条边际'], ['optimize', '声骸择优'], ['design', '视图说明']] as const
+  const TABS = [['run', '场景'], ['insight', '结论'], ['compare', '对比'], ['marginal', '副词条边际'], ['optimize', '声骸择优'], ['search', '轴搜索'], ['design', '视图说明']] as const
   // 地址里的 #design-b 直接打开设计备选的 B
   const hash = location.hash.slice(1)
   let tab = $state<(typeof TABS)[number][0]>(hash.startsWith('design') ? 'design' : 'run')
   let pick = $state(hash.match(/^design-([a-d])$/)?.[1] ?? 'a')
   let name = $state(ofKind('scenario').find(d => d.name === 'm0-team.yaml')?.name ?? ofKind('scenario')[0]?.name ?? '')
   let info = $state('载入数据…')
+  // 轴搜索页"和原轴对比"：带着两份场景跳到对比页，直接跑
+  let preset = $state<{ base: string; other: string } | null>(null)
+  const compareWith = (base: string, other: string) => { preset = { base, other }; tab = 'compare' }
   call('info', {}).then(i => (info = `数据 ${i.version} · 角色 ${i.characters.join('、')}`), e => (info = (e as Error).message))
 </script>
 
@@ -25,7 +29,7 @@
     <p class="muted">{info}</p>
     <nav>{#each TABS as [k, n]}<button type="button" class:on={tab === k} onclick={() => (tab = k)}>{n}</button>{/each}</nav>
   </header>
-  {#if tab === 'run'}<RunView bind:name />{:else if tab === 'insight'}<InsightView bind:name />{:else if tab === 'compare'}<CompareView {name} />{:else if tab === 'marginal'}<MarginalView bind:name />{:else if tab === 'optimize'}<OptimizeView bind:name />{:else}<DesignView bind:name bind:pick />{/if}
+  {#if tab === 'run'}<RunView bind:name />{:else if tab === 'insight'}<InsightView bind:name />{:else if tab === 'compare'}<CompareView {name} {preset} />{:else if tab === 'marginal'}<MarginalView bind:name />{:else if tab === 'optimize'}<OptimizeView bind:name />{:else if tab === 'search'}<SearchView bind:name oncompare={compareWith} />{:else}<DesignView bind:name bind:pick />{/if}
 </div>
 
 <style>

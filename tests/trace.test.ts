@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario, ResolveError } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments, videoSeconds } from '../src/engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, videoSeconds } from '../src/engine/trace'
 import { timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -214,5 +214,45 @@ describe('TD-11 对照视频', () => {
     expect(cmp.rows.map(x => [x.line, +x.video.toFixed(2), +x.sim.toFixed(2), +x.diff.toFixed(2), +x.step.toFixed(2)])).toEqual([
       [1, 0, 0, 0, 0], [2, 0.8, 1, 0.2, 0.2], [4, 2.1, 2, -0.1, -0.3],
     ])
+  })
+})
+
+describe('面板与逐下伤害（TD-11 §2：先对面板，再对单招的跳字；pnpm trace --hits）', () => {
+  // 丁：五个 buff——常驻攻击 +10%、常驻导电伤害加成 +10%（面板上有）；在前台才有的攻击 +20%、常驻加深 30%、X 之后的暴击 +50%（面板上没有）
+  const 丁: SynthChar = {
+    name: '丁',
+    actions: [action({ id: 'X', endFrame: 30, judgments: [judgment({ name: 'x', spawnFrame: 10 })] })],
+    buffs: [
+      { id: '丁.攻击', source: '测试：攻击提升10%', zone: 'atkPct', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '丁.导电', source: '测试：导电伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['导电'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '丁.前台', source: '测试：在前台时攻击提升20%', zone: 'atkPct', value: 0.2, target: 'self', duration: 'inf', trigger: 'always', ownerOnField: true },
+      { id: '丁.加深', source: '测试：伤害加深30%', zone: 'DamageAmplify0', value: 0.3, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '丁.出招', source: '测试：X 之后暴击提升50%', zone: 'critRate', value: 0.5, target: 'self', duration: 60, trigger: { on: 'actionStart', where: { actions: ['X'] } } },
+    ],
+  }
+  const r = resolveScenario(ScenarioSchema.parse({
+    team: ['丁', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['丁 X'],
+  }), synthData([丁, 乙, idle('丙')]))
+  const res = simulate(r)
+
+  test('面板：静态面板 + 自己的常驻 buff，伤害加成用游戏面板的叫法；要求在前台的、加深、触发型的不算', () => {
+    const rows = tracePanel(r, '丁')
+    expect(rows.find(x => x.item === '攻击')).toMatchObject({ value: 1100, flat: true, sources: ['测试：攻击提升10%（计入 10%）'] })
+    expect(rows.find(x => x.item === '暴击')!.value).toBeCloseTo(0.05, 9)
+    expect(rows.find(x => x.item === '导电伤害加成')).toMatchObject({ value: 0.1, flat: false, sources: ['测试：导电伤害提升10%（计入 10%）'] })
+    expect(rows.every(x => x.char === '丁')).toBe(true)
+    expect(tracePanel(r).filter(x => x.item === '攻击').map(x => x.char)).toEqual(['丁', '乙', '丙'])
+  })
+
+  test('逐下伤害：不暴击 / 暴击 / 期望与这一下生效的 buff（过滤条件对不上的不列）；可以只看一个角色', () => {
+    const hits = traceHits(res.log, 1, '丁')
+    expect(hits).toHaveLength(1)
+    const h = hits[0]!
+    expect([h.char, h.action, h.judgment, h.element, h.effect]).toEqual(['丁', 'X', 'x', '物理', false])
+    expect(h.nonCrit).toBeLessThan(h.expected)
+    expect(h.expected).toBeLessThan(h.crit)
+    expect(h.buffs).toEqual(expect.arrayContaining(['丁.攻击', '丁.前台', '丁.加深', '丁.出招']))
+    expect(h.buffs).not.toContain('丁.导电')
+    expect(traceHits(res.log, 1, '乙')).toEqual([])
   })
 })

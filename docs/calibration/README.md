@@ -1,6 +1,6 @@
 # 实测与校准记录
 
-总设计 §11 第 6 条：实测伤害数字、轴时长、半程切人拿到的能量和协奏，记在这里；发现偏差优先改 `rules` 里的规则表，而不是改引擎。怎么查对不上见 TD-11（`docs/wuwa-dps-td11-debug-calibration-v0.1.1.md`）。
+总设计 §11 第 6 条：实测伤害数字、轴时长、半程切人拿到的能量和协奏，记在这里；发现偏差优先改 `rules` 里的规则表，而不是改引擎。怎么查对不上见 TD-11（`docs/wuwa-dps-td11-debug-calibration-v0.1.2.md`）。
 
 ## 放什么
 
@@ -31,3 +31,10 @@
 ## 视频时间点
 
 写进场景的 `video` 段（TD-11 §6.3），用 `pnpm trace <场景> --md` 生成对照表；把生成的 Markdown（`out/` 下，不进 git）里要留的部分摘进记录。
+
+## 现有记录
+
+| 记录 | 对的是什么 | 状态 |
+|---|---|---|
+| `2026-10-21-跳字-心开场AAA.md` | 心的面板与开场三下普攻的跳字（全息 6 无常凶鹭），表由 `pnpm trace scenarios/xin-team-r5.yaml --loop 0 --hits --char 心` 出 | 待实测 |
+| `2026-10-21-跳字-椿开场AAE.md` | 椿的面板与开场 AAE 的跳字（全息 6 朔雷之鳞），表由 `pnpm trace scenarios/m0-video-eq.yaml --loop 0 --hits --char 椿` 出 | 待实测 |

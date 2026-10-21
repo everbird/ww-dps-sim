@@ -252,6 +252,18 @@ dataDescribe('首位声骸（M0 队伍）', () => {
     expect(eventsOfLog(late.log, 'buffApply').map(e => e.buff)).not.toContain('无常凶鹭.伤害提升')
   })
 
+  test('绝息魄（雷主的首位，2026-10-20 用户说明）：COST 3（`索引` 页查不到，curated 补）；召唤，三段导电；15 秒内放延奏，下一位变奏登场的角色导电伤害加成 +12%，15 秒', () => {
+    const e = gd.echoes['绝息魄']!
+    expect(e.cost).toBe(3)
+    expect(e.actions['Q·伤害']!.summon).toBe(true)
+    expect(e.actions['Q·伤害']!.judgments.map(j => [j.spawnFrame, j.multiplier, j.element])).toEqual([[194, 0.9118, '导电'], [211, 0.9118, '导电'], [228, 0.9118, '导电']])
+    const sc = { team: withEchoes(1, ['绝息魄']), initial: { onField: 1 as const, concerto: [0, 100, 0] as [number, number, number] } }
+    const amp = m0Run(gd, { ...sc, rotation: ['散华 Q', 'switch 椿', '椿 A1'] })
+    expect(eventsOfLog(amp.log, 'buffApply').find(e => e.buff === '绝息魄.导电')).toMatchObject({ target: '椿', remaining: 900 })
+    const late = m0Run(gd, { ...sc, rotation: ['散华 Q', 'wait 1000', 'switch 椿'] })
+    expect(eventsOfLog(late.log, 'buffApply').map(e => e.buff)).not.toContain('绝息魄.导电')
+  })
+
   test('无归的谬误（维里奈）：点按只打爆气（基于生命）；施放时全队攻击 +10%、自身共鸣效率 +10%，20 秒', () => {
     const out = m0Run(gd, { team: withEchoes(2, ['异相·无归的谬误']), initial: { onField: 2 }, rotation: ['维里奈 Q'] })
     expect(eventsOfLog(out.log, 'hit').filter(h => h.action === 'Q·爆气').map(h => h.judgment)).toEqual(['爆气'])

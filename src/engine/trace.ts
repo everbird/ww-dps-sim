@@ -1,7 +1,8 @@
-// src/engine/trace.ts —— 调试用的三种表（TD-11 §3）：分段（每次上场多久）、逐条（每条指令的开始、到下一条多久、之前在等什么）、
-// 资源逐步（某种资源每次怎么变、为什么变）。都从事件日志算，不改仿真；时刻按本轮开始算，世界帧与战斗秒都给
-// （视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
-import type { ActionId, CharName, ResourceKind, Slot } from '../data/common'
+// src/engine/trace.ts —— 调试用的表（TD-11 §3）：分段（每次上场多久）、逐条（每条指令的开始、到下一条多久、之前在等什么）、
+// 资源逐步（某种资源每次怎么变、为什么变），以及对游戏跳字用的面板与逐下伤害（TD-11 §2 的前两层）。都从装配结果与事件日志算，
+// 不改仿真；时刻按本轮开始算，世界帧与战斗秒都给（视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
+import { FLAT_STATS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
+import { composeStat } from './formula'
 import type { ResolvedScenario, SimEvent } from './types'
 import { round, roundTo } from './num'
 import { outroOf } from './switch'
@@ -372,6 +373,96 @@ export function actionGains(steps: readonly GainStep[], resources: readonly Reso
     items: a.items.sort((x, y) => rank(x) - rank(y))           // 同一种资源里保持第一次出现的先后（sort 是稳定的）
       .map(x => ({ ...x, deltas: Object.fromEntries(Object.entries(x.deltas).map(([n, v]) => [n, roundTo(v!, 1e4)])) })),
   }))
+}
+
+// ---------------------------------------------------------------------------
+// 面板与逐下伤害（TD-11 §2：先对面板，再对单招的跳字）
+
+/** 面板的一项。value：生命、攻击、防御是整数，其余是比例；sources：计入的常驻 buff（武器被动、套装、固有技能、首位加成）的出处，
+ *  后面括号里是实际计入的数（原文常写 1 阶的数，武器按谐振阶取值） */
+export interface PanelRow { char: CharName; item: string; value: number; flat: boolean; sources: string[] }
+
+/** 带过滤条件的加成 → 游戏面板上的叫法（STAT_TO_ZONE 反查："导电伤害加成""普攻伤害加成"…） */
+const BONUS_LABEL = new Map<string, StatKey>(
+  (Object.entries(STAT_TO_ZONE) as [StatKey, { zone: string; elements?: readonly Element[]; tags?: readonly DamageTag[] }][])
+    .filter(([, z]) => z.zone === 'DamageChangeElement' || z.zone === 'DamageChangeType')
+    .map(([k, z]) => [`${z.zone}|${(z.elements ?? []).join(',')}|${(z.tags ?? []).join(',')}`, k]),
+)
+const PANEL_STAT: Readonly<Record<string, string>> = {
+  hpPct: '生命', hpFlat: '生命', atkPct: '攻击', atkFlat: '攻击', defPct: '防御', defFlat: '防御',
+  critRate: '暴击', critDamage: '暴击伤害', energyRegen: '共鸣效率', healBonus: '治疗效果加成',
+}
+
+/** 角色界面上能看到的面板：静态面板（基础 + 武器 + 声骸词条 + 技能树）+ 自己的常驻 buff（trigger always、作用于自己或全队、
+ *  不要求在前台）。伤害加成按游戏面板的叫法合并（"导电伤害加成"= 声骸主词条 + 套装 + 武器被动…）；
+ *  加深、最终伤害这类不在面板上的不列（逐下伤害的 buff 一栏里有）。char 只看一个角色 */
+export function tracePanel(r: ResolvedScenario, char?: CharName): PanelRow[] {
+  const rows: PanelRow[] = []
+  for (const m of r.team) {
+    if (char && m.def.name !== char) continue
+    const own = r.buffs.filter(b => b.owner === m.slot && b.def.trigger === 'always' && (b.def.target === 'self' || b.def.target === 'team')
+      && !b.def.ownerOnField && !b.def.consume && b.def.zone !== undefined)
+    const sum: Record<string, number> = {}
+    const src: Record<string, string[]> = {}
+    const note = (item: string, source: string) => { (src[item] ??= []).includes(source) || src[item]!.push(source) }
+    const bonus = new Map<StatKey, number>()
+    for (const b of own) {
+      const z = b.def.zone!
+      const f = b.def.filter ?? {}
+      const plain = Object.keys(f).every(k => k === 'elements' || k === 'tags')
+      const counted = `${b.def.source}（计入 ${z.endsWith('Flat') ? b.value : `${roundTo(b.value * 100, 10)}%`}）`
+      if (z in PANEL_STAT && Object.keys(f).length === 0) {
+        sum[z] = (sum[z] ?? 0) + b.value
+        note(PANEL_STAT[z]!, counted)
+      } else if (plain) {
+        const label = BONUS_LABEL.get(`${z}|${(f.elements ?? []).join(',')}|${(f.tags ?? []).join(',')}`)
+        if (!label) continue
+        bonus.set(label, (bonus.get(label) ?? 0) + b.value)
+        // 声骸、武器副属性、技能树的词条（statAdder 登记的"声骸：导电伤害加成"）在面板里本来就有，不算出处
+        if (!/^(声骸|武器|技能树)：/.test(b.def.source)) note(label, counted)
+      }
+    }
+    const p = m.panel
+    const v = (z: string) => sum[z] ?? 0
+    const add = (item: string, value: number, flat: boolean) => rows.push({ char: m.def.name, item, value, flat, sources: src[item] ?? [] })
+    add('生命', composeStat(p.hp, v('hpPct'), v('hpFlat')), true)
+    add('攻击', composeStat(p.atk, v('atkPct'), v('atkFlat')), true)
+    add('防御', composeStat(p.def, v('defPct'), v('defFlat')), true)
+    add('暴击', p.critRate + v('critRate'), false)
+    add('暴击伤害', p.critDamage + v('critDamage'), false)
+    add('共鸣效率', p.energyRegen + v('energyRegen'), false)
+    if (p.healBonus + v('healBonus') > 0) add('治疗效果加成', p.healBonus + v('healBonus'), false)
+    // 伤害加成按 STAT_TO_ZONE 的顺序（元素在前、类型在后），全属性另起一行
+    for (const k of Object.keys(STAT_TO_ZONE) as StatKey[]) {
+      const x = bonus.get(k)
+      if (x !== undefined && !FLAT_STATS.includes(k)) add(k, x, false)
+    }
+  }
+  return rows
+}
+
+/** 一下伤害：nonCrit / crit 对游戏的跳字（不暴击、暴击各一种数）；buffs 是这一下生效的 buff（"id×层数"） */
+export interface HitRow {
+  f: number; t: number
+  char: CharName; action: ActionId; judgment: string; element: Element; tags: DamageTag[]
+  nonCrit: number; crit: number; expected: number
+  buffs: string[]
+  effect: boolean                             // 异常效应自身的伤害（定时结算、钩子主动触发）
+}
+
+/** 第 loop 轮的每一下伤害（非伤害判定不列），按结算先后；char 只看一个角色 */
+export function traceHits(log: readonly SimEvent[], loop: number, char?: CharName): HitRow[] {
+  const span = loopSpan(log, loop)
+  if (!span) return []
+  const rows: HitRow[] = []
+  for (const e of log) {
+    if (e.f < span.f || e.f >= span.endF || e.type !== 'hit' || !e.dmg || (char && e.char !== char)) continue
+    rows.push({
+      f: e.f, t: e.t, char: e.char, action: e.action, judgment: e.judgment, element: e.element, tags: e.tags,
+      nonCrit: e.dmg.nonCrit, crit: e.dmg.crit, expected: e.dmg.expected, buffs: e.buffs, effect: e.effect !== undefined,
+    })
+  }
+  return rows
 }
 
 // ---------------------------------------------------------------------------
