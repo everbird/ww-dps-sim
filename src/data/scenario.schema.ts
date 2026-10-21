@@ -64,6 +64,14 @@ export const ScenarioSchema = z.strictObject({
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
   rotation: z.array(z.string().nullable().transform(v => v ?? '')).min(1),   // 空行、YAML 里只有注释的项（null）不产生指令（TD-09 §2.3）
+  // 按套路排轴（pnpm plan，TD-10 §6.2 ①）另外可用的套路：轴里没有的打法，写法同轴里同一角色的一行（不含切人）；
+  // max = 每轮最多用几次（缺省 1）。仿真不用它
+  search: z.strictObject({
+    routines: z.array(z.union([
+      z.string().min(1),
+      z.strictObject({ line: z.string().min(1), max: z.number().int().min(1).default(1) }),
+    ])).default([]),
+  }).optional(),
   options: z.strictObject({
     repeat: z.number().int().min(1).default(1),
     maxFrames: z.number().int().min(1).default(3600),

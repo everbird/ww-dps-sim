@@ -50,3 +50,15 @@ dataDescribe('套路次数可变（--vary）：M0 视频轴 EQ 版', () => {
     expect(new Set(keys).size).toBe(keys.length)
   }, 300_000)
 })
+
+dataDescribe('另加的套路（场景 search.routines，TD-10 §6.2 ①）', () => {
+  test('写法有误直接报错：轴里已有、不是同一角色的出招行、角色不在队伍里', async () => {
+    const data = await loadGameData()
+    const raw = parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))
+    const plan = (routines: unknown[]) => () => planRotation(ScenarioSchema.parse({ ...raw, search: { routines } }), data, { width: 1 })
+    expect(plan(['散华 E Q'])).toThrow('轴里已经有了')
+    expect(plan(['switch 散华'])).toThrow('不是同一角色的出招行')
+    expect(plan([{ line: '心 E', max: 2 }])).toThrow('心 不在队伍里')
+    expect(ScenarioSchema.parse({ ...raw, search: { routines: ['维里奈 Q', { line: '散华 E' }] } }).search!.routines).toEqual(['维里奈 Q', { line: '散华 E', max: 1 }])
+  })
+})

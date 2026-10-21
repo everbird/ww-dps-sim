@@ -21,7 +21,7 @@ export interface PlanOptions {
   /** 每个套路用的次数可以比原轴多 / 少几次（缺省 0 = 次数不变，只换顺序；TD-10 §6.2 ④′）。次数变了的按每秒伤害比，
    *  比如多补一段补位、少一段攻击 */
   vary?: number
-  extra?: number                            // vary > 0 时一轮的套路总数最多比原轴多 / 少几个（缺省 2）
+  extra?: number                            // vary > 0 或有另加的套路时，一轮的套路总数最多比原轴多 / 少几个（缺省 2）
 }
 
 export interface PlanLeaf {
@@ -40,7 +40,7 @@ export interface PlanResult {
   ref: { dps: number; loopSecs: number | null; routines: string[] }
   leaves: PlanLeaf[]                        // 按 DPS 从高到低
   refRank: number | null                    // 原轴的顺序排第几（1 起）；没进最后一层为 null
-  library: { line: string; char: CharName; count: number }[]
+  library: { line: string; char: CharName; count: number; added: boolean }[]   // added：场景 search.routines 另加的（原轴里 0 次）
   prefixRuns: number
   failures: Record<string, number>          // 前缀跑不通的按原因计数（timeout 等超时、comboBroken…）
 }
@@ -89,11 +89,22 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const top = Math.min(opts.top ?? width, width)
   const vary = opts.vary ?? 0
   const refSeq = routineSequence(sc.rotation)
-  const extra = vary > 0 ? opts.extra ?? 2 : 0
+  // 场景 search.routines 另加的套路（TD-10 §6.2 ① (b)）：原轴里 0 次，每轮 0 到 max 次
+  const added = (sc.search?.routines ?? []).map(r => (typeof r === 'string' ? { line: clean(r), max: 1 } : { line: clean(r.line), max: r.max }))
+  for (const { line } of added) {
+    const c = charOf(line)
+    if (!c) throw new Error(`search.routines 里"${line}"不是同一角色的出招行`)
+    if (!sc.team.some(m => m.char === c)) throw new Error(`search.routines 里"${line}"：${c} 不在队伍里`)
+    if (refSeq.includes(line)) throw new Error(`search.routines 里"${line}"轴里已经有了，要多用几次请用 --vary`)
+  }
+  const extra = vary > 0 || added.length > 0 ? opts.extra ?? 2 : 0
   const [minLen, maxLen] = [Math.max(2, refSeq.length - extra), refSeq.length + extra]
   const counts = new Map<string, number>()
   for (const r of refSeq) counts.set(r, (counts.get(r) ?? 0) + 1)
-  const library = [...counts].map(([line, count]) => ({ line, char: charOf(line)!, count, lo: Math.max(0, count - vary), hi: count + vary }))
+  const library = [
+    ...[...counts].map(([line, count]) => ({ line, char: charOf(line)!, count, lo: Math.max(0, count - vary), hi: count + vary, added: false })),
+    ...added.map(({ line, max }) => ({ line, char: charOf(line)!, count: 0, lo: 0, hi: max, added: true })),
+  ]
   const usedOf = (seq: readonly string[]) => library.map(l => seq.filter(x => x === l.line).length)
   /** 能当一整轮：每个套路的次数都在范围里、长度在范围里、首尾不是同一个人（下一轮开头的切人切不了） */
   const closable = (seq: readonly string[]) => seq.length >= minLen && charOf(seq[0]!) !== charOf(seq.at(-1)!)
@@ -178,14 +189,17 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       beam.push(n)
       if (beam.length >= width) break
     }
+    // 原轴的前缀一定留着（超出 width 也留）：原轴总能排满、当基准；不然它可能在半路被筛掉，排出来的全比原轴差也看不出
+    const refPrefix = next.get(refSeq.slice(0, depth + 1).join(' | '))
+    if (depth < refSeq.length && refPrefix && !beam.includes(refPrefix)) beam.push(refPrefix)
     if (beam.length === 0) break
-    // 能当一整轮的进候选。次数不变时（vary = 0）补完一轮什么都没补，分数就是它自己当一轮。次数可变时一轮的长度变了，
+    // 能当一整轮的进候选。次数不变时（vary = 0、没有另加的套路）补完一轮什么都没补，分数就是它自己当一轮。次数可变时一轮的长度变了，
     // 第一轮里冷却还卡不住（缩短的轮到第 2 轮才等大招冷却、等超时），所以跑两轮、取第 2 轮
     for (const n of beam) {
       if (!closable(n.seq)) continue
       const key = n.seq.join(' | ')
-      if (vary === 0 && n.tier === 1 && complete(n.seq).length === n.seq.length) { pool.set(key, n); continue }
-      const rounds = vary === 0 ? 1 : 2
+      if (extra === 0 && n.tier === 1 && complete(n.seq).length === n.seq.length) { pool.set(key, n); continue }
+      const rounds = extra === 0 ? 1 : 2
       prefixRuns++
       const rr = run(renderRoutines(n.seq), rounds)
       const l = rr && !rr.error && !bad(rr) ? rr.summary.perLoop?.find(p => p.loop === rounds) : undefined
@@ -197,14 +211,14 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const refKey = refSeq.join(' | ')
   const leaves: PlanLeaf[] = []
   const best = [...pool.values()].sort((a, b) => b.tier - a.tier || b.score - a.score)
-  for (const node of (vary === 0 ? beam.filter(n => pool.has(n.seq.join(' | '))) : best).slice(0, top)) {
+  for (const node of (extra === 0 ? beam.filter(n => pool.has(n.seq.join(' | '))) : best).slice(0, top)) {
     const plain = renderRoutines(node.seq)
     const res = run(plain, sc.options.repeat)
     if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
     if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
     if (missed(res) > refMissed) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
     const introAt = new Set(res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 2 ? [e.cmd.line] : [])))
-    const diff = usedOf(node.seq).map((n, i) => n - library[i]!.count)
+    const diff = usedOf(node.seq).map((n, i) => n - library[i]!.count)   // 另加的套路 count 为 0，用了几次就是 +几
     leaves.push({
       routines: node.seq,
       counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
