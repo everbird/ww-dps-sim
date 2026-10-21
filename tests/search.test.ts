@@ -6,6 +6,7 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
+import { withRotation } from '../src/data/scenario-text'
 import { lineText, neighbors, parseLines, rotationKey, searchRotation } from '../src/engine/search'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -29,6 +30,22 @@ describe('轴搜索：候选怎么生成', () => {
     const ch = neighbors(lines, { move: [], drop: ['Q'] })
     expect(ch.map(c => c.desc)).toEqual(['去掉 乙 Q（第 3 条第 1 个）'])
     expect(ch[0]!.lines.map(lineText)).toEqual(['甲 A1~ E! +2', 'switch 乙', 'switch 甲', '甲 A1'])
+  })
+
+  test('对调（第二版）：同一行相邻的两个、行末与紧接着的同一角色那一行开头；两个都是补位的、写法一样的不试', () => {
+    const lines = parseLines(['甲 A1~ A2~ E Q', '甲 R', 'switch 乙', '乙 E E'])
+    const ch = neighbors(lines, { move: [], swap: true })
+    expect(ch.map(c => c.desc)).toEqual(['甲：对调 A2 与 E（第 1 条第 2、3 个）', '甲：对调 E 与 Q（第 1 条第 3、4 个）', '甲：对调 Q 与 R（第 1 条末尾与第 2 条开头）'])
+    expect(ch[2]!.lines.map(lineText)).toEqual(['甲 A1~ A2~ E R', '甲 Q', 'switch 乙', '乙 E E'])
+    expect(neighbors(lines, { move: [], swap: true, chars: ['乙'] })).toEqual([])
+  })
+
+  test('插入（第二版）：有这个动作的角色，每行每个位置各一种；后缀照写', () => {
+    const lines = parseLines(['甲 X Y', 'switch 乙', '乙 Z'])
+    const ch = neighbors(lines, { move: [], insert: ['X~'], has: (c, a) => c === '甲' && a === 'X' })
+    expect(ch.map(c => c.lines[0] && lineText(c.lines[0]))).toEqual(['甲 X~ X Y', '甲 X X~ Y', '甲 X Y X~'])
+    expect(ch[1]!.desc).toBe('插入 甲 X~：第 1 条第 2 个（X 之后、Y 之前）')
+    expect(() => neighbors(lines, { insert: ['switch 乙'] })).toThrow(/要写一个动作/)
   })
 
   test('去重的键是指令序列：同一角色相邻两行，Q 放在一行末尾与下一行开头是同一条轴', () => {
@@ -65,6 +82,16 @@ describe('轴搜索：人造角色', () => {
     expect(x.stoppedBy).toBe('rounds')
   })
 
+  test('对调与插入（第二版）：从 Q Y X 出发对调出 Q X Y；从 X Y 出发插入 Q，插在 X 前面最好', () => {
+    const sw = searchRotation(r, ['甲 Q Y X'], [], { move: [], swap: true })
+    expect(sw.results[0]!.dps! / sw.base.dps!).toBeCloseTo(1.5, 2)
+    expect(sw.results.slice(0, 2).map(c => c.lines[0]).sort()).toEqual(['甲 Q X Y', '甲 Y Q X'])
+    const ins = searchRotation(r, ['甲 X Y'], [], { move: [], insert: ['Q'] })
+    expect(ins.tried).toBe(3)
+    expect(ins.results[0]!.lines).toEqual(['甲 Q X Y'])
+    expect(() => searchRotation(r, ['甲 X Y'], [], { insert: ['Z'] })).toThrow(/没有人有动作 Z/)
+  })
+
   test('多轮：第 2 轮没有比最好的更好，停；仿真次数有上限', () => {
     const x = searchRotation(r, ['甲 X Q Y'], [], { rounds: 3 })
     expect([x.rounds, x.stoppedBy]).toEqual([2, 'noBetter'])
@@ -88,4 +115,15 @@ dataDescribe('轴搜索：M0 代表轴（依赖生成数据）', () => {
     expect(new Set(x.results.map(c => rotationKey(parseLines(c.lines)))).size).toBe(x.results.length)
     expect(x.tried).toBe(x.results.length - 1 + Object.values(x.failures).reduce((a, b) => a + b, 0))
   }, 60000)
+})
+
+describe('另存：只换循环轴（src/data/scenario-text.ts，命令行 --save 与网页共用）', () => {
+  test('块状写法：没改的行连注释原样保留，改了的行注明；其余照原文', () => {
+    const text = ['team: []   # 队伍', 'rotation:', '  - 甲 X Q Y   # 原来的说明', '  - switch 乙', 'options: { repeat: 4 }', ''].join('\n')
+    expect(withRotation(text, ['甲 X Q Y', 'switch 乙'], ['甲 Q X Y', 'switch 乙'])).toBe(
+      ['team: []   # 队伍', 'rotation:', '  - 甲 Q X Y   # 轴搜索改的', '  - switch 乙', 'options: { repeat: 4 }', ''].join('\n'))
+  })
+  test('不是块状写法：用 yaml 的 Document 改', () => {
+    expect(withRotation('rotation: [甲 X]\n', ['甲 X'], ['甲 Y'])).toBe('rotation:\n  - 甲 Y\n')
+  })
 })

@@ -36,16 +36,18 @@ export function persist(): void {
 export const ofKind = (kind: DocKind) => docs.filter(d => d.kind === kind)
 export const find = (kind: DocKind, name: string) => docs.find(d => d.kind === kind && d.name === name)
 
-/** 另存一份副本，返回新名字 */
-export function copyOf(d: Doc): string {
-  const stem = d.name.replace(/\.yaml$/, '')
+/** 另存一份新的（名字是 <stem>-2.yaml、-3…里第一个没用过的），返回新名字 */
+export function saveAs(kind: DocKind, stem: string, text: string): string {
   let n = 2
-  while (find(d.kind, `${stem}-${n}.yaml`)) n++
+  while (find(kind, `${stem}-${n}.yaml`)) n++
   const name = `${stem}-${n}.yaml`
-  docs.push({ kind: d.kind, name, original: null, text: d.text })
+  docs.push({ kind, name, original: null, text })
   persist()
   return name
 }
+
+/** 另存一份副本，返回新名字 */
+export const copyOf = (d: Doc): string => saveAs(d.kind, d.name.replace(/\.yaml$/, ''), d.text)
 
 export function remove(d: Doc): void {
   const i = docs.indexOf(d)

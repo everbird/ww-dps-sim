@@ -1,11 +1,12 @@
-<!-- 对比：两份场景比稳态 DPS，拆到角色、动作、buff 覆盖率与面板（同 pnpm compare，TD-10 §3） -->
+<!-- 对比：两份场景比稳态 DPS，拆到角色、动作、buff 覆盖率与面板（同 pnpm compare，TD-10 §3）；另有时间轴对照（原型） -->
 <script lang="ts">
   import { call } from '../api'
   import { find, ofKind } from '../docs.svelte'
   import { fmt, pct, pct2, signed } from '../fmt'
   import type { Requests } from '../protocol'
+  import DiffTimeline from './DiffTimeline.svelte'
 
-  let { name }: { name: string } = $props()
+  let { name, preset = null }: { name: string; preset?: { base: string; other: string } | null } = $props()
   const list = $derived(ofKind('scenario'))
   let base = $state('')
   let other = $state('')
@@ -13,6 +14,9 @@
   let busy = $state(false)
   let err = $state<string | null>(null)
   let out = $state<Requests['compare']['res'] | null>(null)
+  // 从轴搜索页带过来的两份：选好就跑
+  let used: typeof preset = null
+  $effect(() => { if (preset && preset !== used) { used = preset; base = preset.base; other = preset.other; run() } })
 
   async function run() {
     const a = find('scenario', base), b = find('scenario', other)
@@ -43,6 +47,7 @@
       <div><dt>差</dt><dd class:up={out.delta > 0} class:down={out.delta < 0}>{signed(out.delta)} <small>（{signed(out.pct, pct2)}）</small></dd></div>
     </dl>
   </section>
+  <DiffTimeline tl={out.timeline} team={out.panels.base.map(p => p.name)} />
   <div class="grid">
     <section class="card pad">
       <h2>面板</h2>

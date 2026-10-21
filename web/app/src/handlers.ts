@@ -1,4 +1,4 @@
-// web/app/src/handlers.ts —— Worker 里各请求的处理：装配 GameData（只做一次），跑仿真、对比、边际、择优。
+// web/app/src/handlers.ts —— Worker 里各请求的处理：装配 GameData（只做一次），跑仿真、对比、边际、择优、轴搜索。
 // 与 worker.ts 分开，测试（tests/web.test.ts）可以直接调用
 import { parse } from 'yaml'
 import type { StatKey } from '../../../src/data/common'
@@ -10,8 +10,10 @@ import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../
 import { insight } from '../../../src/engine/insight'
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
+import { searchRotation } from '../../../src/engine/search'
 import { simulate } from '../../../src/engine/simulate'
 import type { ResolvedScenario, SimResult } from '../../../src/engine/types'
+import { diffTimeline } from '../../../src/report/diff-timeline'
 import { renderDesign, renderTimeline, timelineModel, type TimelineModel } from '../../../src/report/timeline'
 import shared from '../../designs/shared.js?raw'
 import template from '../../timeline.html?raw'
@@ -81,9 +83,11 @@ export const handlers: Handlers = {
   },
   async compare({ base, other }) {
     const d = await gd()
-    const a = runScenario(scenarioOf(base), d), b = runScenario(scenarioOf(other), d)
+    const sa = scenarioOf(base), sb = scenarioOf(other)
+    const a = runScenario(sa, d), b = runScenario(sb, d)
     for (const [s, x] of [[base, a], [other, b]] as const) if (x.res.error) throw new Error(`${s.name} 运行出错（第 ${x.res.error.frame} 帧）：${x.res.error.message}`)
-    return compareRuns(a, b)
+    const timeline = diffTimeline({ res: a.res, basis: basisOf(a.res), rotation: sa.rotation }, { res: b.res, basis: basisOf(b.res), rotation: sb.rotation })
+    return { ...compareRuns(a, b), timeline }
   },
   async insight({ scenario }) {
     return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真
@@ -108,6 +112,16 @@ export const handlers: Handlers = {
     const best = out.builds[0]
     const yaml = best ? best.pieces.map(p => `      - { name: ${p.name}, set: ${p.set}, main: ${flow(p.main)}, subs: ${flow(p.subs)} }   # ${p.id}`).join('\n') : ''
     return { ...out, panels, secs, yaml }
+  },
+  async search({ scenario, move, drop, swap, insert, chars, rounds, beam, maxRuns, top }) {
+    const sc = scenarioOf(scenario)
+    const r = resolveScenario(sc, await gd())
+    const t0 = performance.now()
+    const x = searchRotation(r, sc.rotation, sc.opening, {
+      ...(move ? { move } : {}), drop, swap, insert, ...(chars.length ? { chars } : {}), rounds, beam, maxRuns,
+    })
+    const { basis, results, ...rest } = x
+    return { ...rest, label: basis.label, results: results.slice(0, top), total: results.length, rankOfBase: results.indexOf(x.base) + 1, secs: (performance.now() - t0) / 1000 }
   },
 }
 

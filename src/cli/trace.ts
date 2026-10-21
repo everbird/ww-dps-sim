@@ -1,6 +1,7 @@
-// src/cli/trace.ts —— pnpm trace <场景.yaml> [--loop k] [--seg] [--res <资源>] [--char <角色>] [--md] [--out <文件.md>]
-// 调试用的表（TD-11 §3）：缺省打印第 k 轮的分段与逐条；--seg 只打印分段；--res 协奏 / 能量 / <核心资源名> 打印资源逐步表
-// （--char 只看一个角色）。--md 另写一份 Markdown（缺省 out/<场景名>.trace.md），方便贴出来讨论。
+// src/cli/trace.ts —— pnpm trace <场景.yaml> [--loop k] [--seg] [--res <资源>] [--hits] [--char <角色>] [--md] [--out <文件.md>]
+// 调试用的表（TD-11 §3）：缺省打印第 k 轮的分段与逐条；--seg 只打印分段；--res 协奏 / 能量 / <核心资源名> 打印资源逐步表；
+// --hits 打印面板与逐下伤害（不暴击 / 暴击，对游戏的跳字，TD-11 §2）；--char 只看一个角色。
+// --md 另写一份 Markdown（缺省 out/<场景名>.trace.md），方便贴出来讨论。
 // 轮次缺省取稳态的第一轮（没有稳态时取最后一轮）；启动轴是第 0 轮。仿真报错时照样打印到出错为止。
 // 退出码：0 成功；1 场景有错或运行期报错；2 用法错误。
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -8,11 +9,11 @@ import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { simulate } from '../engine/simulate'
-import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceLedger, traceSegments, type LoopSpan, type MarkCmp } from '../engine/trace'
+import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../engine/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, loadScenario, padEnd, padStart, width } from './format'
 
-const USAGE = '用法：pnpm trace <场景.yaml> [--loop k] [--seg] [--res 协奏|能量|<核心资源名>] [--char <角色>] [--md] [--out <文件.md>]'
+const USAGE = '用法：pnpm trace <场景.yaml> [--loop k] [--seg] [--res 协奏|能量|<核心资源名>] [--hits] [--char <角色>] [--md] [--out <文件.md>]'
 
 /** 一张表：表头、行；right[i] 为真的列右对齐（数字） */
 export interface Table { title: string; head: string[]; rows: string[][]; right?: boolean[] }
@@ -23,7 +24,7 @@ const num = (x: number) => (Math.round(x * 100) / 100).toString()
 const signed = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${num(Math.abs(x))}`
 const signed2 = (x: number) => (Math.abs(x) < 0.005 ? '±0.00' : `${x > 0 ? '+' : '−'}${Math.abs(x).toFixed(2)}`)
 
-export interface TraceOpts { seg?: boolean; res?: string; char?: string; marks?: Record<string, string | number> }
+export interface TraceOpts { seg?: boolean; res?: string; hits?: boolean; char?: string; marks?: Record<string, string | number> }
 
 /** 要打印的表与说明（对照视频的小结、对不上的时间点）；参数有错时返回错误说明 */
 export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: TraceOpts): { tables: Table[]; notes: string[] } | string {
@@ -31,10 +32,30 @@ export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: 
   const span = loopSpan(log, loop) as LoopSpan
   const out: Table[] = []
   const notes: string[] = []
+  if (opts.char && !r.team.some(m => m.def.name === opts.char)) return `--char ${opts.char}：不在队伍里`
+  if (opts.hits) {
+    const panel = tracePanel(r, opts.char)
+    out.push({
+      title: '面板（静态面板 + 自己的常驻 buff；对角色界面的属性）',
+      head: ['角色', '项', '仿真', '计入的常驻 buff'],
+      rows: panel.map(x => [x.char, x.item, x.flat ? String(x.value) : `${(x.value * 100).toFixed(1)}%`, x.sources.join('；')]),
+      right: [false, false, true, false],
+    })
+    const hits = traceHits(log, loop, opts.char)
+    if (hits.length === 0) notes.push('这一轮没有伤害')
+    const dmg = (x: number) => (Number.isInteger(x) ? String(x) : num(x))
+    out.push({
+      title: '逐下伤害（对游戏的跳字：不暴击、暴击各一种数）',
+      head: ['世界秒', '战斗秒', '角色', '动作', '判定', '元素', '不暴击', '暴击', '期望', '生效的 buff'],
+      rows: hits.map(x => [s2(x.f - span.f), t2(x.t - span.t), x.char, x.action, x.effect ? '（异常效应）' : x.judgment, x.element,
+        dmg(x.nonCrit), dmg(x.crit), dmg(x.expected), x.buffs.join('、')]),
+      right: [true, true, false, false, false, false, true, true, true, false],
+    })
+    return { tables: out, notes }
+  }
   if (opts.res) {
     const sel = resourceSel(r, opts.res)
     if (typeof sel === 'string') return sel
-    if (opts.char && !r.team.some(m => m.def.name === opts.char)) return `--char ${opts.char}：不在队伍里`
     const rows = traceLedger(log, r, loop, sel, opts.char)
     const shown = rows[0] ? Object.keys(rows[0].values) : []
     if (rows.length === 0) notes.push(`${sel.label}这一轮没有变化`)
@@ -97,7 +118,7 @@ export function asMarkdown(t: Table): string {
 async function main(): Promise<number> {
   const { pos, opt } = argsOf(process.argv.slice(2), ['--loop', '--res', '--char', '--out'])
   const file = pos.find(a => !a.startsWith('--'))
-  const unknown = pos.filter(a => a.startsWith('--') && a !== '--seg' && a !== '--md')
+  const unknown = pos.filter(a => a.startsWith('--') && a !== '--seg' && a !== '--md' && a !== '--hits')
   if (!file || unknown.length > 0) { console.error(unknown.length ? `不认识的参数：${unknown.join(' ')}\n${USAGE}` : USAGE); return 2 }
   const sc = loadScenario(file)
   let r: ResolvedScenario
@@ -113,7 +134,7 @@ async function main(): Promise<number> {
   if (!loops.includes(loop)) { console.error(`没有第 ${opt.loop} 轮（有：${loops.map(k => (k === 0 ? '0（启动）' : k)).join('、')}）`); return 2 }
   const video = sc.video && sc.video.loop === loop ? sc.video.marks : undefined
   const t = tables(r, res, loop, {
-    seg: pos.includes('--seg'), ...(opt.res ? { res: opt.res } : {}), ...(opt.char ? { char: opt.char } : {}), ...(video ? { marks: video } : {}),
+    seg: pos.includes('--seg'), hits: pos.includes('--hits'), ...(opt.res ? { res: opt.res } : {}), ...(opt.char ? { char: opt.char } : {}), ...(video ? { marks: video } : {}),
   })
   if (typeof t === 'string') { console.error(t); return 2 }
   const span = loopSpan(res.log, loop)!

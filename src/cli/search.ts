@@ -1,42 +1,24 @@
-// src/cli/search.ts —— pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]
-// 轴搜索（TD-10 §6.1，总设计 §3.7、M7）：在循环轴上挪动 / 去掉动作，按比较口径排名。比原轴好的改法是要拿实战核对的假设
+// src/cli/search.ts —— pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]
+// 轴搜索（TD-10 §6.1，总设计 §3.7、M7）：在循环轴上挪动 / 去掉 / 对调 / 插入动作，按比较口径排名。比原轴好的改法是要拿实战核对的假设
 import { readFileSync, writeFileSync } from 'node:fs'
-import { parseDocument } from 'yaml'
 import { loadGameData } from '../data/load'
+import { withRotation } from '../data/scenario-text'
 import { ResolveError, resolveScenario } from '../engine/resolve'
-import { searchRotation, type Candidate } from '../engine/search'
+import { FAILURE_LABEL, searchRotation, type Candidate } from '../engine/search'
 import { argsOf, fmt, loadScenario, padStart } from './format'
 
-const FAIL_NAME: Record<string, string> = {
-  compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', notOnField: '不在前台', switchSelf: '切到自己',
-}
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 const list = (s: string | undefined) => (s ? s.split(',').map(x => x.trim()).filter(Boolean) : undefined)
 
-/** 换掉场景原文里的循环轴，其余照原文：块状写法的 rotation 只换它下面的条目行，没改的行（连注释）原样保留；
- *  不是块状写法时用 yaml 的 Document 改（注释保留，长的行内写法不折行） */
-function withRotation(text: string, base: readonly string[], lines: readonly string[]): string {
-  const rows = text.split('\n')
-  const at = rows.findIndex(l => /^rotation:\s*(#.*)?$/.test(l))
-  if (at < 0) {
-    const doc = parseDocument(text)
-    doc.set('rotation', doc.createNode([...lines]))
-    return doc.toString({ lineWidth: 0 })
-  }
-  let end = at + 1
-  while (end < rows.length && (rows[end]!.startsWith(' ') || rows[end]!.trim() === '')) end++
-  const items = rows.slice(at + 1, end).filter(l => /^\s+- /.test(l))
-  const same = lines.length === base.length
-  const body = lines.map((l, i) => (same && l === base[i] && items[i] !== undefined ? items[i]! : `  - ${l}   # 轴搜索改的`))
-  return [...rows.slice(0, at + 1), ...body, ...rows.slice(end)].join('\n')
-}
-
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--char', '--rounds', '--beam', '--top', '--max-runs', '--save'])
-  const file = pos[0]
-  if (!file) {
-    console.error('用法：pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]')
-    console.error('  缺省只挪动各角色的声骸技能（Q），在同一角色的行里换位置；--drop 另外试着去掉这些动作；--rounds 大于 1 时在最好的几条上接着改；')
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--insert', '--char', '--rounds', '--beam', '--top', '--max-runs', '--save'])
+  const file = pos.find(a => !a.startsWith('--'))
+  const unknown = pos.filter(a => a.startsWith('--') && a !== '--swap')
+  if (!file || unknown.length > 0) {
+    if (unknown.length) console.error(`不认识的参数：${unknown.join(' ')}`)
+    console.error('用法：pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]')
+    console.error('  缺省只挪动各角色的声骸技能（Q），在同一角色的行里换位置；另外可以试：--drop 去掉这些动作，--swap 对调同一角色相邻的两个动作，')
+    console.error('  --insert 插入这些（轴里的写法，可带后缀，如 A1~）；--rounds 大于 1 时在最好的几条上接着改；')
     console.error('  --save 把最好的一条另存成场景（其余照原文，只换循环轴），可以接着 pnpm compare 原.yaml 新.yaml 看差在哪')
     return 2
   }
@@ -47,20 +29,24 @@ async function main(): Promise<number> {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
-  const move = list(opt.move), drop = list(opt.drop), chars = list(opt.char)
+  const move = list(opt.move), drop = list(opt.drop), insert = list(opt.insert), chars = list(opt.char), swap = pos.includes('--swap')
   const rounds = Number(opt.rounds ?? 1), beam = Number(opt.beam ?? 3), top = Number(opt.top ?? 10), maxRuns = Number(opt['max-runs'] ?? 500)
   const t0 = Date.now()
-  const x = searchRotation(r, sc.rotation, sc.opening, {
-    ...(move ? { move } : {}), ...(drop ? { drop } : {}), ...(chars ? { chars } : {}), rounds, beam, maxRuns,
-  })
+  let x
+  try {
+    x = searchRotation(r, sc.rotation, sc.opening, {
+      ...(move ? { move } : {}), ...(drop ? { drop } : {}), ...(insert ? { insert } : {}), ...(chars ? { chars } : {}), swap, rounds, beam, maxRuns,
+    })
+  } catch (e) { console.error(e instanceof Error ? e.message : e); return 1 }
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
-  const how = [`挪动 ${move ? move.join('、') : '声骸技能（Q）'}（同一角色的行里换位置）`, ...(drop ? [`去掉 ${drop.join('、')}`] : [])].join('；')
+  const how = [`挪动 ${move ? move.join('、') : '声骸技能（Q）'}（同一角色的行里换位置）`, ...(drop ? [`去掉 ${drop.join('、')}`] : []),
+    ...(swap ? ['对调相邻的两个动作'] : []), ...(insert ? [`插入 ${insert.join('、')}`] : [])].join('；')
   console.log(`轴搜索 ${file} · 口径：${x.basis.label}`)
   console.log(`改法：${how}${chars ? `；只改 ${chars.join('、')}` : ''}；最多 ${rounds} 轮${rounds > 1 ? `（每轮留 ${beam} 条往下改）` : ''}`)
   const loop = (c: Candidate) => (c.loopSecs !== null ? `${c.loopSecs.toFixed(2)} 秒` : '—')
   console.log(`原轴 DPS ${fmt(x.base.dps!)}（每轮 ${loop(x.base)}）`)
   const failed = Object.values(x.failures).reduce((a, b) => a + b, 0)
-  const why = Object.entries(x.failures).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${FAIL_NAME[k] ?? k} ${n}`).join('、')
+  const why = Object.entries(x.failures).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${FAILURE_LABEL[k] ?? k} ${n}`).join('、')
   const stop = { rounds: `跑满 ${x.rounds} 轮`, noBetter: `第 ${x.rounds} 轮没有更好的，停`, maxRuns: `仿真次数到上限 ${maxRuns}，停` }[x.stoppedBy]
   console.log(`试了 ${x.tried} 种：跑通 ${x.tried - failed} 种，跑不通 ${failed} 种${failed ? `（${why}）` : ''}；仿真 ${x.runs} 次，${secs} 秒；${stop}`)
 
@@ -79,7 +65,7 @@ async function main(): Promise<number> {
     let j = k + 1
     while (j < x.results.length && same(x.results[j]!, x.results[k]!) && x.results[j] !== x.base && x.results[k] !== x.base) j++
     row(x.results[k]!, k + 1)
-    if (j - k > 1) console.log(`${' '.repeat(37)}另有 ${j - k - 1} 种结果相同（第 ${k + 2}–${j} 名）`)
+    if (j - k > 1) console.log(`${' '.repeat(37)}另有 ${j - k - 1} 种结果相同（第 ${j - k > 2 ? `${k + 2}–${j}` : k + 2} 名）`)
     shown++
     k = j
   }
