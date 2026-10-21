@@ -18,15 +18,21 @@ export interface PlanOptions {
    *  "这一轮的伤害 − 原轴稳态 DPS × 时长"。surplus 便宜但短视：攒资源的段（心队雷主的三段补位）会在半路被筛掉（TD-10 §6.2 Q5） */
   scoring?: 'rollout' | 'surplus'
   top?: number                              // 排满的留几个完整跑（≤ width）
+  /** 每个套路用的次数可以比原轴多 / 少几次（缺省 0 = 次数不变，只换顺序；TD-10 §6.2 ④′）。次数变了的按每秒伤害比，
+   *  比如多补一段补位、少一段攻击 */
+  vary?: number
+  extra?: number                            // vary > 0 时一轮的套路总数最多比原轴多 / 少几个（缺省 2）
 }
 
 export interface PlanLeaf {
   routines: string[]                        // 套路的顺序
+  counts: Record<string, number>            // 次数与原轴不同的套路：套路 → 差几次（+1 多用一次）；次数不变时为空
   lines: string[]                           // 写成的循环轴（切人按实际标"变奏"）
   dps: number                               // 比较口径（有分轮取稳态）
   loopSecs: number | null                   // 稳态每轮战斗秒
   introMissed: number
   isRef: boolean                            // 就是原轴的顺序
+  same: number                              // 另有几种写法跑出来完全一样（DPS、每轮时长都相同：多半是补位被跳过，挪到哪都一样），只列这一条
 }
 
 export interface PlanResult {
@@ -81,10 +87,17 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const perGroup = opts.perGroup ?? 3
   const scoring = opts.scoring ?? 'rollout'
   const top = Math.min(opts.top ?? width, width)
+  const vary = opts.vary ?? 0
   const refSeq = routineSequence(sc.rotation)
+  const extra = vary > 0 ? opts.extra ?? 2 : 0
+  const [minLen, maxLen] = [Math.max(2, refSeq.length - extra), refSeq.length + extra]
   const counts = new Map<string, number>()
   for (const r of refSeq) counts.set(r, (counts.get(r) ?? 0) + 1)
-  const library = [...counts].map(([line, count]) => ({ line, char: charOf(line)!, count }))
+  const library = [...counts].map(([line, count]) => ({ line, char: charOf(line)!, count, lo: Math.max(0, count - vary), hi: count + vary }))
+  const usedOf = (seq: readonly string[]) => library.map(l => seq.filter(x => x === l.line).length)
+  /** 能当一整轮：每个套路的次数都在范围里、长度在范围里、首尾不是同一个人（下一轮开头的切人切不了） */
+  const closable = (seq: readonly string[]) => seq.length >= minLen && charOf(seq[0]!) !== charOf(seq.at(-1)!)
+    && usedOf(seq).every((n, i) => n >= library[i]!.lo && n <= library[i]!.hi)
   const openingLast = [...sc.opening].reverse().map(l => charOf(clean(l))).find(c => c !== null)
     ?? sc.team[sc.initial.onField]!.char
 
@@ -118,18 +131,20 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   }
   let prefixRuns = 0
   const failures: Record<string, number> = {}
-  for (let depth = 0; depth < refSeq.length; depth++) {
+  // 能当一整轮的前缀（vary = 0 时就是排满的最后一层）：分数是它自己当一轮的 DPS
+  const pool = new Map<string, Node>()
+  for (let depth = 0; depth < maxLen; depth++) {
     const next = new Map<string, Node>()
     for (const node of beam) {
       const used = new Map<string, number>()
       for (const r of node.seq) used.set(r, (used.get(r) ?? 0) + 1)
-      for (const { line, char, count } of library) {
-        if ((used.get(line) ?? 0) >= count) continue
+      for (const { line, char, hi } of library) {
+        if ((used.get(line) ?? 0) >= hi) continue
         if (depth === 0 && char === openingLast) continue           // 循环轴要从切人开始：第一个套路的角色不能是启动轴最后在前台的
         const seq = [...node.seq, line]
         const key = seq.join(' | ')
         if (next.has(key)) continue
-        if (depth === refSeq.length - 1 && char === charOf(seq[0]!)) continue   // 首尾同一个人：下一轮开头的切人切不了
+        if (depth === maxLen - 1 && char === charOf(seq[0]!)) continue   // 首尾同一个人：下一轮开头的切人切不了，也接不了别的了
         prefixRuns++
         // 前缀以补位结尾：补位后面要接写了"变奏"的切人才编译得过（TD-09 §3.2），补一个切到别人的（排满时切回开头的角色）
         const last = charOf(line)!
@@ -156,8 +171,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     const groups = new Map<string, number>()
     beam = []
     for (const n of [...next.values()].sort((a, b) => b.tier - a.tier || b.score - a.score)) {
-      const rest = library.flatMap(({ line, count }) => Array(count - n.seq.filter(x => x === line).length).fill(line)).join(' | ')
-      const k = `${charOf(n.seq[0]!)}#${n.seq.at(-1)}#${rest}`
+      const k = `${charOf(n.seq[0]!)}#${n.seq.at(-1)}#${usedOf(n.seq).join(',')}`   // 用了哪些套路各几次
       const had = groups.get(k) ?? 0
       if (had >= perGroup) continue
       groups.set(k, had + 1)
@@ -165,27 +179,49 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       if (beam.length >= width) break
     }
     if (beam.length === 0) break
+    // 能当一整轮的进候选。次数不变时（vary = 0）补完一轮什么都没补，分数就是它自己当一轮。次数可变时一轮的长度变了，
+    // 第一轮里冷却还卡不住（缩短的轮到第 2 轮才等大招冷却、等超时），所以跑两轮、取第 2 轮
+    for (const n of beam) {
+      if (!closable(n.seq)) continue
+      const key = n.seq.join(' | ')
+      if (vary === 0 && n.tier === 1 && complete(n.seq).length === n.seq.length) { pool.set(key, n); continue }
+      const rounds = vary === 0 ? 1 : 2
+      prefixRuns++
+      const rr = run(renderRoutines(n.seq), rounds)
+      const l = rr && !rr.error && !bad(rr) ? rr.summary.perLoop?.find(p => p.loop === rounds) : undefined
+      if (l) pool.set(key, { seq: n.seq, score: l.dps, tier: 1 })
+    }
   }
 
   // 排满的：完整跑，按比较口径排名；切人按实际标"变奏"
   const refKey = refSeq.join(' | ')
   const leaves: PlanLeaf[] = []
-  for (const node of beam.filter(n => n.seq.length === refSeq.length).slice(0, top)) {
+  const best = [...pool.values()].sort((a, b) => b.tier - a.tier || b.score - a.score)
+  for (const node of (vary === 0 ? beam.filter(n => pool.has(n.seq.join(' | '))) : best).slice(0, top)) {
     const plain = renderRoutines(node.seq)
     const res = run(plain, sc.options.repeat)
     if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
     if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
     if (missed(res) > refMissed) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
     const introAt = new Set(res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 2 ? [e.cmd.line] : [])))
+    const diff = usedOf(node.seq).map((n, i) => n - library[i]!.count)
     leaves.push({
       routines: node.seq,
+      counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
       lines: plain.map((l, i) => (introAt.has(i + 1) && !l.endsWith(' 变奏') ? `${l} 变奏` : l)),
       dps: basisOf(res).dps, loopSecs: secsOf(res.summary),
       introMissed: res.summary.warnings.filter(w => w.code === 'introMissed').length,
       isRef: node.seq.join(' | ') === refKey,
+      same: 0,
     })
   }
-  leaves.sort((a, b) => b.dps - a.dps)
+  // 跑出来完全一样的合成一条：留原轴、次数改得少的、短的
+  const changes = (l: PlanLeaf) => Object.values(l.counts).reduce((n, d) => n + Math.abs(d), 0)
+  leaves.sort((a, b) => b.dps - a.dps || Number(b.isRef) - Number(a.isRef) || changes(a) - changes(b) || a.routines.length - b.routines.length)
+  for (let i = leaves.length - 1; i > 0; i--) {
+    const [a, b] = [leaves[i - 1]!, leaves[i]!]
+    if (Math.abs(a.dps - b.dps) < 1e-6 && a.loopSecs === b.loopSecs) { a.same += b.same + 1; leaves.splice(i, 1) }
+  }
   const refIdx = leaves.findIndex(l => l.isRef)
   return {
     basisLabel: refBasis.label,

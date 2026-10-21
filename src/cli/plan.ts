@@ -1,4 +1,4 @@
-// src/cli/plan.ts —— pnpm plan <场景.yaml> [--width 16] [--top 10] [--scoring rollout|surplus] [--save 新.yaml]
+// src/cli/plan.ts —— pnpm plan <场景.yaml> [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]
 // 按套路排轴（TD-10 §6.2 ④ 第一版，⑥ 第 2 步）：把循环轴拆成套路、重新排顺序，看能不能排回原轴或更好的。比原轴好的是要拿实战核对的假设
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
@@ -13,13 +13,16 @@ const FAILURE: Record<string, string> = {
 }
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--save'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--vary', '--extra', '--save'])
   const file = pos.find(a => !a.startsWith('--'))
   const scoring = opt.scoring ?? 'rollout'
-  if (!file || pos.some(a => a.startsWith('--')) || (scoring !== 'rollout' && scoring !== 'surplus')) {
-    console.error('用法：pnpm plan <场景.yaml> [--width 16] [--top 10] [--scoring rollout|surplus] [--save 新.yaml]')
+  const vary = Number(opt.vary ?? 0)
+  const extra = opt.extra !== undefined ? Number(opt.extra) : undefined
+  if (!file || pos.some(a => a.startsWith('--')) || (scoring !== 'rollout' && scoring !== 'surplus') || !(vary >= 0) || (extra !== undefined && !(extra >= 0))) {
+    console.error('用法：pnpm plan <场景.yaml> [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]')
     console.error('  把循环轴拆成套路（同一角色的一行），每个套路用的次数不变，重新排顺序（beam search）；相邻两个角色不同就插切人。')
     console.error('  --scoring rollout（缺省）：每个前缀把剩下的套路按原轴的先后接上、跑一整轮打分；surplus：只跑前缀（便宜，但攒资源的段会被筛掉）。')
+    console.error('  --vary N：每个套路用的次数可以比原轴多 / 少 N 次（多补一段补位、少一段攻击…），按每秒伤害比；--extra M：一轮的套路总数最多多 / 少 M 个（缺省 2）。')
     console.error('  排满的完整跑、按比较口径排名；--save 把最好的一条另存成场景（只换循环轴），再 pnpm compare 看差在哪')
     return 2
   }
@@ -28,14 +31,14 @@ async function main(): Promise<number> {
   const t0 = Date.now()
   let x
   try {
-    x = planRotation(sc, data, { width: Number(opt.width ?? 16), top: Number(opt.top ?? opt.width ?? 16), scoring })
+    x = planRotation(sc, data, { width: Number(opt.width ?? 16), top: Number(opt.top ?? opt.width ?? 16), scoring, vary, ...(extra !== undefined ? { extra } : {}) })
   } catch (e) {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     console.error(e instanceof Error ? e.message : e)
     return 1
   }
   const secs = (v: number | null) => (v === null ? '—' : `${v.toFixed(2)} 秒`)
-  console.log(`按套路排轴 ${file} · 口径：${x.basisLabel} · 打分：${scoring === 'rollout' ? '补完一轮' : '前缀盈余'}`)
+  console.log(`按套路排轴 ${file} · 口径：${x.basisLabel} · 打分：${scoring === 'rollout' ? '补完一轮' : '前缀盈余'}${vary ? ` · 次数可以 ±${vary}` : ''}`)
   console.log(`原轴 DPS ${fmt(x.ref.dps)}（每轮 ${secs(x.ref.loopSecs)}）`)
   console.log(`套路 ${x.library.length} 种、一轮 ${x.ref.routines.length} 个：`)
   x.library.forEach((l, i) => console.log(`  ${String.fromCharCode(65 + i)} ${l.line}${l.count > 1 ? ` ×${l.count}` : ''}`))
@@ -44,8 +47,10 @@ async function main(): Promise<number> {
   const letter = (line: string) => String.fromCharCode(65 + x.library.findIndex(l => l.line === line))
   console.log(`\n排名（原轴${x.refRank !== null ? `排第 ${x.refRank}` : '没进最后一层'}）`)
   console.log(`  ${padStart('排名', 4)}${padStart('DPS', 10)}${padStart('变化', 10)}${padStart('每轮', 12)}  顺序`)
+  const countText = (c: Record<string, number>) => Object.entries(c).map(([line, d]) => `${d > 0 ? '+' : '−'}${Math.abs(d) > 1 ? Math.abs(d) : ''}${letter(line)}`).join(' ')
   x.leaves.forEach((l, i) => {
-    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(secs(l.loopSecs), 12)}  ${l.routines.map(letter).join(' ')}`)
+    const changed = countText(l.counts)
+    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(secs(l.loopSecs), 12)}  ${l.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}${l.same ? `；另 ${l.same} 种写法结果一样` : ''}`)
   })
   const best = x.leaves[0]
   if (best && !best.isRef) {
@@ -53,7 +58,8 @@ async function main(): Promise<number> {
     for (const l of best.lines) console.log(`  - ${l}`)
   }
   if (opt.save && best) {
-    const head = `# 按套路排轴（pnpm plan）从 ${file} 改来：${best.isRef ? '原轴就是最好的，原样' : `顺序 ${best.routines.map(letter).join(' ')}，稳态 ${signedPct(best.dps / x.ref.dps - 1)}`}\n`
+    const changed = countText(best.counts)
+    const head = `# 按套路排轴（pnpm plan）从 ${file} 改来：${best.isRef ? '原轴就是最好的，原样' : `顺序 ${best.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}，稳态 ${signedPct(best.dps / x.ref.dps - 1)}`}\n`
     writeFileSync(opt.save, head + withRotation(readFileSync(file, 'utf8'), sc.rotation, best.lines, '按套路排轴改的'))
     console.log(`\n已另存 ${opt.save}；pnpm compare ${file} ${opt.save} 看差在哪`)
   }
