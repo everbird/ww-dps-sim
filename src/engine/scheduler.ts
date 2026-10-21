@@ -5,13 +5,13 @@ import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
-import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
+import { airborne, cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
 import { roundTo } from './num'
-import type { CommandRef, QueueState, SimState, WaitCode } from './types'
+import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant'
+export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill'
 
-/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
+/** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
@@ -269,6 +269,9 @@ function evaluateAct(
 ): Verdict {
   const q = s.queue
   const ch = s.chars[slot]
+  // 出场技只在普通切人入场后第一个出（用户确认，m0-confirm §11 V10）；不满足就再也等不来，同连段中断直接报错
+  if (def.entrySkill && !(s.entry?.slot === slot && s.entry.block === null))
+    throw fail(s, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
   const g = gate(ch, def)
   const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
   if (!g.ok && !onlyStarted) {
@@ -285,6 +288,16 @@ function evaluateAct(
     if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
   }
   return input ? afterInput(s, opts, delay) : GO
+}
+
+const ENTRY_WHY: Record<EntryBlock, string> = {
+  intro: '这次是变奏入场', acted: '入场后已经出过招', busy: '切回来时自己在后台的动作还没走完', air: '切出的角色在空中，切进来也在空中',
+}
+/** 出场技放不出的原因（SimState.entry） */
+function entryWhy(s: SimState, slot: Slot): string {
+  const e = s.entry
+  if (e?.slot !== slot) return '开场就在前台，不是切人入场'
+  return ENTRY_WHY[e.block!]
 }
 
 /** 操作延迟（options.inputDelay；抽样模式另加抖动）：其余全部满足后（+N 之后）再等这么多帧。每条指令只问一次 */
@@ -325,6 +338,10 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       const short = c.expectIntro && s.chars[from].concerto < k.rules.concertoMax ? s.chars[from].concerto : null
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
+      // 出场技要地面普通切入（TD-09 §3.5）：切入者自己在后台的动作要走完、切出者要在地面（切入者出现在切出者的位置）；
+      // 变奏切人时 onSwitch 随即开始变奏动作，记成 intro
+      const back = s.chars[c.to].action
+      s.entry = { slot: c.to, block: back && !back.ended ? 'busy' : airborne(s, from) ? 'air' : null }
       if (opts.onSwitch) opts.onSwitch(s, k, from, c.to, ref)
       else log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
       if (short !== null) {

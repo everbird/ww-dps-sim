@@ -258,12 +258,15 @@ dataDescribe('M0 三人的钩子', () => {
         // 不补协奏不够、一日花放不出来，这里加回去
         for (const k of ['opening', 'rotation'] as const) raw[k] = raw[k].map((l: string) => l.replace('椿 大招 E3 ', '椿 大招 A1~ A2~ E3 '))
       }
-      return eventsOfLog(simulate(resolveScenario(ScenarioSchema.parse(raw), gd)).log, 'warning').filter(w => w.code === 'introMissed')
+      const res = simulate(resolveScenario(ScenarioSchema.parse(raw), gd))
+      const warns = eventsOfLog(res.log, 'warning').filter(w => w.code === 'introMissed')
         .map(w => [w.cmd!.loop, w.cmd!.line, /协奏 ([\d.]+)/.exec(w.message)![1]])
+      return res.error ? [...warns, [res.error.loop, res.error.line, res.error.code]] : warns
     }
     expect(alerts('m0-video.yaml')).toEqual([])
     expect(alerts('m0-video-eq.yaml')).toEqual([])
-    // 2026-10-19 之前一直按 8 点算（xlsx 只有 1 阶的文本）：启动轴散华协奏 92、第 1 轮 19
-    expect(alerts('m0-video.yaml', 1)).toEqual([[0, 11, '92'], [1, 13, '19']])
+    // 2026-10-19 之前一直按 8 点算（xlsx 只有 1 阶的文本）：启动轴散华协奏 92。以前第 1 轮第 13 条还有一处 19；
+    // 出场技进调度器后（TD-09 §3.5）跑不到那里：第 1 轮散华协奏满了、变奏切维里奈，第 4 条的地面出场技放不出，报 entrySkill
+    expect(alerts('m0-video.yaml', 1)).toEqual([[0, 11, '92'], [1, 4, 'entrySkill']])
   })
 })

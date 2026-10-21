@@ -448,3 +448,35 @@ describe('switch <角色> 变奏', () => {
     expect(alerts(go(50, 'switch 乙'))).toEqual([])
   })
 })
+
+// 出场技（TD-09 §3.5，2026-10-21 从 pnpm plan 的剪枝挪进调度器）：只能在普通切人入场后第一个出，否则报错 entrySkill
+describe('出场技要普通切人入场后第一个出', () => {
+  const 乙: SynthChar = {
+    name: '乙', aliases: { QTE: 'QTE' },
+    actions: [action({ id: 'QTE', kind: 'intro', endFrame: 30 }), action({ id: 'E', endFrame: 20 }), action({ id: 'A2-地面出场技', endFrame: 20, entrySkill: true })],
+  }
+  const go = (rotation: string[], concerto = 0, onField = 0) =>
+    synthRun([idle('甲'), 乙, idle('丙')], { initial: { onField, concerto: [concerto, 0, 0] }, rotation, options: { repeat: 1 } })
+  test('普通切人入场后第一个出：照常', () => {
+    const r = go(['switch 乙', '乙 A2-地面出场技 E', 'switch 甲'])
+    expect(r.error).toBeUndefined()
+    expect(eventsOfLog(r.log, 'actionStart').map(e => e.action)).toEqual(['A2-地面出场技', 'E'])
+  })
+  test('变奏入场、入场后先出了别的、开场就在前台：报错 entrySkill，写明原因', () => {
+    const why = (r: ReturnType<typeof go>) => [r.error?.code, r.error?.message.split('（')[1]]
+    expect(why(go(['switch 乙 变奏', '乙 A2-地面出场技', 'switch 甲'], 100))).toEqual(['entrySkill', '这次是变奏入场）'])
+    expect(why(go(['switch 乙', '乙 E A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '入场后已经出过招）'])
+    expect(why(go(['乙 A2-地面出场技', 'switch 甲', 'switch 乙'], 0, 1))).toEqual(['entrySkill', '开场就在前台，不是切人入场）'])
+  })
+  // 2026-10-21 用户：后台的动作走完、切出者在地面，切回来才是地面出场技（m0-confirm §14 D2）
+  test('切回来时自己在后台的动作没走完、切出者在空中：报错；走完了、落地了照常', () => {
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: '跳', endFrame: 30, air: { from: 0, until: null } }), action({ id: '砸', endFrame: 30, air: { from: 0, until: 20 } })] }
+    const 乙2: SynthChar = { ...乙, actions: [...乙.actions, action({ id: '长E', endFrame: 300 })] }
+    const go2 = (rotation: string[]) => synthRun([甲, 乙2, idle('丙')], { initial: { onField: 0 }, rotation, options: { repeat: 1 } })
+    const why = (r: ReturnType<typeof go2>) => [r.error?.code, r.error?.message.split('（')[1]]
+    expect(why(go2(['甲 跳', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '切出的角色在空中，切进来也在空中）'])
+    expect(go2(['甲 砸', 'wait 25', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']).error).toBeUndefined()   // 第 20 帧落地
+    expect(why(go2(['switch 乙', '乙 长E', 'switch 甲', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '切回来时自己在后台的动作还没走完）'])
+    expect(go2(['switch 乙', '乙 长E', 'switch 甲', 'wait 300', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']).error).toBeUndefined()
+  })
+})

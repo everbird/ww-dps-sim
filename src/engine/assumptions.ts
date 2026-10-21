@@ -92,10 +92,19 @@ export const ASSUMPTIONS = [
     why: '数据没给结构化的帧数；无敌帧不一定等于切人锁（散华大招无敌 125 帧，"第91F前不能切人"）。做到相关角色时逐个确认，跨动作的状态要在角色模块里写',
   },
   {
-    id: 'entry-skill', topic: '切人', tracked: false, impact: 'small', ref: 'm0-confirm §11 V10、TD-10 §6.2 ⑦',
-    what: '出场技（"A2-地面出场技""A3-地面出场技"…）按普通动作放，调度器不查前一次切入是不是普通切人（变奏入场后也能放）；按套路排轴（pnpm plan）另把"变奏入场后接出场技"的剪掉',
-    why: '出场技只在普通切人入场后按 A 才有（用户确认）；轴是人写的时不会这样写，自动改轴（轴搜索、按套路排轴）才会碰到',
-    adjust: { how: '以后挪进调度器：出场技要求前台角色是普通切人入场、且入场后还没出过别的招' },
+    id: 'entry-skill', topic: '切人', tracked: false, impact: 'small', ref: 'm0-confirm §11 V10、§14 D2，TD-09 §3.5',
+    what: '出场技（动作 ID 以"出场技"结尾："A2-地面出场技""A3-地面出场技"…）只能从地面普通切人入场后第一个出，否则调度器报错 entrySkill：'
+      + '变奏入场；入场后先出了别的招（含自动插的谐度破坏）；开场就在前台；切回来时自己在后台的动作还没走完；切出的角色在空中（切进来的出现在它的位置，也在空中）。'
+      + '在不在空中按 xlsx「位置状态」「状态转换时间」（ActionDef.air）：动作结束时在空中的算一直在空中（不模拟下落）；"…落地"段的帧从落地算，落地时刻按动作结束',
+    why: '出场技只在普通切人入场后按 A 才有（用户确认）；后台动作要走完、切出者要在地面是用户 2026-10-21 的印象（m0-confirm §14 D2，未实测）；'
+      + '"第一个出""开场不算入场"与不模拟下落是推断',
+    adjust: { how: '改调度器的检查（src/engine/scheduler.ts 的 evaluateAct、switch 时的 SimState.entry）与装配的 airOf（src/data/assemble-action.ts）' },
+  },
+  {
+    id: 'forte-keep-on-switch', topic: '切人', tracked: false, impact: 'medium', ref: 'docs/xin-confirm.md §6 C4',
+    what: '切人不清共鸣回路的状态：心转相后切走，照世相、心相心生保留；卜灵的卦象（艮、震）切走再切回来还在。心 · 雷主 · 卜灵按套路重排（+11.18%）靠这一条',
+    why: '用户 2026-10-21 的印象（未实测）；模块本来就没在切出时清这些状态',
+    adjust: { how: '实测不对时在角色模块的 onSwitchOut 里清（data/curated/characters/心.ts、卜灵.ts）' },
   },
   {
     id: 'ult-no-switch', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §6.3，docs/xin-confirm.md Y2',

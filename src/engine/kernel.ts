@@ -116,6 +116,15 @@ const bornBy = (j: JudgmentDef, t: number): boolean => (j.birthFrame ?? j.spawnF
 /** 开始新动作（§4.2）：先取消还在进行的旧动作；再按"可脱手"清掉此前动作留下的不可脱手判定（自然结束后仍存活的、尾部里还没生成的）。
  *  延奏动作的独立时间线与它生成的判定不受影响（TD-05 §4.3）。
  *  cmd = 由哪条指令开始（TD-09），写进日志，接续动作继承它（TD-08 P10）；有冷却的动作从这一刻起算冷却 */
+/** 角色此刻在不在空中（ActionDef.air，TD-09 §3.5）：看最近一个动作；走完了的看它结束时（until 为 null = 还在空中） */
+export function airborne(s: SimState, slot: Slot): boolean {
+  const a = s.chars[slot].last
+  const air = a?.def.air
+  if (!a || !air) return false
+  if (a.ended) return air.until === null
+  return a.localFrame >= air.from && (air.until === null || a.localFrame < air.until)
+}
+
 export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, cmd?: CommandRef): ActionRuntime {
   const c = s.chars[slot]
   if (c.action) cancelAction(s, k, slot, def.id)
@@ -141,6 +150,8 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   c.action = a
   c.last = a
   c.startedThisTick = true
+  if (s.entry?.slot === slot && s.entry.block === null)             // 入场后出过招了：不能再出出场技（TD-09 §3.5）
+    s.entry.block = def.kind === 'intro' ? 'intro' : 'acted'
   if (def.summon) {
     // 召唤类声骸（脱手）：召唤物的判定走独立时间线（同延奏动作，TD-05 §4.3），角色之后的动作、取消都不影响它们，也不挡"就绪"；
     // 实例号另取，召唤物命中的自身顿帧也就不落到角色身上

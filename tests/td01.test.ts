@@ -97,6 +97,7 @@ describe('T01-14 角色模块覆盖（TD-01 §13.4）', () => {
     expect(Object.keys(b)).toEqual(['A3', 'A3-地面出场技', 'A4'])
     expect(names(b['A3']!)).toEqual(['A3-目标3m内'])
     const e = b['A3-地面出场技']!
+    expect([e.entrySkill, b['A3']!.entrySkill]).toEqual([true, undefined])   // 动作 ID 以"出场技"结尾的标出（TD-09 §3.5）
     expect(e.judgments.map(j => [j.name, j.spawnFrame])).toEqual([['A3-地面出场技', 22]])
     expect([e.kind, e.endFrame, e.cancelWindows.map(w => [w.from, w.until]), e.comboFrom, e.source.rows]).toEqual(['normal', 61, [[30, 60]], undefined, [2]])
     expect(b['A4']!.comboFrom).toEqual(['A3', 'A3-地面出场技'])
@@ -146,7 +147,11 @@ dataDescribe('T01-15 M0 队伍的确认结果（m0-confirm 第 2 节：椿 0 链
     expect(e.judgments.map(j => [j.name, j.spawnFrame, j.ticks, j.multiplier])).toEqual([['A3-地面出场技', 22, 2, verina['A3']!.judgments[0]!.multiplier]])
     expect([e.kind, e.endFrame, e.cancelWindows.map(w => [w.from, w.until]), e.comboFrom, e.flags]).toEqual(['normal', 61, [[30, 60]], undefined, []])
     expect(verina['A4']!.comboFrom).toEqual(['A3', 'A3-地面出场技'])
-    const d = run([verina, verina, verina], [{ act: 0, action: 'A3-地面出场技' }, { act: 0, action: 'A4' }, { act: 0, action: 'A5' }], { names: ['维里奈', '乙', '丙'] })
+    // 在空中的局部帧（「位置状态」「状态转换时间」，TD-09 §3.5）：强化空中A3 整段在空中、结束时还在空中；地面的没有
+    expect([verina['强化空中A3']!.air, verina['A3-地面出场技']!.air]).toEqual([{ from: 0, until: null }, undefined])
+    expect(chun['E2']!.air).toEqual({ from: 12, until: chun['E2']!.endFrame })   // 地转空 [12]，落地段的帧从落地算，按动作结束
+    // 出场技要普通切人入场（TD-09 §3.5）：先从乙切进来，同一帧就能出
+    const d = run([verina, verina, verina], [{ switch: 1 }, { act: 1, action: 'A3-地面出场技' }, { act: 1, action: 'A4' }, { act: 1, action: 'A5' }], { names: ['乙', '维里奈', '丙'] })
     // 派生窗口：出场技第 30 帧、A4 第 40 帧；命中顿帧（每次约 4 帧）让动作帧走慢：出场技结算 2 次 → A4 在 38，A4 结算 1 次 → A5 在 38 + 40 + 4
     expect(d.s.log.filter(e => e.type === 'actionStart').map(e => [e.action, e.f])).toEqual([['A3-地面出场技', 0], ['A4', 38], ['A5', 82]])
   })

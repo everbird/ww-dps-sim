@@ -251,7 +251,7 @@ dataDescribe('T04-14 全量：75 个块 1771 个动作组（20261019 版），�
     const b = block(key)
     for (const [id, def0] of Object.entries(b)) {
       groups++
-      const def: ActionDef = { ...def0, comboFrom: undefined }
+      const def: ActionDef = { ...def0, comboFrom: undefined, entrySkill: undefined }   // 单独出招：不查连段、出场技
       const team = [{ ...common, ...b, [id]: def }, {}, {}]
       try {
         const r = run(team, [{ act: 0, action: id }], { maxFrames: 20000 })

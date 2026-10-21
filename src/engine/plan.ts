@@ -101,20 +101,8 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const missed = (res: NonNullable<ReturnType<typeof run>>, loop?: number) =>
     res.log.filter(e => e.type === 'warning' && e.code === 'introMissed' && (loop === undefined || e.cmd?.loop === loop)).length
   const refMissed = missed(refRes)
-  // 出场技（"A2-地面出场技""A3-地面出场技"…）只在普通切人入场后按 A 才有（m0-confirm §11 V10）；变奏入场后接出场技的不要。
-  // 调度器现在不查这一条（以后挪进去，TD-10 §6.2 ⑦），轴搜索也会碰到
-  const entryMismatch = (res: NonNullable<ReturnType<typeof run>>, loop?: number) => {
-    const lastSwitch = new Map<string, boolean>()                 // 角色 → 最近一次切入是不是变奏
-    let n = 0
-    for (const e of res.log) {
-      if (e.type === 'switch') lastSwitch.set(e.to, e.intro)
-      else if (e.type === 'actionStart' && e.action.includes('出场技') && lastSwitch.get(e.char) === true && (loop === undefined || e.cmd?.loop === loop)) n++
-    }
-    return n
-  }
-  const refMismatch = entryMismatch(refRes)
-  const bad = (res: NonNullable<ReturnType<typeof run>>, loop?: number) =>
-    (refMissed === 0 && missed(res, loop) > 0) || (refMismatch === 0 && entryMismatch(res, loop) > 0)
+  // 出场技只在普通切人入场后第一个出：调度器报错 entrySkill（TD-09 §3.5），同其他跑不通的一起剪掉
+  const bad = (res: NonNullable<ReturnType<typeof run>>, loop?: number) => refMissed === 0 && missed(res, loop) > 0
   const refBasis = basisOf(refRes)
   const secsOf = (s: typeof refRes.summary) => (s.steady ? s.steady.frames / (s.steady.to - s.steady.from + 1) / 60 : null)
 
@@ -152,7 +140,6 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
         const loop = loop1(res)
         if (!loop) { failures['noLoop'] = (failures['noLoop'] ?? 0) + 1; continue }
         if (refMissed === 0 && missed(res, 1) > 0) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
-        if (refMismatch === 0 && entryMismatch(res, 1) > 0) { failures['entryMismatch'] = (failures['entryMismatch'] ?? 0) + 1; continue }
         let cand: Node = { seq, score: loop.damage - refBasis.dps * (loop.frames / 60), tier: 0 }
         const full = complete(seq)
         if (scoring === 'rollout' && charOf(full.at(-1)!) !== charOf(full[0]!)) {
@@ -189,7 +176,6 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
     if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
     if (missed(res) > refMissed) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
-    if (entryMismatch(res) > refMismatch) { failures['entryMismatch'] = (failures['entryMismatch'] ?? 0) + 1; continue }
     const introAt = new Set(res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 2 ? [e.cmd.line] : [])))
     leaves.push({
       routines: node.seq,
