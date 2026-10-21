@@ -71,6 +71,7 @@ export interface ActionDef {
   outroTriggerFrame?: Frame                         // 变奏动作：上一角色的延奏在此帧触发
   switchLockUntil?: Frame                           // 此帧前不能切人
   switchLockFromInput?: true                        // 切人锁是大招的"第nF前不响应输入"推出来的（没写"不能切人"，假设 ult-no-switch）
+  entrySkill?: true                                 // 出场技（动作 ID 以"出场技"结尾）：只能在普通切人入场后第一个出（TD-09 §3.5）
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖
   cooldownGroup?: string                            // 共用冷却的组名（椿 E1 / E2 共用 'E'）；缺省按动作 ID
   charges?: number                                  // 按次数充能：最多存几次（初始满），每 cooldown 帧回复 1 次（梦魇·无冠者 3 次 / 12 秒）

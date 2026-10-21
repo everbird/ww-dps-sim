@@ -145,7 +145,7 @@ function initialState(r: ResolvedScenario): SimState {
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
-    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {}, rng: null,
+    outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {}, rng: null, entered: null,
   }
 }
 

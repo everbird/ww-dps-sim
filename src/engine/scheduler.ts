@@ -9,9 +9,9 @@ import { cooldownKey, gate, log, settled, startAction, tick, type Kernel } from 
 import { roundTo } from './num'
 import type { CommandRef, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant'
+export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill'
 
-/** 运行期报错：等不来（连段已断）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
+/** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
@@ -269,6 +269,9 @@ function evaluateAct(
 ): Verdict {
   const q = s.queue
   const ch = s.chars[slot]
+  // 出场技只在普通切人入场后第一个出（用户确认，m0-confirm §11 V10）；不满足就再也等不来，同连段中断直接报错
+  if (def.entrySkill && s.entered !== slot)
+    throw fail(s, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
   const g = gate(ch, def)
   const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
   if (!g.ok && !onlyStarted) {
@@ -285,6 +288,16 @@ function evaluateAct(
     if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
   }
   return input ? afterInput(s, opts, delay) : GO
+}
+
+/** 出场技放不出的原因：看日志里这个角色最近一次切入 */
+function entryWhy(s: SimState, slot: Slot): string {
+  const name = s.chars[slot].name
+  for (let i = s.log.length - 1; i >= 0; i--) {
+    const e = s.log[i]!
+    if (e.type === 'switch' && e.to === name) return e.intro ? '这次是变奏入场' : '入场后已经出过招'
+  }
+  return '开场就在前台，不是切人入场'
 }
 
 /** 操作延迟（options.inputDelay；抽样模式另加抖动）：其余全部满足后（+N 之后）再等这么多帧。每条指令只问一次 */
@@ -325,6 +338,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       const short = c.expectIntro && s.chars[from].concerto < k.rules.concertoMax ? s.chars[from].concerto : null
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
+      s.entered = c.to                                                 // 变奏切人时 onSwitch 随即开始变奏动作，又清空
       if (opts.onSwitch) opts.onSwitch(s, k, from, c.to, ref)
       else log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[c.to].name, intro: false, cmd: ref })
       if (short !== null) {

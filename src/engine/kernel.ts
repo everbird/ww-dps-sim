@@ -141,6 +141,7 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   c.action = a
   c.last = a
   c.startedThisTick = true
+  if (s.entered === slot) s.entered = null                         // 入场后出过招了：不能再出出场技（TD-09 §3.5）
   if (def.summon) {
     // 召唤类声骸（脱手）：召唤物的判定走独立时间线（同延奏动作，TD-05 §4.3），角色之后的动作、取消都不影响它们，也不挡"就绪"；
     // 实例号另取，召唤物命中的自身顿帧也就不落到角色身上

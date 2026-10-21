@@ -9,7 +9,7 @@ import { argsOf, fmt, loadScenario, padStart } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 const FAILURE: Record<string, string> = {
-  timeout: '等超时', comboBroken: '连段中断', compile: '编译不过', introMissed: '写了变奏没变奏', entryMismatch: '变奏入场后接出场技', maxFrames: '超过帧数上限', noLoop: '没跑完一轮',
+  timeout: '等超时', comboBroken: '连段中断', compile: '编译不过', introMissed: '写了变奏没变奏', entrySkill: '出场技不是普通切人入场后第一个出', maxFrames: '超过帧数上限', noLoop: '没跑完一轮',
 }
 
 async function main(): Promise<number> {

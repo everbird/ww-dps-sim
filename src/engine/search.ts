@@ -176,7 +176,7 @@ const byDps = (a: Candidate, b: Candidate) => b.dps! - a.dps!
 
 /** 跑不通的原因（SearchResult.failures 的键）怎么说；命令行与网页共用 */
 export const FAILURE_LABEL: Readonly<Record<string, string>> = {
-  compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', notOnField: '不在前台', switchSelf: '切到自己',
+  compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', notOnField: '不在前台', switchSelf: '切到自己', entrySkill: '出场技不是普通切人入场后第一个出',
 }
 
 export function searchRotation(

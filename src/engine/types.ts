@@ -97,6 +97,8 @@ export interface SimState {
   assumed: Record<string, { n: number; at: number; detail: string[] }>
   /** 抽样模式的随机数状态（总设计 T4，src/engine/rng.ts）；期望模式为 null */
   rng: RngState | null
+  /** 普通切人入场、入场后还没开始过动作的角色（出场技要它，TD-09 §3.5）：切人时设为切入者，它开始任何动作（含变奏）时清空；开场为 null */
+  entered: Slot | null
 }
 
 /** 调度器的状态（TD-09 §5）：放在 SimState 里，随状态一起 structuredClone */
