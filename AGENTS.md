@@ -26,7 +26,7 @@
 | `wuwa-dps-td09-rotation-scheduler-v0.1.10.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴、出场技要普通切人入场 |
 | `wuwa-dps-td10-output-report-v0.1.13.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求与下限、操作容错、假设敏感度）、轴搜索（在现成的轴上挪动 / 去掉 / 对调 / 插入动作）、套路卡与按套路排轴（§6.2：`pnpm cards`、`pnpm plan` 第一版与套路次数可变；卡上的模型未做）、命令行输出、时间轴网页（含检查器的逐帧资源、共鸣回路状态与冷却） |
 | `wuwa-dps-td11-debug-calibration-v0.1.3.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、面板与逐下伤害 `--hits`、网页调试表、视频时间点）与改进；出处的归属规则（谁引发的算谁） |
-| `wuwa-dps-td12-web-v0.2.6.md` | 网页（Vite + Svelte 5，本机用）：结构、各页（含结论页、场景页的假设、轴搜索页、对比页的时间轴对照）、Worker、时间轴的视图 A–E（步进、检查器与共鸣回路、资源与伤害的出处、"轴可能有问题"；E 是播放器式的原型，敌人在顶上一条）、手机与 iPad（触摸操作、全屏）、检查 |
+| `wuwa-dps-td12-web-v0.2.7.md` | 网页（Vite + Svelte 5，本机用）：结构、各页（含结论页、场景页的假设、轴搜索页（局部改动 / 按套路排轴）、对比页的时间轴对照）、Worker、时间轴的视图 A–E（步进、检查器与共鸣回路、资源与伤害的出处、"轴可能有问题"；E 是播放器式的原型，敌人在顶上一条）、手机与 iPad（触摸操作、全屏）、检查 |
 | `wuwa-dps-td13-echo-optimizer-v0.1.2.md` | 声骸库存择优：库存写法（一个账号一份）、快速重算、搜索与完整仿真确认 |
 | `calibration/` | 实测与校准记录（格式见其中 README） |
 | `wuwa-dps-design-v0.2.9.md`（机制设计，已冻结） | 写总设计之前的游戏机制规格书，不再更新；与总设计、各 TD 冲突时以它们为准（勘误见总设计附录 A，开头有按章节找现在文档的对照表） |
@@ -83,6 +83,8 @@ pnpm plan scenarios/m0-video-eq.yaml --width 3   # 按套路排轴（TD-10 §6.2
                                              # 排满的按稳态排名、标出原轴排第几；--scoring surplus 只看前缀，--save 新.yaml 另存最好的一条。比原轴好的要拿实战核对
                                              # --vary 1 套路次数可以 ±1（多一段补位、少一段攻击…，按每秒伤害比；--extra 2 一轮最多多 / 少几个套路）
                                              # 场景里另写 search.routines（轴里没有的套路，max 每轮最多几次，缺省 1）也一起排
+                                             # --opening 改排启动轴（循环轴不动，按整个窗口的 DPS 比；--save 只换启动轴）
+                                             # --gen 另外自动生成套路（各人单放 E、R、Q，原轴各行在技能 / 大招 / 声骸 / 重击之前拆两半），慢很多，先用小的 --width
 pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
 pnpm import:scan data/scan/<账号>-echo.json [--out …] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML；一个账号一份，缺省写到 inventory/<账号>-bag.yaml

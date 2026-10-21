@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { planRotation, renderRoutines, routineSequence } from '../src/engine/plan'
+import { generateRoutines, planOpening, planRotation, renderOpening, renderRoutines, routineSequence } from '../src/engine/plan'
 import { dataDescribe } from './helpers/kernel-harness'
 
 describe('套路序列与写回成轴', () => {
@@ -17,6 +17,10 @@ describe('套路序列与写回成轴', () => {
       'switch 乙 变奏', '乙 E', 'switch 甲', '甲 A1~ A2~', '甲 R', 'switch 乙', '乙 A1~',
     ])
     expect(renderRoutines(['乙 E', '甲 A1~', '乙 Q'])).toEqual(['switch 乙', '乙 E', 'switch 甲', '甲 A1~', 'switch 乙 变奏', '乙 Q'])
+  })
+  test('写成启动轴：开局在前台的角色不用切，第一个套路是别人时先切；补位结尾写"变奏"', () => {
+    expect(renderOpening(['甲 A1', '乙 E~', '甲 Q'], '甲')).toEqual(['甲 A1', 'switch 乙', '乙 E~', 'switch 甲 变奏', '甲 Q'])
+    expect(renderOpening(['乙 E', '甲 Q'], '甲')).toEqual(['switch 乙', '乙 E', 'switch 甲', '甲 Q'])
   })
 })
 
@@ -60,5 +64,34 @@ dataDescribe('另加的套路（场景 search.routines，TD-10 §6.2 ①）', ()
     expect(plan(['switch 散华'])).toThrow('不是同一角色的出招行')
     expect(plan([{ line: '心 E', max: 2 }])).toThrow('心 不在队伍里')
     expect(ScenarioSchema.parse({ ...raw, search: { routines: ['维里奈 Q', { line: '散华 E' }] } }).search!.routines).toEqual(['维里奈 Q', { line: '散华 E', max: 1 }])
+  })
+})
+
+dataDescribe('启动轴一起排（--opening）：M0 视频轴 EQ 版', () => {
+  test('循环轴不动、启动轴的 8 个套路重排，按整个窗口的 DPS 比：原启动轴排第 1；出场技放不出、普通入场后写 A1 的报错剪掉', async () => {
+    const data = await loadGameData()
+    const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
+    const x = planOpening(sc, data, { width: 3 })
+    expect(x.library).toHaveLength(8)
+    expect(x.refRank).toBe(1)
+    expect(x.leaves[0]!.dps).toBeCloseTo(x.ref.dps, 6)
+    expect(x.failures['entrySkill']).toBeGreaterThan(0)
+    expect(x.ref.openingSecs).toBeGreaterThan(20)
+  }, 300_000)
+})
+
+dataDescribe('自动生成的套路（--gen，TD-10 §6.2 Q6）', () => {
+  test('各人单放 E、R、Q；原轴各行在技能 / 大招 / 声骸 / 重击之前拆两半，不在普攻连段、补位中间拆；与原轴重复的不要', async () => {
+    const data = await loadGameData()
+    const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
+    const ref = routineSequence(sc.rotation)
+    const g = generateRoutines(sc, data, ref)
+    expect(g).toEqual(expect.arrayContaining(['维里奈 Q', '椿 R', '维里奈 A3-地面出场技 A4 A5 E', '维里奈 E Q', '散华 E R', '散华 重击居合']))
+    expect(g).not.toContain('维里奈 A4 A5 E Q')                     // A4 是连段后续
+    expect(g).not.toContain('椿 盛绽·A2 盛绽·A3 盛绽·A4 盛绽·A1 E2')
+    expect(g.some(l => ref.includes(l))).toBe(false)
+    expect(new Set(g).size).toBe(g.length)
+    const xin = ScenarioSchema.parse(parse(readFileSync('scenarios/xin-team-r5.yaml', 'utf8')))
+    expect(generateRoutines(xin, data, routineSequence(xin.rotation)).some(l => /^雷主·男 A2~/.test(l))).toBe(false)   // 补位中间不拆
   })
 })

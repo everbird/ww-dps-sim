@@ -479,4 +479,12 @@ describe('出场技要普通切人入场后第一个出', () => {
     expect(why(go2(['switch 乙', '乙 长E', 'switch 甲', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '切回来时自己在后台的动作还没走完）'])
     expect(go2(['switch 乙', '乙 长E', 'switch 甲', 'wait 300', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']).error).toBeUndefined()
   })
+  test('有出场技的角色，地面普通切人入场后第一下写 A1：报错，要写出场技；不是第一下、变奏入场的照常', () => {
+    const 乙3: SynthChar = { ...乙, actions: [...乙.actions, action({ id: 'A1', endFrame: 20 })] }
+    const go3 = (rotation: string[], concerto = 0) => synthRun([idle('甲'), 乙3, idle('丙')], { initial: { onField: 0, concerto: [concerto, 0, 0] }, rotation, options: { repeat: 1 } })
+    const r = go3(['switch 乙', '乙 A1', 'switch 甲'])
+    expect([r.error?.code, r.error?.message]).toEqual(['entrySkill', '第 2 条 乙 A1：普通切人入场后第一下 A 是出场技（写 A2-地面出场技）'])
+    expect(go3(['switch 乙', '乙 E A1', 'switch 甲']).error).toBeUndefined()
+    expect(go3(['switch 乙 变奏', '乙 A1', 'switch 甲'], 100).error).toBeUndefined()
+  })
 })

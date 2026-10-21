@@ -51,6 +51,16 @@ dataDescribe('网页的 Worker', () => {
     expect(x.label).toMatch(/稳态/)
     await expect(handlers.search({ ...req, insert: ['不存在'] })).rejects.toThrow(/没有人有动作/)
   }, 60000)
+  test('按套路排轴（TD-10 §6.2 ④′）：循环轴 / 启动轴两种，结果带原轴排第几', async () => {
+    const req = { scenario: src('scenarios/m0-video-eq.yaml'), opening: false, width: 2, vary: 0, gen: false }
+    const x = await handlers.plan(req)
+    expect(x.mode).toBe('rotation')
+    expect(x.result.refRank).toBe(1)
+    const y = await handlers.plan({ ...req, opening: true })
+    expect(y.mode).toBe('opening')
+    expect(y.result.leaves.some(l => l.isRef)).toBe(true)
+    await expect(handlers.plan({ ...req, scenario: { name: 'x.yaml', text: src('scenarios/m0-video-eq.yaml').text + 'search:\n  routines: [心 E]\n' } })).rejects.toThrow(/不在队伍里/)
+  }, 120000)
   test('设计备选 A–E 都能生成：共用脚本内联、数据带上 buff 的给予者', async () => {
     for (const file of ['a-lanes.html', 'b-volumes.html', 'c-ledger.html', 'd-lens.html', 'e-player.html']) {
       const { html } = await handlers.design({ scenario: src('scenarios/m0-team.yaml'), file })

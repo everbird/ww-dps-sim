@@ -10,6 +10,7 @@ import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../
 import { insight } from '../../../src/engine/insight'
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
+import { planOpening, planRotation } from '../../../src/engine/plan'
 import { searchRotation } from '../../../src/engine/search'
 import { simulate } from '../../../src/engine/simulate'
 import type { ResolvedScenario, SimResult } from '../../../src/engine/types'
@@ -122,6 +123,16 @@ export const handlers: Handlers = {
     })
     const { basis, results, ...rest } = x
     return { ...rest, label: basis.label, results: results.slice(0, top), total: results.length, rankOfBase: results.indexOf(x.base) + 1, secs: (performance.now() - t0) / 1000 }
+  },
+  async plan({ scenario, opening, width, vary, gen }) {
+    const sc = scenarioOf(scenario)
+    const d = await gd()
+    const t0 = performance.now()
+    const o = { width, top: width, vary, gen }
+    const secs = () => (performance.now() - t0) / 1000
+    if (opening) { const result = planOpening(sc, d, o); return { mode: 'opening' as const, result, secs: secs() } }
+    const result = planRotation(sc, d, o)
+    return { mode: 'rotation' as const, result, secs: secs() }
   },
 }
 

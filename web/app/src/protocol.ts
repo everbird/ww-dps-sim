@@ -3,6 +3,7 @@ import type { StatKey } from '../../../src/data/common'
 import type { Comparison, MarginalRow, PanelView, Tier } from '../../../src/engine/analysis'
 import type { Insight } from '../../../src/engine/insight'
 import type { OptimizeResult } from '../../../src/engine/optimize'
+import type { OpeningResult, PlanResult } from '../../../src/engine/plan'
 import type { Candidate, SearchResult } from '../../../src/engine/search'
 import type { Summary } from '../../../src/engine/types'
 import type { DiffTimeline } from '../../../src/report/diff-timeline'
@@ -27,6 +28,11 @@ export interface Requests {
   search: {
     req: { scenario: Source; move: string[] | null; drop: string[]; swap: boolean; insert: string[]; chars: string[]; rounds: number; beam: number; maxRuns: number; top: number }
     res: Omit<SearchResult, 'basis' | 'results'> & { label: string; results: Candidate[]; total: number; rankOfBase: number; secs: number }
+  }
+  // 按套路排轴（TD-10 §6.2 ④′，同 pnpm plan）：opening = 改排启动轴（循环轴不动，按整个窗口比）；vary 次数可变；gen 自动生成套路
+  plan: {
+    req: { scenario: Source; opening: boolean; width: number; vary: number; gen: boolean }
+    res: ({ mode: 'rotation'; result: PlanResult } | { mode: 'opening'; result: OpeningResult }) & { secs: number }
   }
 }
 export type Kind = keyof Requests

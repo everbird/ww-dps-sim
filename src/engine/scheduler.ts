@@ -258,6 +258,10 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
       if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${s.chars[c.slot].name} 不在前台`, ref)
       // 操作延迟只加在"决策点"：连段的后续（有 comboFrom 的动作，如 A2–A5）玩家会预输入，不加（假设 no-input-buffer）
       const def = actions[c.slot]![c.action]!
+      // 有出场技的角色，地面普通切人入场后第一下 A（A1）就是出场技（用户确认，TD-09 §3.5）：轴里要写出场技，写 A1 报错
+      const entry = def.id === 'A1' && s.entry?.slot === c.slot && s.entry.block === null
+        ? Object.values(actions[c.slot]!).find(a => a.entrySkill) : undefined
+      if (entry) throw fail(s, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
       return evaluateAct(s, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
     }
   }

@@ -22,6 +22,8 @@ export interface PlanOptions {
    *  比如多补一段补位、少一段攻击 */
   vary?: number
   extra?: number                            // vary > 0 或有另加的套路时，一轮的套路总数最多比原轴多 / 少几个（缺省 2）
+  /** 另外自动生成套路（generateRoutines，TD-10 §6.2 Q6）：各人单放 E、R、Q，原轴各行在连段之外的地方拆成两半；每轮最多各用 1 次 */
+  gen?: boolean
 }
 
 export interface PlanLeaf {
@@ -82,23 +84,48 @@ export function routineSequence(rotation: readonly string[]): string[] {
   return seq
 }
 
-export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {}): PlanResult {
-  const width = opts.width ?? 24
-  const perGroup = opts.perGroup ?? 3
-  const scoring = opts.scoring ?? 'rollout'
-  const top = Math.min(opts.top ?? width, width)
-  const vary = opts.vary ?? 0
-  const refSeq = routineSequence(sc.rotation)
-  // 场景 search.routines 另加的套路（TD-10 §6.2 ① (b)）：原轴里 0 次，每轮 0 到 max 次
-  const added = (sc.search?.routines ?? []).map(r => (typeof r === 'string' ? { line: clean(r), max: 1 } : { line: clean(r.line), max: r.max }))
+/** 自动生成的套路（TD-10 §6.2 Q6，按动作表）：
+ *  - 单放：队里每人的 E、R、Q（首位声骸技能）各一个；
+ *  - 拆两半：原轴（refSeq）的每行在"自然的断点"切一刀——技能、大招、声骸技能、重击这类（动作类别不是普攻、不是补位）之前；
+ *    切在普攻连段中间的不要（A2–A5 接不上，切完也只是零碎的 A）。两半各成一个套路（"辅助拆两半"，中间夹谁由排轴决定）。
+ *  跑不通的（R 能量不够、要前置状态…）由仿真剪掉；生成的与原轴里的重复时不另加 */
+export function generateRoutines(sc: Scenario, data: GameData, refSeq: readonly string[]): string[] {
+  const out = new Set<string>()
+  for (const m of sc.team) for (const k of ['E', 'R', 'Q']) out.add(`${m.char} ${k}`)
+  for (const line of refSeq) {
+    const [char, ...tokens] = line.split(' ')
+    const ch = data.characters[char!]
+    // 一组 = 一个动作的写法加上跟在后面的修饰（+N、!）
+    const groups: string[][] = []
+    for (const t of tokens) {
+      if (/^(\+\d+|!)$/.test(t) && groups.length) groups.at(-1)!.push(t)
+      else groups.push([t])
+    }
+    for (let i = 1; i < groups.length; i++) {
+      const tok = groups[i]![0]!
+      if (/~/.test(tok)) continue                                       // 补位
+      const name = tok.replace(/[~?!]+$/, '').replace(/\+\d+$/, '')
+      const def = ch?.actions[ch.aliases[name] ?? name]
+      if (def && (def.kind === 'normal' || def.comboFrom?.length)) continue   // 普攻、连段后续；Q（声骸）等找不到定义的算断点
+      out.add([char, ...groups.slice(0, i).flat()].join(' '))
+      out.add([char, ...groups.slice(i).flat()].join(' '))
+    }
+  }
+  return [...out].filter(l => !refSeq.includes(l))
+}
+
+/** 套路库（循环轴与启动轴共用）：原轴的各行（次数 ± vary）与场景 search.routines 另加的（原轴里 0 次，每轮 0 到 max 次，
+ *  TD-10 §6.2 ① (b)）；有次数可变或另加的时，套路总数可以多 / 少 extra 个（缺省 2） */
+function libraryOf(sc: Scenario, refSeq: readonly string[], vary: number, extraOpt: number | undefined, generated: readonly string[] = []) {
+  const written = (sc.search?.routines ?? []).map(r => (typeof r === 'string' ? { line: clean(r), max: 1 } : { line: clean(r.line), max: r.max }))
+  const added = [...written, ...generated.filter(g => !refSeq.includes(g) && !written.some(w => w.line === g)).map(line => ({ line, max: 1 }))]
   for (const { line } of added) {
     const c = charOf(line)
     if (!c) throw new Error(`search.routines 里"${line}"不是同一角色的出招行`)
     if (!sc.team.some(m => m.char === c)) throw new Error(`search.routines 里"${line}"：${c} 不在队伍里`)
     if (refSeq.includes(line)) throw new Error(`search.routines 里"${line}"轴里已经有了，要多用几次请用 --vary`)
   }
-  const extra = vary > 0 || added.length > 0 ? opts.extra ?? 2 : 0
-  const [minLen, maxLen] = [Math.max(2, refSeq.length - extra), refSeq.length + extra]
+  const extra = vary > 0 || added.length > 0 ? extraOpt ?? 2 : 0
   const counts = new Map<string, number>()
   for (const r of refSeq) counts.set(r, (counts.get(r) ?? 0) + 1)
   const library = [
@@ -106,6 +133,17 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     ...added.map(({ line, max }) => ({ line, char: charOf(line)!, count: 0, lo: 0, hi: max, added: true })),
   ]
   const usedOf = (seq: readonly string[]) => library.map(l => seq.filter(x => x === l.line).length)
+  return { library, counts, extra, minLen: Math.max(2, refSeq.length - extra), maxLen: refSeq.length + extra, usedOf }
+}
+
+export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {}): PlanResult {
+  const width = opts.width ?? 24
+  const perGroup = opts.perGroup ?? 3
+  const scoring = opts.scoring ?? 'rollout'
+  const top = Math.min(opts.top ?? width, width)
+  const vary = opts.vary ?? 0
+  const refSeq = routineSequence(sc.rotation)
+  const { library, counts, extra, minLen, maxLen, usedOf } = libraryOf(sc, refSeq, vary, opts.extra, opts.gen ? generateRoutines(sc, data, refSeq) : [])
   /** 能当一整轮：每个套路的次数都在范围里、长度在范围里、首尾不是同一个人（下一轮开头的切人切不了） */
   const closable = (seq: readonly string[]) => seq.length >= minLen && charOf(seq[0]!) !== charOf(seq.at(-1)!)
     && usedOf(seq).every((n, i) => n >= library[i]!.lo && n <= library[i]!.hi)
@@ -241,5 +279,156 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     basisLabel: refBasis.label,
     ref: { dps: refBasis.dps, loopSecs: secsOf(refRes.summary), routines: refSeq },
     leaves, refRank: refIdx >= 0 ? refIdx + 1 : null, library, prefixRuns, failures,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 启动轴一起排（TD-10 §6.2 ④′，v0.1.13）：循环轴不动，把启动轴的各行当套路重新排（次数可变、另加的套路同循环轴）。
+// 启动轴只跑一次，稳态几乎不受它影响，所以按整个窗口的 DPS 比；每个前缀把剩下的按原启动轴的先后补完，跑完整的场景打分
+
+export interface OpeningLeaf {
+  routines: string[]
+  counts: Record<string, number>
+  lines: string[]                           // 写成的启动轴（切人按实际标"变奏"）
+  dps: number                               // 整个窗口的 DPS
+  steady: number | null                     // 稳态 DPS（参考）
+  openingSecs: number                       // 启动轴（第 0 轮）的战斗秒
+  isRef: boolean
+  same: number
+}
+
+export interface OpeningResult {
+  ref: { dps: number; steady: number | null; openingSecs: number; routines: string[] }
+  leaves: OpeningLeaf[]
+  refRank: number | null
+  library: { line: string; char: CharName; count: number; added: boolean }[]
+  runs: number
+  failures: Record<string, number>
+}
+
+/** 套路序列写成启动轴：开局在前台的角色不用切，之后角色变了就切；上一个套路以补位结尾时写"switch X 变奏" */
+export function renderOpening(routines: readonly string[], onField: CharName): string[] {
+  const out: string[] = []
+  let cur = onField
+  routines.forEach((r, i) => {
+    const c = charOf(r)!
+    if (c !== cur) out.push(`switch ${c}${i > 0 && endsFiller(routines[i - 1]!) ? ' 变奏' : ''}`)
+    out.push(r)
+    cur = c
+  })
+  return out
+}
+
+export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}): OpeningResult {
+  const width = opts.width ?? 24
+  const perGroup = opts.perGroup ?? 3
+  const top = Math.min(opts.top ?? width, width)
+  const refSeq = routineSequence(sc.opening)
+  if (refSeq.length === 0) throw new Error('场景没有启动轴')
+  const { library, counts, minLen, maxLen, usedOf } = libraryOf(sc, refSeq, opts.vary ?? 0, opts.extra, opts.gen ? generateRoutines(sc, data, refSeq) : [])
+  const onField = sc.team[sc.initial.onField]!.char
+  // 循环轴第一条若是切人，启动轴最后在前台的不能是它（切不到自己）
+  const first = sc.rotation.map(clean).find(l => l)!
+  const rotFirst = /^switch\s/.test(first) ? first.split(' ')[1]! : null
+  const closable = (seq: readonly string[]) => seq.length >= minLen && charOf(seq.at(-1)!) !== rotFirst
+    && usedOf(seq).every((n, i) => n >= library[i]!.lo && n <= library[i]!.hi)
+  const complete = (seq: readonly string[]): string[] => {
+    const left = new Map(counts)
+    for (const r of seq) left.set(r, (left.get(r) ?? 0) - 1)
+    return [...seq, ...refSeq.filter(r => { const n = left.get(r)!; if (n <= 0) return false; left.set(r, n - 1); return true })]
+  }
+  let runs = 0
+  const failures: Record<string, number> = {}
+  const fail = (k: string) => { failures[k] = (failures[k] ?? 0) + 1 }
+  const evaluate = (seq: readonly string[]) => {
+    runs++
+    let r
+    try { r = resolveScenario({ ...sc, opening: renderOpening(seq, onField) }, data) } catch { fail('compile'); return null }
+    const res = simulate(r)
+    if (res.error) { fail(res.error.code); return null }
+    return res
+  }
+  const refRes = evaluate(refSeq)
+  if (!refRes) throw new Error('原启动轴跑不通')
+  const missed = (res: NonNullable<typeof refRes>) => res.log.filter(e => e.type === 'warning' && e.code === 'introMissed').length
+  const refMissed = missed(refRes)
+  const openingSecs = (res: NonNullable<typeof refRes>) => {
+    const l0 = res.summary.perLoop?.find(p => p.loop === 0)
+    return l0 ? l0.frames / 60 : 0
+  }
+  const steadyOf = (res: NonNullable<typeof refRes>) => (res.summary.steady ? basisOf(res).dps : null)
+
+  type Node = { seq: string[]; score: number; res: NonNullable<typeof refRes> }
+  let beam: { seq: string[] }[] = [{ seq: [] }]
+  const pool = new Map<string, Node>()
+  for (let depth = 0; depth < maxLen; depth++) {
+    const next = new Map<string, Node>()
+    for (const node of beam) {
+      const used = usedOf(node.seq)
+      library.forEach(({ line, hi }, i) => {
+        if (used[i]! >= hi) return
+        const seq = [...node.seq, line]
+        const key = seq.join(' | ')
+        if (next.has(key)) return
+        const full = complete(seq)
+        if (charOf(full.at(-1)!) === rotFirst) return                  // 补完了也接不上循环轴开头的切人
+        const res = evaluate(full)
+        if (!res) return
+        if (missed(res) > refMissed) { fail('introMissed'); return }
+        next.set(key, { seq, score: res.summary.dps, res })
+        if (full.length === seq.length && closable(seq)) pool.set(key, next.get(key)!)
+      })
+    }
+    // 去重：最后一个套路、各套路用了几次都一样的算一组，每组最多留 perGroup 个；原启动轴的前缀一定留着
+    const groups = new Map<string, number>()
+    const kept: Node[] = []
+    for (const n of [...next.values()].sort((a, b) => b.score - a.score)) {
+      const k = `${n.seq.at(-1)}#${usedOf(n.seq).join(',')}`
+      const had = groups.get(k) ?? 0
+      if (had >= perGroup) continue
+      groups.set(k, had + 1)
+      kept.push(n)
+      if (kept.length >= width) break
+    }
+    const refPrefix = next.get(refSeq.slice(0, depth + 1).join(' | '))
+    if (depth < refSeq.length && refPrefix && !kept.includes(refPrefix)) kept.push(refPrefix)
+    if (kept.length === 0) break
+    // 次数少于原启动轴的（补完会补上）另跑它自己
+    for (const n of kept) {
+      const key = n.seq.join(' | ')
+      if (pool.has(key) || !closable(n.seq)) continue
+      const res = evaluate(n.seq)
+      if (res && missed(res) <= refMissed) pool.set(key, { seq: n.seq, score: res.summary.dps, res })
+    }
+    beam = kept
+  }
+
+  const refKey = refSeq.join(' | ')
+  const leaves: OpeningLeaf[] = [...pool.values()].sort((a, b) => b.score - a.score).slice(0, top).map(n => {
+    const plain = renderOpening(n.seq, onField)
+    const introAt = new Set(n.res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 0 ? [e.cmd.line] : [])))
+    const diff = usedOf(n.seq).map((c, i) => c - library[i]!.count)
+    return {
+      routines: n.seq,
+      counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
+      lines: plain.map((l, i) => (introAt.has(i + 1) && !l.endsWith(' 变奏') ? `${l} 变奏` : l)),
+      dps: n.score, steady: steadyOf(n.res), openingSecs: openingSecs(n.res),
+      isRef: n.seq.join(' | ') === refKey, same: 0,
+    }
+  })
+  if (!leaves.some(l => l.isRef)) {
+    leaves.push({ routines: refSeq, counts: {}, lines: renderOpening(refSeq, onField), dps: refRes.summary.dps, steady: steadyOf(refRes), openingSecs: openingSecs(refRes), isRef: true, same: 0 })
+  }
+  const changes = (l: OpeningLeaf) => Object.values(l.counts).reduce((a, d) => a + Math.abs(d), 0)
+  leaves.sort((a, b) => b.dps - a.dps || Number(b.isRef) - Number(a.isRef) || changes(a) - changes(b) || a.routines.length - b.routines.length)
+  for (let i = leaves.length - 1; i > 0; i--) {
+    const [a, b] = [leaves[i - 1]!, leaves[i]!]
+    if (Math.abs(a.dps - b.dps) < 1e-6 && a.openingSecs === b.openingSecs) { a.same += b.same + 1; leaves.splice(i, 1) }
+  }
+  const refIdx = leaves.findIndex(l => l.isRef)
+  return {
+    ref: { dps: refRes.summary.dps, steady: steadyOf(refRes), openingSecs: openingSecs(refRes), routines: refSeq },
+    leaves, refRank: refIdx >= 0 ? refIdx + 1 : null,
+    library: library.map(({ line, char, count, added }) => ({ line, char, count, added })), runs, failures,
   }
 }
