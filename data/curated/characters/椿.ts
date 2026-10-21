@@ -129,7 +129,7 @@ export default defineCharacter('椿', {
     },
     大招: { cooldown: 1500 },             // 共鸣解放冷却 25 秒（nanoka 3.7）
     QTE: { accept: ['priorityChangeGuess'] },       // 第 71 帧（输入锁结束）降到 1（2026-10-04 用户确认）
-    延奏: { accept: ['noEnd'] },                     // 延奏走独立时间线（TD-05 §4.3），结束帧用不到
+    延奏: { accept: ['noEnd', 'airGuess'] },         // 延奏走独立时间线（TD-05 §4.3），结束帧、在不在空中都用不到
     // 推断值按默认接受（m0-confirm §12 甲类，2026-10-18 用户同意）：盛绽·待机是状态行、不是动作；
     // 方向变体"前""后"两行逐列相同，取哪行都一样；优先级变化帧取派生帧，或只比派生帧早 1 帧
     '盛绽·待机': { accept: ['noEnd', 'priorityChangeGuess', 'kindGuess'] },

@@ -846,6 +846,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `outroTriggerFrame` | 组内任一行 `hints.outroTriggerFrame` | QTE 组缺失时 `noOutroFrame`；区间写法取起点时 `outroRange`（v0.1.4） |
 | `endOnSwitchOut`（v0.1.4） | 组内任一行 `hints.endOnSwitchAfter`（TD-05 §5） | |
 | `energyCost`（v0.1.4） | 注册层给角色模块别名 `R` 指向的动作设为角色的大招所需能量（> 0 时）；`actionOverrides` 写了的以它为准（写 0 取消，TD-06 §2.3） | |
+| `air`（v0.1.11 补记） | 在空中的局部帧 `{ from, until }`，出场技要切出者在地面（TD-09 §3.5）用：组里的行（有「位置状态」的）第一行以"空"开头 → from 0；否则第一个"…转空 / 转漂浮"行的「状态转换时间」。最后一行以"空中 / 转空 / 漂浮"结尾 → until null（结束时还在空中，不模拟下落）；否则"空转地"的最后一个转换时间；空中之后接"…落地"地面行的（它的帧从落地算）按 `endFrame`。整组都在地面不设 | 转换时间缺了取那行的发生帧或 `endFrame` 时 `airGuess`（15 组） |
 | `switchLockUntil` | 依次取（TD-05 §2）：组内 `hints.noSwitchBefore` 的最大值；`tuneBreak` 类取 `endFrame`（谐度破坏的备注"无敌期间不能切人"，v0.1.6）；v0.1.11：其余组里有 `noSwitchWhileInvincible` 或 `noSwitchUnframed` 的行 → 这些行的无敌启动帧 + 无敌持续帧取最大（持续 −1 取 `endFrame`），都没有无敌帧、又全是 `noSwitchUnframed` 的取 `endFrame`；`liberation` 类再没有时取 `noInputBefore`（`switchLockFromInput`，TD-05 §2，v0.1.9） | 有 `noSwitchWhileInvincible` 却没有无敌帧时 `invincibleNoFrames`（心 转相，模块里写 `switchLockUntil`）；用了 `noSwitchUnframed` 时 `noSwitchUnframed`（推断，假设 `switch-no-lock`） |
 | （组级检查） | 有持续帧 -1 的判定在结束帧或之后才生成——动作停了它不可能存在，TD-04 不生成它；多为把"下落""落地"写进同一组的空中攻击，curated 拆组 | `minusOneAfterEnd`（22 组） |
 | （组级检查，v0.1.3） | 带 `C\d` 标记的非判定行（膨胀 / 资源 / 标记）暂不按链数筛（13.2 只筛判定），交给 TD-06 / TD-08 | `chainNonHit`（7 组 9 行） |
@@ -1134,3 +1135,4 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **v0.1.9（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。1.9 换成 20261019 版（资源版本 3.7.13），动作表的列按第 1 行表头名找（`ActionCols`）；3.1 新增"延迟"`delayFrames`（备注"脱手后延迟nF生效"一并抽）与"多判间隔/次"；3.2 心的两块（`BLOCK_RENAME`，照世心带前缀并入）；Q2 带前缀并入 `{ block, prefix }`；13.3 首位声骸按角色换版本 `qFor`；13.4 覆盖字段 `shiftRows`（落地段），判定覆盖加 `delayFrames`、`applies`；11.2 `effects.json` 已产出（`tools/build/effects.py`）。
 - **v0.1.10（2026-10-20）**：并回 AGENTS.md 差异 2。13.4 `shiftRows` 不只用于下落攻击的落地段：先按住再松手的动作（散华重击居合按住半秒，「蓄力」那一行就是按住的那一段）各行的帧从松手算，同样整体后移。
 - **v0.1.11（2026-10-21）**：并回 AGENTS.md 差异 6 与同日补的没写帧数的"不能切人"。3.1 读「无敌启动帧 / 无敌持续帧」（`invincible`，持续 −1 = 到动作结束；只用于切人锁）；3.8 `noSwitchBefore` 前面可先有"霸体、"，新增 `noSwitchWhileInvincible` 与 `noSwitchUnframed`；13.1 `switchLockUntil` 的取法（TD-05 §2）与 flag `invincibleNoFrames`、`noSwitchUnframed`；13.4 覆盖 `switchLockUntil` 视为已处理这两个 flag。
+- **v0.1.11 补记（2026-10-21）**：13.1 新增 `air`（读「位置状态」「状态转换时间」，出场技要切出者在地面，TD-09 v0.1.10 §3.5）与 flag `airGuess`；椿的延奏 `accept: ['airGuess']`（独立时间线，用不到）。

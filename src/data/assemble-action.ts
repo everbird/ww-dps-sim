@@ -239,6 +239,7 @@ export function assembleGroup(
   const lockFromInput = noSwitch === null && kind === 'liberation' && noInput !== null && invRows.length === 0
   const switchLock = noSwitch ?? (kind === 'tuneBreak' ? endFrame : lockFromInput ? noInput : null)
   const endOnSwitch = rows.find(r => r.hints.endOnSwitchAfter !== undefined)?.hints.endOnSwitchAfter
+  const air = airOf(rows, endFrame, flags)
   return {
     id: g.id, owner: file.key, kind, endFrame, cancelWindows, priority,
     ...(comboFrom ? { comboFrom } : {}),
@@ -246,11 +247,36 @@ export function assembleGroup(
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
     ...(lockFromInput ? { switchLockFromInput: true as const } : {}),
-    ...(g.id.endsWith('出场技') ? { entrySkill: true as const } : {}),   // "A2-地面出场技"（散华单列一组，维里奈 splitRows、椿 copyAs 的也是）
+    ...(g.id.endsWith('出场技') ? { entrySkill: true as const } : {}),
+    ...(air ? { air } : {}),   // "A2-地面出场技"（散华单列一组，维里奈 splitRows、椿 copyAs 的也是）
     ...(endOnSwitch !== undefined ? { endOnSwitchOut: endOnSwitch } : {}),
     source: { file: file.key, rows: g.rows.map(r => r.row) },
     flags: [...flags],
   }
+}
+
+/** 在空中的局部帧（xlsx「位置状态」「状态转换时间」，2026-10-21，TD-09 §3.5 出场技要从地面切入）：
+ *  第一行以"空"开头 → 从 0 起在空中；否则第一个"…转空 / 转漂浮"的行从它的状态转换时间起（没写取它的发生帧，打 airGuess），
+ *  只有"空中"行接在地面行后面的，从那行的发生帧起（airGuess）。最后一行以"空中 / 转空 / 漂浮"结尾 → 结束时还在空中（until = null）；
+ *  否则落地在"空转地"的最后一个转换时间；空中之后接地面行（"…落地"段，它的帧从落地算，xlsx 没给落地时刻）的按动作结束算；都没有打 airGuess */
+function airOf(rows: GenRow[], endFrame: number, flags: Set<string>): ActionDef['air'] {
+  const ps = rows.filter(r => r.position)
+  if (!ps.some(r => /空|漂浮/.test(r.position!))) return undefined
+  const at = (r: GenRow) => r.spawnFrame ?? r.birthFrame ?? 0
+  let from = 0
+  if (!ps[0]!.position!.startsWith('空')) {
+    const up = ps.find(r => /转(空|漂浮)/.test(r.position!))
+    const first = ps.find(r => r.position!.startsWith('空'))
+    if (up?.positionChange?.length) from = up.positionChange[0]!
+    else { from = at((up ?? first)!); flags.add('airGuess') }
+  }
+  const last = ps.at(-1)!.position!
+  if (/(空中|转空|漂浮)$/.test(last)) return { from, until: null }
+  const down = ps.find(r => /空转地/.test(r.position!))
+  if (down?.positionChange?.length) return { from, until: down.positionChange.at(-1)! }
+  if (!down && ps.at(-1)!.position === '地面') return { from, until: Math.max(from, endFrame) }
+  flags.add('airGuess')
+  return { from, until: Math.max(from, endFrame) }
 }
 
 /** 优先级：取值最多的一行；变化帧依次取 K 列 → 组内备注 → （仅两段）不能闪避 / 不响应输入 → 该行派生帧（TD-01 §13.1） */

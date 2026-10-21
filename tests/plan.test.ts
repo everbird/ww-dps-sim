@@ -21,15 +21,13 @@ describe('套路序列与写回成轴', () => {
 })
 
 dataDescribe('排回原轴：M0 视频轴 EQ 版', () => {
-  test('8 个套路打乱后重排：第一名是维里奈两段对调（+0.48%，固有1 覆盖率 88% → 100%），原轴第 2；变奏入场后接出场技的调度器报错 entrySkill、被剪掉', async () => {
+  test('8 个套路打乱后重排，原轴排第 1；出场技放不出的（变奏入场、切出者在空中…）调度器报错 entrySkill、被剪掉', async () => {
     const data = await loadGameData()
     const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
     const x = planRotation(sc, data, { width: 3 })
     expect(x.library).toHaveLength(8)
-    const letter = (line: string) => String.fromCharCode(65 + x.library.findIndex(l => l.line === line))
-    expect(x.leaves[0]!.routines.map(letter).join(' ')).toBe('A D C B E F G H')
-    expect(x.leaves[0]!.dps / x.ref.dps - 1).toBeCloseTo(0.0048, 3)
-    expect(x.refRank).toBe(2)
+    expect(x.refRank).toBe(1)
+    expect(x.leaves[0]!.dps).toBeCloseTo(x.ref.dps, 6)
     expect(x.failures['entrySkill']).toBeGreaterThan(0)
     expect(x.leaves.every(l => l.introMissed === 0)).toBe(true)
   }, 120_000)
