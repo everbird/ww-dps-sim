@@ -32,3 +32,21 @@ dataDescribe('排回原轴：M0 视频轴 EQ 版', () => {
     expect(x.leaves.every(l => l.introMissed === 0)).toBe(true)
   }, 120_000)
 })
+
+dataDescribe('套路次数可变（--vary）：M0 视频轴 EQ 版', () => {
+  test('次数 ±1：原轴仍排第 1（一轮卡在维里奈、椿 25 秒的大招冷却上，加减一段都接不上）；改了次数的标出差几次；跑出来一样的合成一条', async () => {
+    const data = await loadGameData()
+    const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
+    const x = planRotation(sc, data, { width: 3, vary: 1 })
+    expect(x.refRank).toBe(1)
+    expect(x.leaves[0]!.counts).toEqual({})
+    const varied = x.leaves.filter(l => Object.keys(l.counts).length > 0)
+    for (const l of varied) {
+      expect(l.dps).toBeLessThan(x.ref.dps)
+      const n = l.routines.length - x.ref.routines.length
+      expect(Object.values(l.counts).reduce((a, b) => a + b, 0)).toBe(n)
+    }
+    const keys = x.leaves.map(l => `${l.dps.toFixed(6)}|${l.loopSecs}`)
+    expect(new Set(keys).size).toBe(keys.length)
+  }, 300_000)
+})
