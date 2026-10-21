@@ -203,6 +203,17 @@ describe('T09-6 切人（§3.5）', () => {
       // "第114F前霸体、不能切人"：前面先有"霸体、"的也认
       expect(x['强化重击']!.switchLockUntil).toBe(114)
     })
+    test('其余没写帧数的"不能切人"：同"无敌期间不能切人"，没有无敌帧的到动作结束；记 flag noSwitchUnframed（2026-10-21）', () => {
+      // 菲比大招"不响应输入，不能切人"，无敌 1 / 218 → 219
+      const p = block('菲比')['大招']!
+      expect([p.switchLockUntil, p.switchLockFromInput, p.flags.includes('noSwitchUnframed')]).toEqual([219, undefined, true])
+      // 绯雪重击"第120F不能切人"（没写"前"）：无敌 0 / 120 → 120，不到动作结束
+      expect(block('绯雪')['重击']!.switchLockUntil).toBe(120)
+      // 奥古斯塔大招"大招状态期间不能切人"：先按无敌（到动作结束），大招状态的 10 秒不算
+      expect(block('奥古斯塔')['大招']!.switchLockUntil).toBe(180)
+      // 写了帧数的不套
+      expect(block('雷主·男')['大招']!.flags.includes('noSwitchUnframed')).toBe(false)
+    })
   })
 })
 

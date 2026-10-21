@@ -208,6 +208,7 @@ _HINTS = [
 ]
 # 2026-10-21：前面可以先有一项"霸体、"（心 强化重击"第114F前霸体、不能切人"）
 _LOCK = re.compile(r'第\s*(\d+)\s*F\s*前((?:霸体、)?(?:不响应输入|不能)[^；;。，,|\n]*)')
+_FRAME_BEFORE = re.compile(r'第\s*\d+\s*F\s*前')
 _LOCK_KEYS = {'不响应输入': 'noInputBefore', '不能闪避': 'noDodgeBefore', '不能切人': 'noSwitchBefore'}
 
 
@@ -234,6 +235,13 @@ def extract_hints(note: str | None) -> dict:
             k = _LOCK_KEYS.get(key)
             if k and k not in h:
                 h[k] = n
+    # 2026-10-21：其余没写帧数的"不能切人"（"不响应输入，不能切人""大招状态期间不能切人""机枪期间霸体、不能切人"
+    # "第120F不能切人"…）：逐句看，这一句没有"第nF前"、也不是"无敌期间…"的，装配时同"无敌期间不能切人"
+    if 'noSwitchBefore' not in h and 'noSwitchWhileInvincible' not in h:
+        for clause in re.split(r'[，,。；;\n|]', note):
+            if '不能切人' in clause and not _FRAME_BEFORE.search(clause) and not clause.strip().startswith('无敌期间'):
+                h['noSwitchUnframed'] = True
+                break
     return h
 
 

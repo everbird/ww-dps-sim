@@ -1,6 +1,6 @@
-# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.10
+# 鸣潮 DPS 引擎 · TD-01 数据字典与抽取规格 v0.1.11
 
-> **状态**：v0.1.10（2026-10-20，已实现；v0.1.10：`shiftRows` 也用于先按住再松手的动作（13.4）。v0.1.9 并回心 · 雷主 · 卜灵带来的决定：换成 20261019 版、动作表按表头名找列、"延迟"与"多判间隔/次"两列（1.9、3.1），心的两块（3.2），带前缀并入（Q2），落地段与首位声骸按角色换版本（13.3、13.4），`effects.json`（11.2），见附录。v0.1.8（2026-10-18，v0.1.8 并回视频轴核对时的决定："进入即得"改叫"起手即得"（3.7），动作覆盖新增 `splitRows`、`copyAs`（13.4），见附录。v0.1.7 并回 xlsx 版本清单、按表头 / 标记 / 段名定位、附页2 的偏谐通用规则、按比例削白条与换成 20261003 版，见附录。v0.1.6 并回 M4 敌人量表：`tune-break.json`、白条按削韧值、谐度破坏的装配，见附录。v0.1.5 并回声骸接入与 `echo-stats.json`。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
+> **状态**：v0.1.11（2026-10-21，已实现；v0.1.11：读「无敌启动帧 / 无敌持续帧」（3.1），没写帧数的"不能切人"按无敌两列或整个动作做切人锁（3.8、13.1）。v0.1.10：`shiftRows` 也用于先按住再松手的动作（13.4）。v0.1.9 并回心 · 雷主 · 卜灵带来的决定：换成 20261019 版、动作表按表头名找列、"延迟"与"多判间隔/次"两列（1.9、3.1），心的两块（3.2），带前缀并入（Q2），落地段与首位声骸按角色换版本（13.3、13.4），`effects.json`（11.2），见附录。v0.1.8（2026-10-18，v0.1.8 并回视频轴核对时的决定："进入即得"改叫"起手即得"（3.7），动作覆盖新增 `splitRows`、`copyAs`（13.4），见附录。v0.1.7 并回 xlsx 版本清单、按表头 / 标记 / 段名定位、附页2 的偏谐通用规则、按比例削白条与换成 20261003 版，见附录。v0.1.6 并回 M4 敌人量表：`tune-break.json`、白条按削韧值、谐度破坏的装配，见附录。v0.1.5 并回声骸接入与 `echo-stats.json`。v0.1.4 并回 M1–M3 实现时的决定。此前：v0.1.1 按《TD-03 伤害公式规格 v0.1》§12.2 修订，v0.1.2 按《TD-04 仿真内核规格 v0.1》§12.1 修订，v0.1.3 按《TD-09 排轴脚本与调度语义 v0.1》§9.3 与 M0 确认修订，并把 M0 实现时的 5 处决定并回本文）
 > **依据**：《技术总体设计 v0.1.1》（下称"总设计"）§3.1–3.2、§5.1、§7、§11、§12（M0）、§13、附录 A-7；《设计文档 v0.2.9》（下称"机制设计"）§4、4B、4C、4D、5.1、6、7；xlsx 自带的 `附页1`（数据作者写的列说明，下称"作者说明"）
 > **数据版本**：`鸣潮动作数据汇总-20260707.xlsx`（资源版本 3.4.17，见 `索引` T60）。文中所有统计都在这一版上实测。2026-10-04 起构建用 20261003 版（资源版本 3.6.13，见 1.9）；文中的行号、列字母仍是 20260707 版的位置，构建按表头、标记行与段名定位，不依赖它们
 > **下游**：构建脚本 `tools/build/`（Python，v0.1.3，见 0.2）；TD-02 用本文的产出文件结构定义类型与 zod schema；TD-03 / 04 / 06 / 07 消费本文抽出的字段
@@ -197,7 +197,7 @@ function secToFrames(sec: number, fps = 60): number {
 | （20261019 版新增，顿帧-敌之后） | 多判间隔/次 | `hints.tickInterval`、`hints.maxTicks` | "nF / m次" | 等同备注"持续帧内每nF进行一次判定，最多m次"，并进提示（3.8）；与备注对不上时以列为准并报告 |
 | G | 顿帧-自 | `hitstop.self` | 帧 | 命中后自身停顿时长。只作参考，仿真用膨胀窗口（AD–AF）；时停类通常不计入此列 |
 | H | 顿帧-敌 | `hitstop.enemy` | 帧 | 同上，对被命中方 |
-| I、J | 无敌启动帧 / 无敌持续帧 | — | — | 不读（不模拟受击） |
+| I、J | 无敌启动帧 / 无敌持续帧 | `invincible: { start, duration } \| null` | 帧 | v0.1.11 起读：只用来算切人锁（"无敌期间不能切人"，13.1），仍不模拟受击。持续 −1 = 到动作结束（7 行：奥古斯塔大招、珂莱塔 E…）；两列都空为 null（583 行有值）。v0.1.10 之前不读 |
 | K | 优先级改变 | `priorityChange` | 帧列表 | 中断优先级变化的时间点；只有 Z 列有多个值时才存在，常缺（3.9） |
 | L | 派生帧 | `deriveFrame` | 帧 | 可用常规输入衔接下一技能的起点；会被顿帧延后（局部帧） |
 | M | 派生持续帧 | `deriveDuration` | 帧 | 衔接输入的最大时长；-1 见待定问题 Q6 |
@@ -307,7 +307,9 @@ function secToFrames(sec: number, fps = 60): number {
 | `priorityChangeFrames` | `第(\d+)(?:F?[、,，]\d+)*F改变(中断)?优先级` | "第16F改变中断优先级" | 295 |
 | `noDodgeBefore` | `第(\d+)F前不能闪避` | "第23F前不能闪避" | 192 |
 | `noInputBefore` | `第(\d+)F前不响应输入` | | 196 |
-| `noSwitchBefore` | `第(\d+)F前不能切人` | 散华 QTE："第70F前不能切人" | 244 |
+| `noSwitchBefore` | `第(\d+)F前不能切人`；v0.1.11：前面先有一项"霸体、"的也认 | 散华 QTE："第70F前不能切人"；心 强化重击："第114F前霸体、不能切人" | 284 |
+| `noSwitchWhileInvincible`（v0.1.11） | `无敌期间(…、)?不能切人`（没写帧数；中间可夹一项"霸体、""不响应输入、"） | 雷主大招、心转相："无敌期间不能切人" | 436 |
+| `noSwitchUnframed`（v0.1.11） | 逐句看：有"不能切人"、没有"第nF前"、不以"无敌期间"开头，且整条备注没有上面两种 | 菲比大招："不响应输入，不能切人"；奥古斯塔大招："大招状态期间不能切人"；绯雪重击："第120F不能切人" | 28 |
 | `noDamage` | `无伤害` | | 23 |
 | `delayedProjectile` | `延迟生成飞行道具` | 作者说明：不会因切换动作而消失 | 35 |
 | `existsFrames` | `判定存在(\d+)F` | 散华："冰棱判定存在342F" | 3 |
@@ -844,7 +846,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `outroTriggerFrame` | 组内任一行 `hints.outroTriggerFrame` | QTE 组缺失时 `noOutroFrame`；区间写法取起点时 `outroRange`（v0.1.4） |
 | `endOnSwitchOut`（v0.1.4） | 组内任一行 `hints.endOnSwitchAfter`（TD-05 §5） | |
 | `energyCost`（v0.1.4） | 注册层给角色模块别名 `R` 指向的动作设为角色的大招所需能量（> 0 时）；`actionOverrides` 写了的以它为准（写 0 取消，TD-06 §2.3） | |
-| `switchLockUntil` | 组内 `hints.noSwitchBefore` 的最大值；没有时 `tuneBreak` 类取 `endFrame`（谐度破坏的备注"无敌期间不能切人"，v0.1.6） | |
+| `switchLockUntil` | 依次取（TD-05 §2）：组内 `hints.noSwitchBefore` 的最大值；`tuneBreak` 类取 `endFrame`（谐度破坏的备注"无敌期间不能切人"，v0.1.6）；v0.1.11：其余组里有 `noSwitchWhileInvincible` 或 `noSwitchUnframed` 的行 → 这些行的无敌启动帧 + 无敌持续帧取最大（持续 −1 取 `endFrame`），都没有无敌帧、又全是 `noSwitchUnframed` 的取 `endFrame`；`liberation` 类再没有时取 `noInputBefore`（`switchLockFromInput`，TD-05 §2，v0.1.9） | 有 `noSwitchWhileInvincible` 却没有无敌帧时 `invincibleNoFrames`（心 转相，模块里写 `switchLockUntil`）；用了 `noSwitchUnframed` 时 `noSwitchUnframed`（推断，假设 `switch-no-lock`） |
 | （组级检查） | 有持续帧 -1 的判定在结束帧或之后才生成——动作停了它不可能存在，TD-04 不生成它；多为把"下落""落地"写进同一组的空中攻击，curated 拆组 | `minusOneAfterEnd`（22 组） |
 | （组级检查，v0.1.3） | 带 `C\d` 标记的非判定行（膨胀 / 资源 / 标记）暂不按链数筛（13.2 只筛判定），交给 TD-06 / TD-08 | `chainNonHit`（7 组 9 行） |
 
@@ -905,7 +907,7 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 | `endFrame` | 结束帧（不重算派生窗口；需要时一并覆盖 `cancelWindows`） | `multiEnd`、`noEnd` |
 | `priority` | 优先级与变化帧（散华 QTE：第 42 帧起由 11 降为 8） | `priorityChangeGuess`、`priorityChangeMissing`、`noPriority` |
 | `cancelWindows` | 派生窗口 | `deriveMinus1` |
-| `outroTriggerFrame`、`switchLockUntil` | 延奏触发帧、切人锁 | `noOutroFrame` |
+| `outroTriggerFrame`、`switchLockUntil` | 延奏触发帧、切人锁 | `noOutroFrame`；v0.1.11：`invincibleNoFrames`、`noSwitchUnframed` |
 | `comboFrom` | 连段前置（自动推断之外的，如 E1 → E2） | 手写的照用，不再打 `comboNoWindow` |
 | `cooldown` | 技能冷却（帧）：xlsx 只有声骸的；`check:data --flags` 拿 nanoka 核对（12.5） | —— |
 | `cooldownGroup` | 共用冷却的组名：几个动作写同一个（椿 E1 / E2 → `'E'`，一日花 E3 单独） | —— |
@@ -1131,3 +1133,4 @@ xlsx 没有角色技能的冷却，技能文本也不全，另取 nanoka.cc 的�
 - **v0.1.8（2026-10-18）**：并回视频轴核对时的决定（AGENTS.md 差异 5、7）。3.7 资源公式的末项改叫"起手即得"（原"进入（动作）即得"），写明由来与例子，13.1 `castGains`、Q7 同步；13.4 新增覆盖字段 `splitRows`（行拆成单独的动作：维里奈"A3-地面出场技"）与 `copyAs`（整组另存为新动作：椿的地面出场技 = A2，用户实测），`dropRows` 的维里奈例子随之修订；T01-14 补三条用例。
 - **v0.1.9（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。1.9 换成 20261019 版（资源版本 3.7.13），动作表的列按第 1 行表头名找（`ActionCols`）；3.1 新增"延迟"`delayFrames`（备注"脱手后延迟nF生效"一并抽）与"多判间隔/次"；3.2 心的两块（`BLOCK_RENAME`，照世心带前缀并入）；Q2 带前缀并入 `{ block, prefix }`；13.3 首位声骸按角色换版本 `qFor`；13.4 覆盖字段 `shiftRows`（落地段），判定覆盖加 `delayFrames`、`applies`；11.2 `effects.json` 已产出（`tools/build/effects.py`）。
 - **v0.1.10（2026-10-20）**：并回 AGENTS.md 差异 2。13.4 `shiftRows` 不只用于下落攻击的落地段：先按住再松手的动作（散华重击居合按住半秒，「蓄力」那一行就是按住的那一段）各行的帧从松手算，同样整体后移。
+- **v0.1.11（2026-10-21）**：并回 AGENTS.md 差异 6 与同日补的没写帧数的"不能切人"。3.1 读「无敌启动帧 / 无敌持续帧」（`invincible`，持续 −1 = 到动作结束；只用于切人锁）；3.8 `noSwitchBefore` 前面可先有"霸体、"，新增 `noSwitchWhileInvincible` 与 `noSwitchUnframed`；13.1 `switchLockUntil` 的取法（TD-05 §2）与 flag `invincibleNoFrames`、`noSwitchUnframed`；13.4 覆盖 `switchLockUntil` 视为已处理这两个 flag。

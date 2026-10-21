@@ -110,6 +110,14 @@ class T01_12_备注并列写法(unittest.TestCase):
         self.assertEqual(extract_hints('切人立即消失'), {'endOnSwitchAfter': 0})
         self.assertEqual(extract_hints('切人后中断动作并触发离场'), {'endOnSwitchAfter': 0})
         self.assertEqual(extract_hints('第30F前切人不离场'), {})
+        # 2026-10-21：其余没写帧数的"不能切人"（布兰特、菲比大招；奥古斯塔大招；绯雪重击…）
+        self.assertEqual(extract_hints('结束或取消大招动作后获得12秒大招状态\n不响应输入，不能切人'), {'noSwitchUnframed': True})
+        self.assertEqual(extract_hints('清空大招A计数\n第131F前不响应输入，大招状态期间不能切人、不会被命中'),
+                         {'noInputBefore': 131, 'noSwitchUnframed': True})
+        self.assertEqual(extract_hints('心念300点可用。第120F不能切人、不能闪避、不会被命中'), {'noSwitchUnframed': True})
+        self.assertEqual(extract_hints('不能切人，结束帧后跳转断舍离'), {'noSwitchUnframed': True})
+        self.assertEqual(extract_hints('第54F前不能切人，不能切人'), {'noSwitchBefore': 54})
+        self.assertEqual(extract_hints('免疫霜渐效应，无敌期间不能切人'), {'noSwitchWhileInvincible': True})
         self.assertEqual(extract_hints('立即触发上一角色延奏 不处于轮滑状态时…'), {'outroTriggerFrame': 0})
 
     def test_other_hints(self):
