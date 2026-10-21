@@ -37,7 +37,7 @@ export interface Insight {
 const RHYTHM: readonly WaitCode[] = ['derive', 'priority', 'combo', 'started']
 const WAIT_LABEL: Partial<Record<WaitCode, string>> = {
   cooldown: '等冷却', resource: '等资源（大招能量、核心资源）', hook: '等角色条件（形态、层数）', settled: '等前一招出手',
-  switchCd: '等切人冷却', switchLock: '切人锁', inputLock: '输入锁',
+  switchCd: '等切人冷却', switchLock: '切人锁', airborne: '等切出者跳起', inputLock: '输入锁',
 }
 export const DEFAULT_DELAYS = [0, 3, 6, 10, 15] as const
 

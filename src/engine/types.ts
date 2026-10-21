@@ -126,6 +126,7 @@ export type WaitCode =
   | 'switchCd' | 'switchLock'                                    // 切人
   | 'delay' | 'wait' | 'at'
   | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）
+  | 'airborne'                                                  // 切人后第一下是空中动作：等切出者跳起（TD-09 §3.5）
   | 'filler'                                                    // 补位 "~" 不需要了（只用于 skip 事件）
 
 /** 指令在事件里的出处 */

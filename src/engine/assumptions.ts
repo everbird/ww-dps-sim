@@ -101,6 +101,14 @@ export const ASSUMPTIONS = [
     adjust: { how: '改调度器的检查（src/engine/scheduler.ts 的 evaluateAct、switch 时的 SimState.entry）与装配的 airOf（src/data/assemble-action.ts）' },
   },
   {
+    id: 'air-entry', topic: '切人', tracked: false, impact: 'small', ref: 'TD-09 §3.5，docs/xin-confirm.md §6 C4',
+    what: '切进来的第一下是一开始就在空中的攻击（卜灵"空中攻击"）时，切出者要在空中（切进来的出现在它的位置）：切出者这个动作稍后会离地（雷主 E 第 26 帧）就等，'
+      + '不会的报错 airEntry。没处理的：切出者在空中、切进来第一下写地面 A（M0 视频轴"维R跳AAA → 椿AAAAA"，仿真在强化空中A3 第 0 帧就切）；'
+      + '不在切人那一刻的空中动作（C3 卜灵先放 Q 再空中攻击）；动作结束时在空中的不模拟下落',
+    why: '用户 2026-10-21：雷主 E 跳起时切卜灵，卜灵在空中打 A 攒蓝符、落地再 A 攒黄符；在空中切人，切进来的也在空中（用户确认）。离地帧取 xlsx「位置状态」',
+    adjust: { how: '改调度器 switch 的检查（src/engine/scheduler.ts）；没处理的几种要先问清游戏里怎么打' },
+  },
+  {
     id: 'forte-keep-on-switch', topic: '切人', tracked: false, impact: 'medium', ref: 'docs/xin-confirm.md §6 C4',
     what: '切人不清共鸣回路的状态：心转相后切走，照世相、心相心生保留；卜灵的卦象（艮、震）切走再切回来还在。心 · 雷主 · 卜灵按套路重排（+11.18%）靠这一条',
     why: '用户 2026-10-21 的印象（未实测）；模块本来就没在切出时清这些状态',

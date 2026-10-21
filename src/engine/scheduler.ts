@@ -9,7 +9,7 @@ import { airborne, cooldownKey, gate, log, settled, startAction, tick, type Kern
 import { roundTo } from './num'
 import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill'
+export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill' | 'airEntry'
 
 /** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
@@ -251,6 +251,17 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
         // 大招没写"不能切人"，按"不响应输入"挡（假设 ult-no-switch）：每段等待记一次
         if (q.seg?.code !== 'switchLock') assume(s, 'ult-no-switch', `${s.chars[s.onField].name}·${last.id}（第 ${lock} 帧）`)
         return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不响应输入（按不能切人算）` }
+      }
+      // 切进来的第一下是一开始就在空中的攻击（卜灵"空中攻击"；跳跃本身不算）：切出者要在空中，切进来的才在空中（TD-09 §3.5，
+      // 用户 2026-10-21：雷主 E 跳起时切卜灵，空中 A 攒蓝符）。切出者这个动作稍后会离地的就等，不会的报错
+      const list = listOf(q)
+      const nxt = list[q.next + 1] ?? (q.loop > 0 || q.commands.length ? q.commands[0] : undefined)
+      const first = nxt?.kind === 'act' && nxt.slot === c.to ? actions[c.to]![nxt.action]! : null
+      if (first?.air?.from === 0 && (first.kind === 'normal' || first.kind === 'heavy') && !airborne(s, s.onField)) {
+        const cur = s.chars[s.onField].action
+        const up = cur && !cur.ended ? cur.def.air : undefined
+        if (up && cur!.localFrame < up.from) return { go: false, code: 'airborne', reason: `等 ${cur!.id} 跳起（第 ${up.from} 帧），${s.chars[c.to].name} 切进来才在空中` }
+        throw fail(s, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
       }
       return afterInput(s, opts, 0)
     }

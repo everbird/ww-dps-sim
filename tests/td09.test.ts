@@ -488,3 +488,22 @@ describe('出场技要普通切人入场后第一个出', () => {
     expect(go3(['switch 乙 变奏', '乙 A1', 'switch 甲'], 100).error).toBeUndefined()
   })
 })
+
+// 空中入场（TD-09 §3.5，用户 2026-10-21：雷主 E 跳起时切卜灵，卜灵在空中打 A 攒蓝符）：切进来的第一下是一开始就在空中的攻击，
+// 切出者要在空中；切出者这个动作稍后会离地就等（等待原因 airborne），不会的报错 airEntry
+describe('空中入场：切进来第一下是空中攻击，要等切出者跳起', () => {
+  const 甲: SynthChar = { name: '甲', actions: [action({ id: 'E', kind: 'skill', endFrame: 126, air: { from: 26, until: 126 } }), action({ id: 'X', endFrame: 30 })] }
+  const 乙: SynthChar = { name: '乙', actions: [action({ id: '空中攻击', kind: 'normal', endFrame: 48, air: { from: 0, until: 48 } }), action({ id: '跳跃', kind: 'other', endFrame: 10, air: { from: 0, until: null } })] }
+  const go = (rotation: string[]) => synthRun([甲, 乙, idle('丙')], { initial: { onField: 0 }, rotation, options: { repeat: 1 } })
+  test('甲 E 第 26 帧跳起：切乙等到第 26 帧，记一段等待 airborne', () => {
+    const r = go(['甲 E', 'switch 乙', '乙 空中攻击', 'switch 甲'])
+    expect(r.error).toBeUndefined()
+    expect(eventsOfLog(r.log, 'switch')[0]!.f).toBe(26)
+    expect(eventsOfLog(r.log, 'wait').map(e => [e.code, e.reason])).toContainEqual(['airborne', '等 E 跳起（第 26 帧），乙 切进来才在空中'])
+  })
+  test('切出者不会离地：报错 airEntry；第一下是跳跃（地面起跳）不管', () => {
+    const r = go(['甲 X', 'switch 乙', '乙 空中攻击', 'switch 甲'])
+    expect([r.error?.code, r.error?.message]).toEqual(['airEntry', '第 2 条：乙 第一下是空中动作 空中攻击，可 甲 在地面，切进来也在地面'])
+    expect(go(['甲 X', 'switch 乙', '乙 跳跃', 'switch 甲']).error).toBeUndefined()
+  })
+})
