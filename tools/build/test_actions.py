@@ -77,6 +77,26 @@ class 新列(unittest.TestCase):
             out.append((blk[0]['groups'][0]['rows'][0]['delayFrames'], [k for (_, k) in iss.items]))
         self.assertEqual(out, [(7, []), (7, []), (6, ['延迟与备注不同'])])
 
+    def test_无敌两列与无敌期间不能切人(self):
+        # 雷主·男 大招-前置（20261019 版 角色-男 R1016）：备注"无敌期间不能切人"、无敌 1 / 224；心 转相的无敌持续帧是空格
+        out = []
+        for dur in (224, ' ', None):
+            iss = Issues()
+            r = row(H1019, 名称='雷主', ID=1, 动作='大招-前置', 备注='无敌期间不能切人\n结束帧前禁用E技能', 无敌启动帧=1, 无敌持续帧=dur)
+            hit = row(H1019, 动作='大招-伤害', 发生帧=190, 持续帧=60, **{'动作结束帧': 224, '命中类型': '目标'})
+            blk = parse_action_sheet('角色-男', '男', [H1019, r, hit], [H1019, [None] * len(H1019), [None] * len(H1019)], {}, iss)
+            x = blk[0]['groups'][0]['rows'][0]
+            out.append((x['invincible'], x['hints']))
+        self.assertEqual(out, [({'start': 1, 'duration': 224}, {'noSwitchWhileInvincible': True}),
+                               ({'start': 1, 'duration': None}, {'noSwitchWhileInvincible': True}),
+                               ({'start': 1, 'duration': None}, {'noSwitchWhileInvincible': True})])
+
+    def test_没有无敌两列(self):
+        head = [h for h in H1019 if h not in ('无敌启动帧', '无敌持续帧')]
+        r = row(head, 名称='椿', ID=1, 动作='A1', 发生帧=12, 持续帧=3, **{'命中类型': '目标'})
+        blk = parse_action_sheet('角色-女', '女', [head, r], [head, [None] * len(head)], {}, Issues())
+        self.assertIsNone(blk[0]['groups'][0]['rows'][0]['invincible'])
+
     def test_多判与备注(self):
         iss = Issues()
         self.assertEqual(multi_hit_hints('8F / 4次', {}, 'x', iss), {'tickInterval': 8, 'maxTicks': 4})

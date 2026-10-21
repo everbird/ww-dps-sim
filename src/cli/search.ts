@@ -1,4 +1,4 @@
-// src/cli/search.ts —— pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]
+// src/cli/search.ts —— pnpm run search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]
 // 轴搜索（TD-10 §6.1，总设计 §3.7、M7）：在循环轴上挪动 / 去掉 / 对调 / 插入动作，按比较口径排名。比原轴好的改法是要拿实战核对的假设
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
@@ -16,7 +16,7 @@ async function main(): Promise<number> {
   const unknown = pos.filter(a => a.startsWith('--') && a !== '--swap')
   if (!file || unknown.length > 0) {
     if (unknown.length) console.error(`不认识的参数：${unknown.join(' ')}`)
-    console.error('用法：pnpm search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]')
+    console.error('用法：pnpm run search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]')
     console.error('  缺省只挪动各角色的声骸技能（Q），在同一角色的行里换位置；另外可以试：--drop 去掉这些动作，--swap 对调同一角色相邻的两个动作，')
     console.error('  --insert 插入这些（轴里的写法，可带后缀，如 A1~）；--rounds 大于 1 时在最好的几条上接着改；')
     console.error('  --save 把最好的一条另存成场景（其余照原文，只换循环轴），可以接着 pnpm compare 原.yaml 新.yaml 看差在哪')
@@ -80,7 +80,7 @@ async function main(): Promise<number> {
     } else best.lines.forEach((l, i) => console.log(`  ${padStart(String(i + 1), 2)}  ${l}`))
   }
   if (opt.save) {
-    const head = `# 轴搜索（pnpm search）从 ${file} 改来：${best === x.base ? '没有比原轴更好的，原样' : best.steps.join('；再 ')}\n`
+    const head = `# 轴搜索（pnpm run search）从 ${file} 改来：${best === x.base ? '没有比原轴更好的，原样' : best.steps.join('；再 ')}\n`
     writeFileSync(opt.save, head + withRotation(readFileSync(file, 'utf8'), x.base.lines, best.lines))
     console.log(`\n另存 → ${opt.save}（pnpm compare ${file} ${opt.save} 看差在哪）`)
   }

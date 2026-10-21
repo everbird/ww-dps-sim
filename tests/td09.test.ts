@@ -190,6 +190,19 @@ describe('T09-6 切人（§3.5）', () => {
       expect([b['QTE']!.switchLockUntil, b['QTE']!.switchLockFromInput]).toEqual([60, undefined])
       expect(eventsOf(run([b, b, b], [{ act: 0, action: 'QTE' }, { switch: 1 }]), 'wait').map(e => e.reason)).toEqual(['QTE 第 60 帧前不能切人'])
     })
+    test('没写帧数的"无敌期间不能切人"：锁到无敌结束（无敌启动帧 + 无敌持续帧，2026-10-21，xin-confirm Y18）', () => {
+      const l = block('雷主·男')
+      // 雷主大招"无敌期间不能切人"，无敌 1 / 224 → 225；强化E 也是；不再按"不响应输入"推断
+      expect([l['大招']!.switchLockUntil, l['大招']!.switchLockFromInput]).toEqual([225, undefined])
+      expect(l['强化E']!.switchLockUntil).toBe(123)
+      expect(eventsOf(run([l, l, l], [{ act: 0, action: '大招' }, { switch: 1 }]), 'wait').map(e => e.reason)).toEqual(['大招 第 225 帧前不能切人'])
+      expect(block('照世心')['大招']!.switchLockUntil).toBe(303)
+      // 心 转相的无敌持续帧是空的：没有锁、记 flag，由角色模块写 switchLockUntil
+      const x = block('心')
+      expect([x['大招']!.switchLockUntil, x['大招']!.flags.includes('invincibleNoFrames')]).toEqual([undefined, true])
+      // "第114F前霸体、不能切人"：前面先有"霸体、"的也认
+      expect(x['强化重击']!.switchLockUntil).toBe(114)
+    })
   })
 })
 

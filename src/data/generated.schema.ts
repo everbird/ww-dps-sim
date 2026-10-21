@@ -38,6 +38,7 @@ export const HintsSchema = z.strictObject({
   noDodgeBefore: int().min(0).optional(),
   noInputBefore: int().min(0).optional(),
   noSwitchBefore: int().min(0).optional(),
+  noSwitchWhileInvincible: z.literal(true).optional(),   // 没写帧数的"无敌期间不能切人"：锁到无敌结束（无敌两列）
   noDamage: z.literal(true).optional(),
   delayedProjectile: z.literal(true).optional(),
   existsFrames: int().positive().optional(),
@@ -90,6 +91,8 @@ export const GenRowSchema = z.strictObject({
   deriveFrame: nullable(int().min(0)),
   deriveDuration: nullable(FrameCol),
   endFrame: nullable(int().min(0)),
+  // 「无敌启动帧」「无敌持续帧」（2026-10-21 起抽）；两列都空为 null，声骸表为 null。备注"无敌期间不能切人"的切人锁按它算（TD-05 §2）
+  invincible: nullable(z.strictObject({ start: nullable(int().min(0)), duration: nullable(FrameCol) })),   // duration −1 = 到动作结束
   priority: nullable(z.array(int().min(0).max(12)).min(1)),
   priorityChange: nullable(z.array(int().min(0)).min(1)),
   parry: nullable(z.boolean()),

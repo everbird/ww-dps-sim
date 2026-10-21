@@ -198,12 +198,16 @@ _HINTS = [
     (re.compile(r'(?<!后)切人(?:立即(?:结束技能|消失)|后中断动作)'), lambda m: {'endOnSwitchAfter': 0}),
     (re.compile(r'第\s*(\d+(?:\s*F?\s*[、,，]\s*\d+)*)\s*F\s*改变(?:中断)?优先级'),
      lambda m: {'priorityChangeFrames': [int(x) for x in re.findall(r'\d+', m.group(1))]}),
+    # 没写帧数的"无敌期间不能切人"：切人锁按「无敌启动帧 + 无敌持续帧」算（大招、变奏、强化E…；谐度破坏仍按整个动作，TD-06 §13.3）
+    # 也认"无敌期间霸体、不能切人""无敌期间不响应输入、不能切人"
+    (re.compile(r'无敌期间(?:[^，,。；;\n、]*、)?不能切人'), lambda m: {'noSwitchWhileInvincible': True}),
     (re.compile(r'无伤害'), lambda m: {'noDamage': True}),
     (re.compile(r'延迟生成飞行道具'), lambda m: {'delayedProjectile': True}),
     (re.compile(r'判定存在\s*(\d+)\s*F'), lambda m: {'existsFrames': int(m.group(1))}),
     (re.compile(r'(地面|空中)出场技复用'), lambda m: {'reuses': m.group(1) + '出场技'}),
 ]
-_LOCK = re.compile(r'第\s*(\d+)\s*F\s*前((?:不响应输入|不能)[^；;。，,|\n]*)')
+# 2026-10-21：前面可以先有一项"霸体、"（心 强化重击"第114F前霸体、不能切人"）
+_LOCK = re.compile(r'第\s*(\d+)\s*F\s*前((?:霸体、)?(?:不响应输入|不能)[^；;。，,|\n]*)')
 _LOCK_KEYS = {'不响应输入': 'noInputBefore', '不能闪避': 'noDodgeBefore', '不能切人': 'noSwitchBefore'}
 
 

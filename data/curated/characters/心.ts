@@ -308,7 +308,12 @@ export default defineCharacter('心', {
     A4: { comboFrom: ['A3', 'QTE', 'E'] },
     E: { cooldown: 720 },                                       // 共鸣技能·应世相冷却 12 秒（nanoka 3.7）
     // 第一个连上 dmg 的段（大招-异常）技能归类写的是 4（变奏），按组名是共鸣解放
-    大招: { kind: 'liberation', cooldown: 1500, judgments: { '大招-异常': { applies: { effect: '电磁效应', stacks: 5 } } } },   // 转相冷却 25 秒
+    // 切人锁：备注"无敌期间不能切人"，但 xlsx（20261019 版角色-女 R1385）的无敌持续帧是空的；同组的全局时停与隐藏HUD 都是 254 帧，
+    // 按无敌 1 + 254 推断（2026-10-21，xin-confirm Y18；照世·大招 1 + 302、雷主大招 1 + 224 都有数，装配自动算）
+    大招: {
+      kind: 'liberation', cooldown: 1500, switchLockUntil: 255,
+      judgments: { '大招-异常': { applies: { effect: '电磁效应', stacks: 5 } } },
+    },   // 转相冷却 25 秒
     // 步红尘 / 镇红尘：xlsx"第114F前霸体、不能切人，第114F解锁大招"，优先级第 1 帧升到 11、第 114 帧降到 2（两行各写了一半，装配只取到前一半）。
     // 了尘愿（倍率增幅）24 秒一次：有的时候重击就是镇红尘，所以冷却挂在镇红尘上
     强化重击: { priority: [{ fromFrame: 0, value: 5 }, { fromFrame: 1, value: 11 }, { fromFrame: 114, value: 2 }] },
