@@ -1,4 +1,5 @@
-<!-- 轴搜索：在循环轴上挪动 / 去掉 / 对调 / 插入动作，每种完整跑一遍、按稳态 DPS 排名（同 pnpm search，TD-10 §6.1）。
+<!-- 轴搜索：在循环轴上挪动 / 去掉 / 对调 / 插入动作，每种完整跑一遍、按稳态 DPS 排名（同 pnpm search，TD-10 §6.1）；
+     另一种是按套路排轴（同 pnpm plan，TD-10 §6.2 ④′，PlanView）。
      比原轴好的改法是要拿实战核对的假设；可以另存成场景（只换循环轴），再去"对比"看差在哪 -->
 <script lang="ts">
   import { withRotation } from '../../../../src/data/scenario-text'
@@ -8,8 +9,10 @@
   import { teamOf } from '../peek'
   import { fmt, pct2, signed } from '../fmt'
   import type { Requests } from '../protocol'
+  import PlanView from './PlanView.svelte'
 
   let { name = $bindable(), oncompare }: { name: string; oncompare: (base: string, other: string) => void } = $props()
+  let mode = $state<'local' | 'plan'>('local')
   const list = $derived(ofKind('scenario'))
   const team = $derived(teamOf(find('scenario', name)?.text ?? ''))
   const split = (s: string) => s.split(/[,，、\s]+/).map(x => x.trim()).filter(Boolean)
@@ -68,6 +71,14 @@
   const STOP = { rounds: '跑满轮数', noBetter: '这一轮没有更好的，停', maxRuns: '仿真次数到上限，停' }
 </script>
 
+<div class="modes" role="tablist">
+  <button type="button" role="tab" aria-selected={mode === 'local'} class:on={mode === 'local'} onclick={() => (mode = 'local')}>局部改动（挪动 / 去掉 / 对调 / 插入）</button>
+  <button type="button" role="tab" aria-selected={mode === 'plan'} class:on={mode === 'plan'} onclick={() => (mode = 'plan')}>按套路排轴</button>
+</div>
+
+{#if mode === 'plan'}
+  <PlanView bind:name {oncompare} />
+{:else}
 <section class="card pad">
   <div class="row">
     <label>场景 <select bind:value={name}>{#each list as d (d.name)}<option>{d.name}</option>{/each}</select></label>
@@ -128,8 +139,11 @@
     <p class="muted">另存的场景在"场景"页的列表里（存在本浏览器），只换了循环轴，改了的行注明"轴搜索改的"；要留下来就下载后放回仓库。</p>
   </section>
 {/if}
+{/if}
 
 <style>
+  .modes { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .modes button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
   .opts { margin-top: 8px; }
   .steps { white-space: normal; min-width: 260px; }
   .act { display: flex; gap: 6px; }
