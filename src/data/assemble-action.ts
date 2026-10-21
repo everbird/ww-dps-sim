@@ -219,8 +219,11 @@ export function assembleGroup(
   // 大招没写"第nF前不能切人"时，"第nF前不响应输入"也挡切人：大招出招阶段不能切人（2026-10-19 用户的实战体感，待实机验证，
   // 假设 ult-no-switch）。写了的照写的（仇远"不能切人"200 早于"不响应输入"230，凌阳 210 晚于 180）；变奏另有"不能切人"，不套
   // 2026-10-21：没写帧数的"无敌期间不能切人"（不是谐度破坏的），锁到无敌结束 = 无敌启动帧 + 无敌持续帧（取组内最大）；
-  // 无敌持续帧是空的（心 转相）记 invincibleNoFrames，由角色模块写 switchLockUntil
-  const invRows = kind === 'tuneBreak' ? [] : rows.filter(r => r.hints.noSwitchWhileInvincible)
+  // 无敌持续帧是空的（心 转相）记 invincibleNoFrames，由角色模块写 switchLockUntil。
+  // 其余没写帧数的"不能切人"（noSwitchUnframed：布兰特、菲比大招"不响应输入，不能切人"…）同样处理，没有无敌帧的到动作结束；
+  // 都是推断，记 noSwitchUnframed（假设 switch-no-lock）
+  const invRows = kind === 'tuneBreak' ? [] : rows.filter(r => r.hints.noSwitchWhileInvincible || r.hints.noSwitchUnframed)
+  if (invRows.some(r => r.hints.noSwitchUnframed)) flags.add('noSwitchUnframed')
   // 无敌持续帧 −1 = 到动作结束（奥古斯塔大招、珂莱塔 E…）
   const invEnds = invRows.flatMap(r => {
     const v = r.invincible
@@ -228,7 +231,10 @@ export function assembleGroup(
     if (v.duration === -1) return endFrame !== null ? [endFrame] : []
     return [v.start + v.duration]
   })
-  if (invRows.length > 0 && invEnds.length === 0) flags.add('invincibleNoFrames')
+  if (invRows.length > 0 && invEnds.length === 0) {
+    if (invRows.every(r => r.hints.noSwitchUnframed) && endFrame !== null) invEnds.push(endFrame)
+    else flags.add('invincibleNoFrames')
+  }
   const noSwitch = maxHint('noSwitchBefore') ?? (invEnds.length ? Math.max(...invEnds) : null)
   const lockFromInput = noSwitch === null && kind === 'liberation' && noInput !== null && invRows.length === 0
   const switchLock = noSwitch ?? (kind === 'tuneBreak' ? endFrame : lockFromInput ? noInput : null)
@@ -298,7 +304,7 @@ function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive:
 const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
   shiftRows: ['multiEnd'],                  // 落地段的结束帧本来就与下落段不同
-  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames'],
+  cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames', 'noSwitchUnframed'],
 }
 const J_HANDLED: Record<string, string[]> = {
   lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],

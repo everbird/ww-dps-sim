@@ -39,6 +39,7 @@ export const HintsSchema = z.strictObject({
   noInputBefore: int().min(0).optional(),
   noSwitchBefore: int().min(0).optional(),
   noSwitchWhileInvincible: z.literal(true).optional(),   // 没写帧数的"无敌期间不能切人"：锁到无敌结束（无敌两列）
+  noSwitchUnframed: z.literal(true).optional(),          // 其余没写帧数的"不能切人"（"不响应输入，不能切人"…）：同上，没有无敌帧时到动作结束
   noDamage: z.literal(true).optional(),
   delayedProjectile: z.literal(true).optional(),
   existsFrames: int().positive().optional(),
