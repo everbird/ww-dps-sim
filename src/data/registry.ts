@@ -226,11 +226,11 @@ function prefixActions(actions: Record<ActionId, ActionDef>, prefix: string): Re
 /** 一个声骸：装配动作、登记 echoes.ts 的效果；echoes.ts 处理过的声骸级 flag 去掉（check:data 也用它） */
 export function buildEcho(e: GenEcho, mod: EchoModule | undefined): EchoDef {
   const { actions, q } = assembleEchoActions(e, mod?.actionOverrides)
-  // echoes.ts 写了的就算处理过：COST、Q 的冷却（cooldownText）、按次数充能（charges）
+  // echoes.ts 写了的就算处理过：COST、Q 的冷却（cooldownText、cooldownNanoka）、按次数充能（charges）
   const ov = mod?.actionOverrides?.[q]
   const handled = new Set([
     ...(mod?.cost !== undefined ? ['costMissing'] : []),
-    ...(ov?.cooldown !== undefined ? ['cooldownText'] : []),
+    ...(ov?.cooldown !== undefined ? ['cooldownText', 'cooldownNanoka'] : []),
     ...(ov?.charges !== undefined ? ['charges'] : []),
   ])
   for (const [who, id] of Object.entries(mod?.qFor ?? {}))

@@ -215,10 +215,11 @@ export const GenEchoSchema = z.strictObject({
   cost: nullable(z.union([z.literal(1), z.literal(3), z.literal(4)])),   // 来自 `索引` 页，缺失时 curated 补
   description: nullable(z.string()),        // 技能说明原文（X 列）
   descCooldown: nullable(int().min(0)),     // 技能说明里"技能冷却：n秒"（帧）；与「冷却」列不同时打 cooldownText
+  nanokaCooldown: nullable(int().min(0)),   // 与「冷却」列不同时 nanoka 说明的"技能冷却"（帧），同时打 cooldownNanoka；相同或没有为 null
   textKind: nullable(z.enum(['召唤', '变身'])),   // 说明里先出现的"召唤"（脱手）/"幻形"（变身，不脱手）；与「类型」列不同时打 kindText
   ignoredRows: int().min(0),
   groups: z.array(GenEchoGroupSchema).min(1),
-  flags: z.array(z.string()),               // cooldownText、charges（"可使用次数"）、stagesGuess、costMissing、kindText
+  flags: z.array(z.string()),               // cooldownText、cooldownNanoka、charges（"可使用次数"）、stagesGuess、costMissing、kindText
 }).superRefine((e, ctx) => {
   // 组名在声骸内唯一（体型分组同名、体型不同）
   const seen = new Set<string>()

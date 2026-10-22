@@ -25,7 +25,7 @@ const group = (id: string, rows: GenRow[], o: Partial<GenEchoGroup> = {}): GenEc
   id, variant: 1, stage: null, body: null, kind: '变身', cooldown: null, next: null, rows, ...o,
 })
 const echo = (key: string, groups: GenEcho['groups'], o: Partial<GenEcho> = {}): GenEcho => ({
-  key, startRow: 1, cost: 4, description: null, descCooldown: null, textKind: null, ignoredRows: 0, groups, flags: [], ...o,
+  key, startRow: 1, cost: 4, description: null, descCooldown: null, nanokaCooldown: null, textKind: null, ignoredRows: 0, groups, flags: [], ...o,
 })
 const bf = (e: { t: number }) => Math.round(e.t * 60)       // 事件的战斗帧
 
