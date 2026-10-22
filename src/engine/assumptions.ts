@@ -189,6 +189,15 @@ export const ASSUMPTIONS = [
     adjust: { how: '改 data/curated/characters/散华.ts 的 HOLD（帧）；要按透视层数分长短，得先实测指针与区域（m0-confirm §13 P1、P2）' },
   },
   {
+    id: 'matrix-relay', topic: '口径', tracked: true, impact: 'unknown', ref: 'docs/matrix.md',
+    what: '矩阵计分（pnpm matrix）：每队对每只 boss 各跑一次仿真再按时间接力——轴不因换 boss 停顿，转场 1.5 秒里的命中作废；' +
+      '敌人身上的状态（偏谐、异常效应层数、白条）按"这只 boss 从开场就在"算，换 boss 时没清空；限时按战斗秒（大招时停也停）；' +
+      '每轮 5 只按敌人表的顺序出场，第 4 轮起血量按第 3 轮外推（每只 +5%，单利）',
+    why: '规则与缺省值取自 DPM-Team-Builder v4.9.2（S2-3、3.7 版），血量与敌人表"矩8"对得上；出场顺序、计时停不停、换 boss 时状态清不清没实测。' +
+      '只在 pnpm matrix 里用，单场仿真碰不到',
+    adjust: { how: '改 src/engine/matrix.ts 的 MATRIX_RULES；换 boss 清状态要把接力做进仿真内核（敌人序列）' },
+  },
+  {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',
     what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）',
     why: '第 1 轮受开局资源影响；最后一轮没有下一轮起手的边界，偏高',
