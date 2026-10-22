@@ -24,7 +24,7 @@
 | `wuwa-dps-td07-buff-system-v0.1.2.md` | buff 实例、作用对象（含 `ownerOnField`）、触发与事件队列（含治疗事件、`ownerHas`、异常效应的敌人状态）、消耗型 / 标记型、资源型效果（按武器阶）、原文起草 |
 | `wuwa-dps-td08-character-module-v0.1.7.md` | 角色模块怎么写：钩子（含只读的显示钩子 `forte`）、写法模式、M0 三人与心 · 雷主 · 卜灵的模块 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.11.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴、出场技要普通切人入场、空中入场 |
-| `wuwa-dps-td10-output-report-v0.1.17.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求与下限、操作容错、假设敏感度）、轴搜索（在现成的轴上挪动 / 去掉 / 对调 / 插入动作）、套路卡与按套路排轴（§6.2：`pnpm cards`、`pnpm plan` 第一版与套路次数可变；卡上的模型未做）、评价轴的多个维度（§6.3：比较的目标 `goal` 稳态 / 打死几倍血 / 前 N 秒已实现，难度、养成门槛、可信度与轴卡片是设计）、命令行输出、时间轴网页（含检查器的逐帧资源、共鸣回路状态与冷却） |
+| `wuwa-dps-td10-output-report-v0.1.17.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求与下限、操作容错、假设敏感度）、轴搜索（在现成的轴上挪动 / 去掉 / 对调 / 插入动作）、套路卡与按套路排轴（§6.2：`pnpm cards`、`pnpm plan` 第一版与套路次数可变；卡上的模型未做）、评价轴的多个维度（§6.3：比较的目标 `goal` 稳态 / 打死几倍血 / 前 N 秒、轴卡片 `pnpm scorecard`）、命令行输出、时间轴网页（含检查器的逐帧资源、共鸣回路状态与冷却） |
 | `wuwa-dps-td11-debug-calibration-v0.1.3.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、面板与逐下伤害 `--hits`、网页调试表、视频时间点）与改进；出处的归属规则（谁引发的算谁） |
 | `wuwa-dps-td12-web-v0.2.7.md` | 网页（Vite + Svelte 5，本机用）：结构、各页（含结论页、场景页的假设、轴搜索页（局部改动 / 按套路排轴）、对比页的时间轴对照）、Worker、时间轴的视图 A–E（步进、检查器与共鸣回路、资源与伤害的出处、"轴可能有问题"；E 是播放器式的原型，敌人在顶上一条）、手机与 iPad（触摸操作、全屏）、检查 |
 | `wuwa-dps-td13-echo-optimizer-v0.1.2.md` | 声骸库存择优：库存写法（一个账号一份）、快速重算、搜索与完整仿真确认 |
@@ -33,6 +33,7 @@
 | `m0-confirm.md` | 当前队伍（椿 · 散华 · 维里奈）的数据确认结果与待办 |
 | `m0-conclusions.md` | 当前队伍的结论：副词条先堆哪个、共鸣效率要多少、手慢几帧掉多少（注明按哪条轴、哪个数据版本算的） |
 | `xin-confirm.md` | 心 · 雷主 · 卜灵 队伍的确认清单：按数据原文的轴接不上的地方、按原文推断的机制、电磁效应的结算（第二步）怎么算的与要实测的 |
+| `xin-scorecard.md` | 心队 7 条轴的轴卡片（按稳态、按打死 2 倍血），末尾的表由 `pnpm scorecard` 生成，开头有手写的读法 |
 | `xin-conclusions.md` | 心 · 雷主 · 卜灵 的结论：副词条先堆哪个（心先把共鸣效率堆到约 130%）、共鸣效率要多少、手慢几帧掉多少、电磁效应两处读法的敏感度（注明按哪条轴、哪个数据版本算的） |
 | `team3-candidates.md` | 第三支队伍的候选：两个账号里装满声骸、还没写模块的角色，数据要处理多少（待处理的推断值、没连上倍率的判定） |
 | `assumption-sensitivity.md` | 假设敏感度矩阵（`pnpm sensitivity --md` 生成，末尾有手写的读法）：每个开关翻过来各场景变多少、哪些对照的结论会变 |
@@ -96,6 +97,7 @@ pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿
 pnpm import:scan data/scan/<账号>-echo.json [--out …] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML；一个账号一份，缺省写到 inventory/<账号>-bag.yaml
 pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的
 pnpm fuzz                                    # 模糊测试（docs/engine-quality-plan.md P1）：各场景挪动 / 去掉 / 对调任一动作生成变体轴（--n 60 每个场景跑几条），查日志自洽（checkLog）、可重复、属性加了伤害不降；有问题退出码 1。改了引擎跑一次
+pnpm scorecard a.yaml b.yaml …               # 轴卡片（TD-10 §6.3）：几条轴按四个维度各一张表——① 目标与打死 1/2/3 倍血的战斗秒 ② 手速档、操作密度 ③ 共鸣效率需求、链数 / 武器降档 ④ 碰到的假设、最脆弱的开关；★ 帕累托前沿；--goal、--md
 pnpm sensitivity                             # 假设敏感度矩阵（P2）：全部场景 × 假设表里每个开关各跑一遍，对照场景比基准的收益在哪条假设下会变；--md docs/assumption-sensitivity.md 写成文档
 pnpm conformance                             # 一致性样例（总设计 §10.1）：每个场景的装配结果（去掉钩子表）与事件日志、汇总写到 out/conformance/，换实现时对拍
 pnpm web                                     # 网页（TD-12）：http://localhost:5317/，场景编辑与运行（可切换时间轴视图）、对比（含时间轴对照）、边际、择优、轴搜索；pnpm web:build 打包到 out/web（含数据，不发布）

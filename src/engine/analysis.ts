@@ -19,8 +19,7 @@ export function runScenario(sc: Scenario, data: GameData): Run {
   return { r, res: simulate(r) }
 }
 
-/** 比较口径：[lo, hi) 是战斗帧 */
-/** spread：窗口挪一轮 DPS 变多少（Summary.steady.spread；整个窗口时 0） */
+/** 比较口径：[lo, hi) 是战斗帧；spread：窗口挪一轮 DPS 变多少（Summary.steady.spread；整个窗口、按目标时 0） */
 export interface Basis { label: string; lo: number; hi: number; damage: number; dps: number; spread: number }
 
 export function basisOf(res: SimResult): Basis {
