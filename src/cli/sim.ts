@@ -9,7 +9,7 @@ import { ResolveError, resolveScenario } from '../engine/resolve'
 import { HAND_PROFILES, sampleRuns, type HandProfile } from '../engine/sample'
 import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
-import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
+import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec, withOverrides, OVERRIDE_FLAGS } from './format'
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
 function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: number }): string {
@@ -19,7 +19,7 @@ function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: nu
 }
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter', '--hand'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter', '--hand', ...OVERRIDE_FLAGS])
   const out = opt.out
   const file = pos[0]
   const runs = opt.sample !== undefined ? Number(opt.sample) : 0
@@ -27,7 +27,7 @@ async function main(): Promise<number> {
     console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F] [--hand 高手|熟练|普通]]')
     return 2
   }
-  const sc = loadScenario(file)
+  const sc = withOverrides(loadScenario(file), opt)
   const data = await loadGameData()
   let r: ResolvedScenario
   try {
@@ -61,6 +61,11 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   console.log(`      偏谐值上限 ${fmt(e.tunabilityMax)} · 白条 ${e.whiteBarTough > 0 ? `${fmt(e.whiteBarTough)}（削韧值）、瘫痪 ${(e.paralysisFrames / 60).toFixed(2)} 秒` : '无'}` +
     ` · 谐度破坏 ${r.options.tuneBreak === 'auto' ? '自动' : r.options.tuneBreak === 'manual' ? '只按轴里写的' : '关闭'}`)
   console.log(`\n窗口 ${sec(s.windowFrames)}  总伤害 ${fmt(s.totalDamage)}  DPS ${fmt(s.dps)}${s.overflowDamage > 0 ? `  窗口外 ${fmt(s.overflowDamage)}` : ''}`)
+  // 打死敌人（TD-10 §7）：战斗秒（通关计时是战斗时钟，大招时停也停）；目标不是稳态时另列一行
+  const k = s.kill
+  console.log(`打死敌人（生命 ${fmt(k.hp)}）  ${k.frame !== null ? `第 ${(k.frame / 60).toFixed(1)} 战斗秒` : k.estimate !== null ? `没打死，估第 ${(k.estimate / 60).toFixed(1)} 战斗秒（--repeat 多跑几轮）` : '没打死'}`)
+  if (s.goal) console.log(`目标  ${s.goal.label}：${s.goal.kind === 'kill' ? `${(s.goal.hi / 60).toFixed(1)} 战斗秒${s.goal.reached ? '' : '（估的）'}，折合每秒 ${fmt(s.goal.dps)}` : `${fmt(s.goal.damage)}，每秒 ${fmt(s.goal.dps)}${s.goal.reached ? '' : '（没跑满）'}`}` +
+    '（对比、轴搜索、排轴按这个排）')
   const en = s.enemy
   if (en.disharmony + en.breaks > 0)
     console.log(`敌人量表  失谐 ${en.disharmony} 次 · 谐度破坏 ${en.tuneBreaks} 次（${fmt(en.tuneBreakDamage)}，${pct(s.totalDamage > 0 ? en.tuneBreakDamage / s.totalDamage : 0)}）· 破盾 ${en.breaks} 次`)

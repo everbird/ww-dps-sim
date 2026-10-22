@@ -34,7 +34,11 @@ export interface ResolvedScenario {
     inputDelayAt?: Readonly<Record<string, Frame>>
   }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
+  goal: Goal
 }
+
+/** 比较的目标（TD-10 §7，场景的 goal）：稳态；打死 hp 血（scale = 敌人生命的几倍，直接写血量时 null）；前 frames 个战斗帧 */
+export type Goal = { kind: 'steady' } | { kind: 'kill'; hp: number; scale: number | null } | { kind: 'window'; frames: number }
 
 export interface ResolvedMember {
   slot: Slot
@@ -334,6 +338,11 @@ export interface Summary {
    *  spread：窗口挪一轮 DPS 变多少（比例，误差条，docs/engine-quality-plan.md P3）：去掉稳态的第一轮或最后一轮各算一次，取离得远的；
    *  稳态只有一两轮时取各轮 DPS 离稳态最远的。比较两条轴时，差得比这个小的不算"更好" */
   steady?: { from: number; to: number; frames: number; damage: number; dps: number; spread: number }
+  /** 打死敌人（1 倍生命，TD-10 §7）：frame = 累计伤害到这么多的那一下的战斗帧；日志里没打到时 null，estimate 按稳态（没有稳态按整个窗口）的 DPS 往后估 */
+  kill: { hp: number; frame: number | null; estimate: number | null }
+  /** 场景的目标不是稳态时（TD-10 §7）：比较口径 [lo, hi)（战斗帧）、这段的伤害与每秒伤害。kill 的 dps = 血量 ÷ 击杀秒（越大越快），
+   *  没打到时按估的击杀帧（reached = false）；window 的窗口比日志长时 reached = false */
+  goal?: { kind: 'kill' | 'window'; label: string; lo: number; hi: number; damage: number; dps: number; reached: boolean }
   /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
   enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
   /** 这次碰到的假设（总设计 T16）：按假设表的顺序；每次都适用的（tracked: false）不列，见 ASSUMPTIONS。firstFrame 是战斗帧 */

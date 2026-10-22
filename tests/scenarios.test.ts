@@ -30,6 +30,7 @@ function view(s: Summary) {
     ...(s.perLoop ? {
       perLoop: s.perLoop.map(p => `第 ${p.loop} 轮：第 ${p.start} 帧起 ${p.frames} 帧，DPS ${r2(p.dps)}，能量 ${p.energyDelta.join(' / ')}，协奏 ${p.concertoDelta.join(' / ')}`),
     } : {}),
+    kill: s.kill.frame !== null ? `第 ${(s.kill.frame / 60).toFixed(2)} 战斗秒打死（${s.kill.hp}）` : `没打死，估第 ${s.kill.estimate !== null ? (s.kill.estimate / 60).toFixed(2) : '—'} 战斗秒（${s.kill.hp}）`,   // TD-10 §7
     byChar: Object.fromEntries(Object.entries(s.byChar).map(([k, v]) => [k, `${r2(v.damage)}（${pct(v.share)}）`])),
     byAction: s.byAction.map(a => `${a.char} ${a.action}：${r2(a.damage)}（${pct(a.share)}，${a.hits} 段）`),
     warnings: s.warnings.map(w => w.message),

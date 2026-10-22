@@ -3,12 +3,12 @@ import { loadGameData } from '../data/load'
 import { IMPACT_NAME, assumptionOf } from '../engine/assumptions'
 import { DEFAULT_DELAYS, DEFAULT_TIGHT, insight } from '../engine/insight'
 import { ResolveError, resolveScenario } from '../engine/resolve'
-import { argsOf, fmt, loadScenario, padEnd, padStart, pct } from './format'
+import { argsOf, fmt, loadScenario, padEnd, padStart, pct, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--delays', '--tight'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--delays', '--tight', ...OVERRIDE_FLAGS])
   const file = pos[0]
   if (!file) {
     console.error('用法：pnpm insight <场景.yaml> [--delays 0,3,6,10,15] [--tight 6]')
@@ -16,7 +16,7 @@ async function main(): Promise<number> {
   }
   const data = await loadGameData()
   let r
-  try { r = resolveScenario(loadScenario(file), data) } catch (e) {
+  try { r = resolveScenario(withOverrides(loadScenario(file), opt), data) } catch (e) {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }

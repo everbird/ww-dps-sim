@@ -8,7 +8,7 @@ import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
-import type { Core5, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
+import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
 import { round } from './num'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
@@ -117,6 +117,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
       ...(sc.options.endAt !== undefined ? { endAt: sc.options.endAt } : {}),
     },
     warnings,
+    goal: goalOf(sc.goal, enemy),
   }
 }
 
@@ -256,6 +257,14 @@ function statAdder(char: string, slot: Slot, panel: StaticPanel, buffs: Register
 
 // ---------------------------------------------------------------------------
 // 敌人、规则
+
+/** 场景的 goal → Goal（TD-10 §7）：kill 按敌人生命的倍数，window 换成战斗帧 */
+export function goalOf(g: Scenario['goal'], enemy: EnemyPreset): Goal {
+  if (g === 'steady') return { kind: 'steady' }
+  if ('kill' in g) return { kind: 'kill', hp: enemy.hp * g.kill, scale: g.kill }
+  if ('killHp' in g) return { kind: 'kill', hp: g.killHp, scale: null }
+  return { kind: 'window', frames: Math.round(g.window * 60) }
+}
 
 function resolveEnemy(e: Scenario['enemy'], data: GameData, issues: string[]): EnemyPreset {
   if ('preset' in e) {

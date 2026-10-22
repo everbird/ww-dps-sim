@@ -6,7 +6,7 @@ import { withOpening, withRotation } from '../data/scenario-text'
 import { planOpening, planRotation } from '../engine/plan'
 import { HAND_PROFILES, type HandProfile } from '../engine/sample'
 import { ResolveError } from '../engine/resolve'
-import { argsOf, fmt, loadScenario, padStart } from './format'
+import { argsOf, fmt, loadScenario, padStart, withOverrides, OVERRIDE_FLAGS } from './format'
 
 /** 套路的代号：A–Z，再 a–z，再 27、28…（自动生成的套路会超过 26 个） */
 const tag = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : i < 52 ? String.fromCharCode(97 + i - 26) : String(i + 1))
@@ -16,7 +16,7 @@ const FAILURE: Record<string, string> = {
 }
 
 async function main(): Promise<number> {
-  const { pos: pos0, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--vary', '--extra', '--hand', '--save'])
+  const { pos: pos0, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--vary', '--extra', '--hand', '--save', ...OVERRIDE_FLAGS])
   const opening = pos0.includes('--opening')
   const gen = pos0.includes('--gen')
   const pos = pos0.filter(a => a !== '--opening' && a !== '--gen')
@@ -36,7 +36,7 @@ async function main(): Promise<number> {
     return 2
   }
   const data = await loadGameData()
-  const sc0 = loadScenario(file)
+  const sc0 = withOverrides(loadScenario(file), opt)
   if (opt.hand !== undefined && !(opt.hand in HAND_PROFILES)) { console.error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`); return 2 }
   const handDelay = opt.hand ? Math.round(HAND_PROFILES[opt.hand as HandProfile].mean) : 0
   // --hand：所有候选与原轴都在 options.inputDelay 之上再晚这么多帧（期望模式，用平均值近似抽样）

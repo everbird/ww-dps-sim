@@ -72,6 +72,14 @@ export const ScenarioSchema = z.strictObject({
       z.strictObject({ line: z.string().min(1), max: z.number().int().min(1).default(1) }),
     ])).default([]),
   }).optional(),
+  // 比较的目标（TD-10 §7）：steady = 稳态 DPS（缺省）；kill = 打死几倍于敌人生命的血量要多少战斗秒（启动轴算在内）；
+  // killHp = 直接写血量；window = 前多少战斗秒的总伤害。对比、轴搜索、排轴、敏感度都按它排；通关计时是战斗时钟（大招时停也停，用户 2026-10-22）
+  goal: z.union([
+    z.literal('steady'),
+    z.strictObject({ kill: z.number().positive() }),
+    z.strictObject({ killHp: z.number().positive() }),
+    z.strictObject({ window: z.number().positive() }),
+  ]).default('steady'),
   options: z.strictObject({
     repeat: z.number().int().min(1).default(1),
     maxFrames: z.number().int().min(1).default(3600),

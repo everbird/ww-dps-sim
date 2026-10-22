@@ -9,6 +9,27 @@ import type { Summary } from '../engine/types'
 
 export const loadScenario = (file: string): Scenario => parseOrThrow(ScenarioSchema, parse(readFileSync(file, 'utf8')), file)
 
+/** 命令行临时覆盖场景（TD-10 §7）：--goal steady | kill:倍数 | killHp:血量 | window:秒；--repeat 轮数（打死几倍血要多跑几轮时用） */
+export const OVERRIDE_FLAGS = ['--goal', '--repeat']
+export const OVERRIDE_USAGE = '[--goal steady|kill:2|killHp:2600000|window:60] [--repeat N]'
+export function withOverrides(sc: Scenario, opt: Record<string, string>): Scenario {
+  let out = sc
+  if (opt.goal !== undefined) {
+    const m = /^(steady|kill|killHp|window)(?::(\d+(?:\.\d+)?))?$/.exec(opt.goal)
+    if (!m || (m[1] !== 'steady') !== (m[2] !== undefined)) throw new Error(`--goal 写成 steady、kill:2、killHp:2600000 或 window:60（不是"${opt.goal}"）`)
+    const v = Number(m[2])
+    const goal: Scenario['goal'] = m[1] === 'steady' ? 'steady' : m[1] === 'kill' ? { kill: v } : m[1] === 'killHp' ? { killHp: v } : { window: v }
+    out = { ...out, goal }
+  }
+  if (opt.repeat !== undefined) {
+    const n = Number(opt.repeat)
+    if (!Number.isInteger(n) || n < 1) throw new Error(`--repeat 要正整数（不是"${opt.repeat}"）`)
+    // 帧数上限跟着放大，免得多跑的轮被截掉
+    out = { ...out, options: { ...out.options, repeat: n, maxFrames: Math.max(out.options.maxFrames, Math.ceil(out.options.maxFrames * n / out.options.repeat)) } }
+  }
+  return out
+}
+
 export const fmt = (x: number) => Math.round(x).toLocaleString('en-US')
 export const signed = (x: number, f: (v: number) => string = fmt) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${f(Math.abs(x))}`
 export const pct = (x: number) => `${(x * 100).toFixed(1)}%`

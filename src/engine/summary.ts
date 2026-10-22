@@ -59,9 +59,14 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   const actions = [...byAction.values()].sort((a, b) => b.damage - a.damage)
   for (const a of actions) a.share = share(a.damage)
   const lp = loops(log, r, hits, windowFrames)
+  // 打死敌人与比较的目标（TD-10 §7）：所有命中都算（窗口外的也是真伤害）；没打到时按稳态（没有稳态按整个窗口）的 DPS 往后估
+  const rate = lp.steady?.dps ?? (windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0)
+  const kill = killOf(hits, r.enemy.hp, rate, s.battleFrames)
+  const goal = goalSummary(r, hits, rate, s.battleFrames)
   return {
     totalDamage, windowFrames, dps: windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0, overflowDamage,
     ...lp,
+    kill, ...(goal ? { goal: goal.goal } : {}),
     byChar, byAction: actions, enemy: enemyStats(log, windowFrames),
     resourceTimeline: resourceTimeline(log, r, s), buffUptime: buffUptime(log, 0, windowFrames),
     waits: log.flatMap(e => (e.type === 'wait' && !INTENDED.includes(e.code)
@@ -72,6 +77,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
       ...steadyPhase(log, lp),
       ...steadyDrift(lp),
+      ...(goal?.warning ? [goal.warning] : []),
     ],
     // 这次碰到的假设，按假设表的顺序（总设计 T16、§10.1：输出顺序不依赖对象键）
     assumptions: ASSUMPTIONS.flatMap(a => {
@@ -82,6 +88,47 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
 }
 
 const dpsOf = (damage: number, frames: number): number => (frames > 0 ? damage / (frames / 60) : 0)
+
+/** 累计伤害到 hp 的那一下的战斗帧；日志里没到时 frame = null，estimate = 日志结束（end，战斗帧）后按 rate 每秒补齐剩下的血 */
+function killOf(hits: readonly HitEvent[], hp: number, rate: number, end: number): Summary['kill'] {
+  let acc = 0
+  for (const h of hits) {
+    acc += hitValue(h)
+    if (acc >= hp) return { hp, frame: battleFrameOf(h), estimate: null }
+  }
+  return { hp, frame: null, estimate: rate > 0 ? round(end + (hp - acc) / rate * 60) : null }
+}
+
+const wan = (x: number) => (x >= 1e4 ? `${roundTo(x / 1e4, 10)} 万` : String(Math.round(x)))
+
+/** 场景的目标（ResolvedScenario.goal）→ Summary.goal 与没打到时的提示；稳态时 null */
+function goalSummary(r: ResolvedScenario, hits: readonly HitEvent[], rate: number, end: number):
+  { goal: NonNullable<Summary['goal']>; warning: Summary['warnings'][number] | null } | null {
+  const g = r.goal
+  if (g.kind === 'steady') return null
+  if (g.kind === 'kill') {
+    const k = killOf(hits, g.hp, rate, end)
+    const hi = k.frame ?? k.estimate ?? Infinity
+    const label = `打死 ${wan(g.hp)}血${g.scale !== null ? `（敌人生命 ×${g.scale}）` : ''}`
+    return {
+      goal: { kind: 'kill', label, lo: 0, hi, damage: g.hp, dps: dpsOf(g.hp, hi), reached: k.frame !== null },
+      warning: k.frame !== null ? null : {
+        code: 'goalNotReached',
+        message: `${label}：跑完 ${(end / 60).toFixed(1)} 战斗秒还没打死，按每秒 ${Math.round(rate)} 估在第 ${(hi / 60).toFixed(1)} 秒；多跑几轮（options.repeat）`,
+      },
+    }
+  }
+  let damage = 0
+  for (const h of hits) if (battleFrameOf(h) < g.frames) damage += hitValue(h)
+  const label = `前 ${roundTo(g.frames / 60, 10)} 秒`
+  const reached = end >= g.frames
+  return {
+    goal: { kind: 'window', label, lo: 0, hi: g.frames, damage, dps: dpsOf(damage, g.frames), reached },
+    warning: reached ? null : {
+      code: 'goalNotReached', message: `${label}：只跑了 ${(end / 60).toFixed(1)} 战斗秒，后面没伤害；多跑几轮（options.repeat）`,
+    },
+  }
+}
 
 /** 稳态可能受相位影响（TD-10 §2，2026-10-22 心队发现）：谐度破坏不跟着轮走，各轮赶上的次数不一样
  *  （心队四轮一循环"1、1、1、2"次谐度破坏），稳态只有两三轮时会忽高忽低（心队 4 轮时稳态 47,775，10 轮 48,470；

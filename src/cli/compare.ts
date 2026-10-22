@@ -5,22 +5,23 @@ import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
 import { compareRuns, runScenario, type Diff, type PanelView } from '../engine/analysis'
 import { ResolveError } from '../engine/resolve'
-import { argsOf, fmt, loadScenario, padEnd, padStart, pct, pct2, signed, width } from './format'
+import { argsOf, fmt, loadScenario, padEnd, padStart, pct, pct2, signed, width, withOverrides, OVERRIDE_FLAGS, OVERRIDE_USAGE } from './format'
 
 const TOP = 12
 
 async function main(): Promise<number> {
-  const { pos } = argsOf(process.argv.slice(2), [])
+  const { pos, opt } = argsOf(process.argv.slice(2), OVERRIDE_FLAGS)
   if (pos.length !== 2) {
-    console.error('用法：pnpm compare <基准场景.yaml> <对比场景.yaml>')
+    console.error(`用法：pnpm compare <基准场景.yaml> <对比场景.yaml> ${OVERRIDE_USAGE}`)
+    console.error('  --goal：两边都按这个目标比（缺省各按场景里写的；打死 boss 按血量 ÷ 击杀秒，TD-10 §7）')
     return 2
   }
   const [fa, fb] = pos as [string, string]
   const data = await loadGameData()
   let a, b
   try {
-    a = runScenario(loadScenario(fa), data)
-    b = runScenario(loadScenario(fb), data)
+    a = runScenario(withOverrides(loadScenario(fa), opt), data)
+    b = runScenario(withOverrides(loadScenario(fb), opt), data)
   } catch (e) {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
