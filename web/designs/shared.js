@@ -359,10 +359,26 @@ tr.ww-alert>td{background:color-mix(in srgb,var(--alert) 10%,transparent)}.ww-al
     document.addEventListener('scroll', hide, { capture: true, passive: true })
     return { hide }
   }
+  /** 视频对照（视图 E）：锚点 [{ t: 视频秒, f: 世界帧 }] → 两个方向的换算。视频按真实时间录，对应世界帧，60 帧一秒。
+   *  stretch：相邻两个锚点之间按直线插值（锚点上严格对齐），两头按 60 帧一秒外推；offset：只用最早的锚点，处处 60 帧一秒（看仿真比视频快慢）。
+   *  锚点按 t 排好后 f 也要递增（打点时检查），反函数才唯一 */
+  function videoMap(anchors, mode) {
+    const A = [...anchors].sort((a, b) => a.t - b.t)
+    const lin = (x, x0, x1, y0, y1) => (x1 > x0 ? y0 + (x - x0) * (y1 - y0) / (x1 - x0) : y0)
+    const conv = (x, kx, ky, per) => {   // kx → ky；per = ky 每单位 kx（60 或 1/60）
+      if (!A.length) return x * per
+      const a0 = A[0], last = A[A.length - 1]
+      if (mode === 'offset' || A.length === 1 || x <= a0[kx]) return a0[ky] + (x - a0[kx]) * per
+      if (x >= last[kx]) return last[ky] + (x - last[kx]) * per
+      for (let i = 0; i + 1 < A.length; i++) if (x <= A[i + 1][kx]) return lin(x, A[i][kx], A[i + 1][kx], A[i][ky], A[i + 1][ky])
+      return last[ky]
+    }
+    return { t2f: t => conv(t, 't', 'f', 60), f2t: f => conv(f, 'f', 't', 1 / 60) }
+  }
   /** 触摸屏（没有悬停）：说明文字改写"点"而不是"悬停" */
   const touchOnly = () => matchMedia('(hover: none)').matches
   /** 文字宽度（粗估）：中文 1em，其余 0.58em */
   const textWidth = (s, px) => [...s].reduce((w, ch) => w + (/[⺀-￿]/.test(ch) ? px : px * 0.58), 0)
   const attr = s => esc(s).replace(/\n/g, '<br>')
-  return { valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, teamColors, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
+  return { videoMap, valueAt, metersAt, cooldownsAt, forteAt, causeText, dmgLine, dmgItemNote, dmgItemText, dmgTip, DMG_NOTE, hitBy, alertBody, alertOf, mountAlerts, RES_NAME, signedNum, byTeam, gainName, gainTotals, whoGot, gainLine, gainTip, buffEffect, buffParts, signedVal, zoneName, ELEMENT_VAR, teamColors, KIND_NAME, INTENDED, RHYTHM, ENEMY_CHANGE, fmt, pct, sec, esc, attr, loopName, load, cmdText, cmdWhere, paint, defaultLoop, tips, touchOnly, textWidth }
 })()

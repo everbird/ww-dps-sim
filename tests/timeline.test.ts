@@ -59,7 +59,7 @@ describe('时间轴网页', () => {
     // 第 3 条比第 1 条晚 30 帧（wait 从 X 开始时算），视频里晚 1 秒：仿真快 0.5 秒
     expect(m.video).toEqual({
       loop: 1, missing: [7],
-      marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60 }],
+      marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0, at: 10 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60, at: 11 }],
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
   })
@@ -104,6 +104,18 @@ describe('时间轴网页', () => {
     expect(colors('导电', '导电', '导电')).toEqual(['var(--el-electro)', 'color-mix(in oklab, var(--el-electro) 65%, var(--ink))', 'color-mix(in oklab, var(--el-electro) 75%, var(--panel))'])
     expect(colors('湮灭', '衍射', '湮灭')).toEqual(['var(--el-havoc)', 'var(--el-spectro)', 'color-mix(in oklab, var(--el-havoc) 65%, var(--ink))'])
     expect(colors('冷凝', '湮灭', '衍射')).toEqual(['var(--el-glacio)', 'var(--el-havoc)', 'var(--el-spectro)'])
+  })
+  test('视频对照（视图 E，web/designs/shared.js 的 videoMap）：锚点之间按直线拉伸、两头 60 帧一秒外推；offset 只用最早的点；两个方向互逆', () => {
+    type Map2 = { t2f: (t: number) => number; f2t: (f: number) => number }
+    const win: { WW?: { videoMap: (a: { t: number; f: number }[], mode: string) => Map2 } } = {}
+    new Function('window', readFileSync(new URL('../web/designs/shared.js', import.meta.url), 'utf8'))(win)
+    // 视频 10 秒 = 第 0 帧，12 秒 = 第 150 帧（仿真这一段比视频长 30 帧）
+    const anchors = [{ t: 12, f: 150 }, { t: 10, f: 0 }]
+    const s = win.WW!.videoMap(anchors, 'stretch'), o = win.WW!.videoMap(anchors, 'offset')
+    expect([9, 10, 11, 12, 13].map(s.t2f)).toEqual([-60, 0, 75, 150, 210])
+    expect([10, 11, 12].map(o.t2f)).toEqual([0, 60, 120])
+    for (const t of [8.5, 10.4, 11.9, 14]) { expect(s.f2t(s.t2f(t))).toBeCloseTo(t, 9); expect(o.f2t(o.t2f(t))).toBeCloseTo(t, 9) }
+    expect(win.WW!.videoMap([], 'stretch').t2f(2)).toBe(120)                 // 没有锚点：视频 0 秒就是第 0 帧
   })
   test('视图 A–D（pnpm timeline --view）：模板都在、共用脚本内联、数据带上 buff 的给予者与定义', () => {
     const m = timelineModel('scenarios/demo.yaml', sc, r, res)

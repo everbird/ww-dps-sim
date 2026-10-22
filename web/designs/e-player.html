@@ -50,6 +50,26 @@
   .tag.stop { color: var(--ink); border-color: var(--faint); }
   /* 帧画面：最上面一条敌人（boss 条），下面每人一张卡片 */
   .frame { overflow: auto; padding: 12px 16px; display: grid; gap: 12px; align-content: start; }
+  /* 视频对照（2026-10-22，原型）：右边一栏放视频；锚点 = "视频里的这一刻就是仿真的这一帧"，两点之间按直线插值，
+     视频播放时光标跟着走，拖时间轴时视频跟着跳 */
+  .mid { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; }
+  .mid > .frame { min-height: 0; }
+  .vid { width: min(440px, 42vw); border-left: 1px solid var(--rule); background: var(--panel); overflow: auto; padding: 10px 12px; display: grid; gap: 8px; align-content: start; font-size: 12.5px; }
+  .vid video { width: 100%; max-width: 100%; background: #000; border-radius: 6px; aspect-ratio: 16 / 9; }
+  .vid .vrow { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .vid button, .vid select, .vid .vbtn { font: inherit; font-size: 12px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+  .vid button:hover, .vid .vbtn:hover { border-color: var(--muted); }
+  .vid .vnow { font: 12.5px var(--mono); color: var(--muted); }
+  .vid .vnow b { color: var(--ink); font-weight: 500; }
+  .vid .vnote { color: var(--muted); }
+  .vid ol { margin: 0; padding-left: 20px; display: grid; gap: 3px; }
+  .vid li { font: 12px var(--mono); }
+  .vid li .d { color: var(--muted); }
+  .vid li .slow { color: var(--wait); }
+  .vid li .fast { color: var(--el-aero); }
+  .vid li button { padding: 0 6px; margin-left: 4px; }
+  .vid pre { font: 11.5px var(--mono); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; overflow-x: auto; margin: 4px 0 0; }
+  .ctl button.on { color: var(--bg); background: var(--ink); border-color: var(--ink); }
   .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
   /* 敌人：像打 boss 时屏幕上方的血条。没有血量这个数，"血条"按全程总伤害当血量，已打的部分从满往下扣 */
   .boss { background: var(--panel); border: 1px solid var(--rule); border-top: 3px solid var(--alert); border-radius: 8px; padding: 8px 12px 10px;
@@ -185,6 +205,8 @@
     .timebar { order: 1; grid-template-columns: auto minmax(0, 1fr); }
     .tb-state { grid-column: 1 / -1; justify-content: flex-start; }
     .frame { order: 3; overflow: visible; }
+    .mid { order: 3; grid-template-columns: minmax(0, 1fr); }
+    .vid { order: -1; width: auto; border-left: 0; border-bottom: 1px solid var(--rule); }
     .boss { grid-template-columns: minmax(0, 1fr); }
     .boss-fx { padding-left: 0; }
     .ctl { position: fixed; left: 0; right: 0; bottom: 0; z-index: 15; padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 28px rgba(0, 0, 0, .5); }
@@ -203,7 +225,23 @@
 <div class="app">
   <div class="top"><h1 id="title"></h1><div id="kpi" style="display:flex;gap:22px;flex-wrap:wrap"></div><div class="loops" id="loops"></div></div>
   <div class="timebar" id="timebar"></div>
-  <main class="frame" id="frame"></main>
+  <div class="mid">
+    <main class="frame" id="frame"></main>
+    <aside class="vid" id="vid" hidden>
+      <div class="vrow"><b>视频对照</b><label class="vbtn">打开本地视频<input type="file" accept="video/*" id="vfile" hidden></label><span class="vnote" id="vsrc"></span></div>
+      <video id="vel" controls playsinline preload="metadata"></video>
+      <div class="vrow">
+        <button type="button" id="vback" aria-label="视频后退一帧">◀ 1/60</button><button type="button" id="vfwd" aria-label="视频前进一帧">1/60 ▶</button>
+        <label><input type="checkbox" id="vlink" checked> 联动</label>
+        <select id="vmap" aria-label="映射方式"><option value="stretch">逐点拉伸</option><option value="offset">只按第一个点（看快慢）</option></select>
+      </div>
+      <div class="vnow" id="vnow"></div>
+      <div class="vrow"><button type="button" id="vmark">打点：视频此刻 = 光标这一帧</button><button type="button" id="vclear">清空锚点</button></div>
+      <div class="vnote">做法：取消"联动"，把视频停在某个动作刚出手的画面，时间轴用 ⏮ ⏭（动作开始）走到同一个动作，点"打点"。有两个以上锚点后打开"联动"，播放视频时间轴跟着走。</div>
+      <ol id="vanchors"></ol>
+      <details><summary>导出成场景的 video.marks</summary><pre id="vyaml"></pre></details>
+    </aside>
+  </div>
   <div class="ctl" id="ctl">
     <div class="grp">
       <button type="button" id="prev" aria-label="上一个（←）">⏮</button>
@@ -222,6 +260,8 @@
       <button type="button" id="play" aria-label="播放 / 暂停（空格）">▶ 播放</button>
       <select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
     </div>
+    <span class="sep"></span>
+    <button type="button" id="vtoggle" aria-label="视频对照">视频</button>
     <div class="cur" id="stepnow"></div>
     <button type="button" class="help" aria-label="操作说明" data-help="时间轴：悬停看那一帧的预览（谁在前台、各自的动作、能量与协奏）；点一下跳到那一帧，按住拖动逐帧拖着看。&#10;触摸屏：点一下跳；单指横拖逐帧拖，拖的时候手指上方出预览（从光标或顶上的把手附近拖起，光标不跳、跟着手指走）；双指捏合缩放。&#10;全程导航：拖动选范围，点一下把视窗挪过去；右边 − ＋ 缩放。&#10;步进：⏮ ⏭ 或键盘 ← →，按所选单位前后跳（Shift + ← → 按 1 战斗秒）；◀ 帧 帧 ▶ 或 , . 逐帧。&#10;播放：空格开始 / 暂停，按世界时间走（1× = 每秒 60 帧），放到视窗右边时视窗跟着走。&#10;帧画面：每人一张卡片——动作（开始后第几帧）、能量协奏与共鸣回路（逐帧精确）、共鸣回路的状态、冷却（还要几秒）、buff（剩余战斗秒）、这个动作给的资源与打出的伤害（点开看每一项）。最上面一条是敌人，像打 boss 时的血条：全程总伤害当血量（已打的部分往下扣）、偏谐、白条、异常效应层数；右边是这一帧的命中或最近一段伤害（点开看乘区拆分与生效的加成）。">i</button>
   </div>
@@ -244,6 +284,16 @@
   let range = [0, D.lastF], cursor = 0
   const MODE_NAME = { hit: '命中', action: '动作开始', switch: '切人', sec: '战斗秒' }
   const sec = f => D.clock.secAt(f)
+
+  // ---- 视频对照：锚点（视频秒 t ↔ 世界帧 f）与映射。视频按真实时间录，对应仿真的世界帧（大招动画也在里面），60 帧一秒 ----
+  const VKEY = 'ww-e-video:' + names.join('·') + '|' + M.title
+  const V = { anchors: [], src: null, map: 'stretch' }
+  try { const j = JSON.parse(localStorage.getItem(VKEY) || 'null'); if (j && Array.isArray(j.anchors)) { V.anchors = j.anchors; V.map = j.map || 'stretch' } } catch {}
+  if (!V.anchors.length && M.video && M.video.marks) V.anchors = M.video.marks.filter(m => m.at !== undefined).map(m => ({ t: m.at, f: m.f, from: 'video.marks' }))
+  const vsave = () => { try { localStorage.setItem(VKEY, JSON.stringify({ anchors: V.anchors, map: V.map })) } catch {} }
+  const vsorted = () => [...V.anchors].sort((a, b) => a.t - b.t)
+  const t2f = t => WW.videoMap(V.anchors, V.map).t2f(t)
+  const f2t = f => WW.videoMap(V.anchors, V.map).f2t(f)
 
   // ---- 步点（同 D）：命中、动作开始、切人；战斗秒按时钟换算 ----
   function stopsOf(items, frameOf, text) {
@@ -384,6 +434,7 @@
       if (mode === 'action') for (const a of D.actions) { if (a.start === g) out.push(`<rect x="${Math.max(padL, x(a.start)) - 2}" y="${top0 + a.i * LANE + 4}" width="${Math.max(6, x(a.end) - Math.max(padL, x(a.start))) + 4}" height="26" rx="4" style="fill:none;stroke:var(--cursor);stroke-width:2"/>`) }
       if (mode === 'switch') for (const e of D.switches) { if (e.f === g) out.push(`<path d="M${x(g) - 6} 14 l12 0 l-6 9 z" style="fill:var(--cursor)"/>`) }
     }
+    for (const a of V.anchors) if (vis(a.f, a.f + 1)) out.push(`<path d="M${x(a.f)} 14 l5 5 l-5 5 l-5 -5 z" style="fill:var(--wait);pointer-events:none"><title>锚点：视频 ${vclock(a.t)}</title></path>`)   // 视频锚点
     out.push(`<line id="hl" x1="-9" x2="-9" y1="14" y2="${H}" style="stroke:var(--cursor);stroke-opacity:.35;stroke-dasharray:3 3;pointer-events:none"/>`)
     out.push(`<line id="cl" x1="${x(cursor)}" x2="${x(cursor)}" y1="14" y2="${H}" style="stroke:var(--cursor);stroke-width:1.5;pointer-events:none"/>`)
     out.push(`<path id="ck" d="M-6 1 h12 v8 l-6 6 l-6 -6 z" transform="translate(${x(cursor)} 0)" style="fill:var(--cursor);pointer-events:none"/>`)   // 播放头的把手
@@ -620,6 +671,7 @@
     cursor = Math.round(Math.max(0, Math.min(D.lastF, f)))
     moveCur(xOf(cursor))
     if (live) soon(() => { frameView(); overview() }); else { lens(); frameView(); overview() }
+    syncVideo()
   }
   let drag = null
   LZ.addEventListener('pointerdown', e => {
@@ -689,6 +741,7 @@
   $('mode').addEventListener('change', () => { lens(); frameView() })
   let playing = false, lastTs = 0, lastPaint = 0
   function setPlay(on) {
+    if (vlinked()) { if (on) VEL.play(); else VEL.pause(); return }   // 联动时播放交给视频，光标跟着视频走
     playing = on
     $('play').classList.toggle('on', on); $('play').textContent = on ? '⏸ 暂停' : '▶ 播放'
     if (on) { if (cursor >= D.lastF) { cursor = range[0]; draw() } lastTs = performance.now(); requestAnimationFrame(tickPlay) }
@@ -740,7 +793,93 @@
     const k = e.target.dataset && e.target.dataset.k; if (!k) return
     const l = D.loops.find(l => String(l.loop) === k); range = l ? [l.f, l.end] : [0, D.lastF]; cursor = Math.round(range[0]); markLoop(k); draw()
   })
-  function draw() { overview(); lens(); frameView() }
+  function draw() { overview(); lens(); frameView(); syncVideo() }
+  // ---- 视频面板 ----
+  const VEL = $('vel')
+  function vclock(t) { const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}` }
+  function vlinked() { return !!V.src && $('vlink').checked }
+  function syncVideo() {   // 时间轴这边动了（视频停着时）：视频跳到对应时刻
+    if (!vlinked() || !VEL.paused) return
+    const t = Math.max(0, f2t(cursor))
+    if (Math.abs(VEL.currentTime - t) > 0.5 / 60) VEL.currentTime = t
+  }
+  function vnow() {
+    const t = VEL.currentTime || 0, f = Math.round(t2f(t))
+    $('vnow').innerHTML = V.src ? `视频 <b>${vclock(t)}</b> ↔ 第 <b>${f}</b> 帧（${sec(Math.max(0, Math.min(D.lastF, f))).toFixed(2)} 战斗秒）　光标 ${Math.round(cursor)} 帧 ↔ 视频 ${vclock(Math.max(0, f2t(cursor)))}` : '还没打开视频'
+  }
+  function videoTick() {   // 视频在放：光标 = 视频此刻对应的帧
+    if (!vlinked() || VEL.paused) return
+    cursor = Math.max(0, Math.min(D.lastF, t2f(VEL.currentTime)))
+    const w = range[1] - range[0]
+    if (cursor < range[0] || cursor > range[1] - w * 0.02) { range = [Math.max(0, cursor - w * 0.1), Math.max(0, cursor - w * 0.1) + w]; if (range[1] > D.lastF) range = [Math.max(0, D.lastF - w), D.lastF]; markLoop(null); lens(); overview() }
+    else moveCur(xOf(cursor))
+    const now = performance.now(); if (now - videoTick.last > 60) { videoTick.last = now; frameView(); vnow() }
+    if (VEL.requestVideoFrameCallback) VEL.requestVideoFrameCallback(videoTick); else requestAnimationFrame(videoTick)
+  }
+  videoTick.last = 0
+  VEL.addEventListener('play', () => { $('play').classList.add('on'); $('play').textContent = '⏸ 暂停'; videoTick() })
+  VEL.addEventListener('pause', () => { $('play').classList.remove('on'); $('play').textContent = '▶ 播放'; if (vlinked()) { cursor = Math.max(0, Math.min(D.lastF, Math.round(t2f(VEL.currentTime)))); follow(cursor); overview(); lens(); frameView() } vnow() })
+  VEL.addEventListener('seeked', () => { if (vlinked() && VEL.paused) { cursor = Math.max(0, Math.min(D.lastF, Math.round(t2f(VEL.currentTime)))); follow(cursor); overview(); lens(); frameView() } vnow() })
+  VEL.addEventListener('loadedmetadata', vnow)
+  $('vtoggle').addEventListener('click', () => { const on = $('vid').hidden; $('vid').hidden = !on; $('vtoggle').classList.toggle('on', on); vnow(); vanchors(); draw() })
+  $('vfile').addEventListener('change', e => {
+    const file = e.target.files && e.target.files[0]; if (!file) return
+    if (V.src && V.src.startsWith('blob:')) URL.revokeObjectURL(V.src)
+    V.src = URL.createObjectURL(file); VEL.src = V.src; $('vsrc').textContent = file.name
+  })
+  // 场景 video.url：能直接放的媒体文件就用它；B 站、YouTube 的网页嵌入拿不到逐帧的播放时刻，只给链接
+  if (M.video && M.video.url) {
+    const u = M.video.url
+    if (/\.(mp4|webm|m4v|mov)(\?|$)/i.test(u)) { V.src = u; VEL.src = u; $('vsrc').textContent = u.split('/').pop() }
+    else $('vsrc').innerHTML = `场景里的视频：<a href="${WW.esc(u)}" target="_blank" rel="noopener" style="color:var(--muted)">链接</a>（网页嵌入不能联动，请下载后打开本地文件）`
+  }
+  const vstep = d => { VEL.pause(); VEL.currentTime = Math.max(0, VEL.currentTime + d); }
+  $('vback').addEventListener('click', () => vstep(-1 / 60))
+  $('vfwd').addEventListener('click', () => vstep(1 / 60))
+  $('vmap').value = V.map
+  $('vmap').addEventListener('change', () => { V.map = $('vmap').value; vsave(); vnow(); syncVideo() })
+  $('vlink').addEventListener('change', () => { vnow(); if (vlinked()) syncVideo() })
+  $('vmark').addEventListener('click', () => {
+    if (!V.src) { $('vnow').textContent = '先打开视频'; return }
+    const a = { t: Math.round(VEL.currentTime * 1000) / 1000, f: Math.round(cursor) }
+    const rest = V.anchors.filter(x => Math.abs(x.t - a.t) > 1e-3 && x.f !== a.f)
+    const A = [...rest, a].sort((p, q) => p.t - q.t)
+    if (A.some((x, i) => i > 0 && x.f <= A[i - 1].f)) { $('vnow').textContent = '这个锚点和已有的顺序矛盾（视频靠后、帧却靠前），没加'; return }
+    V.anchors = A; vsave(); vanchors(); lens(); vnow()
+  })
+  $('vclear').addEventListener('click', () => { V.anchors = []; vsave(); vanchors(); lens(); vnow() })
+  $('vanchors').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return
+    const i = +b.dataset.i, A = vsorted()
+    if (b.dataset.act === 'go') { const a = A[i]; VEL.pause(); cursor = a.f; follow(a.f); draw(); if (V.src) VEL.currentTime = a.t }
+    else { V.anchors = A.filter((_, k) => k !== i); vsave(); vanchors(); lens(); vnow() }
+  })
+  /** 锚点列表：每个点按第一个点 60 帧一秒推算，仿真比视频快 / 慢多少（同 pnpm trace 的"仿真比视频"）；能落到某条指令开头的，导出成 video.marks */
+  function vanchors() {
+    const A = vsorted(), a0 = A[0]
+    $('vanchors').innerHTML = A.map((a, i) => {
+      const c = cmdStartAt(a.f), d = a0 ? (a.f - a0.f) / 60 - (a.t - a0.t) : 0
+      const drift = i === 0 ? '<span class="d">基准</span>' : Math.abs(d) < 0.5 / 60 ? '<span class="d">对齐</span>' : `<span class="${d > 0 ? 'slow' : 'fast'}">仿真${d > 0 ? '慢' : '快'} ${Math.abs(d).toFixed(2)} 秒</span>`
+      return `<li>${vclock(a.t)} ↔ ${a.f} 帧${c ? ` <span class="d">${WW.esc(c.label)}</span>` : ''}　${drift}<button type="button" data-act="go" data-i="${i}">跳</button><button type="button" data-act="del" data-i="${i}" aria-label="删除">×</button></li>`
+    }).join('')
+    $('vyaml').textContent = vyaml(A)
+  }
+  /** 正好是某条指令开头（动作开始或切人）的帧：{ line, loop, label }；同一行的几条取最早那条（video.marks 按行记） */
+  function cmdStartAt(f) {
+    const rows = [...D.actions.filter(a => a.cmd).map(a => ({ f: a.start, cmd: a.cmd, label: `${a.char} ${a.id}` })), ...D.switches.filter(s => s.cmd).map(s => ({ f: s.f, cmd: s.cmd, label: `切 ${s.to}` }))]
+    const hit = rows.find(r => r.f === f); if (!hit) return null
+    const first = Math.min(...rows.filter(r => r.cmd.line === hit.cmd.line && r.cmd.loop === hit.cmd.loop).map(r => r.f))
+    return first === f ? { line: hit.cmd.line, loop: hit.cmd.loop, label: `第 ${hit.cmd.line} 行 ${hit.label}` } : null
+  }
+  function vyaml(A) {
+    const byLoop = new Map()
+    for (const a of A) { const c = cmdStartAt(a.f); if (!c) continue; if (!byLoop.has(c.loop)) byLoop.set(c.loop, []); byLoop.get(c.loop).push([c.line, a.t]) }
+    if (!byLoop.size) return '# 没有落在某一行开头的锚点（打点时把光标走到"动作开始"或切人那一帧）'
+    const [loop, rows] = [...byLoop].sort((p, q) => q[1].length - p[1].length)[0]
+    return ['video:', ...(M.video && M.video.url ? [`  url: ${M.video.url}`] : []), `  loop: ${loop}`, '  marks:', ...rows.map(([l, t]) => `    ${l}: "${vclock(t)}"`)].join('\n')
+  }
+  vanchors()
+
   WW.mountAlerts(M, document.querySelector('.top'), a => {
     const l = D.loops.find(l => a.f >= l.f && a.f < l.end)
     range = l ? [l.f, l.end] : [0, D.lastF]; markLoop(l ? l.loop : 'all')
