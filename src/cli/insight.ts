@@ -1,17 +1,17 @@
-// src/cli/insight.ts —— pnpm insight <场景.yaml> [--delays 0,3,6,10,15]：结论（TD-10 §6）——共鸣效率需求、操作容错、假设敏感度、卡住的时间
+// src/cli/insight.ts —— pnpm insight <场景.yaml> [--delays 0,3,6,10,15] [--tight 6]：结论（TD-10 §6）——共鸣效率需求、操作容错、假设敏感度、卡住的时间、卡帧点
 import { loadGameData } from '../data/load'
 import { IMPACT_NAME, assumptionOf } from '../engine/assumptions'
-import { DEFAULT_DELAYS, insight } from '../engine/insight'
+import { DEFAULT_DELAYS, DEFAULT_TIGHT, insight } from '../engine/insight'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart, pct } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--delays'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--delays', '--tight'])
   const file = pos[0]
   if (!file) {
-    console.error('用法：pnpm insight <场景.yaml> [--delays 0,3,6,10,15]')
+    console.error('用法：pnpm insight <场景.yaml> [--delays 0,3,6,10,15] [--tight 6]')
     return 2
   }
   const data = await loadGameData()
@@ -22,7 +22,7 @@ async function main(): Promise<number> {
   }
   const delays = opt.delays ? opt.delays.split(',').map(Number) : DEFAULT_DELAYS
   const t0 = Date.now()
-  const x = insight(r, { delays })
+  const x = insight(r, { delays, tight: opt.tight ? Number(opt.tight) : DEFAULT_TIGHT })
   console.log(`场景 ${file} · 口径：${x.basis.label}，DPS ${fmt(x.basis.dps)}（跑了 ${x.runs} 次仿真，${((Date.now() - t0) / 1000).toFixed(1)} 秒）`)
 
   console.log('\n① 共鸣效率需求：轴里的大招不等能量，最低要多少（按单调二分，精确到 0.25%）')
@@ -56,6 +56,23 @@ async function main(): Promise<number> {
     console.log(`  ${padEnd(w.label, 30)}${padStart(`${w.secs.toFixed(2)} 秒`, 10)}  占窗口 ${pct(w.share)}`)
     for (const t of w.top) console.log(`      ${t.where}  ${t.secs.toFixed(2)} 秒  ${t.reason}`)
   }
+
+  console.log(`\n⑥ 卡帧点：循环轴的每个决策点单独每轮晚 ${x.tightFrames} 帧（其余照常）。晚了的影响拆成"每轮多几帧"与"每轮伤害变多少"：`)
+  console.log(`  连锁 = 一轮多出的比晚的还多（冷却错位、多补位），或每轮伤害少了（buff 没罩住）——真要卡帧的地方，先实测能不能预输入；`)
+  console.log(`  一轮变长 = 晚几帧就多几帧，按个人手速线性地掉；有余量 = 单独晚这一处无所谓（几处共用的余量，处处都晚时仍会掉，见 ②）；`)
+  console.log(`  反而更好 = 原轴这里按早了，值得改轴`)
+  const KIND = { better: '反而更好', cascade: '连锁', time: '一轮变长', slack: '有余量' } as const
+  const row = (t: (typeof x.tight)[number]) => t.error ? `  第 ${t.line} 条第 ${t.item} 个  ${t.what}  跑不通：${t.error}`
+    : `  ${padEnd(`第 ${t.line} 条第 ${t.item} 个`, 14)}${padStart(signedPct(t.pct!), 9)}  每轮 ${t.extraFrames! >= 0 ? '+' : ''}${t.extraFrames!.toFixed(0)} 帧、伤害 ${signedPct(t.dmgPct!)}  ${t.what}`
+  for (const k of ['better', 'cascade', 'time', 'slack'] as const) {
+    const ts = x.tight.filter(t => t.kind === k)
+    if (ts.length === 0) continue
+    console.log(`  ${KIND[k]}（${ts.length} 处）${k === 'slack' ? `：${ts.map(t => t.what).join('、')}` : ''}`)
+    if (k === 'better') ts.reverse()
+    if (k !== 'slack') for (const t of ts.slice(0, k === 'time' ? 4 : 12)) console.log(`  ${row(t)}`)
+    if (k === 'time' && ts.length > 4) console.log(`      …另 ${ts.length - 4} 处，都在 ${signedPct(ts.at(-1)!.pct!)} 到 ${signedPct(ts[0]!.pct!)} 之间`)
+  }
+  for (const t of x.tight.filter(t => t.kind === null)) console.log(row(t))
   return 0
 }
 

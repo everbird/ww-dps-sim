@@ -2,7 +2,8 @@
 //   ① 共鸣效率需求：这条轴的大招不等能量，每人最低要多少共鸣效率（二分）；
 //   ② 操作容错：每条指令都晚 N 帧执行时 DPS 掉多少（options.inputDelay，确定性的，不用抽样）；
 //   ③ 假设敏感度：假设表里能自动翻的开关逐个翻一下，DPS 差多少（总设计 T16）；
-//   ④ 指令被挡住的时间：窗口里队首指令在等什么（冷却、资源、等出手…），合计多久、占多少（前一招可能还在打，不等于空闲）。
+//   ④ 指令被挡住的时间：窗口里队首指令在等什么（冷却、资源、等出手…），合计多久、占多少（前一招可能还在打，不等于空闲）；
+//   ⑥ 卡帧点：循环轴的每个决策点（切人、不是连段后续的出招）单独每轮晚 N 帧，DPS 掉多少——哪几处靠"一合法就按"撑着。
 // 全部按期望值算；比较口径同对比（basisOf：有分轮取稳态，否则整个窗口）。纯函数，输入装配结果。
 import type { Slot } from '../data/common'
 import { basisOf, panelsOf, type Basis } from './analysis'
@@ -30,18 +31,32 @@ export interface Insight {
   /** 能翻、但这次仿真没碰到的假设（tracked 的要碰到才有影响）：不跑，翻了也一样 */
   notHit: string[]
   waits: WaitCost[]
+  /** ⑥ 卡帧点：每个决策点单独晚 tightFrames 帧，按损失从大到小 */
+  tight: TightPoint[]
+  tightFrames: number
   runs: number                              // 一共跑了几次仿真
 }
+/** 卡帧点的一行。晚 N 帧的影响拆成两样：每轮多了几帧（extraFrames）、每轮的伤害变了多少（dmgPct）。
+ *  kind：slack = 有余量（每轮没变长、伤害没少，晚一点无所谓）；time = 只是一轮跟着变长（多几帧掉几帧的 DPS）；
+ *  cascade = 连锁（一轮多出的比晚的还多：冷却错位、多补位；或者每轮伤害少了：buff 没罩住）——这才是真要卡帧的地方；
+ *  better = 晚一点反而更好（DPS 涨 ≥ 0.1%）：原轴这里按早了，值得改轴 */
+export interface TightPoint {
+  line: number; item: number; what: string
+  dps: number | null; pct: number | null; loopSecs: number | null
+  extraFrames: number | null; dmgPct: number | null; kind: 'slack' | 'time' | 'cascade' | 'better' | null
+  error: string | null
+}
+export const DEFAULT_TIGHT = 6
 
 /** 正常出招节奏里的等待（派生窗口、优先级、连段、同一 tick）：不算"卡住"（同 web/designs/shared.js 的 RHYTHM） */
 const RHYTHM: readonly WaitCode[] = ['derive', 'priority', 'combo', 'started']
 const WAIT_LABEL: Partial<Record<WaitCode, string>> = {
   cooldown: '等冷却', resource: '等资源（大招能量、核心资源）', hook: '等角色条件（形态、层数）', settled: '等前一招出手',
-  switchCd: '等切人冷却', switchLock: '切人锁', inputLock: '输入锁',
+  switchCd: '等切人冷却', switchLock: '切人锁', airborne: '等切出者跳起', inputLock: '输入锁',
 }
 export const DEFAULT_DELAYS = [0, 3, 6, 10, 15] as const
 
-export function insight(r: ResolvedScenario, opts: { delays?: readonly number[] } = {}): Insight {
+export function insight(r: ResolvedScenario, opts: { delays?: readonly number[]; tight?: number } = {}): Insight {
   let runs = 0
   const run = (x: ResolvedScenario): SimResult => { runs++; return simulate(x) }
   const base = run(r)
@@ -95,7 +110,43 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[] 
     }
   }
 
-  return { basis, energy, tolerance, sensitivity, notHit, waits: waitCosts(base, r, basis), runs }
+  // ⑥ 卡帧点：只让一个决策点每轮晚 N 帧（options.inputDelayAt），其余照常。连段后续玩家会预输入，不算决策点（同 ②）
+  const tightFrames = opts.tight ?? DEFAULT_TIGHT
+  const tight: TightPoint[] = []
+  // 稳态每轮的战斗帧（没有分轮时为 null）
+  const loopFrames = (res: SimResult): number | null => {
+    const st = res.summary.steady
+    return st ? st.frames / (st.to - st.from + 1) : null
+  }
+  const baseLoop = loopFrames(base)
+  const name = (slot: Slot) => r.team[slot]!.def.name
+  for (const c of tightFrames > 0 ? r.commands : []) {                // tight: 0 = 不跑这一节
+    if (c.kind === 'wait' || c.kind === 'at') continue
+    if (c.kind === 'act' && r.team[c.slot]!.actions[c.action]?.comboFrom?.length) continue
+    const what = c.kind === 'switch' ? `switch ${name(c.to)}${c.expectIntro ? ' 变奏' : ''}` : `${name(c.slot)} ${c.action}${c.filler ? '~' : ''}`
+    const res = run({ ...r, options: { ...r.options, inputDelayAt: { [`${c.line}.${c.item}`]: tightFrames } } })
+    if (res.error) {
+      tight.push({ line: c.line, item: c.item, what, dps: null, pct: null, loopSecs: null, extraFrames: null, dmgPct: null, kind: null, error: res.error.message })
+      continue
+    }
+    const b = basisOf(res)
+    const loopF = loopFrames(res)
+    const extraFrames = loopF !== null && baseLoop !== null ? loopF - baseLoop : null
+    // 每轮伤害 = DPS × 每轮时长
+    const dmgPct = loopF !== null && baseLoop !== null && basis.dps > 0 ? (b.dps * loopF) / (basis.dps * baseLoop) - 1 : null
+    const pct = basis.dps > 0 ? b.dps / basis.dps - 1 : null
+    const kind = extraFrames === null || dmgPct === null ? null
+      : pct !== null && pct >= 0.001 ? 'better'
+      : extraFrames > tightFrames + 1 || dmgPct < -0.002 ? 'cascade'
+        : extraFrames <= 0.5 && dmgPct > -0.001 ? 'slack' : 'time'
+    tight.push({
+      line: c.line, item: c.item, what, dps: b.dps, pct,
+      loopSecs: loopF !== null ? loopF / 60 : null, extraFrames, dmgPct, kind, error: null,
+    })
+  }
+  tight.sort((a, b) => (a.pct ?? -Infinity) - (b.pct ?? -Infinity))
+
+  return { basis, energy, tolerance, sensitivity, notHit, waits: waitCosts(base, r, basis), tight, tightFrames, runs }
 }
 
 /** 在 (lo, hi] 里找最小的满足 ok 的值（ok(hi) 为真）；按单调假设二分，精确到 0.25% */

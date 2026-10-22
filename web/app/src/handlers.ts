@@ -91,7 +91,7 @@ export const handlers: Handlers = {
     return { ...compareRuns(a, b), timeline }
   },
   async insight({ scenario }) {
-    return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真
+    return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真，加卡帧点（每个决策点一次）再多二三十次
   },
   async marginal({ scenario, char, tier }) {
     const sc = scenarioOf(scenario)

@@ -37,6 +37,13 @@ export function nextU32(s: RngState): number {
 /** [0, 1) 上的均匀小数：取高 24 位 ÷ 2^24（Rust：(x >> 8) as f64 / 16777216.0），比较"< 暴击率"时 p = 1 必中、p = 0 必不中 */
 export const nextFloat = (s: RngState): number => (nextU32(s) >>> 8) / 16777216
 
+/** 标准正态（Box–Muller，用两个均匀数；第二个解丢掉，每次都取两个，换语言时好对拍）：手速档的操作延迟用 */
+export function nextNormal(s: RngState): number {
+  const u1 = 1 - nextFloat(s)                                         // (0, 1]，避开 log(0)
+  const u2 = nextFloat(s)
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2)
+}
+
 /** [0, n] 上的均匀整数（操作抖动用） */
 export const nextInt = (s: RngState, n: number): number => Math.floor(nextFloat(s) * (n + 1))
 

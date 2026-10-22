@@ -5,6 +5,7 @@
   import { fmt, pct, pct2, signed } from '../fmt'
   import type { Requests } from '../protocol'
   import { IMPACT_NAME, assumptionOf } from '../../../../src/engine/assumptions'
+  const TIGHT = { better: '反而更好', cascade: '连锁', time: '一轮变长', slack: '有余量' } as const
 
   let { name = $bindable() }: { name: string } = $props()
   const list = $derived(ofKind('scenario'))
@@ -103,6 +104,31 @@
         {/each}
       </tbody>
     </table></div>
+
+    <h3>卡帧点</h3>
+    <p class="muted">
+      循环轴的每个决策点单独每轮晚 {out.tightFrames} 帧（其余照常），影响拆成"每轮多几帧"与"每轮伤害变多少"。
+      连锁：一轮多出的比晚的还多，或每轮伤害少了——真要卡帧的地方，先实测能不能预输入；一轮变长：晚几帧多几帧，按手速线性地掉；
+      有余量：单独晚这一处无所谓（几处共用余量，处处都晚时仍会掉，见操作容错）；反而更好：原轴这里按早了。
+    </p>
+    <div class="tablebox"><table>
+      <thead><tr><th>类别</th><th>指令</th><th class="r">DPS</th><th class="r">每轮</th><th class="r">每轮伤害</th></tr></thead>
+      <tbody>
+        {#each out.tight.filter(t => t.kind !== 'slack') as t (`${t.line}.${t.item}`)}
+          <tr>
+            <td>{t.kind ? TIGHT[t.kind] : '跑不通'}</td>
+            <td>第 {t.line} 条第 {t.item} 个 {t.what}</td>
+            {#if t.error}<td colspan="3" class="muted">{t.error}</td>
+            {:else}
+              <td class="r" class:up={t.pct! > 1e-6} class:down={t.pct! < -1e-6}>{signed(t.pct!, pct2)}</td>
+              <td class="r">{t.extraFrames! >= 0 ? '+' : ''}{t.extraFrames!.toFixed(0)} 帧</td>
+              <td class="r">{signed(t.dmgPct!, pct2)}</td>
+            {/if}
+          </tr>
+        {/each}
+      </tbody>
+    </table></div>
+    {#if out.tight.some(t => t.kind === 'slack')}<p class="muted">有余量（{out.tight.filter(t => t.kind === 'slack').length} 处）：{out.tight.filter(t => t.kind === 'slack').map(t => t.what).join('、')}</p>{/if}
   </section>
 {/if}
 

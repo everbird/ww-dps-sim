@@ -5,7 +5,7 @@ import { EFFECT_NAMES, type ActionId, type DamageTag, type EffectName, type Slot
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
 import { assume } from './assumptions'
 import { roundTo } from './num'
-import { nextFloat, nextInt, seedRng } from './rng'
+import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import {
@@ -27,6 +27,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
   const s = initialState(r)
   if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
   const jitter = opts.sample?.jitter ?? 0
+  const hand = opts.sample?.hand
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
     rules: r.rules,
@@ -92,10 +93,16 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     }
   }
   const tuneBreaks = r.team.map(m => tuneBreakActionsOf(m.actions))
+  const delayAt = (st: SimState): number => {
+    const at = r.options.inputDelayAt
+    const c = at && st.queue.loop > 0 ? st.queue.commands[st.queue.next] : undefined
+    return c ? at![`${c.line}.${c.item}`] ?? 0 : 0
+  }
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
-    // 操作延迟：期望模式是固定的 options.inputDelay；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
-    inputDelay: st => r.options.inputDelay + (st.rng && jitter > 0 ? nextInt(st.rng, jitter) : 0),
+    // 操作延迟：期望模式是固定的 options.inputDelay（卡帧点另给某几条加 inputDelayAt）；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
+    inputDelay: st => r.options.inputDelay + delayAt(st) + (st.rng && jitter > 0 ? nextInt(st.rng, jitter) : 0)
+      + (st.rng && hand ? Math.max(0, roundTo(hand.mean + hand.sd * nextNormal(st.rng), 1)) : 0),
     canAfford,
     canStart: (st, slot, def) => {
       if (def.kind === 'tuneBreak') { const ok = canTuneBreak(sim, st); if (ok !== true) return ok }

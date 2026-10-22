@@ -1,4 +1,4 @@
-// src/cli/sim.ts —— pnpm sim <场景.yaml> [--out <文件>] [--sample N [--seed S] [--jitter F]]：跑一个场景，终端打印汇总，
+// src/cli/sim.ts —— pnpm sim <场景.yaml> [--out <文件>] [--sample N [--seed S] [--jitter F] [--hand 高手|熟练|普通]]：跑一个场景，终端打印汇总，
 // 写出完整事件日志（总设计第 9 节）；--sample 另按抽样模式跑 N 次，打印 DPS 的分布（总设计 T4，TD-10 §6 ⑤）
 // 退出码：0 成功；1 场景有错或运行期报错（日志照样写出，保留到出错为止）；2 用法错误。
 import { mkdirSync, writeFileSync } from 'node:fs'
@@ -6,7 +6,7 @@ import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { panelsOf } from '../engine/analysis'
 import { ResolveError, resolveScenario } from '../engine/resolve'
-import { sampleRuns } from '../engine/sample'
+import { HAND_PROFILES, sampleRuns, type HandProfile } from '../engine/sample'
 import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec } from './format'
@@ -19,12 +19,12 @@ function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: nu
 }
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter', '--hand'])
   const out = opt.out
   const file = pos[0]
   const runs = opt.sample !== undefined ? Number(opt.sample) : 0
   if (!file || !Number.isInteger(runs) || runs < 0) {
-    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F]]')
+    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F] [--hand 高手|熟练|普通]]')
     return 2
   }
   const sc = loadScenario(file)
@@ -42,7 +42,7 @@ async function main(): Promise<number> {
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
-  if (runs > 0 && !res.error) printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0))
+  if (runs > 0 && !res.error) printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
   return res.error ? 1 : 0
 }
 
@@ -105,10 +105,12 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
 }
 
 /** 抽样 N 次（总设计 T4）：逐段抽暴击，jitter > 0 时每个决策点另加 [0, jitter] 帧的操作抖动 */
-function printSampling(r: ResolvedScenario, runs: number, seed: number, jitter: number): void {
+function printSampling(r: ResolvedScenario, runs: number, seed: number, jitter: number, hand?: HandProfile): void {
+  if (hand && !(hand in HAND_PROFILES)) throw new Error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`)
   const t0 = Date.now()
-  const x = sampleRuns(r, { runs, seed, jitter })
-  const what = jitter > 0 ? `逐段抽暴击，操作抖动 0–${jitter} 帧` : '逐段抽暴击'
+  const h = hand ? HAND_PROFILES[hand] : undefined
+  const x = sampleRuns(r, { runs, seed, jitter, ...(h ? { hand: h } : {}) })
+  const what = ['逐段抽暴击', ...(jitter > 0 ? [`操作抖动 0–${jitter} 帧`] : []), ...(h ? [`手速"${hand}"：每个决策点晚 正态(${h.mean}, ${h.sd}) 帧（假设 hand-speed）`] : [])].join('，')
   console.log(`\n抽样 ${runs} 次（${what}；种子 ${seed}；${((Date.now() - t0) / 1000).toFixed(1)} 秒）· 口径：${x.label}，期望值 DPS ${fmt(x.expected)}`)
   if (x.stats) {
     const s = x.stats

@@ -11,7 +11,7 @@ import { argsOf, fmt, loadScenario, padStart } from './format'
 const tag = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : i < 52 ? String.fromCharCode(97 + i - 26) : String(i + 1))
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 const FAILURE: Record<string, string> = {
-  timeout: '等超时', comboBroken: '连段中断', compile: '编译不过', introMissed: '写了变奏没变奏', entrySkill: '出场技不是从地面普通切人入场后第一个出', maxFrames: '超过帧数上限', noLoop: '没跑完一轮',
+  timeout: '等超时', comboBroken: '连段中断', compile: '编译不过', introMissed: '写了变奏没变奏', entrySkill: '出场技不是从地面普通切人入场后第一个出', airEntry: '空中 / 地面入场对不上', maxFrames: '超过帧数上限', noLoop: '没跑完一轮',
 }
 
 async function main(): Promise<number> {

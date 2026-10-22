@@ -7,8 +7,8 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { nextFloat, nextU32, runSeeds, seedRng } from '../src/engine/rng'
-import { sampleRuns, statsOf } from '../src/engine/sample'
+import { nextFloat, nextNormal, nextU32, runSeeds, seedRng } from '../src/engine/rng'
+import { HAND_PROFILES, sampleRuns, statsOf } from '../src/engine/sample'
 import { simulate } from '../src/engine/simulate'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -80,4 +80,31 @@ dataDescribe('抽样（M0 代表轴）', () => {
     const one = simulate(r, { sample: { seed: 5, jitter: 6 } })
     expect(eventsOfLog(one.log, 'wait').some(w => w.code === 'input')).toBe(true)
   })
+})
+
+describe('手速档（假设 hand-speed）', () => {
+  test('nextNormal：一万个的平均约 0、标准差约 1；同一种子结果相同', () => {
+    const s = seedRng(7)
+    const xs = Array.from({ length: 10_000 }, () => nextNormal(s))
+    const st = statsOf(xs)
+    expect(Math.abs(st.mean)).toBeLessThan(0.03)
+    expect(Math.abs(st.sd - 1)).toBeLessThan(0.03)
+    expect(nextNormal(seedRng(7))).toBe(xs[0])
+  })
+  test('三档的平均依次变大', () => {
+    expect([HAND_PROFILES.高手.mean, HAND_PROFILES.熟练.mean, HAND_PROFILES.普通.mean]).toEqual([3, 6, 10])
+  })
+})
+
+dataDescribe('手速档：M0 视频轴 EQ 版', () => {
+  test('高手 > 熟练 > 普通，都低于期望值；同一种子结果相同', async () => {
+    const data = await loadGameData()
+    const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
+    const mean = (h: keyof typeof HAND_PROFILES) => sampleRuns(r, { runs: 8, seed: 3, hand: HAND_PROFILES[h] })
+    const [a, b, c] = [mean('高手'), mean('熟练'), mean('普通')]
+    expect(a.stats!.mean).toBeLessThan(a.expected)
+    expect(a.stats!.mean).toBeGreaterThan(b.stats!.mean)
+    expect(b.stats!.mean).toBeGreaterThan(c.stats!.mean)
+    expect(mean('熟练').dps).toEqual(b.dps)
+  }, 120_000)
 })

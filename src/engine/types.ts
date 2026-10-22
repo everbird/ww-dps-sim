@@ -28,7 +28,11 @@ export interface ResolvedScenario {
   rules: Rules
   /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
   tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }
-  options: { repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame }
+  options: {
+    repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame
+    /** 只给循环轴的某几条另加操作延迟（"第几条.第几个" → 帧，每轮都加）：结论的卡帧点（TD-10 §6 ⑥）一次晚一条用；场景里写不出来 */
+    inputDelayAt?: Readonly<Record<string, Frame>>
+  }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
 }
 
@@ -126,6 +130,7 @@ export type WaitCode =
   | 'switchCd' | 'switchLock'                                    // 切人
   | 'delay' | 'wait' | 'at'
   | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）
+  | 'airborne'                                                  // 切人后第一下是空中动作：等切出者跳起（TD-09 §3.5）
   | 'filler'                                                    // 补位 "~" 不需要了（只用于 skip 事件）
 
 /** 指令在事件里的出处 */

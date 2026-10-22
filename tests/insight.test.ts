@@ -55,7 +55,7 @@ dataDescribe('结论（M0 代表轴）', () => {
   })
 
   test('四项结论：能量需求不高于现在（这条轴不等能量）、操作越晚 DPS 越低、敏感度列出能翻的假设', () => {
-    const x = insight(load(), { delays: [0, 3, 6] })
+    const x = insight(load(), { delays: [0, 3, 6], tight: 0 })
     expect(x.energy.map(e => e.char)).toEqual(['椿', '散华', '维里奈'])
     for (const e of x.energy) {
       expect(e.waitSecs).toBe(0)
@@ -80,11 +80,26 @@ dataDescribe('结论（M0 代表轴）', () => {
 
   test('共鸣效率需求：把现在的共鸣效率压到需求以下就会等能量', () => {
     const r = load()
-    const need = insight(r, { delays: [0] }).energy.find(e => e.char === '维里奈')!.need!
+    const need = insight(r, { delays: [0], tight: 0 }).energy.find(e => e.char === '维里奈')!.need!
     const buffPart = panelsOf(r)[2]!.energyRegen - r.team[2].panel.energyRegen   // 常驻共鸣效率 buff 那部分（需求按面板 + 它算）
     const panel = need - 0.05 - buffPart                                            // 比需求低 5%
     const low = simulate({ ...r, team: r.team.map(t => (t.slot === 2 ? { ...t, panel: { ...t.panel, energyRegen: panel } } : t)) as typeof r.team })
     const waits = eventsOfLog(low.log, 'wait').filter(w => w.code === 'resource' && w.reason.startsWith('大招能量'))
     expect(low.error !== undefined || waits.length > 0).toBe(true)
   })
+})
+
+dataDescribe('卡帧点（TD-10 §6 ⑥）：M0 视频轴 EQ 版', () => {
+  test('一轮卡在维里奈、椿 25 秒的大招冷却上：只有两个大招与紧跟的 E3 晚了一轮就跟着变长，其余单独晚 6 帧都有余量', async () => {
+    const data = await loadGameData()
+    const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
+    const x = insight(r, { delays: [0] })
+    expect(x.tightFrames).toBe(6)
+    expect(x.tight.filter(t => t.kind === 'time').map(t => t.what).sort()).toEqual(['椿 E3', '椿 大招', '维里奈 大招'])
+    expect(x.tight.filter(t => t.kind === 'time').every(t => t.extraFrames === 6)).toBe(true)
+    expect(x.tight.some(t => t.kind === 'cascade' || t.kind === 'better' || t.error)).toBe(false)
+    expect(x.tight.filter(t => t.kind === 'slack').length).toBeGreaterThan(20)
+    // 连段后续不算决策点（玩家预输入）
+    expect(x.tight.some(t => /盛绽·A2|A4|A5|强化空中A2/.test(t.what))).toBe(false)
+  }, 120_000)
 })
