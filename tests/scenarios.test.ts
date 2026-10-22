@@ -7,6 +7,7 @@ import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
+import { checkLog } from '../src/engine/invariants'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
 import type { Summary } from '../src/engine/types'
@@ -42,8 +43,10 @@ dataDescribe('场景回归快照', () => {
   for (const f of files) {
     test(f, () => {
       const sc = ScenarioSchema.parse(parse(readFileSync(new URL(f, DIR), 'utf8')))
-      const out = simulate(resolveScenario(sc, gd))
+      const r = resolveScenario(sc, gd)
+      const out = simulate(r)
       expect(out.error).toBeUndefined()
+      expect(checkLog(r, out)).toEqual([])                         // 日志自洽（docs/engine-quality-plan.md P1）
       expect(view(out.summary)).toMatchSnapshot()
     })
   }

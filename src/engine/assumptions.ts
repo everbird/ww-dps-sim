@@ -9,7 +9,8 @@ export type Impact = 'none' | 'tiny' | 'small' | 'medium' | 'large' | 'unknown'
 export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小', small: '小', medium: '中', large: '大', unknown: '未知' }
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
-export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'options.inputDelay' | 'options.tuneBreak'
+export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
+  | 'rules.invincibleLocksSwitch' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -85,11 +86,13 @@ export const ASSUMPTIONS = [
     adjust: { how: '轴里在动作后面写 !（强制，抢帧）' },
   },
   {
-    id: 'switch-no-lock', topic: '切人', tracked: false, impact: 'unknown', ref: '总设计 §13、TD-05 Q6',
+    id: 'switch-no-lock', topic: '切人', tracked: false, impact: 'large', ref: '总设计 §13、TD-05 Q6',
     what: '没写帧数的"不能切人"：动作自己的（"无敌期间不能切人"，以及"不响应输入，不能切人""大招状态期间不能切人""第120F不能切人"…）锁到无敌结束（无敌启动帧 + 无敌持续帧），'
       + '没有无敌帧的到动作结束（2026-10-21；谐度破坏仍按整个动作；推断的记 flag noSwitchUnframed：布兰特、菲比、弗洛洛、芙露德莉斯、奥古斯塔大招，绯雪重击，洛瑟菈断舍离前置）。'
       + '跨几个动作的状态（奥古斯塔"大招状态期间"、丽贝卡"机枪期间"）只锁这一个动作；"第 n 帧前切人不消失 / 不离场"按"切人不打断"；大招什么都没写的（折枝、釉瑚、洛可可…）不锁',
-    why: '数据没给结构化的帧数；无敌帧不一定等于切人锁（散华大招无敌 125 帧，"第91F前不能切人"）。做到相关角色时逐个确认，跨动作的状态要在角色模块里写',
+    why: '数据没给结构化的帧数；无敌帧不一定等于切人锁（散华大招无敌 125 帧，"第91F前不能切人"）。做到相关角色时逐个确认，跨动作的状态要在角色模块里写。'
+      + '影响 2026-10-22 由"未知"改为"大"：关掉这类锁，心队按套路重排的 C4–C8 再多 +6%～+10%（docs/assumption-sensitivity.md）',
+    adjust: { how: '场景里 options.rules.invincibleLocksSwitch: false：这类推断出来的锁（ActionDef.switchLockFromInvincible）都不锁；做到相关角色时逐个确认', path: 'rules.invincibleLocksSwitch', values: [false] },
   },
   {
     id: 'entry-skill', topic: '切人', tracked: false, impact: 'small', ref: 'm0-confirm §11 V10、§14 D2，TD-09 §3.5',
@@ -119,13 +122,13 @@ export const ASSUMPTIONS = [
     id: 'forte-keep-on-switch', topic: '切人', tracked: false, impact: 'medium', ref: 'docs/xin-confirm.md §6 C4',
     what: '切人不清共鸣回路的状态：心转相后切走，照世相、心相心生保留；卜灵的卦象（艮、震）切走再切回来还在。心 · 雷主 · 卜灵按套路重排（+11.18%）靠这一条',
     why: '用户 2026-10-21 的印象（未实测）；模块本来就没在切出时清这些状态',
-    adjust: { how: '实测不对时在角色模块的 onSwitchOut 里清（data/curated/characters/心.ts、卜灵.ts）' },
+    adjust: { how: '场景里 options.rules.forteKeepOnSwitch: false：心切走回到应世相、退出心相心生，卜灵切走清卦象（data/curated/characters/心.ts、卜灵.ts 的 onEvent）；实测后定缺省', path: 'rules.forteKeepOnSwitch', values: [false] },
   },
   {
     id: 'ult-no-switch', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §6.3，docs/xin-confirm.md Y2',
     what: '大招没写"第 n 帧前不能切人"时，"第 n 帧前不响应输入"也挡切人（椿第 239 帧、卜灵第 238 帧…）；写了"不能切人"的照写的',
     why: '大招出招阶段不能切人是实战体感（2026-10-19），待实机验证；xlsx 有的大招两种都写、帧数不同（仇远 200 / 230、凌阳 210 / 180）',
-    adjust: { how: '实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖' },
+    adjust: { how: '场景里 options.rules.ultInputLocksSwitch: false 改成不挡；实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖', path: 'rules.ultInputLocksSwitch', values: [false] },
   },
   {
     id: 'dilation-rules', topic: '时间', tracked: true, impact: 'small', ref: 'TD-04 §3.3、Q1–Q6',

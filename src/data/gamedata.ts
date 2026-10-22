@@ -71,6 +71,7 @@ export interface ActionDef {
   outroTriggerFrame?: Frame                         // 变奏动作：上一角色的延奏在此帧触发
   switchLockUntil?: Frame                           // 此帧前不能切人
   switchLockFromInput?: true                        // 切人锁是大招的"第nF前不响应输入"推出来的（没写"不能切人"，假设 ult-no-switch）
+  switchLockFromInvincible?: true                   // 切人锁是没写帧数的"无敌期间不能切人"等推出来的（假设 switch-no-lock）
   entrySkill?: true                                 // 出场技（动作 ID 以"出场技"结尾）：只能在普通切人入场后第一个出（TD-09 §3.5）
   air?: { from: Frame; until: Frame | null }        // 在空中的局部帧 [from, until)；until 为 null = 动作结束时还在空中（xlsx「位置状态」，TD-01 §13.1）
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖
@@ -230,6 +231,12 @@ export interface Rules {
   effectTickReset: boolean
   /** 异常效应定时结算的伤害记在谁名下（吃谁身上的 buff）：最后附加的人（缺省）、第一次附加的人、结算时在前台的人（假设 effect-owner） */
   effectOwner: 'last' | 'first' | 'onField'
+  /** 切人保留共鸣回路的状态（心的照世相、心相心生，卜灵的卦象…；缺省 true，假设 forte-keep-on-switch）。false：角色模块在切出时清掉 */
+  forteKeepOnSwitch: boolean
+  /** 大招没写"不能切人"时，"第 n 帧前不响应输入"也挡切人（缺省 true，假设 ult-no-switch） */
+  ultInputLocksSwitch: boolean
+  /** 没写帧数的"无敌期间不能切人"等推断出来的切人锁生效（缺省 true，假设 switch-no-lock）；false：这类动作不锁切人 */
+  invincibleLocksSwitch: boolean
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -257,6 +264,9 @@ export const DEFAULT_RULES: Rules = {
   defFloor: false,                                  // xlsx 多数公式不取整（TD-03 Q1）；true = 物理、谐度破坏公式那样先取整
   effectTickReset: false,                           // 原文"每5秒结算1次"没说计时从哪一刻起（TD-06 §18）
   effectOwner: 'last',
+  forteKeepOnSwitch: true,                          // 用户 2026-10-21 的印象，未实测（docs/verify-guide.md B1、B2）
+  ultInputLocksSwitch: true,                        // 实战体感，未实测（verify-guide B7、C5）
+  invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,

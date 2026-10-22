@@ -168,7 +168,7 @@ const withEnergyRegen = (r: ResolvedScenario, slot: Slot, panelValue: number): R
 })
 
 /** 假设表里的开关（AdjustPath）：rules.<键> 或 options.<键> */
-function adjusted(r: ResolvedScenario, path: AdjustPath, v: number | boolean | string): ResolvedScenario {
+export function adjusted(r: ResolvedScenario, path: AdjustPath, v: number | boolean | string): ResolvedScenario {
   const [where, key] = path.split('.') as ['rules' | 'options', string]
   return where === 'rules' ? { ...r, rules: { ...r.rules, [key]: v } } : { ...r, options: { ...r.options, [key]: v } }
 }

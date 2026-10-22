@@ -21,7 +21,7 @@ describe('分轮与稳态', () => {
     expect(loops.every(p => p.damage === one && p.dps === one * 2)).toBe(true)          // 30 帧 = 0.5 秒
     expect(loops.map(p => p.energyDelta)).toEqual(Array(4).fill([10, 5, 5]))
     expect(loops.map(p => p.concertoDelta)).toEqual(Array(4).fill([5, 0, 0]))
-    expect(out.summary.steady).toEqual({ from: 2, to: 3, frames: 60, damage: one * 2, dps: one * 2 })
+    expect(out.summary.steady).toEqual({ from: 2, to: 3, frames: 60, damage: one * 2, dps: one * 2, spread: 0 })   // 各轮一样：窗口挪一轮不变
   })
 
   test('只循环 2 轮时稳态取第 2 轮；不循环时没有分轮', () => {
@@ -68,5 +68,27 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
     expect(run('scenarios/xin-team-r5.yaml')).toEqual([])
     expect(run('scenarios/m0-video-eq.yaml')).toEqual([])
     expect(run('scenarios/m0-team.yaml')).toEqual([])    // 第 1、4 轮 DPS 不同是首尾的缘故（从空闲开始、没有下一轮的边界），不算
+  }, 120_000)
+})
+
+// 误差条与漂移（docs/engine-quality-plan.md P3）：窗口挪一轮、前后两半各算一次 DPS 变多少
+dataDescribe('稳态的误差条 steady.spread 与漂移提示 steadyDrift', () => {
+  test('心队原轴 10 轮：误差零点几、不提示；C2 前三轮靠开局的能量、第 4 轮起每轮才稳定：两半差 6% 多，提示', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { parse } = await import('yaml')
+    const { loadGameData } = await import('../src/data/load')
+    const { ScenarioSchema } = await import('../src/data/scenario.schema')
+    const { resolveScenario } = await import('../src/engine/resolve')
+    const { simulate } = await import('../src/engine/simulate')
+    const data = await loadGameData()
+    const run = (f: string) => simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(`scenarios/${f}`, 'utf8'))), data)).summary
+    const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml')
+    expect(base.steady!.spread).toBeGreaterThan(0)
+    expect(base.steady!.spread).toBeLessThan(0.005)
+    expect(base.warnings.filter(w => w.code === 'steadyDrift')).toEqual([])
+    expect(c2.steady!.spread).toBeGreaterThan(0.03)
+    const drift = c2.warnings.filter(w => w.code === 'steadyDrift')
+    expect(drift).toHaveLength(1)
+    expect(drift[0]!.message).toMatch(/^稳态（第 2–9 轮）前一半 DPS 54800、后一半 51195，差 -6\.6%/)
   }, 120_000)
 })
