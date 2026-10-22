@@ -25,6 +25,8 @@ export interface Basis { label: string; lo: number; hi: number; damage: number; 
 
 export function basisOf(res: SimResult): Basis {
   const s = res.summary
+  // 场景的目标不是稳态（TD-10 §7）：打死 boss 按"血量 ÷ 击杀秒"（越大越快），限时按窗口内每秒伤害；同一个数排名，下游不用改
+  if (s.goal) return { label: s.goal.label, lo: s.goal.lo, hi: s.goal.hi, damage: s.goal.damage, dps: s.goal.dps, spread: 0 }
   if (s.steady && s.perLoop) {
     // 按轮号找稳态第一轮：有启动轴时 perLoop[0] 是第 0 轮，不能按下标算（否则窗口错一轮）
     const lo = s.perLoop.find(p => p.loop === s.steady!.from)!.start

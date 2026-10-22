@@ -6,13 +6,13 @@ import { withRotation } from '../data/scenario-text'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { HAND_PROFILES, type HandProfile } from '../engine/sample'
 import { FAILURE_LABEL, searchRotation, type Candidate } from '../engine/search'
-import { argsOf, fmt, loadScenario, padStart } from './format'
+import { argsOf, fmt, loadScenario, padStart, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 const list = (s: string | undefined) => (s ? s.split(',').map(x => x.trim()).filter(Boolean) : undefined)
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--insert', '--char', '--rounds', '--beam', '--top', '--max-runs', '--hand', '--save'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--insert', '--char', '--rounds', '--beam', '--top', '--max-runs', '--hand', '--save', ...OVERRIDE_FLAGS])
   const file = pos.find(a => !a.startsWith('--'))
   const unknown = pos.filter(a => a.startsWith('--') && a !== '--swap')
   if (!file || unknown.length > 0) {
@@ -25,7 +25,7 @@ async function main(): Promise<number> {
     return 2
   }
   const data = await loadGameData()
-  const sc0 = loadScenario(file)
+  const sc0 = withOverrides(loadScenario(file), opt)
   if (opt.hand !== undefined && !(opt.hand in HAND_PROFILES)) { console.error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`); return 2 }
   const handDelay = opt.hand ? Math.round(HAND_PROFILES[opt.hand as HandProfile].mean) : 0
   // --hand：所有候选与原轴都在 options.inputDelay 之上再晚这么多帧（同 pnpm plan --hand）

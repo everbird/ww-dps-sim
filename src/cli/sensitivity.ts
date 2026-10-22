@@ -5,18 +5,18 @@ import { basename, join } from 'node:path'
 import { loadGameData } from '../data/load'
 import { resolveScenario } from '../engine/resolve'
 import { sensitivityMatrix, type Cell } from '../engine/sensitivity'
-import { argsOf, loadScenario } from './format'
+import { argsOf, loadScenario, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const pct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
 /** 对照的收益翻过来后算"结论变了"：正负号变了，或差了 1 个百分点以上，或有一边跑不通 */
 const CHANGED = 0.01
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--md'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--md', ...OVERRIDE_FLAGS])
   const files = pos.length > 0 ? pos : readdirSync('scenarios').filter(f => f.endsWith('.yaml')).sort().map(f => join('scenarios', f))
   const data = await loadGameData()
   const t0 = Date.now()
-  const scen = files.map(f => ({ name: basename(f, '.yaml'), r: resolveScenario(loadScenario(f), data) }))
+  const scen = files.map(f => ({ name: basename(f, '.yaml'), r: resolveScenario(withOverrides(loadScenario(f), opt), data) }))
   const m = sensitivityMatrix(scen, row => console.error(`  ${row.name}：${((Date.now() - t0) / 1000).toFixed(0)} 秒`))
   const out: string[] = []
   out.push('# 假设敏感度矩阵', '', `${files.length} 个场景 × ${m.flips.length} 个开关，${((Date.now() - t0) / 1000).toFixed(0)} 秒；比较口径同轴搜索（有分轮取稳态，否则整个窗口）。`, '')

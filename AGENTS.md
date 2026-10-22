@@ -24,7 +24,7 @@
 | `wuwa-dps-td07-buff-system-v0.1.2.md` | buff 实例、作用对象（含 `ownerOnField`）、触发与事件队列（含治疗事件、`ownerHas`、异常效应的敌人状态）、消耗型 / 标记型、资源型效果（按武器阶）、原文起草 |
 | `wuwa-dps-td08-character-module-v0.1.7.md` | 角色模块怎么写：钩子（含只读的显示钩子 `forte`）、写法模式、M0 三人与心 · 雷主 · 卜灵的模块 |
 | `wuwa-dps-td09-rotation-scheduler-v0.1.11.md` | 排轴语法、编译、调度：最早合法帧、等待与报错、强制、可选 `?`、补位 `~`、插队、循环与启动轴、出场技要普通切人入场、空中入场 |
-| `wuwa-dps-td10-output-report-v0.1.16.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求与下限、操作容错、假设敏感度）、轴搜索（在现成的轴上挪动 / 去掉 / 对调 / 插入动作）、套路卡与按套路排轴（§6.2：`pnpm cards`、`pnpm plan` 第一版与套路次数可变；卡上的模型未做）、命令行输出、时间轴网页（含检查器的逐帧资源、共鸣回路状态与冷却） |
+| `wuwa-dps-td10-output-report-v0.1.17.md` | 汇总指标与 DPS 口径、分轮与稳态、配装对比、副词条边际、结论（共鸣效率需求与下限、操作容错、假设敏感度）、轴搜索（在现成的轴上挪动 / 去掉 / 对调 / 插入动作）、套路卡与按套路排轴（§6.2：`pnpm cards`、`pnpm plan` 第一版与套路次数可变；卡上的模型未做）、评价轴的多个维度（§6.3：比较的目标 `goal` 稳态 / 打死几倍血 / 前 N 秒已实现，难度、养成门槛、可信度与轴卡片是设计）、命令行输出、时间轴网页（含检查器的逐帧资源、共鸣回路状态与冷却） |
 | `wuwa-dps-td11-debug-calibration-v0.1.3.md` | 对不上时怎么查：说清楚、分层、从粗到细、做实验；案例；调试工具（`pnpm trace`、面板与逐下伤害 `--hits`、网页调试表、视频时间点）与改进；出处的归属规则（谁引发的算谁） |
 | `wuwa-dps-td12-web-v0.2.7.md` | 网页（Vite + Svelte 5，本机用）：结构、各页（含结论页、场景页的假设、轴搜索页（局部改动 / 按套路排轴）、对比页的时间轴对照）、Worker、时间轴的视图 A–E（步进、检查器与共鸣回路、资源与伤害的出处、"轴可能有问题"；E 是播放器式的原型，敌人在顶上一条）、手机与 iPad（触摸操作、全屏）、检查 |
 | `wuwa-dps-td13-echo-optimizer-v0.1.2.md` | 声骸库存择优：库存写法（一个账号一份）、快速重算、搜索与完整仿真确认 |
@@ -75,7 +75,9 @@ pnpm test                                    # Vitest
 pnpm test:py                                 # 构建脚本的 Python 单元测试
 pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.3）：改公式、改乘区拆分、换 xlsx 后跑一次，不进 CI
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
-pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
+pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS（或场景 goal 写的目标），按角色、动作、buff 覆盖率拆差在哪
+                                             # --goal kill:2 打死 2 倍敌人生命要多少战斗秒（启动轴算在内）、window:60 前 60 秒、steady；--repeat N 多跑几轮（TD-10 §6.3）；
+                                             # sim / run search / plan / insight / sensitivity 也认这两个
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
 pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间、卡帧点（--tight 6：每个决策点单独晚 6 帧，分连锁 / 一轮变长 / 有余量 / 反而更好）
 pnpm run search scenarios/m0-team.yaml       # 轴搜索（TD-10 §6.1；要写 run，pnpm 自带的 search 是搜 npm 包）：在循环轴上挪动首位声骸 Q（--move 别的动作、--drop 试着去掉、--swap 对调相邻两个、--insert A1~ 插入、--char 只改谁、--rounds 3 多轮），
