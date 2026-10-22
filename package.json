@@ -27,6 +27,7 @@
     "fuzz": "tsx src/cli/fuzz.ts",
     "sensitivity": "tsx src/cli/sensitivity.ts",
     "scorecard": "tsx src/cli/scorecard.ts",
+    "matrix": "tsx src/cli/matrix.ts",
     "crosscheck:wuwalab": "tsx src/cli/wuwalab.ts",
     "insight": "tsx src/cli/insight.ts",
     "search": "tsx src/cli/search.ts",
