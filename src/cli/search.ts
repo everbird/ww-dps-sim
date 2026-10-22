@@ -4,6 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
 import { withRotation } from '../data/scenario-text'
 import { ResolveError, resolveScenario } from '../engine/resolve'
+import { HAND_PROFILES, type HandProfile } from '../engine/sample'
 import { FAILURE_LABEL, searchRotation, type Candidate } from '../engine/search'
 import { argsOf, fmt, loadScenario, padStart } from './format'
 
@@ -11,19 +12,25 @@ const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.a
 const list = (s: string | undefined) => (s ? s.split(',').map(x => x.trim()).filter(Boolean) : undefined)
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--insert', '--char', '--rounds', '--beam', '--top', '--max-runs', '--save'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--move', '--drop', '--insert', '--char', '--rounds', '--beam', '--top', '--max-runs', '--hand', '--save'])
   const file = pos.find(a => !a.startsWith('--'))
   const unknown = pos.filter(a => a.startsWith('--') && a !== '--swap')
   if (!file || unknown.length > 0) {
     if (unknown.length) console.error(`不认识的参数：${unknown.join(' ')}`)
-    console.error('用法：pnpm run search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--save 新.yaml]')
+    console.error('用法：pnpm run search <场景.yaml> [--move Q,E] [--drop A5] [--swap] [--insert A1~] [--char 椿] [--rounds 1] [--beam 3] [--top 10] [--max-runs 500] [--hand 熟练] [--save 新.yaml]')
     console.error('  缺省只挪动各角色的声骸技能（Q），在同一角色的行里换位置；另外可以试：--drop 去掉这些动作，--swap 对调同一角色相邻的两个动作，')
     console.error('  --insert 插入这些（轴里的写法，可带后缀，如 A1~）；--rounds 大于 1 时在最好的几条上接着改；')
+    console.error('  --hand 高手|熟练|普通：按真人操作打分——每个决策点固定晚这一档手速的平均帧数（3 / 6 / 10，假设 hand-speed），原轴也这样算')
     console.error('  --save 把最好的一条另存成场景（其余照原文，只换循环轴），可以接着 pnpm compare 原.yaml 新.yaml 看差在哪')
     return 2
   }
   const data = await loadGameData()
-  const sc = loadScenario(file)
+  const sc0 = loadScenario(file)
+  if (opt.hand !== undefined && !(opt.hand in HAND_PROFILES)) { console.error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`); return 2 }
+  const handDelay = opt.hand ? Math.round(HAND_PROFILES[opt.hand as HandProfile].mean) : 0
+  // --hand：所有候选与原轴都在 options.inputDelay 之上再晚这么多帧（同 pnpm plan --hand）
+  const sc = handDelay ? { ...sc0, options: { ...sc0.options, inputDelay: sc0.options.inputDelay + handDelay } } : sc0
+  if (handDelay) console.log(`按真人操作打分：手速"${opt.hand}"，每个决策点晚 ${handDelay} 帧（这一档的平均，假设 hand-speed）`)
   let r
   try { r = resolveScenario(sc, data) } catch (e) {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
