@@ -78,7 +78,7 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
     const missed = (r: SimResult) => eventsOfLog(r.log, 'warning').filter(w => w.code === 'introMissed')
       .map(w => [w.cmd!.loop, w.cmd!.line, /卜灵 协奏 ([\d.]+)/.exec(w.message)?.[1]])
     expect(r1.error).toBeUndefined()
-    expect(missed(r1)).toEqual([[0, 7, '98.9'], [2, 6, '98.9'], [4, 6, '98.9']])
+    expect(missed(r1)).toEqual([[0, 7, '98.9'], ...[2, 4, 6, 8, 10].map(k => [k, 6, '98.9'])])   // 10 轮（TD-10 §2）：隔一轮一次
     expect(missed(out)).toEqual([])
   })
 
