@@ -1,7 +1,7 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, type HitTrigger } from '../engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, videoSeconds, type HitTrigger } from '../engine/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>
@@ -83,7 +83,7 @@ function traceModel(r: ResolvedScenario, res: SimResult) {
   }))
 }
 
-/** 视频时间点（TD-11 §6 P2）：每个时间点带上仿真里那条开始的世界帧 f，以及按视频推算的世界帧 vf（从最早那条起算） */
+/** 视频时间点（TD-11 §6 P2）：每个时间点带上仿真里那条开始的世界帧 f、按视频推算的世界帧 vf（从最早那条起算）、视频里的绝对时刻 at */
 function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
   if (!sc.video) return null
   const cmds = traceCommands(res.log, r, sc.video.loop)
@@ -93,7 +93,8 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
   return {
     ...(sc.video.url ? { url: sc.video.url } : {}),
     loop: sc.video.loop, missing: cmp.missing,
-    marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60 })),
+    // at：视频里的绝对时刻（秒），视图 E 拿它当锚点把视频和时间轴对上
+    marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60, at: videoSeconds(sc.video!.marks[String(x.line)]!) })),
   }
 }
 
