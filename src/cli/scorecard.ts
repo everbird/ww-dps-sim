@@ -35,11 +35,13 @@ async function main(): Promise<number> {
     out.push(`| ${c.name} | ${c.hands.map(h => pct(h.pct)).join(' | ')} | ${c === ref ? '基准' : sk !== null && refSkilled ? pct(sk / refSkilled - 1) : '—'} | ${d.loopSecs !== null ? `${d.loopSecs.toFixed(1)} 秒` : '—'} | ${d.perMin !== null ? d.perMin.toFixed(0) : '—'} | ${d.switchesPerMin !== null ? d.switchesPerMin.toFixed(1) : '—'} | ${d.forced} | ${d.airborne !== null ? d.airborne.toFixed(0) : '—'} |`)
   }
   out.push('', '手速档：每个决策点（切人、不是连段后续的出招）在合法之后固定晚这一档的平均帧数，比零帧掉多少（假设 hand-speed）。', '')
-  out.push('## ③ 养成门槛', '')
+  out.push('## ③ 养成门槛', '', '"5 星 0 链 1 精"：5 星角色降到 0 链、5 星武器降到精炼 1，4 星不动。共鸣效率的"约几条副词条"按副词条各档平均（9.6% 一条），是不靠主词条要额外堆的量。', '')
   for (const c of cards) {
-    const need = c.energy.map(e => `${e.char} ${e.need === null ? '再多也要等' : e.need <= e.floor + 1e-9 ? '不用堆' : p0(e.need)}（现在 ${p0(e.current)}）`).join('；')
+    const need = c.energy.map(e => `${e.char} ${e.need === null ? '再多也要等' : e.need <= e.floor + 1e-9 ? '不用堆' : `${p0(e.need)}，约 ${e.substats!.toFixed(1)} 条副词条${e.substats! > 5 ? '（一件声骸最多一条，超过 5 条要靠共鸣效率主词条）' : ''}`}（现在 ${p0(e.current)}）`).join('；')
+    const b = c.baseline
+    const base01 = b.changed.length === 0 ? '已经是' : `${b.error ? `跑不通（${b.error}）` : pct(b.pct)}（${b.changed.join('、')}）`
     const down = c.downgrades.map(d => `${d.char} ${d.what} ${d.error ? `跑不通（${d.error}）` : pct(d.pct)}`).join('；')
-    out.push(`- **${c.name}**：共鸣效率 ${need || '—'}。降档：${down || '没有可降的'}`)
+    out.push(`- **${c.name}**：5 星 0 链 1 精 ${base01}。共鸣效率 ${need || '—'}。单项降档：${down || '没有可降的'}`)
   }
   out.push('', '## ④ 靠不靠得住', '')
   for (const c of cards) {

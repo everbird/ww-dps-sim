@@ -92,7 +92,7 @@ def tree_stats(raw: dict) -> dict[str, float]:
 
 
 def extract_character(raw: dict) -> dict:
-    """一个角色文件 → {id, skills, chains, treeStats}；skills 只留有类型的技能节点（属性加成节点没有 type）"""
+    """一个角色文件 → {id, skills, chains, treeStats, rarity}；skills 只留有类型的技能节点（属性加成节点没有 type）"""
     skills = []
     for key in sorted(raw.get('skill_trees', {}), key=int):
         s = raw['skill_trees'][key].get('skill') or {}
@@ -115,7 +115,10 @@ def extract_character(raw: dict) -> dict:
                        'cooldowns': cooldowns})
     chains = [{'n': int(k), 'name': c.get('name', ''), 'desc': fill(c.get('desc', ''), c.get('param') or [])}
               for k, c in sorted((raw.get('chains') or {}).items(), key=lambda kv: int(kv[0]))]
-    return {'id': raw['id'], 'name': raw.get('name', ''), 'skills': skills, 'chains': chains, 'treeStats': tree_stats(raw)}
+    out = {'id': raw['id'], 'name': raw.get('name', ''), 'skills': skills, 'chains': chains, 'treeStats': tree_stats(raw)}
+    if raw.get('rarity') is not None:
+        out['rarity'] = int(raw['rarity'])                     # 星级（4 / 5）：轴卡片按"5 星 0 链 1 精"降档用（TD-10 §6.3）
+    return out
 
 
 def extract_echo(raw: dict) -> dict:

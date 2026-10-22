@@ -342,6 +342,7 @@ export const NanokaCharacterSchema = z.strictObject({
   })),
   chains: z.array(z.strictObject({ n: int().min(1).max(6), name: z.string(), desc: z.string() })),
   treeStats: z.record(z.string(), z.number()),      // 技能树属性节点：名字（"攻击提升"）→ 全部点亮的合计（小数）
+  rarity: int().min(1).max(5).optional(),           // 星级（nanoka 的 rarity）；2026-10-22 起，旧缓存没有
 })
 /** nanoka 的声骸：技能说明、冷却、伤害条目（构建时给 dmg 里没有的声骸行连倍率，TD-01 §8）、所属套装 */
 export const NanokaEchoSchema = z.strictObject({

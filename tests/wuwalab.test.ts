@@ -1,7 +1,7 @@
 // tests/wuwalab.test.ts —— 与 WuwaLAB 动作数据的核对（src/data/wuwalab-check.ts，docs/engine-quality-plan.md P5）：按倍率配对、报出差异
 import { describe, expect, test } from 'vitest'
 import { crosscheckWuwalab, type WlAbility } from '../src/data/wuwalab-check'
-import { action, judgment } from './helpers/kernel-harness'
+import { action, block, dataDescribe, judgment } from './helpers/kernel-harness'
 
 const ab = (o: Partial<WlAbility> & { name: string; hits: WlAbility['hits'] }): WlAbility => ({
   total_frames: 60, earliest_frame_cancel: 30, no_swap: 0, time_stop: 0, cooldown: null, priority_timeline: [[0, 2]],
@@ -30,5 +30,20 @@ describe('WuwaLAB 核对', () => {
     expect(rows[0]!.diffs).toEqual(['命中帧（WuwaLAB − 我们）10', '各击能量 WuwaLAB 1 / 我们 2', '优先级 WuwaLAB 0:2 30:1 / 我们 0:2'])
     expect(rows[1]!.diffs).toEqual(['时停 WuwaLAB 180 / 我们全局时停到 225', '切人 WuwaLAB no_swap 0、时停 180 / 我们锁到 225', '冷却 WuwaLAB 1200 / 我们 1500'])
     expect(rows[2]).toMatchObject({ action: null, diffs: ['倍率 9.900 没对上'] })
+  })
+})
+
+// 落地段（2026-10-22 与 WuwaLAB 核对时发现）：有"…下落"行、后面的行帧数从落地算，没写 shiftRows 时记 landingUnshifted；
+// 椿 E2 原来第 35 帧就结束、第 4 下丢了，现在按第 58 帧落地后移，5 下都在
+dataDescribe('落地段', () => {
+  test('没后移的记 landingUnshifted；椿 E2 后移后 5 下都在、结束帧在落地之后', async () => {
+    const { loadGameData } = await import('../src/data/load')
+    const data = await loadGameData()
+    expect(block('椿')['E2']!.flags).toContain('landingUnshifted')            // 原始装配（不带角色模块的覆盖）
+    expect(block('心')['E']!.flags).toContain('landingUnshifted')             // 心应世 E 还没处理
+    const e2 = data.characters['椿']!.actions['E2']!
+    expect(e2.flags).not.toContain('landingUnshifted')                       // 椿.ts 写了 shiftRows
+    expect(e2.judgments.filter(j => j.multiplier > 0).map(j => j.spawnFrame)).toEqual([14, 23, 29, 57, 63])
+    expect(e2.endFrame).toBe(93)
   })
 })

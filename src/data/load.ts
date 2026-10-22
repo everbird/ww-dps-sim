@@ -6,7 +6,7 @@ import type { BuffDefInput } from './buff.schema'
 import { mergeBlockKey, type CharacterModuleDef, type EchoModule, type EchoSetModule, type EffectModule, type WeaponModule } from './define'
 import type { GameData } from './gamedata'
 import {
-  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEffectsFileSchema, GenEnemySchema, GenMetaSchema,
+  GenActionFileSchema, GenCharactersSchema, GenEchoSchema, GenEchoStatsSchema, GenEffectsFileSchema, GenEnemySchema, GenMetaSchema, NanokaFileSchema,
   GenTuneBreakSchema, GenWeaponSchema, type GenActionFile,
 } from './generated.schema'
 import { buildGameData } from './registry'
@@ -41,6 +41,9 @@ export async function loadGameData(root: URL = ROOT): Promise<GameData> {
       enemies: read(z.array(GenEnemySchema), 'enemies.json'),
       ...(existsSync(new URL('tune-break.json', gen)) ? { tuneBreak: read(GenTuneBreakSchema, 'tune-break.json') } : {}),
       ...(existsSync(new URL('effects.json', gen)) ? { effects: read(GenEffectsFileSchema, 'effects.json') } : {}),
+      ...(existsSync(new URL('nanoka.json', gen))
+        ? { rarity: Object.fromEntries(Object.entries(read(NanokaFileSchema, 'nanoka.json').characters).flatMap(([n, c]) => (c.rarity ? [[n, c.rarity]] : []))) }
+        : {}),
     },
     {
       characters,

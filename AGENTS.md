@@ -36,6 +36,7 @@
 | `xin-scorecard.md` | 心队 7 条轴的轴卡片（按稳态、按打死 2 倍血），末尾的表由 `pnpm scorecard` 生成，开头有手写的读法 |
 | `xin-conclusions.md` | 心 · 雷主 · 卜灵 的结论：副词条先堆哪个（心先把共鸣效率堆到约 130%）、共鸣效率要多少、手慢几帧掉多少、电磁效应两处读法的敏感度（注明按哪条轴、哪个数据版本算的） |
 | `team3-candidates.md` | 第三支队伍的候选：两个账号里装满声骸、还没写模块的角色，数据要处理多少（待处理的推断值、没连上倍率的判定） |
+| `endgame-fights.md` | 两队打深塔、矩阵几只 boss 各要多少战斗秒（单体近似，没算场地 buff、多波、时限），只能横向比 |
 | `wuwalab-crosscheck.md` | 与 WuwaLAB 动作数据的核对（`pnpm crosscheck:wuwalab --md` 生成，开头有手写的读法：已经据此改了的、留作线索的） |
 | `assumption-sensitivity.md` | 假设敏感度矩阵（`pnpm sensitivity --md` 生成，末尾有手写的读法）：每个开关翻过来各场景变多少、哪些对照的结论会变 |
 | `engine-quality-plan.md` | 引擎准确性计划（2026-10-22 起，功能先冻结）：现状、教训、P1–P6（不变量检查、假设敏感度、量法、校准、数据层）与进度 |
@@ -78,7 +79,7 @@ pnpm test:py                                 # 构建脚本的 Python 单元测�
 pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.3）：改公式、改乘区拆分、换 xlsx 后跑一次，不进 CI
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS（或场景 goal 写的目标），按角色、动作、buff 覆盖率拆差在哪
-                                             # --goal kill:2 打死 2 倍敌人生命要多少战斗秒（启动轴算在内）、window:60 前 60 秒、steady；--repeat N 多跑几轮（TD-10 §6.3）；
+                                             # --goal kill:2 打死 2 倍敌人生命要多少战斗秒（启动轴算在内）、window:60 前 60 秒、steady；--repeat N 多跑几轮；--enemy 42塔中1/无冠者 换敌人（TD-10 §6.3）；
                                              # sim / run search / plan / insight / sensitivity 也认这两个
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
 pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间、卡帧点（--tight 6：每个决策点单独晚 6 帧，分连锁 / 一轮变长 / 有余量 / 反而更好）
@@ -131,3 +132,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 1. 声骸冷却与 nanoka 核对（2026-10-21，起因是 `docs/wuthery-data-crosscheck-2026-10-21.md` 的声骸冷却差异）：generated 的冷却取 xlsx「冷却」列，原有的 `cooldownText` 只比列与说明，两处同错的（梦魇·无常凶鹭都写 20 秒，解包与 nanoka 25 秒）查不出来。构建在连倍率后另比 nanoka 说明的"技能冷却"：不同时打声骸级 flag `cooldownNanoka`、记 `nanokaCooldown`（帧，否则 null；`GenEchoSchema` 新字段），构建报告列出；`echoes.ts` 写了 Q 的 `cooldown` 视为已处理（同 `cooldownText`）。这次报出的正好是那四个，已在 `echoes.ts` 按解包与 nanoka 覆盖：梦魇·无常凶鹭 25 秒、梦魇·赫卡忒 25 秒、角鳄 15 秒、霁息兽尊 20 秒（现有场景都没装在首位，结果不变）。用例：`tools/build/test_echoes.py`。要并回的：TD-01 §8（flag 与字段）、§14；TD-02 `GenEchoSchema`。
 2. 准确性 P1、P2（2026-10-22，docs/engine-quality-plan.md §5）：跑完后的日志自洽检查 `checkLog`（`src/engine/invariants.ts`，场景快照测试顺带查）与 `pnpm fuzz`；假设的三个开关 `rules.forteKeepOnSwitch` / `ultInputLocksSwitch` / `invincibleLocksSwitch`（缺省都是现在的做法；`ActionDef.switchLockFromInvincible` 标出推断出来的切人锁；钩子 ctx 多了只读的 `rules`，心、卜灵的模块按 `forteKeepOnSwitch` 在切走时清状态）；`pnpm sensitivity` 与 `docs/assumption-sensitivity.md`；假设 `switch-no-lock` 的影响改为"大"；P3：稳态的误差条 `Summary.steady.spread`（`Basis.spread`，compare / search 显示）与漂移提示 `steadyDrift`，由此 C2 更正为长期约 +5.2%。要并回的：总设计 §11（不变量、模糊测试）、TD-02（Rules 三个键、ActionDef 字段、HookContext.rules）、TD-05 §2（切人锁的开关）、TD-08（钩子的 rules 与两个模块）、TD-10 §2（误差条、steadyDrift）、§6（敏感度矩阵）。
 3. 时间膨胀类型为空的行与全局时停挡切人（2026-10-22，docs/engine-quality-plan.md §5 P5）：类型格空着、各侧系数都是 0 的膨胀行，按行名推断为全局时停 / 时停，记 flag `dilationTypeGuess`（雷主·男 / 女、穗穗、秧秧·玄翎的大招；系数不是 0 的记 `dilationTypeMissing` 并跳过）；`ActionDef.globalStopUntil`（按动作局部帧登记的全局时停结束帧），调度器在它之前不让切人，等待代码 `globalStop`；`pnpm crosscheck:wuwalab`；`plan --opening` 按场景 goal 打分（`OpeningResult.label`）。要并回的：TD-01 §13（两个 flag）与 dilations 一行、TD-02（`globalStopUntil`、`WaitCode`）、TD-04 §3、TD-05 §2（全局时停挡切人）、TD-09 §3.3（等待代码）、TD-10 §6.2 ④′（`--opening` 的口径）。
+4. 落地段与养成门槛（2026-10-22）：装配加 flag `landingUnshifted`（有"…下落"行、后面的行帧数从落地算，角色模块没写 `shiftRows`；`shiftRows` 视为已处理）；椿 E2 补 `shiftRows`（第 58 帧落地）与优先级（第 81 帧降到 2），M0 全部重算（m0-conclusions §0）；nanoka 构建多抽角色星级 `rarity`（`NanokaCharacterSchema`），`CharacterDef.rarity`；轴卡片的养成门槛改为"5 星 0 链 1 精"基线、共鸣效率折成副词条条数；命令行 `--enemy`。要并回的：TD-01 §12（nanoka 的 rarity）、§13（`landingUnshifted`）、TD-02（`rarity`）、TD-08 §5（椿 E2）、TD-10 §6.3（已写）。

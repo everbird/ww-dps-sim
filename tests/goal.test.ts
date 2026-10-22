@@ -29,6 +29,7 @@ describe('目标的写法', () => {
     expect(withOverrides(sc, { goal: 'killHp:2600000' }).goal).toEqual({ killHp: 2600000 })
     expect(withOverrides(sc, { goal: 'steady' }).goal).toBe('steady')
     expect(withOverrides(sc, { repeat: '8' }).options).toMatchObject({ repeat: 8, maxFrames: 30000 })   // 帧数上限跟着放大
+    expect(withOverrides(sc, { enemy: '42塔中1/无冠者' }).enemy).toEqual({ preset: '42塔中1/无冠者' })
     expect(() => withOverrides(sc, { goal: 'kill' })).toThrow(/--goal/)
     expect(() => withOverrides(sc, { goal: 'steady:1' })).toThrow(/--goal/)
     expect(() => withOverrides(sc, { repeat: '0' })).toThrow(/--repeat/)
