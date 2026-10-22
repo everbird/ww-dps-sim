@@ -194,6 +194,13 @@ export default defineCharacter('心', {
     onEvent(ctx, ev) {
       const v = ctx.vars
       const self = me(ctx)
+      // 切走回到应世相、退出心相心生（假设 forte-keep-on-switch 翻过来：options.rules.forteKeepOnSwitch = false，量敏感度用）
+      if (ev.type === 'switch' && ev.from === self && !ctx.rules.forteKeepOnSwitch) {
+        v.照世 = false; v.转相解锁 = false; v.万阙解锁 = false; v.魔方至 = -1
+        ctx.removeBuff('心.心相心生')
+        ctx.removeBuff('心.统御众机')
+        return
+      }
       switch (ev.type) {
         case 'actionStart':
           if (ev.char === self) onAction(ctx, ev.action, ev.instance)

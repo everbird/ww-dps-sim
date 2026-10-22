@@ -130,6 +130,14 @@ export default defineCharacter('卜灵', {
     },
     onEvent(ctx, ev) {
       const me = ctx.state.chars[ctx.self].name
+      // 切走不保留卦象、少阳 / 少阴（假设 forte-keep-on-switch 翻过来：options.rules.forteKeepOnSwitch = false，量敏感度用）
+      if (ev.type === 'switch' && ev.from === me && !ctx.rules.forteKeepOnSwitch) {
+        const v = ctx.vars
+        const n = ctx.state.chars[ctx.self].core[0]!
+        if (n > 0) ctx.addResource('core1', -n, ctx.self, '切走清卦象（forteKeepOnSwitch = false）')
+        v.卦象数 = 0; v.卦象位 = 0; v.少阳 = false; v.少阴 = false; v.阴阳相生 = false
+        return
+      }
       if (ev.type === 'actionStart' && ev.char === me) {
         if (ev.action === 'E') push(ctx, 震)                        // "施放共鸣技能·遁影牵雷时获得【卦象·震】"（E-前置第 1 帧）
         // 艮为山、震为雷：数据在起手时扣 2 枚卦象（gain 行，原文"第40F"），这里同时记少阴；

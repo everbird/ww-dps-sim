@@ -24,6 +24,8 @@
     "import:scan": "tsx src/cli/import-scan.ts",
     "assumptions": "tsx src/cli/assumptions.ts",
     "conformance": "tsx src/cli/conformance.ts",
+    "fuzz": "tsx src/cli/fuzz.ts",
+    "sensitivity": "tsx src/cli/sensitivity.ts",
     "insight": "tsx src/cli/insight.ts",
     "search": "tsx src/cli/search.ts",
     "cards": "tsx src/cli/cards.ts",

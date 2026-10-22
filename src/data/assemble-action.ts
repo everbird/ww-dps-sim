@@ -247,6 +247,7 @@ export function assembleGroup(
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
     ...(lockFromInput ? { switchLockFromInput: true as const } : {}),
+    ...(invRows.length > 0 && maxHint('noSwitchBefore') === null ? { switchLockFromInvincible: true as const } : {}),
     ...(g.id.endsWith('出场技') ? { entrySkill: true as const } : {}),
     ...(air ? { air } : {}),   // "A2-地面出场技"（散华单列一组，维里奈 splitRows、椿 copyAs 的也是）
     ...(endOnSwitch !== undefined ? { endOnSwitchOut: endOnSwitch } : {}),

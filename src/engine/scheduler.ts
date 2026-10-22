@@ -206,7 +206,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           continue
         }
       }
-      const v = evaluate(s, actions, opts, c, ref)
+      const v = evaluate(s, k, actions, opts, c, ref)
       if (!v.go && c.kind === 'act' && c.optional && SKIPPABLE.includes(v.code)) {
         // 可选指令（"?"）：冷却、资源、角色条件不满足就跳过，记一条 skip，接着看下一条（TD-06 §13.4）
         closeSeg(s, ref)
@@ -231,7 +231,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
 }
 
 /** 队首指令此刻能不能执行（§3.2 的检查顺序）；等不来的直接抛错 */
-function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): Verdict {
+function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): Verdict {
   const q = s.queue
   switch (c.kind) {
     case 'wait':
@@ -246,7 +246,9 @@ function evaluate(s: SimState, actions: Record<ActionId, ActionDef>[], opts: Sch
       // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
       const last = s.chars[s.onField].last
       const lock = last?.def.switchLockUntil
-      if (last && lock !== undefined && last.localFrame < lock) {
+      // 推断出来的锁可以在场景里关掉，量假设的敏感度（options.rules.ultInputLocksSwitch / invincibleLocksSwitch）
+      const off = last && ((last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch) || (last.def.switchLockFromInvincible && !k.rules.invincibleLocksSwitch))
+      if (last && lock !== undefined && last.localFrame < lock && !off) {
         if (!last.def.switchLockFromInput) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
         // 大招没写"不能切人"，按"不响应输入"挡（假设 ult-no-switch）：每段等待记一次
         if (q.seg?.code !== 'switchLock') assume(s, 'ult-no-switch', `${s.chars[s.onField].name}·${last.id}（第 ${lock} 帧）`)
