@@ -159,7 +159,8 @@ def build_echo(b: dict, values: list, merges: dict, costs: dict, issues: Issues)
     tk = text_kind(desc)
     if tk is not None and groups[0]['kind'] is not None and tk != groups[0]['kind']:
         flags.append('kindText')
-    return {'key': key, 'startRow': start, 'cost': cost, 'description': desc, 'descCooldown': desc_cd, 'textKind': tk,
+    return {'key': key, 'startRow': start, 'cost': cost, 'description': desc, 'descCooldown': desc_cd,
+            'nanokaCooldown': None, 'textKind': tk,
             'ignoredRows': b['ignoredRows'], 'groups': groups, 'flags': flags}
 
 
@@ -322,6 +323,19 @@ def _nanoka_match(row: dict, entries: list) -> tuple[dict | None, list]:
     if len({tuple(e['rateLv']) for e in cands}) == 1:
         return cands[0], cands
     return None, cands
+
+
+def flag_nanoka_cooldown(echo: dict, nk: dict | None) -> None:
+    """第一组的冷却（「冷却」列）与 nanoka 说明的"技能冷却"不同时打 cooldownNanoka，记 nanokaCooldown（帧）。
+    xlsx 的列与说明可能同错（梦魇·无常凶鹭：两处都 20 秒，解包与 nanoka 25 秒），cooldownText 查不出来"""
+    cd = echo['groups'][0]['cooldown']
+    nk_cd = (nk or {}).get('cooldown')
+    if cd is None or nk_cd is None:
+        return
+    frames = _cd_frames(nk_cd)
+    if frames != cd:
+        echo['flags'].append('cooldownNanoka')
+        echo['nanokaCooldown'] = frames
 
 
 def join_echo(echo: dict, dmg: dict, dmg_join: dict, nk: dict | None, issues: Issues, gaps: list) -> None:

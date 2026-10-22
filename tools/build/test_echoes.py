@@ -7,7 +7,8 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from echoes import build_costs, cost_of, drop_phantoms, group_id, join_echo, parse_echo_sheet, text_kind  # noqa: E402
+from echoes import (build_costs, cost_of, drop_phantoms, flag_nanoka_cooldown, group_id, join_echo,  # noqa: E402
+                    parse_echo_sheet, text_kind)
 from parse import Issues  # noqa: E402
 
 
@@ -126,6 +127,18 @@ class 分组(unittest.TestCase):
         [e] = parse(values, mp)
         self.assertEqual((e['groups'][0]['cooldown'], e['descCooldown']), (1200, 720))
         self.assertEqual(set(e['flags']) - {'costMissing'}, {'cooldownText', 'charges'})
+
+    def test_冷却与nanoka不同(self):
+        """「冷却」列与说明同错（梦魇·无常凶鹭两处都 20 秒）时只有 nanoka 能查出来：打 cooldownNanoka、记 nanokaCooldown"""
+        values, mp = sheet(row(A='梦魇·无常凶鹭', B='大鸟转转转', C=11, D=9, I=39, L=175, M=4.37, Q='变身', R=20,
+                               X='幻形为梦魇·无常凶鹭……\n技能冷却：20秒'))
+        [e] = parse(values, mp)
+        flag_nanoka_cooldown(e, {'cooldown': 25.0})
+        self.assertEqual(('cooldownNanoka' in e['flags'], e['nanokaCooldown']), (True, 1500))
+        [e] = parse(values, mp)
+        for nk in ({'cooldown': 20.0}, {'cooldown': None}, None):
+            flag_nanoka_cooldown(e, nk)
+        self.assertEqual(('cooldownNanoka' in e['flags'], e['nanokaCooldown']), (False, None))
 
     def test_无名行与事件生成(self):
         """动作名为空的行不读（计入 ignoredRows）；声骸表没有命中类型列：有持续帧、发生帧为空的是事件生成的判定"""

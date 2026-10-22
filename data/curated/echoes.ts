@@ -118,6 +118,28 @@ const echoes: EchoModule[] = [
       },
     ],
   }),
+
+  // 以下四个的「冷却」列与解包（Wuthery 3.7.15 PhantomSkill）、nanoka 3.7 不同，以后两者为准（docs/wuthery-data-crosscheck-2026-10-21.md）
+  defineEcho({
+    name: '梦魇·无常凶鹭',
+    // xlsx「冷却」列与说明都写 20 秒（像照抄了无常凶鹭），解包与 nanoka 25 秒
+    actionOverrides: { 'Q·大鸟转转转': { cooldown: 1500 } },
+  }),
+  defineEcho({
+    name: '梦魇·赫卡忒',
+    // xlsx「冷却」列 20 秒，说明、解包、nanoka 25 秒
+    actionOverrides: { 'Q·跃起': { cooldown: 1500 } },
+  }),
+  defineEcho({
+    name: '角鳄',
+    // xlsx「冷却」列 20 秒，说明、解包、nanoka 15 秒
+    actionOverrides: { 'Q·跳砸': { cooldown: 900 } },
+  }),
+  defineEcho({
+    name: '霁息兽尊',
+    // xlsx「冷却」列 15 秒，说明、解包、nanoka 20 秒
+    actionOverrides: { 'Q·喷火': { cooldown: 1200 } },
+  }),
 ]
 
 export default echoes

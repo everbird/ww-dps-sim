@@ -83,6 +83,7 @@ def render_echoes(echoes: list, gaps: list, has_nanoka: bool, phantoms: list) ->
                    + '、'.join(f"{k}{'（表里数值与本体不同，不用）' if diff else ''}" for k, diff in phantoms))
     names = {
         'cooldownText': '「冷却」列与技能说明的"技能冷却"不同（取「冷却」列）',
+        'cooldownNanoka': '「冷却」列与 nanoka 说明的"技能冷却"不同（取「冷却」列；确认后在 echoes.ts 写 Q 的 cooldown）',
         'charges': '按次数充能（说明里有"可使用次数"；仿真按普通冷却算）',
         'stagesGuess': '多段声骸（按行名前缀分段，要核对）',
         'costMissing': '`索引` 页查不到 COST',
@@ -94,6 +95,8 @@ def render_echoes(echoes: list, gaps: list, has_nanoka: bool, phantoms: list) ->
             continue
         if flag == 'cooldownText':
             items = [f"{e['key']}（{e['groups'][0]['cooldown']} / {e['descCooldown']} 帧）" for e in es]
+        elif flag == 'cooldownNanoka':
+            items = [f"{e['key']}（{e['groups'][0]['cooldown']} / {e['nanokaCooldown']} 帧）" for e in es]
         elif flag == 'kindText':
             items = [f"{e['key']}（列 {e['groups'][0]['kind']} / 说明 {e['textKind']}）" for e in es]
         elif flag == 'stagesGuess':

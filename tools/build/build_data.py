@@ -30,7 +30,7 @@ from tune_break import build_tune_break  # noqa: E402
 from effects import build_effects  # noqa: E402
 from versions import pick_xlsx  # noqa: E402
 from base_cols import BaseCols  # noqa: E402
-from echoes import build_costs, drop_phantoms, join_echo, parse_echo_sheet  # noqa: E402
+from echoes import build_costs, drop_phantoms, flag_nanoka_cooldown, join_echo, parse_echo_sheet  # noqa: E402
 from enemies import build_enemies, rage_index  # noqa: E402
 import golden  # noqa: E402
 import nanoka  # noqa: E402
@@ -149,6 +149,7 @@ def main() -> int:
     echo_gaps: list = []
     for e in echoes:
         join_echo(e, dmg, dmg_join, nk_echoes.get(e['key']), issues, echo_gaps)
+        flag_nanoka_cooldown(e, nk_echoes.get(e['key']))
 
     # §5.1 公式定义原文
     formula_ref = {}
