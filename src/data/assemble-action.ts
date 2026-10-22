@@ -108,6 +108,10 @@ export function assembleGroup(
   if (rows.length < kept.length) flags.add('dirVariant')
   // 带链标记的非判定行（膨胀 / 资源 / 标记）暂不按链筛选，交给 TD-06 / TD-08
   if (rows.some(r => r.kind !== 'hit' && r.nameTags.chain !== undefined)) flags.add('chainNonHit')
+  // 落地段没后移：有"…下落"行，后面的行帧数比它小（是从落地算的），而角色模块没写 shiftRows（laterEnd）。
+  // 这时落地段排在下落之前，动作提前结束、下落段之后的判定会丢（2026-10-22 椿 E2 只打 4 下；WuwaLAB 核对时发现）
+  const fall = rows.findIndex(r => r.name.includes('下落') && r.spawnFrame !== null)
+  if (!laterEnd && fall >= 0 && rows.slice(fall + 1).some(r => r.spawnFrame !== null && r.spawnFrame < rows[fall]!.spawnFrame!)) flags.add('landingUnshifted')
 
   // 结束帧：第一个有值的行（有落地段时取最大值）；都没有则 max(发生帧 + 持续帧, 派生帧)
   const ends = rows.flatMap(r => (r.endFrame !== null ? [r.endFrame] : []))
@@ -348,7 +352,7 @@ function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive:
 /** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
 const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
-  shiftRows: ['multiEnd'],                  // 落地段的结束帧本来就与下落段不同
+  shiftRows: ['multiEnd', 'landingUnshifted'],   // 落地段的结束帧本来就与下落段不同
   cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames', 'noSwitchUnframed'],
 }
 const J_HANDLED: Record<string, string[]> = {

@@ -9,9 +9,10 @@ import type { Summary } from '../engine/types'
 
 export const loadScenario = (file: string): Scenario => parseOrThrow(ScenarioSchema, parse(readFileSync(file, 'utf8')), file)
 
-/** 命令行临时覆盖场景（TD-10 §7）：--goal steady | kill:倍数 | killHp:血量 | window:秒；--repeat 轮数（打死几倍血要多跑几轮时用） */
-export const OVERRIDE_FLAGS = ['--goal', '--repeat']
-export const OVERRIDE_USAGE = '[--goal steady|kill:2|killHp:2600000|window:60] [--repeat N]'
+/** 命令行临时覆盖场景（TD-10 §6.3）：--goal steady | kill:倍数 | killHp:血量 | window:秒；--repeat 轮数（打死几倍血要多跑几轮时用）；
+ *  --enemy 换敌人预设（敌人表的 id，如 42塔中1/无冠者、矩8R2/燎照之骑） */
+export const OVERRIDE_FLAGS = ['--goal', '--repeat', '--enemy']
+export const OVERRIDE_USAGE = '[--goal steady|kill:2|killHp:2600000|window:60] [--repeat N] [--enemy 42塔中1/无冠者]'
 export function withOverrides(sc: Scenario, opt: Record<string, string>): Scenario {
   let out = sc
   if (opt.goal !== undefined) {
@@ -21,6 +22,7 @@ export function withOverrides(sc: Scenario, opt: Record<string, string>): Scenar
     const goal: Scenario['goal'] = m[1] === 'steady' ? 'steady' : m[1] === 'kill' ? { kill: v } : m[1] === 'killHp' ? { killHp: v } : { window: v }
     out = { ...out, goal }
   }
+  if (opt.enemy !== undefined) out = { ...out, enemy: { preset: opt.enemy } }
   if (opt.repeat !== undefined) {
     const n = Number(opt.repeat)
     if (!Number.isInteger(n) || n < 1) throw new Error(`--repeat 要正整数（不是"${opt.repeat}"）`)

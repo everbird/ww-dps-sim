@@ -26,6 +26,7 @@ export interface GeneratedFiles {
   enemies: GenEnemy[]
   tuneBreak?: GenTuneBreak                          // tune-break.json（TD-01 §11.3）；没有时谐度破坏伤害为 0
   effects?: GenEffectsFile                          // effects.json（TD-01 §11.2）：逐层倍率与异常伤害基础值；没有时异常效应伤害为 0
+  rarity?: Record<string, number>                   // 角色名 → 星级（nanoka.json；没有时 CharacterDef.rarity 为 null）
 }
 
 export interface CuratedModules {
@@ -162,6 +163,7 @@ function buildCharacter(gen: GeneratedFiles, mod: CharacterModuleDef, charNames:
     commonBlock: g.commonBlock, base: g.base90, energyCost: g.energyCost,
     coreResources,
     tunabilityRate: g.tunabilityRate, harmonyBreakBoost: g.harmonyBreakBoost,
+    rarity: gen.rarity?.[mod.name] ?? null,
     treeStats: mod.treeStats ?? {},
     actions, aliases: mod.aliases ?? {},
     buffs: (mod.buffs ?? []).map(b => buff(b, mod.name)),

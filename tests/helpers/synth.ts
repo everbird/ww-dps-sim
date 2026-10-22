@@ -27,7 +27,7 @@ export function synthData(chars: SynthChar[]): GameData {
     characters[c.name] = {
       name: c.name, element: '物理', weaponType: '迅刀', bodyType: null, commonBlock: null,
       base: { hp: 10000, atk: 1000, def: 1000 }, energyCost: c.energyCost ?? 100, coreResources: c.core ?? [],
-      tunabilityRate: 0, harmonyBreakBoost: 0, treeStats: {},
+      tunabilityRate: 0, harmonyBreakBoost: 0, rarity: null, treeStats: {},
       actions: Object.fromEntries(c.actions.map(a => [a.id, a])), aliases: c.aliases ?? {},
       buffs: (c.buffs ?? []).map(b => BuffDefSchema.parse(b)),
       resourceEffects: (c.effects ?? []).map(e => ResourceEffectSchema.parse(e)),

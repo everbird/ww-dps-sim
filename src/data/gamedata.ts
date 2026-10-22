@@ -38,6 +38,7 @@ export interface CharacterDef {
   coreResources: CoreResourceDef[]                  // 按槽号，可不连续
   tunabilityRate: number                            // 偏谐效率基础值（推定，TD-01 Q17）
   harmonyBreakBoost: number                         // 谐破增幅基础值（推定）
+  rarity: number | null                             // 星级（nanoka；没有 nanoka.json 时 null）：轴卡片按"5 星 0 链 1 精"降档（TD-10 §6.3）
   treeStats: Partial<Record<StatKey, number>>       // 技能树属性节点合计（curated，进静态面板）
   actions: Record<ActionId, ActionDef>
   aliases: Record<string, ActionId>                 // "R" → "大招"

@@ -90,15 +90,18 @@ dataDescribe('结论（M0 代表轴）', () => {
 })
 
 dataDescribe('卡帧点（TD-10 §6 ⑥）：M0 视频轴 EQ 版', () => {
-  test('一轮卡在维里奈、椿 25 秒的大招冷却上：只有两个大招与紧跟的 E3 晚了一轮就跟着变长，其余单独晚 6 帧都有余量', async () => {
+  // 2026-10-22 椿 E2 补上落地段（多 50 帧左右）之后，一轮 25.12 秒、超过两个大招 25 秒的冷却：以前只有两个大招与 E3 卡帧、其余有余量，
+  // 现在几乎每个决策点都在关键路径上
+  test('一轮 25.12 秒、超过大招冷却：几乎每个决策点晚 6 帧一轮就跟着变长，只剩两三处有余量', async () => {
     const data = await loadGameData()
     const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
     const x = insight(r, { delays: [0] })
     expect(x.tightFrames).toBe(6)
-    expect(x.tight.filter(t => t.kind === 'time').map(t => t.what).sort()).toEqual(['椿 E3', '椿 大招', '维里奈 大招'])
-    expect(x.tight.filter(t => t.kind === 'time').every(t => t.extraFrames === 6)).toBe(true)
-    expect(x.tight.some(t => t.kind === 'cascade' || t.kind === 'better' || t.error)).toBe(false)
-    expect(x.tight.filter(t => t.kind === 'slack').length).toBeGreaterThan(20)
+    const time = x.tight.filter(t => t.kind === 'time')
+    expect(time.length).toBeGreaterThan(25)
+    expect(time.filter(t => t.extraFrames === 6).length).toBeGreaterThan(25)          // 多数晚几帧一轮就多几帧；有两三处只多 2～5 帧（部分余量）
+    expect(x.tight.filter(t => t.kind === 'slack').length).toBeLessThanOrEqual(3)
+    expect(x.tight.some(t => t.kind === 'better' || t.error)).toBe(false)
     // 连段后续不算决策点（玩家预输入）
     expect(x.tight.some(t => /盛绽·A2|A4|A5|强化空中A2/.test(t.what))).toBe(false)
   }, 120_000)

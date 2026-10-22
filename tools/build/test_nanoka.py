@@ -50,6 +50,10 @@ class Nanoka抽取(unittest.TestCase):
     def test_技能树属性节点求和(self):
         self.assertEqual(extract_character(RAW)['treeStats'], {'暴击伤害提升': 0.08, '攻击提升': 0.018})
 
+    def test_星级(self):
+        self.assertEqual(extract_character({**RAW, 'rarity': 5})['rarity'], 5)
+        self.assertNotIn('rarity', extract_character(RAW))                    # 没有就不写
+
     def test_共鸣链(self):
         self.assertEqual(extract_character(RAW)['chains'], [{'n': 1, 'name': '一', 'desc': '无'}, {'n': 2, 'name': '二', 'desc': '倍率提升120%'}])
 

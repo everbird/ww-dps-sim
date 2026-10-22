@@ -1,7 +1,8 @@
 // src/engine/scorecard.ts —— 轴卡片（TD-10 §6.3）：一条轴在四个维度上各是多少，几条轴放一起比，不合成一个分数。
 //   ① 目标：按场景 goal 的比较口径（缺省稳态），另列打死 1 / 2 / 3 倍敌人生命要多少战斗秒
 //   ② 好不好打：每个决策点晚高手 / 熟练 / 普通的平均帧数（3 / 6 / 10，同 plan --hand）各掉多少；每分钟几个决策点、抢帧 !、等切出者跳起的空中切人
-//   ③ 养成门槛：各人共鸣效率最少要多少（insight ①）；链数降一档、武器降到 1 阶各掉多少（跑不通也列）
+//   ③ 养成门槛：各人共鸣效率最少要多少（insight ①），折成约几条副词条；"5 星 0 链 1 精"基线（5 星角色 0 链、5 星武器精炼 1，4 星不动）；
+//      链数降一档、武器降到精炼 1 阶各掉多少（跑不通也列）
 //   ④ 靠不靠得住：这次碰到的假设；假设表里每个开关翻过来，变得最多的那条（insight ③，不含操作延迟——那是 ②）
 // 帕累托：零帧与"熟练"两个口径都比不过别人的轴，标出"哪条也比不过它"的那些
 import type { GameData } from '../data/gamedata'
@@ -22,7 +23,9 @@ export interface Scorecard {
   /** 按手速档（每个决策点固定晚这一档的平均帧数）：比较口径的值与比零帧的变化 */
   hands: { tier: HandProfile; delay: number; dps: number | null; pct: number | null }[]
   density: { perMin: number | null; switchesPerMin: number | null; forced: number; airborne: number | null; loopSecs: number | null }
-  energy: EnergyNeed[]
+  energy: (EnergyNeed & { substats: number | null })[]   // substats：要额外堆的共鸣效率约几条副词条（平均档）；null = 再多也要等
+  /** 5 星角色 0 链、5 星武器精炼 1（4 星不动）：比现在掉多少；changed = 改了什么（空 = 已经是基线） */
+  baseline: { changed: string[]; pct: number | null; error: string | null }
   downgrades: Downgrade[]
   assumptions: string[]
   /** 假设表里的开关翻过来变得最多的那条（不含 options.inputDelay） */
@@ -68,7 +71,27 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
     forced, airborne: airborneWaits, loopSecs,
   }
 
-  // 养成门槛：链数降一档、武器降到 1 阶（各一份，只改这一处）
+  // 养成门槛：共鸣效率折成副词条（echo-stats 的副词条各档平均）；"5 星 0 链 1 精"基线；链数降一档、武器降到精炼 1 阶（各一份，只改这一处）
+  const erTiers = data.echoStats?.subTiers['共鸣效率'] ?? []
+  const erAvg = erTiers.length ? erTiers.reduce((a, b) => a + b, 0) / erTiers.length : 0.096
+  const energy = ins.energy.map(e => ({ ...e, substats: e.need === null ? null : Math.max(0, e.need - e.floor) / erAvg }))
+  const changed: string[] = []
+  const team01 = sc.team.map(m => {
+    const five = data.characters[m.char]?.rarity === 5
+    const w5 = data.weapons[m.weapon.name]?.rarity === 5
+    const chain = five && m.chain > 0 ? 0 : m.chain
+    const rank = w5 && m.weapon.rank > 1 ? 1 : m.weapon.rank
+    if (chain !== m.chain) changed.push(`${m.char} ${m.chain} 链 → 0 链`)
+    if (rank !== m.weapon.rank) changed.push(`${m.weapon.name} 精炼 ${m.weapon.rank} → 1`)
+    return { ...m, chain, weapon: { ...m.weapon, rank } }
+  }) as Scenario['team']
+  let baseline: Scorecard['baseline'] = { changed, pct: 0, error: null }
+  if (changed.length) {
+    try {
+      const res = run({ ...sc, team: team01 })
+      baseline = res.error ? { changed, pct: null, error: res.error.code } : { changed, pct: pctOf(basisOf(res).dps, base.dps), error: null }
+    } catch (e) { baseline = { changed, pct: null, error: e instanceof Error ? e.message.split('\n')[0]! : String(e) } }
+  }
   const downgrades: Downgrade[] = []
   sc.team.forEach((m, i) => {
     const tryOne = (what: string, member: typeof m) => {
@@ -81,7 +104,7 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
       } catch (e) { downgrades.push({ char: m.char, what, pct: null, error: e instanceof Error ? e.message.split('\n')[0]! : String(e) }) }
     }
     if (m.chain > 0) tryOne(`${m.chain} 链 → ${m.chain - 1} 链`, { ...m, chain: m.chain - 1 })
-    if (m.weapon.rank > 1) tryOne(`${m.weapon.name} ${m.weapon.rank} 阶 → 1 阶`, { ...m, weapon: { ...m.weapon, rank: 1 } })
+    if (m.weapon.rank > 1) tryOne(`${m.weapon.name} 精炼 ${m.weapon.rank} → 1`, { ...m, weapon: { ...m.weapon, rank: 1 } })
   })
 
   const flips = ins.sensitivity.filter(s => !s.change.startsWith('options.inputDelay'))   // 操作延迟归 ②
@@ -90,7 +113,7 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
     return score(b) > score(a) ? b : a
   })
   return {
-    name, goal: { label: base.label, dps: base.dps }, kills, hands, density, energy: ins.energy, downgrades,
+    name, goal: { label: base.label, dps: base.dps }, kills, hands, density, energy, baseline, downgrades,
     assumptions: baseRes.summary.assumptions.map(a => a.id),
     fragile: fragile ? { id: fragile.id, change: fragile.change, pct: fragile.pct, error: fragile.error } : null,
     runs,
