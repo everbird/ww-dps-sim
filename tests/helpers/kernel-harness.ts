@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import type { ActionId, Slot } from '../../src/data/common'
 import { assembleBlock, forChain } from '../../src/data/assemble-action'
 import type { CharacterModuleDef } from '../../src/data/define'
-import { DEFAULT_RULES } from '../../src/data/gamedata'
+import { DEFAULT_RULES, type Rules } from '../../src/data/gamedata'
 import type { ActionDef, DilationDef, JudgmentDef } from '../../src/data/gamedata'
 import { GenActionFileSchema, type GenActionFile } from '../../src/data/generated.schema'
 import type { Command } from '../../src/data/scenario.schema'
@@ -55,6 +55,7 @@ export function toCommands(team: Record<ActionId, ActionDef>[], cmds: Cmd[]): Co
 
 export interface RunOptions extends Partial<SchedulerOptions> {
   maxFrames?: number; names?: [string, string, string]; onField?: Slot; repeat?: number
+  rules?: Partial<Rules>                    // 覆盖 DEFAULT_RULES（假设的开关）
 }
 
 /** 跑一条指令序列（team[slot] 是该槽位可用的动作表）；也可以直接给编译好的 Command[]。调度报错直接抛出 */
@@ -70,7 +71,7 @@ export function tryRun(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Comman
   const hits: Hit[] = []
   const outros: { f: number; char: string }[] = []
   const k: Kernel = {
-    rules: DEFAULT_RULES,
+    rules: { ...DEFAULT_RULES, ...opts.rules },
     hooks: {
       settle: (st, j, n) => { hits.push({ f: st.frame, char: st.chars[j.owner].name, judgment: j.def.name, tick: n }) },
       outroTrigger: (st, slot) => { outros.push({ f: st.frame, char: st.chars[slot].name }) },

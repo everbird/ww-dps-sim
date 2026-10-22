@@ -131,7 +131,7 @@ export interface WaitSegment { code: WaitCode; reason: string; from: number; bat
 export type WaitCode =
   | 'started' | 'combo' | 'inputLock' | 'priority' | 'derive'   // gate（TD-04 §6.5）
   | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
-  | 'switchCd' | 'switchLock'                                    // 切人
+  | 'switchCd' | 'switchLock' | 'globalStop'                      // 切人；globalStop = 全局时停（大招动画）中切不了人
   | 'delay' | 'wait' | 'at'
   | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）
   | 'airborne'                                                  // 切人后第一下是空中动作：等切出者跳起（TD-09 §3.5）

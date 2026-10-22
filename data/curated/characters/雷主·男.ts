@@ -64,7 +64,9 @@ export default defineCharacter('雷主·男', {
       cancelWindows: [{ from: 28, until: 116 }],
       accept: ['multiEnd'],
     },
-    大招: { cooldown: 1500 },                        // 共鸣解放冷却 25 秒（nanoka 3.7）
+    // 共鸣解放冷却 25 秒（nanoka 3.7）；"大招-全局时停"的类型格空着，按行名推断为全局时停 224 帧（行名就是"全局时停"，
+    // WuwaLAB 也记 time_stop 224；2026-10-22，docs/engine-quality-plan.md §5 P5）
+    大招: { cooldown: 1500, accept: ['dilationTypeGuess'] },
     // 超负荷冷却 25 秒（nanoka 3.7"超负荷冷却时间"），四个版本共用
     强化E: { cooldown: 1500, cooldownGroup: '超负荷', ...P1 },
     '强化E-长按超负荷': { cooldown: 1500, cooldownGroup: '超负荷', ...P1 },
