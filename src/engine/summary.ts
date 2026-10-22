@@ -71,6 +71,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
       ...r.warnings.map(message => ({ code: 'resolve', message })),
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
       ...steadyPhase(log, lp),
+      ...steadyDrift(lp),
     ],
     // 这次碰到的假设，按假设表的顺序（总设计 T16、§10.1：输出顺序不依赖对象键）
     assumptions: ASSUMPTIONS.flatMap(a => {
@@ -99,6 +100,25 @@ function steadyPhase(log: readonly SimEvent[], lp: Pick<Summary, 'perLoop' | 'st
     code: 'steadyPhase',
     message: `稳态只取了 ${n} 轮（第 ${st.from}–${st.to} 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 ${counts.join('、')} 次）：`
       + '落在哪一轮会让稳态忽高忽低，比较时多跑几轮（options.repeat，稳态最好 6 轮以上）',
+  }]
+}
+
+/** 稳态还在漂移（P3，2026-10-22 心队 C2 发现：每轮时长到第 4 轮才从 1,762 帧变成 1,888 帧，之后不变；稳态第 2–9 轮混进了前两轮）：
+ *  前一半与后一半的 DPS 差 1% 以上时提示 */
+export const DRIFT_WARN = 0.01
+function steadyDrift(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings'] {
+  const st = lp.steady
+  if (!st || !lp.perLoop || st.to - st.from + 1 < 4) return []
+  const part = lp.perLoop.filter(p => p.loop >= st.from && p.loop <= st.to)
+  const half = Math.floor(part.length / 2)
+  const d = (ps: typeof part) => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0))
+  const a = d(part.slice(0, half)), b = d(part.slice(part.length - half))
+  if (!(a > 0) || Math.abs(b / a - 1) < DRIFT_WARN) return []
+  const secs = part.map(p => (p.frames / 60).toFixed(1)).join('、')
+  return [{
+    code: 'steadyDrift',
+    message: `稳态（第 ${st.from}–${st.to} 轮）前一半 DPS ${Math.round(a)}、后一半 ${Math.round(b)}，差 ${((b / a - 1) * 100).toFixed(1)}%（各轮 ${secs} 秒）：`
+      + '轴可能还没进入稳定（资源在漂移），稳态偏向前几轮；多跑几轮看后面的轮，或比较时看后一半',
   }]
 }
 
@@ -158,8 +178,18 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
   if (rounds.length < 2) return { perLoop }
   const from = 2, to = Math.max(2, rounds.length - 1)
   const part = rounds.filter(p => p.loop >= from && p.loop <= to)
+  const sumOf = (ps: typeof part) => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0))
   const frames = part.reduce((x, p) => x + p.frames, 0), dmg = part.reduce((x, p) => x + p.damage, 0)
-  return { perLoop, steady: { from, to, frames, damage: dmg, dps: dpsOf(dmg, frames) } }
+  const dps = dpsOf(dmg, frames)
+  // 误差条（P3）：窗口挪一轮（去掉第一轮或最后一轮），以及前一半与后一半各算一次（还在漂移的轴两半差得多）；取离稳态最远的。
+  // 只有一轮时 0。轮数太少、各轮赶上的谐度破坏次数不同（相位）时这里看不出来，另有 steadyPhase 提示
+  const half = Math.floor(part.length / 2)
+  const alts = [
+    ...(part.length >= 3 ? [sumOf(part.slice(1)), sumOf(part.slice(0, -1))] : []),
+    ...(part.length >= 2 ? [sumOf(part.slice(0, half)), sumOf(part.slice(part.length - half))] : []),
+  ]
+  const spread = dps > 0 && alts.length ? Math.max(...alts.map(x => Math.abs(x / dps - 1))) : 0
+  return { perLoop, steady: { from, to, frames, damage: dmg, dps, spread } }
 }
 
 /** 资源曲线（TD-06 §6.1）：第 0、30、60…帧（rules.sampleInterval 个世界帧一次）与最后一帧结束时三人的能量与协奏。

@@ -20,7 +20,8 @@ export function runScenario(sc: Scenario, data: GameData): Run {
 }
 
 /** 比较口径：[lo, hi) 是战斗帧 */
-export interface Basis { label: string; lo: number; hi: number; damage: number; dps: number }
+/** spread：窗口挪一轮 DPS 变多少（Summary.steady.spread；整个窗口时 0） */
+export interface Basis { label: string; lo: number; hi: number; damage: number; dps: number; spread: number }
 
 export function basisOf(res: SimResult): Basis {
   const s = res.summary
@@ -28,9 +29,9 @@ export function basisOf(res: SimResult): Basis {
     // 按轮号找稳态第一轮：有启动轴时 perLoop[0] 是第 0 轮，不能按下标算（否则窗口错一轮）
     const lo = s.perLoop.find(p => p.loop === s.steady!.from)!.start
     const label = `稳态（第 ${s.steady.from}${s.steady.to > s.steady.from ? `–${s.steady.to}` : ''} 轮）`
-    return { label, lo, hi: lo + s.steady.frames, damage: s.steady.damage, dps: s.steady.dps }
+    return { label, lo, hi: lo + s.steady.frames, damage: s.steady.damage, dps: s.steady.dps, spread: s.steady.spread }
   }
-  return { label: '整个窗口', lo: 0, hi: s.windowFrames, damage: s.totalDamage, dps: s.dps }
+  return { label: '整个窗口', lo: 0, hi: s.windowFrames, damage: s.totalDamage, dps: s.dps, spread: 0 }
 }
 
 /** 窗口内各角色、各动作（"角色 动作"）的每秒伤害；同一个窗口里加起来就是 basis.dps */

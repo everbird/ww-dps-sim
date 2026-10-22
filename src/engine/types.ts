@@ -330,8 +330,10 @@ export interface Summary {
     energyDelta: [number, number, number]; concertoDelta: [number, number, number]
   }[]
   /** 稳态：完整的轮合起来的 DPS——第 2 轮到倒数第 2 轮（第 1 轮受开局资源影响；最后一轮没有下一轮的边界，
-   *  等下一轮起手的时间算不进来，偏高）；只有 2 轮时取第 2 轮 */
-  steady?: { from: number; to: number; frames: number; damage: number; dps: number }
+   *  等下一轮起手的时间算不进来，偏高）；只有 2 轮时取第 2 轮。
+   *  spread：窗口挪一轮 DPS 变多少（比例，误差条，docs/engine-quality-plan.md P3）：去掉稳态的第一轮或最后一轮各算一次，取离得远的；
+   *  稳态只有一两轮时取各轮 DPS 离稳态最远的。比较两条轴时，差得比这个小的不算"更好" */
+  steady?: { from: number; to: number; frames: number; damage: number; dps: number; spread: number }
   /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
   enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
   /** 这次碰到的假设（总设计 T16）：按假设表的顺序；每次都适用的（tracked: false）不列，见 ASSUMPTIONS。firstFrame 是战斗帧 */

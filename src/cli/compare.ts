@@ -34,6 +34,10 @@ async function main(): Promise<number> {
   console.log(`基准  ${padEnd(na, w)}${c.base.label} DPS ${fmt(c.base.dps)}（${span(c.base)}）`)
   console.log(`对比  ${padEnd(nb, w)}${c.other.label} DPS ${fmt(c.other.dps)}（${span(c.other)}）` +
     `   ${signed(c.delta)}（${signed(c.pct, x => pct2(x))}）`)
+  // 误差条（docs/engine-quality-plan.md P3）：稳态窗口挪一轮 DPS 就会变这么多，差得比它小的不算"更好"
+  const noise = Math.max(c.base.spread, c.other.spread)
+  if (noise > 0) console.log(`      稳态窗口挪一轮 DPS 变 ±${pct2(noise)}（基准 ±${pct2(c.base.spread)}、对比 ±${pct2(c.other.spread)}）` +
+    (Math.abs(c.pct) < noise ? '：这次的差在误差内，不算更好或更差（多跑几轮再比，options.repeat）' : ''))
 
   const panelLines = panelDiff(c.panels.base, c.panels.other)
   if (panelLines.length > 0) {

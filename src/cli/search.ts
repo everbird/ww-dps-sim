@@ -51,7 +51,7 @@ async function main(): Promise<number> {
   console.log(`轴搜索 ${file} · 口径：${x.basis.label}`)
   console.log(`改法：${how}${chars ? `；只改 ${chars.join('、')}` : ''}；最多 ${rounds} 轮${rounds > 1 ? `（每轮留 ${beam} 条往下改）` : ''}`)
   const loop = (c: Candidate) => (c.loopSecs !== null ? `${c.loopSecs.toFixed(2)} 秒` : '—')
-  console.log(`原轴 DPS ${fmt(x.base.dps!)}（每轮 ${loop(x.base)}）`)
+  console.log(`原轴 DPS ${fmt(x.base.dps!)}（每轮 ${loop(x.base)}）${x.basis.spread > 0 ? `；稳态窗口挪一轮 DPS 变 ±${(x.basis.spread * 100).toFixed(2)}%，差得比这小的算在误差内（P3）` : ''}`)
   const failed = Object.values(x.failures).reduce((a, b) => a + b, 0)
   const why = Object.entries(x.failures).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${FAILURE_LABEL[k] ?? k} ${n}`).join('、')
   const stop = { rounds: `跑满 ${x.rounds} 轮`, noBetter: `第 ${x.rounds} 轮没有更好的，停`, maxRuns: `仿真次数到上限 ${maxRuns}，停` }[x.stoppedBy]

@@ -66,7 +66,7 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
     console.log(`敌人量表  失谐 ${en.disharmony} 次 · 谐度破坏 ${en.tuneBreaks} 次（${fmt(en.tuneBreakDamage)}，${pct(s.totalDamage > 0 ? en.tuneBreakDamage / s.totalDamage : 0)}）· 破盾 ${en.breaks} 次`)
   if (s.perLoop) {
     const st = s.steady
-    console.log(`\n分轮${st ? `（稳态 = 第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮：DPS ${fmt(st.dps)}）` : ''}`)
+    console.log(`\n分轮${st ? `（稳态 = 第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮：DPS ${fmt(st.dps)}，窗口挪一轮 ±${pct(st.spread)}）` : ''}`)
     const names = r.team.map(m => m.def.name).join(' / ')
     const signed = (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}`
     console.log(`  轮  ${padStart('时长', 10)}${padStart('伤害', 12)}${padStart('DPS', 10)}   能量首尾差（${names}）   协奏首尾差`)
