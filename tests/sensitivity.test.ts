@@ -3,14 +3,14 @@
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
-import type { GameData } from '../src/data/gamedata'
+import type { GameData, Rules } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { baseOf, flipsOf, sensitivityMatrix } from '../src/engine/sensitivity'
 import { simulate } from '../src/engine/simulate'
 import type { ResolvedScenario, SimEvent } from '../src/engine/types'
-import { dataDescribe } from './helpers/kernel-harness'
+import { block, dataDescribe, run } from './helpers/kernel-harness'
 
 let gd: GameData
 const load = (f: string): ResolvedScenario =>
@@ -35,8 +35,9 @@ describe('对照场景的基准', () => {
 dataDescribe('假设的开关', () => {
   beforeAll(async () => { gd = await loadGameData() })
 
-  test('ultInputLocksSwitch = false：大招的"不响应输入"不再挡切人（M0 代表轴椿大招后切维里奈）', () => {
-    const r = load('m0-team.yaml')
+  // 椿大招的全局时停（240 帧）盖过了"不响应输入"（239 帧），2026-10-22 起用卜灵：全局时停 231 帧之后还挡到 238 帧
+  test('ultInputLocksSwitch = false：大招的"不响应输入"不再挡切人（心队卜灵大招后切雷主）', () => {
+    const r = load('xin-team-r5.yaml')
     const on = simulate(r), off = simulate(withRule(r, 'ultInputLocksSwitch', false))
     expect(waits(on.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(true)
     expect(waits(off.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(false)
@@ -44,13 +45,16 @@ dataDescribe('假设的开关', () => {
     expect(off.summary.windowFrames).toBeLessThan(on.summary.windowFrames)
   })
 
-  test('invincibleLocksSwitch = false：万阙垂天（无敌推出来的第 303 帧锁）放完就能切', () => {
+  test('invincibleLocksSwitch = false：雷主强化E（无敌推出来的第 123 帧锁）放完就能切；万阙垂天仍被全局时停（大招动画）挡住', () => {
+    const l = block('雷主·男')
+    const go = (rules: Partial<Rules>) => run([l, l, l], [{ act: 0, action: '强化E' }, { switch: 1 }], { rules })
+    expect(go({}).s.log.filter(e => e.type === 'switch').map(e => e.f)).toEqual([123])
+    expect(go({ invincibleLocksSwitch: false }).s.log.filter(e => e.type === 'switch').map(e => e.f)).toEqual([0])
+    // 心队原轴：2026-10-22 起这类推断的锁都被全局时停盖住或用不到，关掉也一样
     const r = load('xin-team-r5.yaml')
     const on = simulate(r), off = simulate(withRule(r, 'invincibleLocksSwitch', false))
-    const locked = (x: typeof on) => waits(x.log).filter(w => w.code === 'switchLock' && w.reason.startsWith('照世·大招'))
-    expect(locked(on).length).toBeGreaterThan(0)
-    expect(locked(off)).toEqual([])
-    expect(off.error).toBeUndefined()
+    expect(waits(off.log).some(w => w.code === 'globalStop' && w.reason.startsWith('照世·大招'))).toBe(true)
+    expect(off.summary.steady!.dps).toBeCloseTo(on.summary.steady!.dps, 6)
   })
 
   test('forteKeepOnSwitch = false：卜灵切走清卦象，心切走回到应世相（按套路重排的轴因此跑不通）', () => {

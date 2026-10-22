@@ -149,8 +149,20 @@ export function assembleGroup(
   const dilations: DilationDef[] = []
   const hitstopOf = new Map<GenRow, DilationDef>()
   for (const r of rows) {
-    const d = r.dilation
-    if (!d?.type) continue
+    const d0 = r.dilation
+    if (!d0) continue
+    // 类型那一格空着、但各侧系数都是 0（雷主·男 / 女、穗穗、秧秧·玄翎的"大招-全局时停""大招-前置"）：行名带"全局时停"的按全局时停，
+    // 其余按时停；推断，记 dilationTypeGuess（2026-10-22 发现：雷主大招 224 帧的全局时停原来整个丢了，WuwaLAB 也记 time_stop 224）。
+    // 系数不是 0 的（洛可可 强化空中A1-下落 0.1）认不出，跳过、记 dilationTypeMissing
+    let d = d0
+    if (!d0.type) {
+      const ws = SIDES.map(s => d0[s]).filter(w => !!w)
+      if (ws.length === 0) continue
+      if (!ws.every(w => w!.rate === 0)) { flags.add('dilationTypeMissing'); continue }
+      d = { ...d0, type: r.name.includes('全局时停') ? '全局时停' : '时停' }
+      flags.add('dilationTypeGuess')
+    }
+    if (!d.type) continue
     const byStart = new Map<number, DilationDef>()
     for (const side of SIDES) {
       const w = d[side]
@@ -238,6 +250,10 @@ export function assembleGroup(
   const noSwitch = maxHint('noSwitchBefore') ?? (invEnds.length ? Math.max(...invEnds) : null)
   const lockFromInput = noSwitch === null && kind === 'liberation' && noInput !== null && invRows.length === 0
   const switchLock = noSwitch ?? (kind === 'tuneBreak' ? endFrame : lockFromInput ? noInput : null)
+  // 全局时停（大招动画、隐藏 HUD）：按动作局部帧登记的那段结束前，什么都按不了，也切不了人（调度器单独挡，不受切人锁开关影响）
+  const stopEnds = dilations.filter(x => x.type === '全局时停' && x.anchor === 'action')
+    .map(x => x.start + Math.max(...SIDES.map(s => x[s]?.duration ?? 0)))
+  const globalStop = stopEnds.length ? Math.max(...stopEnds) : null
   const endOnSwitch = rows.find(r => r.hints.endOnSwitchAfter !== undefined)?.hints.endOnSwitchAfter
   const air = airOf(rows, endFrame, flags)
   return {
@@ -247,6 +263,7 @@ export function assembleGroup(
     ...(outro !== undefined ? { outroTriggerFrame: outro } : {}),
     ...(switchLock !== null ? { switchLockUntil: switchLock } : {}),
     ...(lockFromInput ? { switchLockFromInput: true as const } : {}),
+    ...(globalStop !== null ? { globalStopUntil: globalStop } : {}),
     ...(invRows.length > 0 && maxHint('noSwitchBefore') === null ? { switchLockFromInvincible: true as const } : {}),
     ...(g.id.endsWith('出场技') ? { entrySkill: true as const } : {}),
     ...(air ? { air } : {}),   // "A2-地面出场技"（散华单列一组，维里奈 splitRows、椿 copyAs 的也是）

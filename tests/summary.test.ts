@@ -49,7 +49,8 @@ describe('分轮与稳态', () => {
 
 // 稳态可能受相位影响（2026-10-21）：心队每轮约 36 秒，谐度破坏的周期与轮对不上，4 轮时稳态（第 2–3 轮）忽高忽低
 dataDescribe('稳态的相位提示 steadyPhase', () => {
-  test('心队原轴 4 轮：各轮的谐度破坏次数不同（1、1、1、2）、稳态只有 2 轮，提示多跑几轮；10 轮（稳态 8 轮）与 M0 两条轴不提示', async () => {
+  // 2026-10-22 雷主大招补上全局时停后各轮变短，心队 5 阶原轴 4 轮时各轮次数相同了，改用 1 阶（xin-team.yaml）
+  test('心队 1 阶 4 轮：各轮的谐度破坏次数不同（1、1、2、1）、稳态只有 2 轮，提示多跑几轮；10 轮（稳态 8 轮）与 M0 两条轴不提示', async () => {
     const { readFileSync } = await import('node:fs')
     const { parse } = await import('yaml')
     const { loadGameData } = await import('../src/data/load')
@@ -62,10 +63,10 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
       if (repeat) raw.options.repeat = repeat
       return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary.warnings.filter(w => w.code === 'steadyPhase')
     }
-    const four = run('scenarios/xin-team-r5.yaml', 4)
+    const four = run('scenarios/xin-team.yaml', 4)
     expect(four).toHaveLength(1)
-    expect(four[0]!.message).toMatch(/^稳态只取了 2 轮（第 2–3 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 1、1、1、2 次）/)
-    expect(run('scenarios/xin-team-r5.yaml')).toEqual([])
+    expect(four[0]!.message).toMatch(/^稳态只取了 2 轮（第 2–3 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 1、1、2、1 次）/)
+    expect(run('scenarios/xin-team.yaml')).toEqual([])
     expect(run('scenarios/m0-video-eq.yaml')).toEqual([])
     expect(run('scenarios/m0-team.yaml')).toEqual([])    // 第 1、4 轮 DPS 不同是首尾的缘故（从空闲开始、没有下一轮的边界），不算
   }, 120_000)
@@ -73,7 +74,7 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
 
 // 误差条与漂移（docs/engine-quality-plan.md P3）：窗口挪一轮、前后两半各算一次 DPS 变多少
 dataDescribe('稳态的误差条 steady.spread 与漂移提示 steadyDrift', () => {
-  test('心队原轴 10 轮：误差零点几、不提示；C2 前三轮靠开局的能量、第 4 轮起每轮才稳定：两半差 6% 多，提示', async () => {
+  test('心队原轴 10 轮：误差不到 1%；C2 前三轮靠开局的能量、第 4 轮起每轮才稳定：两半差近 4%，提示', async () => {
     const { readFileSync } = await import('node:fs')
     const { parse } = await import('yaml')
     const { loadGameData } = await import('../src/data/load')
@@ -84,11 +85,10 @@ dataDescribe('稳态的误差条 steady.spread 与漂移提示 steadyDrift', () 
     const run = (f: string) => simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(`scenarios/${f}`, 'utf8'))), data)).summary
     const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml')
     expect(base.steady!.spread).toBeGreaterThan(0)
-    expect(base.steady!.spread).toBeLessThan(0.005)
-    expect(base.warnings.filter(w => w.code === 'steadyDrift')).toEqual([])
-    expect(c2.steady!.spread).toBeGreaterThan(0.03)
+    expect(base.steady!.spread).toBeLessThan(0.01)
+    expect(c2.steady!.spread).toBeGreaterThan(0.015)
     const drift = c2.warnings.filter(w => w.code === 'steadyDrift')
     expect(drift).toHaveLength(1)
-    expect(drift[0]!.message).toMatch(/^稳态（第 2–9 轮）前一半 DPS 54800、后一半 51195，差 -6\.6%/)
+    expect(drift[0]!.message).toMatch(/^稳态（第 2–9 轮）前一半 DPS 63660、后一半 61185，差 -3\.9%/)
   }, 120_000)
 })

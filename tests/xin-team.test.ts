@@ -135,7 +135,8 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
     const turn = xin.findIndex(t => t.startsWith('照世相'))
     expect(xin.slice(0, turn).every(t => t.startsWith('应世相'))).toBe(true)
     // 霆霓：电磁爆发一加上就被心收成霆心域，队友之后的附加又能进电磁爆发，转相前已攒满 10 层（固有2，含进了电磁爆发的）
-    expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则可用 · 敕令 21 · 霆霓 10 · 霆心域 49 · 额外能量')
+    // 承天则（镇寰宇，24 秒一次）按战斗时钟计：2026-10-22 雷主大招补上全局时停后，这一轮转相时还在冷却
+    expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则冷却中 · 敕令 21 · 霆霓 10 · 霆心域 49 · 额外能量')
     expect(xin.some(t => t.includes('统御众机') && t.includes('电磁+1 ×5'))).toBe(true)
     const r = load()
     expect(resourceTracks(gainSteps(out.log, r), r).map(x => [x.char, x.tracks.map(t => t.name)])).toEqual([

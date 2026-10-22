@@ -176,14 +176,18 @@ describe('T09-6 切人（§3.5）', () => {
       expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([70])
       expect(waits(r)).toEqual(['2:switchLock 0+70'])
     })
-    test('大招没写"不能切人"：椿"第239F前不响应输入"也挡切人，记一次假设 ult-no-switch；写了的照写的（仇远 200 早于不响应输入 230，卜灵变奏 60 早于 70）', () => {
+    test('大招没写"不能切人"：椿"第239F前不响应输入"也挡切人，但全局时停（240 帧）先挡住，不再记 ult-no-switch；卜灵全局时停 231 帧之后仍按不响应输入挡到 238，记一次；写了的照写的（仇远 200 早于不响应输入 230，卜灵变奏 60 早于 70）', () => {
       const c = block('椿')
       const r = run([c, c, c], [{ act: 0, action: '大招' }, { switch: 1 }], { names: ['椿', '乙', '丙'] })
-      // 局部第 239 帧在世界第 242 帧（大招自己的攻击顿帧），战斗时钟只走了 2 帧（全局时停 240 帧）
-      expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([242])
-      expect(eventsOf(r, 'wait').map(e => [e.code, e.reason, e.frames, e.battleFrames])).toEqual([['switchLock', '大招 第 239 帧前不响应输入（按不能切人算）', 242, 2]])
-      expect(r.s.assumed['ult-no-switch']?.n).toBe(1)
-      expect([c['大招']!.switchLockUntil, c['大招']!.switchLockFromInput]).toEqual([239, true])
+      // 全局时停（大招动画）期间切不了人（2026-10-22）：局部第 241 帧在世界第 244 帧（大招自己的攻击顿帧），战斗时钟只走了 4 帧（时停前的第 0 帧、时停后的几帧）
+      expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([244])
+      expect(eventsOf(r, 'wait').map(e => [e.code, e.reason, e.frames, e.battleFrames])).toEqual([['globalStop', '大招 全局时停到第 241 帧（动画中切不了人）', 244, 4]])
+      expect(r.s.assumed['ult-no-switch']).toBeUndefined()
+      expect([c['大招']!.switchLockUntil, c['大招']!.switchLockFromInput, c['大招']!.globalStopUntil]).toEqual([239, true, 241])
+      const bl = block('卜灵')
+      const rb = run([bl, bl, bl], [{ act: 0, action: '大招' }, { switch: 1 }], { names: ['卜灵', '乙', '丙'] })
+      expect(eventsOf(rb, 'wait').map(e => e.reason)).toEqual(['大招 全局时停到第 232 帧（动画中切不了人）', '大招 第 238 帧前不响应输入（按不能切人算）'])
+      expect(rb.s.assumed['ult-no-switch']?.n).toBe(1)
       const q = block('仇远')['大招']!
       expect([q.switchLockUntil, q.switchLockFromInput, q.inputLocks.find(l => l.kinds === 'all')?.until]).toEqual([200, undefined, 230])
       const b = block('卜灵')
@@ -195,7 +199,11 @@ describe('T09-6 切人（§3.5）', () => {
       // 雷主大招"无敌期间不能切人"，无敌 1 / 224 → 225；强化E 也是；不再按"不响应输入"推断
       expect([l['大招']!.switchLockUntil, l['大招']!.switchLockFromInput]).toEqual([225, undefined])
       expect(l['强化E']!.switchLockUntil).toBe(123)
-      expect(eventsOf(run([l, l, l], [{ act: 0, action: '大招' }, { switch: 1 }]), 'wait').map(e => e.reason)).toEqual(['大招 第 225 帧前不能切人'])
+      // 2026-10-22：雷主大招的"大招-全局时停"类型格空着，按行名推断为全局时停 224 帧（dilationTypeGuess），先挡住切人
+      expect(l['大招']!.globalStopUntil).toBe(225)
+      expect(l['大招']!.flags).toContain('dilationTypeGuess')                // 装配推断的，雷主·男.ts 里 accept 了
+      expect(l['大招']!.dilations.map(d => d.type)).toEqual(['时停', '全局时停'])
+      expect(eventsOf(run([l, l, l], [{ act: 0, action: '大招' }, { switch: 1 }]), 'wait').map(e => e.reason)).toEqual(['大招 全局时停到第 225 帧（动画中切不了人）'])
       expect(block('照世心')['大招']!.switchLockUntil).toBe(303)
       // 心 转相的无敌持续帧是空的：没有锁、记 flag，由角色模块写 switchLockUntil
       const x = block('心')

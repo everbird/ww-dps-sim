@@ -245,6 +245,9 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       if (s.switchCd > 0) return { go: false, code: 'switchCd', reason: `切人冷却还剩 ${Math.ceil(s.switchCd)} 帧` }
       // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
       const last = s.chars[s.onField].last
+      // 全局时停（大招动画、隐藏 HUD）期间切不了人：物理上按不了，不是推断，开关管不到（2026-10-22，WuwaLAB 的大招都只记 time_stop、no_swap 为 0）
+      const stop = last?.def.globalStopUntil
+      if (last && stop !== undefined && last.localFrame < stop) return { go: false, code: 'globalStop', reason: `${last.id} 全局时停到第 ${stop} 帧（动画中切不了人）` }
       const lock = last?.def.switchLockUntil
       // 推断出来的锁可以在场景里关掉，量假设的敏感度（options.rules.ultInputLocksSwitch / invincibleLocksSwitch）
       const off = last && ((last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch) || (last.def.switchLockFromInvincible && !k.rules.invincibleLocksSwitch))

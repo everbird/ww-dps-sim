@@ -165,7 +165,7 @@ function steadyDrift(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings
   return [{
     code: 'steadyDrift',
     message: `稳态（第 ${st.from}–${st.to} 轮）前一半 DPS ${Math.round(a)}、后一半 ${Math.round(b)}，差 ${((b / a - 1) * 100).toFixed(1)}%（各轮 ${secs} 秒）：`
-      + '轴可能还没进入稳定（资源在漂移），稳态偏向前几轮；多跑几轮看后面的轮，或比较时看后一半',
+      + '轴可能还没进入稳定（资源在漂移，稳态偏向前几轮），或者各轮来回波动；多跑几轮看后面的轮，比较时看误差条',
   }]
 }
 

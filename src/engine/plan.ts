@@ -298,6 +298,8 @@ export interface OpeningLeaf {
 }
 
 export interface OpeningResult {
+  /** 比较口径：场景 goal 不是稳态时按目标（打死几倍血…，TD-10 §6.3），否则整个窗口 */
+  label: string
   ref: { dps: number; steady: number | null; openingSecs: number; routines: string[] }
   leaves: OpeningLeaf[]
   refRank: number | null
@@ -356,7 +358,9 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
     const l0 = res.summary.perLoop?.find(p => p.loop === 0)
     return l0 ? l0.frames / 60 : 0
   }
-  const steadyOf = (res: NonNullable<typeof refRes>) => (res.summary.steady ? basisOf(res).dps : null)
+  const steadyOf = (res: NonNullable<typeof refRes>) => res.summary.steady?.dps ?? null
+  // 打分：场景 goal 不是稳态时按目标（打死 boss：血量 ÷ 击杀秒），否则整个窗口（启动轴几乎不影响稳态）
+  const scoreOf = (res: NonNullable<typeof refRes>) => res.summary.goal?.dps ?? res.summary.dps
 
   type Node = { seq: string[]; score: number; res: NonNullable<typeof refRes> }
   let beam: { seq: string[] }[] = [{ seq: [] }]
@@ -375,7 +379,7 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
         const res = evaluate(full)
         if (!res) return
         if (missed(res) > refMissed) { fail('introMissed'); return }
-        next.set(key, { seq, score: res.summary.dps, res })
+        next.set(key, { seq, score: scoreOf(res), res })
         if (full.length === seq.length && closable(seq)) pool.set(key, next.get(key)!)
       })
     }
@@ -398,7 +402,7 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
       const key = n.seq.join(' | ')
       if (pool.has(key) || !closable(n.seq)) continue
       const res = evaluate(n.seq)
-      if (res && missed(res) <= refMissed) pool.set(key, { seq: n.seq, score: res.summary.dps, res })
+      if (res && missed(res) <= refMissed) pool.set(key, { seq: n.seq, score: scoreOf(res), res })
     }
     beam = kept
   }
@@ -417,7 +421,7 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
     }
   })
   if (!leaves.some(l => l.isRef)) {
-    leaves.push({ routines: refSeq, counts: {}, lines: renderOpening(refSeq, onField), dps: refRes.summary.dps, steady: steadyOf(refRes), openingSecs: openingSecs(refRes), isRef: true, same: 0 })
+    leaves.push({ routines: refSeq, counts: {}, lines: renderOpening(refSeq, onField), dps: scoreOf(refRes), steady: steadyOf(refRes), openingSecs: openingSecs(refRes), isRef: true, same: 0 })
   }
   const changes = (l: OpeningLeaf) => Object.values(l.counts).reduce((a, d) => a + Math.abs(d), 0)
   leaves.sort((a, b) => b.dps - a.dps || Number(b.isRef) - Number(a.isRef) || changes(a) - changes(b) || a.routines.length - b.routines.length)
@@ -427,7 +431,8 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
   }
   const refIdx = leaves.findIndex(l => l.isRef)
   return {
-    ref: { dps: refRes.summary.dps, steady: steadyOf(refRes), openingSecs: openingSecs(refRes), routines: refSeq },
+    label: refRes.summary.goal?.label ?? '整个窗口',
+    ref: { dps: scoreOf(refRes), steady: steadyOf(refRes), openingSecs: openingSecs(refRes), routines: refSeq },
     leaves, refRank: refIdx >= 0 ? refIdx + 1 : null,
     library: library.map(({ line, char, count, added }) => ({ line, char, count, added })), runs, failures,
   }

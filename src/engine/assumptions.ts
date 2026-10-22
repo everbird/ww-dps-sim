@@ -86,12 +86,13 @@ export const ASSUMPTIONS = [
     adjust: { how: '轴里在动作后面写 !（强制，抢帧）' },
   },
   {
-    id: 'switch-no-lock', topic: '切人', tracked: false, impact: 'large', ref: '总设计 §13、TD-05 Q6',
+    id: 'switch-no-lock', topic: '切人', tracked: false, impact: 'small', ref: '总设计 §13、TD-05 Q6',
     what: '没写帧数的"不能切人"：动作自己的（"无敌期间不能切人"，以及"不响应输入，不能切人""大招状态期间不能切人""第120F不能切人"…）锁到无敌结束（无敌启动帧 + 无敌持续帧），'
       + '没有无敌帧的到动作结束（2026-10-21；谐度破坏仍按整个动作；推断的记 flag noSwitchUnframed：布兰特、菲比、弗洛洛、芙露德莉斯、奥古斯塔大招，绯雪重击，洛瑟菈断舍离前置）。'
       + '跨几个动作的状态（奥古斯塔"大招状态期间"、丽贝卡"机枪期间"）只锁这一个动作；"第 n 帧前切人不消失 / 不离场"按"切人不打断"；大招什么都没写的（折枝、釉瑚、洛可可…）不锁',
     why: '数据没给结构化的帧数；无敌帧不一定等于切人锁（散华大招无敌 125 帧，"第91F前不能切人"）。做到相关角色时逐个确认，跨动作的状态要在角色模块里写。'
-      + '影响 2026-10-22 由"未知"改为"大"：关掉这类锁，心队按套路重排的 C4–C8 再多 +6%～+10%（docs/assumption-sensitivity.md）',
+      + '2026-10-22 先因敏感度矩阵改成"大"，同日查明那几个大招（万阙垂天、转相、雷主大招）的锁其实是全局时停（大招动画，WuwaLAB 也只记 time_stop），'
+      + '全局时停另由调度器挡切人（ActionDef.globalStopUntil）之后，关掉这类锁对现有的轴没有影响，改回"小"',
     adjust: { how: '场景里 options.rules.invincibleLocksSwitch: false：这类推断出来的锁（ActionDef.switchLockFromInvincible）都不锁；做到相关角色时逐个确认', path: 'rules.invincibleLocksSwitch', values: [false] },
   },
   {
@@ -126,7 +127,8 @@ export const ASSUMPTIONS = [
   },
   {
     id: 'ult-no-switch', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §6.3，docs/xin-confirm.md Y2',
-    what: '大招没写"第 n 帧前不能切人"时，"第 n 帧前不响应输入"也挡切人（椿第 239 帧、卜灵第 238 帧…）；写了"不能切人"的照写的',
+    what: '大招没写"第 n 帧前不能切人"时，"第 n 帧前不响应输入"也挡切人（椿第 239 帧、卜灵第 238 帧…）；写了"不能切人"的照写的。'
+      + '全局时停（大招动画）本来就挡切人，盖住了的不算（椿 240 帧盖过 239）；现在只有卜灵（全局时停 231 帧之后再挡 7 帧）还碰得到',
     why: '大招出招阶段不能切人是实战体感（2026-10-19），待实机验证；xlsx 有的大招两种都写、帧数不同（仇远 200 / 230、凌阳 210 / 180）',
     adjust: { how: '场景里 options.rules.ultInputLocksSwitch: false 改成不挡；实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖', path: 'rules.ultInputLocksSwitch', values: [false] },
   },

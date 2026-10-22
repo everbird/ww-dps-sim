@@ -72,6 +72,7 @@ export interface ActionDef {
   switchLockUntil?: Frame                           // 此帧前不能切人
   switchLockFromInput?: true                        // 切人锁是大招的"第nF前不响应输入"推出来的（没写"不能切人"，假设 ult-no-switch）
   switchLockFromInvincible?: true                   // 切人锁是没写帧数的"无敌期间不能切人"等推出来的（假设 switch-no-lock）
+  globalStopUntil?: Frame                           // 按动作局部帧登记的全局时停（大招动画）到此帧结束：之前不能切人（不受切人锁开关影响）
   entrySkill?: true                                 // 出场技（动作 ID 以"出场技"结尾）：只能在普通切人入场后第一个出（TD-09 §3.5）
   air?: { from: Frame; until: Frame | null }        // 在空中的局部帧 [from, until)；until 为 null = 动作结束时还在空中（xlsx「位置状态」，TD-01 §13.1）
   cooldown?: Frame                                  // 技能冷却：声骸来自 xlsx，角色技能由角色模块覆盖

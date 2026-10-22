@@ -69,12 +69,14 @@ dataDescribe('套路卡：心 · 雷主 · 卜灵（§6.2 ③）', () => {
     const [c] = measureCards(sc, data, { lines: [SURGE] }).cards
     const fresh = c!.rows.find(r => !r.setup && r.entry === 'switch' && r.exit === 'switch')!.m!
     expect([fresh.actions, fresh.skipped]).toEqual([14, 0])
-    for (const t of c!.team.filter(t => t.loop >= 1)) expect(t.m.skipped).toBeGreaterThanOrEqual(11)
+    for (const t of c!.team.filter(t => t.loop >= 1)) expect(t.m.skipped).toBeGreaterThanOrEqual(10)   // 只打两三下
   })
 
   test('卜灵雷山小过震为雷 QR：队里与铺垫后接着打的一样（3.47 秒）', () => {
     const [c] = measureCards(sc, data, { lines: ['卜灵 雷山小过 震为雷 Q R'] }).cards
-    expect(c!.team.filter(t => t.loop >= 1).every(t => t.match !== null && t.match < 0.05)).toBe(true)
+    // 第 5 轮这段中间自动插了一次谐度破坏（全局时停，战斗秒不走），短了 0.2 秒；其余各轮都对得上
+    const team = c!.team.filter(t => t.loop >= 1)
+    expect(team.filter(t => t.match !== null && t.match < 0.05).length).toBe(team.length - 1)
     expect(c!.rows.find(r => r.setup && r.entry === 'field' && r.exit === 'self')!.m!.secs).toBeCloseTo(3.47, 2)
   })
 
@@ -82,12 +84,13 @@ dataDescribe('套路卡：心 · 雷主 · 卜灵（§6.2 ③）', () => {
     const line = '雷主·男 A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~ R'
     expect(measureCards(sc, data, { lines: [line] }).cards[0]!.flags).not.toContain('switchAtStart')
     const ult = data.characters['雷主·男']!.actions['大招']!
-    const saved = ult.switchLockUntil
+    const saved = ult.switchLockUntil, stop = ult.globalStopUntil
     try {
       delete ult.switchLockUntil
+      delete ult.globalStopUntil                                // 2026-10-22 起全局时停另外挡切人，一起去掉才是漏读时的样子
       const [c] = measureCards(sc, data, { lines: [line] }).cards
       expect(c!.flags).toContain('switchAtStart')
       expect(c!.rows.find(r => !r.setup && r.entry === 'intro' && r.exit === 'switch')!.m!.exit).toEqual({ action: '大招', frame: 0 })
-    } finally { ult.switchLockUntil = saved }
+    } finally { ult.switchLockUntil = saved; ult.globalStopUntil = stop }
   })
 })
