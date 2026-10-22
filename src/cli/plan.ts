@@ -1,9 +1,10 @@
-// src/cli/plan.ts —— pnpm plan <场景.yaml> [--opening] [--gen] [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]
+// src/cli/plan.ts —— pnpm plan <场景.yaml> [--opening] [--gen] [--hand 熟练] [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]
 // 按套路排轴（TD-10 §6.2 ④ 第一版，⑥ 第 2 步）：把循环轴拆成套路、重新排顺序，看能不能排回原轴或更好的。比原轴好的是要拿实战核对的假设
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
 import { withOpening, withRotation } from '../data/scenario-text'
 import { planOpening, planRotation } from '../engine/plan'
+import { HAND_PROFILES, type HandProfile } from '../engine/sample'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padStart } from './format'
 
@@ -15,7 +16,7 @@ const FAILURE: Record<string, string> = {
 }
 
 async function main(): Promise<number> {
-  const { pos: pos0, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--vary', '--extra', '--save'])
+  const { pos: pos0, opt } = argsOf(process.argv.slice(2), ['--width', '--top', '--scoring', '--vary', '--extra', '--hand', '--save'])
   const opening = pos0.includes('--opening')
   const gen = pos0.includes('--gen')
   const pos = pos0.filter(a => a !== '--opening' && a !== '--gen')
@@ -24,17 +25,23 @@ async function main(): Promise<number> {
   const vary = Number(opt.vary ?? 0)
   const extra = opt.extra !== undefined ? Number(opt.extra) : undefined
   if (!file || pos.some(a => a.startsWith('--')) || (scoring !== 'rollout' && scoring !== 'surplus') || !(vary >= 0) || (extra !== undefined && !(extra >= 0))) {
-    console.error('用法：pnpm plan <场景.yaml> [--opening] [--gen] [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]')
+    console.error('用法：pnpm plan <场景.yaml> [--opening] [--gen] [--hand 高手|熟练|普通] [--width 16] [--top 10] [--scoring rollout|surplus] [--vary 1 [--extra 2]] [--save 新.yaml]')
     console.error('  把循环轴拆成套路（同一角色的一行），每个套路用的次数不变，重新排顺序（beam search）；相邻两个角色不同就插切人。')
     console.error('  --scoring rollout（缺省）：每个前缀把剩下的套路按原轴的先后接上、跑一整轮打分；surplus：只跑前缀（便宜，但攒资源的段会被筛掉）。')
     console.error('  --vary N：每个套路用的次数可以比原轴多 / 少 N 次（多补一段补位、少一段攻击…），按每秒伤害比；--extra M：一轮的套路总数最多多 / 少 M 个（缺省 2）。')
     console.error('  排满的完整跑、按比较口径排名；--save 把最好的一条另存成场景（只换循环轴），再 pnpm compare 看差在哪')
     console.error('  --gen：另外自动生成套路（各人单放 E、R、Q，原轴各行在技能 / 大招 / 声骸 / 重击之前拆成两半），每轮最多各用 1 次；套路多了会慢很多，先用小的 --width。')
+    console.error('  --hand：按真人操作打分——每个决策点固定晚这一档手速的平均帧数（高手 3、熟练 6、普通 10，假设 hand-speed），原轴也这样算；挑真人打起来最好的轴')
     console.error('  --opening：改排启动轴（循环轴不动），每个前缀补完后跑完整的场景，按整个窗口的 DPS 比（启动轴几乎不影响稳态）；--save 只换启动轴')
     return 2
   }
   const data = await loadGameData()
-  const sc = loadScenario(file)
+  const sc0 = loadScenario(file)
+  if (opt.hand !== undefined && !(opt.hand in HAND_PROFILES)) { console.error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`); return 2 }
+  const handDelay = opt.hand ? Math.round(HAND_PROFILES[opt.hand as HandProfile].mean) : 0
+  // --hand：所有候选与原轴都在 options.inputDelay 之上再晚这么多帧（期望模式，用平均值近似抽样）
+  const sc = handDelay ? { ...sc0, options: { ...sc0.options, inputDelay: sc0.options.inputDelay + handDelay } } : sc0
+  if (handDelay) console.log(`按真人操作打分：手速"${opt.hand}"，每个决策点晚 ${handDelay} 帧（这一档的平均，假设 hand-speed）`)
   if (opening) return mainOpening(file, sc, data, { width: Number(opt.width ?? 16), top: Number(opt.top ?? opt.width ?? 16), vary, gen, ...(extra !== undefined ? { extra } : {}) }, opt.save)
   const t0 = Date.now()
   let x

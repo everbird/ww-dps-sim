@@ -70,7 +70,7 @@ export const ASSUMPTIONS = [
   {
     id: 'earliest-frame', topic: '调度', tracked: false, impact: 'large', ref: '总设计 T6、TD-09 §3',
     what: '每条指令在最早合法的那一帧执行，没有反应时间',
-    why: '算的是理论上限，人手做不到帧帧精确；每个决策点晚 6 帧，M0 代表轴 DPS 约 −7.4%、视频轴（EQ 版）约 −7.2%，见"操作容错"（pnpm insight，TD-10 §6；docs/m0-conclusions.md）',
+    why: '算的是理论上限，真人操作做不到帧帧精确；每个决策点晚 6 帧，M0 代表轴 DPS 约 −7.4%、视频轴（EQ 版）约 −7.2%，见"操作容错"（pnpm insight，TD-10 §6；docs/m0-conclusions.md）',
     adjust: { how: '场景里 options.inputDelay: N（帧）：切人与不是连段后续的出招，在合法之后再晚 N 帧', path: 'options.inputDelay', values: [6] },
   },
   {

@@ -58,9 +58,10 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   for (const c of Object.values(byChar)) c.share = share(c.damage)
   const actions = [...byAction.values()].sort((a, b) => b.damage - a.damage)
   for (const a of actions) a.share = share(a.damage)
+  const lp = loops(log, r, hits, windowFrames)
   return {
     totalDamage, windowFrames, dps: windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0, overflowDamage,
-    ...loops(log, r, hits, windowFrames),
+    ...lp,
     byChar, byAction: actions, enemy: enemyStats(log, windowFrames),
     resourceTimeline: resourceTimeline(log, r, s), buffUptime: buffUptime(log, 0, windowFrames),
     waits: log.flatMap(e => (e.type === 'wait' && !INTENDED.includes(e.code)
@@ -69,6 +70,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
     warnings: [
       ...r.warnings.map(message => ({ code: 'resolve', message })),
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
+      ...steadyPhase(log, lp),
     ],
     // 这次碰到的假设，按假设表的顺序（总设计 T16、§10.1：输出顺序不依赖对象键）
     assumptions: ASSUMPTIONS.flatMap(a => {
@@ -79,6 +81,26 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
 }
 
 const dpsOf = (damage: number, frames: number): number => (frames > 0 ? damage / (frames / 60) : 0)
+
+/** 稳态可能受相位影响（TD-10 §2，2026-10-22 心队发现）：谐度破坏不跟着轮走，各轮赶上的次数不一样
+ *  （心队四轮一循环"1、1、1、2"次谐度破坏），稳态只有两三轮时会忽高忽低（心队 4 轮时稳态 47,775，10 轮 48,470；
+ *  C2 +19.81% → +9.28%）。循环轴各轮的次数不全相同、稳态又不到 6 轮时提示多跑几轮。破盾不算：只给能量，
+ *  M0 的破盾两轮一循环（2、1 次），各轮 DPS 仍一样 */
+function steadyPhase(log: readonly SimEvent[], lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings'] {
+  const rounds = (lp.perLoop ?? []).filter(p => p.loop >= 1)
+  const st = lp.steady
+  if (!st || rounds.length < 2) return []
+  const n = st.to - st.from + 1
+  if (n >= 6) return []
+  const events = log.flatMap(e => (e.type === 'enemyState' && e.change === 'harmonyBreak' ? [battleFrameOf(e)] : []))
+  const counts = rounds.map(p => events.filter(f => f >= p.start && f < p.start + p.frames).length)
+  if (new Set(counts).size <= 1) return []
+  return [{
+    code: 'steadyPhase',
+    message: `稳态只取了 ${n} 轮（第 ${st.from}–${st.to} 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 ${counts.join('、')} 次）：`
+      + '落在哪一轮会让稳态忽高忽低，比较时多跑几轮（options.repeat，稳态最好 6 轮以上）',
+  }]
+}
 
 /** Summary.enemy：窗口内的敌人量表事件与谐度破坏伤害（TD-06 §13） */
 function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {

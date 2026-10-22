@@ -1,6 +1,6 @@
 // tests/summary.test.ts —— 汇总（总设计 §3.5）：分轮与稳态（TD-09 §3.7 / §3.9 的边界、TD-10 §2 的稳态口径）
 import { describe, expect, test } from 'vitest'
-import { action, judgment } from './helpers/kernel-harness'
+import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthRun } from './helpers/synth'
 
 describe('分轮与稳态', () => {
@@ -46,3 +46,27 @@ describe('分轮与稳态', () => {
   })
 })
 
+
+// 稳态可能受相位影响（2026-10-21）：心队每轮约 36 秒，谐度破坏的周期与轮对不上，4 轮时稳态（第 2–3 轮）忽高忽低
+dataDescribe('稳态的相位提示 steadyPhase', () => {
+  test('心队原轴 4 轮：各轮的谐度破坏次数不同（1、1、1、2）、稳态只有 2 轮，提示多跑几轮；10 轮（稳态 8 轮）与 M0 两条轴不提示', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { parse } = await import('yaml')
+    const { loadGameData } = await import('../src/data/load')
+    const { ScenarioSchema } = await import('../src/data/scenario.schema')
+    const { resolveScenario } = await import('../src/engine/resolve')
+    const { simulate } = await import('../src/engine/simulate')
+    const data = await loadGameData()
+    const run = (file: string, repeat?: number) => {
+      const raw = parse(readFileSync(file, 'utf8'))
+      if (repeat) raw.options.repeat = repeat
+      return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary.warnings.filter(w => w.code === 'steadyPhase')
+    }
+    const four = run('scenarios/xin-team-r5.yaml', 4)
+    expect(four).toHaveLength(1)
+    expect(four[0]!.message).toMatch(/^稳态只取了 2 轮（第 2–3 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 1、1、1、2 次）/)
+    expect(run('scenarios/xin-team-r5.yaml')).toEqual([])
+    expect(run('scenarios/m0-video-eq.yaml')).toEqual([])
+    expect(run('scenarios/m0-team.yaml')).toEqual([])    // 第 1、4 轮 DPS 不同是首尾的缘故（从空闲开始、没有下一轮的边界），不算
+  }, 120_000)
+})
