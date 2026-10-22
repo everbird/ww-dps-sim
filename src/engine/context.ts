@@ -18,8 +18,9 @@ export interface HitRecord {
 }
 
 /** simulate 的可选项。sample：抽样模式（总设计 T4）——seed 定下全部随机数；逐段抽暴击；jitter > 0 时每个决策点的
- *  操作延迟另加 [0, jitter] 帧的均匀抖动（在 options.inputDelay 之上）。不给就是期望模式 */
-export interface SimOptions { onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number } }
+ *  操作延迟另加 [0, jitter] 帧的均匀抖动；hand 时另加 max(0, round(正态(mean, sd))) 帧（手速档，HAND_PROFILES，假设 hand-speed）。
+ *  都在 options.inputDelay 之上。不给就是期望模式 */
+export interface SimOptions { onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number; hand?: { mean: number; sd: number } } }
 
 export interface Sim {
   r: ResolvedScenario

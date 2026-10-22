@@ -15,14 +15,24 @@ export interface Sampling {
   errors: string[]                          // 跑不通的原因（去重，最多 5 条）
 }
 
-export function sampleRuns(r: ResolvedScenario, opts: { runs: number; seed?: number; jitter?: number }): Sampling {
+/** 手速档（假设 hand-speed，没实测）：每个决策点（切人、不是连段后续的出招）在合法之后再晚 max(0, round(正态(mean, sd))) 帧。
+ *  按节奏背熟的轴，玩家多半是踩着节奏按，不是看到才反应（看到才按约 12–15 帧）；能预输入的其实是 0，现在不分（以后按需实测哪些能）。
+ *  与暴击、数据、机制都正交：以后用录像量出自己的分布，换掉这里的数就行 */
+export const HAND_PROFILES = {
+  高手: { mean: 3, sd: 1.5 },
+  熟练: { mean: 6, sd: 3 },
+  普通: { mean: 10, sd: 5 },
+} as const
+export type HandProfile = keyof typeof HAND_PROFILES
+
+export function sampleRuns(r: ResolvedScenario, opts: { runs: number; seed?: number; jitter?: number; hand?: { mean: number; sd: number } }): Sampling {
   const base = simulate(r)
   if (base.error) throw new Error(`场景运行报错，先把轴修好再抽样：${base.error.message}`)
   const b = basisOf(base)
   const dps: number[] = []
   const errors: string[] = []
   for (const seed of runSeeds(opts.seed ?? 1, opts.runs)) {
-    const res = simulate(r, { sample: { seed, ...(opts.jitter ? { jitter: opts.jitter } : {}) } })
+    const res = simulate(r, { sample: { seed, ...(opts.jitter ? { jitter: opts.jitter } : {}), ...(opts.hand ? { hand: opts.hand } : {}) } })
     if (res.error) errors.push(res.error.message)
     else dps.push(basisOf(res).dps)
   }

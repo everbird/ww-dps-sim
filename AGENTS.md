@@ -74,7 +74,7 @@ pnpm golden:perturb -- --rounds 20           # golden 扰动对拍（TD-03 §10.
 pnpm sim scenarios/m0-team.yaml              # 跑一个场景：终端打印汇总（循环时有分轮与稳态），事件日志写到 out/<场景名>.json
 pnpm compare 基准.yaml 对比.yaml             # 两套配装 / 两条轴比稳态 DPS，按角色、动作、buff 覆盖率拆差在哪
 pnpm marginal scenarios/m0-team.yaml --char 椿      # 副词条边际：各加一档（--tier avg|max|min）重跑，按 DPS 增加排序
-pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间
+pnpm insight scenarios/m0-team.yaml          # 结论（TD-10 §6）：共鸣效率需求、操作容错（--delays 0,3,6,10,15）、假设敏感度、指令被挡住的时间、卡帧点（--tight 6：每个决策点单独晚 6 帧，分连锁 / 一轮变长 / 有余量 / 反而更好）
 pnpm run search scenarios/m0-team.yaml       # 轴搜索（TD-10 §6.1；要写 run，pnpm 自带的 search 是搜 npm 包）：在循环轴上挪动首位声骸 Q（--move 别的动作、--drop 试着去掉、--swap 对调相邻两个、--insert A1~ 插入、--char 只改谁、--rounds 3 多轮），
                                              # 每种完整跑一遍、按稳态 DPS 排名；--save 新.yaml 另存最好的一条，再 pnpm compare 看差在哪。比原轴好的改法要拿实战核对
 pnpm cards scenarios/m0-video-eq.yaml        # 套路卡（TD-10 §6.2）：轴里每一行当一个套路，单独量入场（接着打 / 普通 / 变奏）× 出口（切走 / 接自己）× 有没有铺垫的
@@ -85,7 +85,7 @@ pnpm plan scenarios/m0-video-eq.yaml --width 3   # 按套路排轴（TD-10 §6.2
                                              # 场景里另写 search.routines（轴里没有的套路，max 每轮最多几次，缺省 1）也一起排
                                              # --opening 改排启动轴（循环轴不动，按整个窗口的 DPS 比；--save 只换启动轴）
                                              # --gen 另外自动生成套路（各人单放 E、R、Q，原轴各行在技能 / 大招 / 声骸 / 重击之前拆两半），慢很多，先用小的 --width
-pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子
+pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：逐段抽暴击跑 300 次看 DPS 分布；--jitter 6 另加 0–6 帧操作抖动，--seed 换种子；--hand 高手|熟练|普通 按手速档另加正态分布的延迟（假设 hand-speed）
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
 pnpm import:scan data/scan/<账号>-echo.json [--out …] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML；一个账号一份，缺省写到 inventory/<账号>-bag.yaml
 pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的

@@ -101,6 +101,13 @@ export const ASSUMPTIONS = [
     adjust: { how: '改调度器的检查（src/engine/scheduler.ts 的 evaluateAct、switch 时的 SimState.entry）与装配的 airOf（src/data/assemble-action.ts）' },
   },
   {
+    id: 'hand-speed', topic: '调度', tracked: false, impact: 'large', ref: 'TD-10 §6 ⑤、⑥',
+    what: '抽样模式的手速档（pnpm sim --sample N --hand）：每个决策点在合法之后再晚 max(0, round(正态(平均, 标准差))) 帧；高手 3 / 1.5、熟练 6 / 3、普通 10 / 5。'
+      + '能预输入的其实是 0，现在不分；连段后续不加（同 earliest-frame）',
+    why: '用户 2026-10-21 要的：先假设一个分布，以后单独测（与暴击、数据、机制正交）。按节奏背熟的轴是踩着节奏按，不是看到才反应（看到才按约 12–15 帧）；数是估的，没出处',
+    adjust: { how: '改 src/engine/sample.ts 的 HAND_PROFILES；以后用录像量（TD-11 §6.3 视频时间点：合法帧到实际按下的间隔）' },
+  },
+  {
     id: 'air-entry', topic: '切人', tracked: false, impact: 'small', ref: 'TD-09 §3.5，docs/xin-confirm.md §6 C4',
     what: '切进来的第一下是一开始就在空中的攻击（卜灵"空中攻击"）时，切出者要在空中（切进来的出现在它的位置）：切出者这个动作稍后会离地（雷主 E 第 26 帧）就等，'
       + '不会的报错 airEntry。没处理的：切出者在空中、切进来第一下写地面 A（M0 视频轴"维R跳AAA → 椿AAAAA"，仿真在强化空中A3 第 0 帧就切）；'
