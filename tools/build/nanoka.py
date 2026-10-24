@@ -92,18 +92,21 @@ def tree_stats(raw: dict) -> dict[str, float]:
 
 
 def extract_character(raw: dict) -> dict:
-    """一个角色文件 → {id, skills, chains, treeStats, rarity}；skills 只留有类型的技能节点（属性加成节点没有 type）"""
+    """一个角色文件 → {id, skills, chains, treeStats, rarity}；skills 只留有类型的技能节点（属性加成节点没有 type），
+    各带冷却（cooldowns）与其余 level 条目在 10 级的原文（values）"""
     skills = []
     for key in sorted(raw.get('skill_trees', {}), key=int):
         s = raw['skill_trees'][key].get('skill') or {}
         if not s.get('type'):
             continue
-        cooldowns = []
+        cooldowns, values = [], []
         for item in (s.get('level') or {}).values():
-            if not _COOLDOWN.search(item.get('name', '')):
-                continue
             row = (item.get('param') or [[]])[0]
             if not row:
+                continue
+            if not _COOLDOWN.search(item.get('name', '')):
+                # 其余条目（倍率"25.58%*2"、"回复协奏能量"、"消耗共鸣能量"…）留 10 级的原文，核对时再解析（nanoka-check.ts）
+                values.append({'name': item['name'], 'text': str(row[min(SKILL_LEVEL, len(row)) - 1])})
                 continue
             vals = {float(v) for v in row}
             sec = float(row[min(SKILL_LEVEL, len(row)) - 1])
@@ -112,7 +115,7 @@ def extract_character(raw: dict) -> dict:
                 cd['variesByLevel'] = True
             cooldowns.append(cd)
         skills.append({'type': s['type'], 'name': s.get('name', ''), 'desc': fill(s.get('desc', ''), s.get('param') or []),
-                       'cooldowns': cooldowns})
+                       'cooldowns': cooldowns, 'values': values})
     chains = [{'n': int(k), 'name': c.get('name', ''), 'desc': fill(c.get('desc', ''), c.get('param') or [])}
               for k, c in sorted((raw.get('chains') or {}).items(), key=lambda kv: int(kv[0]))]
     out = {'id': raw['id'], 'name': raw.get('name', ''), 'skills': skills, 'chains': chains, 'treeStats': tree_stats(raw)}

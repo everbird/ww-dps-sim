@@ -43,6 +43,11 @@ class Nanoka抽取(unittest.TestCase):
         self.assertEqual(c['skills'][0]['desc'], '红椿伤害57%')
         self.assertEqual(c['skills'][2]['cooldowns'][0]['frames'], 1500)
 
+    def test_其余条目留10级原文(self):
+        c = extract_character(RAW)
+        self.assertEqual(c['skills'][0]['values'], [{'name': '红椿盛绽伤害', 'text': '61.84%*2'}])   # 冷却不在这里
+        self.assertEqual(c['skills'][1]['values'], [])
+
     def test_冷却随等级变化时取10级并标出(self):
         cd = extract_character(RAW)['skills'][1]['cooldowns'][0]
         self.assertEqual((cd['seconds'], cd['frames'], cd.get('variesByLevel')), (18.0, 1080, True))

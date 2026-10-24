@@ -339,6 +339,8 @@ export const NanokaCharacterSchema = z.strictObject({
     name: z.string(),
     desc: z.string(),                               // 去掉富文本标签、填好参数
     cooldowns: z.array(NanokaCooldownSchema),
+    /** 其余 level 条目在 skillLevel 级的原文：倍率（"25.58%*2"、"27.84%+41.76%"）、"回复协奏能量"、"消耗共鸣能量"…（核对见 src/data/nanoka-check.ts） */
+    values: z.array(z.strictObject({ name: z.string(), text: z.string() })),
   })),
   chains: z.array(z.strictObject({ n: int().min(1).max(6), name: z.string(), desc: z.string() })),
   treeStats: z.record(z.string(), z.number()),      // 技能树属性节点：名字（"攻击提升"）→ 全部点亮的合计（小数）

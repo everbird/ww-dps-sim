@@ -13,7 +13,7 @@ import {
   GoldenDamageSchema,
   GoldenZonesSchema, NanokaFileSchema, type GenEcho, type NanokaFile,
 } from './generated.schema'
-import { checkCooldowns, checkTreeStats } from './nanoka-check'
+import { checkConcerto, checkCooldowns, checkEnergyCost, checkHits, checkTreeStats } from './nanoka-check'
 import { assembleCharacterActions, buildEcho } from './registry'
 
 const root = new URL('../../data/generated/', import.meta.url)
@@ -87,9 +87,13 @@ async function listFlags(name: string): Promise<void> {
   console.log(`\n${name}：${acts.length} 个动作；未处理的 flag 动作级 ${nAct}、判定级 ${nJudg}${mod ? '' : '（没有角色模块）'}`)
   for (const l of lines) console.log(l)
   const nk = nanoka?.characters[name]
-  const cds = nk ? [...checkCooldowns(assembled, mod?.aliases ?? {}, nk), ...checkTreeStats(mod?.treeStats ?? {}, nk)] : []
-  if (!nk) console.log(`  （nanoka.json 里没有${name}，冷却与技能树没核对）`)
-  else if (cds.length > 0) console.log(`  冷却 / 技能树与 nanoka ${nanoka!.version} 对不上：\n${cds.map(c => `    ${c}`).join('\n')}`)
+  if (!nk) { console.log(`  （nanoka.json 里没有${name}，冷却、技能树、段数、协奏、大招能量没核对）`); return }
+  const cds = [...checkCooldowns(assembled, mod?.aliases ?? {}, nk), ...checkTreeStats(mod?.treeStats ?? {}, nk)]
+  if (cds.length > 0) console.log(`  冷却 / 技能树与 nanoka ${nanoka!.version} 对不上：\n${cds.map(c => `    ${c}`).join('\n')}`)
+  // 段数、协奏、大招能量（docs/engine-quality-plan.md P5）：倍率本身和解包对过，这里查连到哪个动作、几下
+  const gen = GenCharactersSchema.parse(read('characters.json'))[name]
+  const more = [...(gen ? checkEnergyCost(gen.energyCost, nk) : []), ...checkHits(assembled, nk), ...checkConcerto(assembled, mod?.aliases ?? {}, nk)]
+  if (more.length > 0) console.log(`  段数 / 协奏 / 大招能量与 nanoka ${nanoka!.version} 对不上：\n${more.map(c => `    ${c}`).join('\n')}`)
 }
 
 function flagLines(acts: ActionDef[]): { lines: string[]; nAct: number; nJudg: number } {

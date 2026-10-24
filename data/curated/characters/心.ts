@@ -330,7 +330,10 @@ export default defineCharacter('心', {
     },
     QTE: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } } } },
     // 照世相
-    [`${P}A1`]: { dropRows: ['A1-150点核心能量'] },             // 只在有额外能量Buff时引爆魔方才给（钩子）
+    // A1-150点核心能量只在有额外能量Buff时引爆魔方才给（钩子）。
+    // A1-1 的 dmg 行（20261019 版 R3888）倍率 27.84%，和应世相 A1 第一下相同；nanoka 3.7 照世相第一段"12.55%*2+37.65%"、
+    // WuwaLAB 也是 12.55% 两下：按 12.55% 改（2026-10-24，pnpm check:data --flags 的 nanoka 段数核对，xin-confirm Y19）
+    [`${P}A1`]: { dropRows: ['A1-150点核心能量'], judgments: { 'A1-1': { multiplier: 0.1255 } } },
     [`${P}A3`]: { comboFrom: [`${P}A2`, `${P}重击`, `${P}重击-前置D`] },
     [`${P}E`]: { cooldown: 1200 },                              // 共鸣技能·照世相冷却 20 秒（nanoka 3.7）
     [`${P}强化E`]: { cooldown: 720, judgments: { '强化E-1': { applies: { effect: '电磁效应', stacks: 5 } } } },   // 万阙连衡冷却 12 秒
