@@ -157,9 +157,7 @@ export default defineCharacter('景燃', {
     },
   },
   actionOverrides: {
-    // 重击的优先级分在两行（"-1"行 7 → 5 在第 1 帧，最后一段 5 → 0 在第 78 / 76 帧），装配只取到前一半（同心的强化重击）
-    阳重击: { priority: [{ fromFrame: 0, value: 7 }, { fromFrame: 1, value: 5 }, { fromFrame: 78, value: 0 }] },
-    阴重击: { priority: [{ fromFrame: 0, value: 7 }, { fromFrame: 1, value: 5 }, { fromFrame: 76, value: 0 }] },
+    // 重击的优先级分在两行（"-1"行 7 → 5 在第 1 帧，最后一段 5 → 0 在第 78 / 76 帧）：装配自动串起来（chainedPriority）
     阳E1: { cooldown: 900 },                          // 阳焚身冷却 15 秒
     阴E1: { cooldown: 900 },                          // 阴蚀骨冷却 15 秒
     // 往生送 / 黄泉渡的落地段：帧数从落地起算（下落行第 66 / 60 帧落地）
