@@ -1,0 +1,45 @@
+# 校准点（docs/engine-quality-plan.md P4；写法见 src/data/calibration.schema.ts，用法见 docs/calibration/README.md）。
+# game 填游戏里看到的数（比例写小数：90% 写 0.9；跳字照抄，暴击与否不用写）；空着的是待测。
+# 填了的点由 tests/calibration.test.ts 按容差检查，pnpm calibrate 列出全部点的仿真值与对照。
+points:
+  # 2026-10-21-跳字-椿开场AAE.md：面板
+  - { id: 椿AAE.面板.生命, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 生命, game: null }
+  - { id: 椿AAE.面板.攻击, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 攻击, game: null }
+  - { id: 椿AAE.面板.防御, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 防御, game: null }
+  - { id: 椿AAE.面板.暴击, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 暴击, game: null }
+  - { id: 椿AAE.面板.暴击伤害, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 暴击伤害, game: null }
+  - { id: 椿AAE.面板.共鸣效率, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 共鸣效率, game: null }
+  - { id: 椿AAE.面板.湮灭伤害加成, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 湮灭伤害加成, game: null }
+  - { id: 椿AAE.面板.普攻伤害加成, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 普攻伤害加成, game: null }
+  - { id: 椿AAE.面板.重击伤害加成, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 重击伤害加成, game: null }
+  - { id: 椿AAE.面板.共鸣技能伤害加成, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 共鸣技能伤害加成, game: null }
+  # 2026-10-21-跳字-椿开场AAE.md：开场的跳字（第 0 轮 = 启动轴）
+  - { id: 椿AAE.A1#1, kind: hit, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, loop: 0, char: 椿, judgment: A1, nth: 1, game: null }
+  - { id: 椿AAE.A2-1#1, kind: hit, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, loop: 0, char: 椿, judgment: A2-1, nth: 1, game: null }
+  - { id: 椿AAE.A2-2#1, kind: hit, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, loop: 0, char: 椿, judgment: A2-2, nth: 1, game: null }
+  - { id: 椿AAE.E1-红椿盛绽1#1, kind: hit, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, loop: 0, char: 椿, judgment: E1-红椿盛绽1, nth: 1, game: null }
+  - { id: 椿AAE.E1-红椿盛绽2#1, kind: hit, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, loop: 0, char: 椿, judgment: E1-红椿盛绽2, nth: 1, game: null }
+  # 2026-10-21-跳字-心开场AAA.md：面板
+  - { id: 心AAA.面板.生命, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 生命, game: null }
+  - { id: 心AAA.面板.攻击, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 攻击, game: null }
+  - { id: 心AAA.面板.防御, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 防御, game: null }
+  - { id: 心AAA.面板.暴击, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 暴击, game: null }
+  - { id: 心AAA.面板.暴击伤害, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 暴击伤害, game: null }
+  - { id: 心AAA.面板.共鸣效率, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 共鸣效率, game: null }
+  - { id: 心AAA.面板.导电伤害加成, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 导电伤害加成, game: null }
+  - { id: 心AAA.面板.普攻伤害加成, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 普攻伤害加成, game: null }
+  - { id: 心AAA.面板.重击伤害加成, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 重击伤害加成, game: null }
+  - { id: 心AAA.面板.共鸣技能伤害加成, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 共鸣技能伤害加成, game: null }
+  - { id: 心AAA.面板.全属性伤害加成, kind: panel, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, char: 心, item: 全属性伤害加成, game: null }
+  # 2026-10-21-跳字-心开场AAA.md：开场的跳字（第 0 轮 = 启动轴）
+  - { id: 心AAA.A1-1#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A1-1, nth: 1, game: null }
+  - { id: 心AAA.A1-2#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A1-2, nth: 1, game: null }
+  - { id: 心AAA.A2-1#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A2-1, nth: 1, game: null }
+  - { id: 心AAA.A2-1#2, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A2-1, nth: 2, game: null }
+  - { id: 心AAA.A2-2#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A2-2, nth: 1, game: null }
+  - { id: 心AAA.A2-3#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A2-3, nth: 1, game: null }
+  - { id: 心AAA.A3-1#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-1, nth: 1, game: null }
+  - { id: 心AAA.A3-1#2, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-1, nth: 2, game: null }
+  - { id: 心AAA.A3-2#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-2, nth: 1, game: null }
+  - { id: 心AAA.A3-2#2, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-2, nth: 2, game: null }
+  - { id: 心AAA.A3-3#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-3, nth: 1, game: null }

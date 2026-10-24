@@ -101,6 +101,7 @@ pnpm sim scenarios/m0-team.yaml --sample 300 # 抽样模式（总设计 T4）：
 pnpm optimize scenarios/m0-team.yaml --inv inventory/m0-equipped.yaml --char 椿   # 声骸库存择优（TD-13）：首位与套装件数不变，列出完整仿真最好的几套
 pnpm import:scan data/scan/<账号>-echo.json [--out …] [--nanoka <版本>] # wavescan 扫描导出（WutheringToolsScan v1）转声骸库存 YAML；一个账号一份，缺省写到 inventory/<账号>-bag.yaml
 pnpm assumptions                             # 假设登记表（总设计 T16）：现在怎么处理、依据、影响、怎么改；--md 打印成表格。pnpm sim 的末尾列出这次碰到的
+pnpm calibrate                               # 校准点总表（docs/calibration/points.yaml）：仿真值、实测值、差多少；填了实测、超出容差的退出码 1；--md 出表格
 pnpm fuzz                                    # 模糊测试（docs/engine-quality-plan.md P1）：各场景挪动 / 去掉 / 对调任一动作生成变体轴（--n 60 每个场景跑几条），查日志自洽（checkLog）、可重复、属性加了伤害不降；有问题退出码 1。改了引擎跑一次
 pnpm scorecard a.yaml b.yaml …               # 轴卡片（TD-10 §6.3）：几条轴按四个维度各一张表——① 目标与打死 1/2/3 倍血的战斗秒 ② 手速档、操作密度 ③ 共鸣效率需求、链数 / 武器降档 ④ 碰到的假设、最脆弱的开关；★ 帕累托前沿；--goal、--md
 pnpm matrix m0-video-eq.yaml xin-team.yaml   # 矩阵计分（docs/matrix.md）：几支队按每种出场顺序接力打一期矩阵（--stage 矩8），每队 120 秒，按伤害 × 轮次倍率折分；--md
@@ -145,3 +146,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 10. 接续写的优先级（2026-10-24，`chainedPriority`，用例 T01-16）：一组里几行各写一段优先级、后一行起始值 = 前一行末值时，按行序串起来；各行变化帧取 K 列 → 本行备注 → 本行派生帧（推断，`priorityChangeGuess`）；一行写的帧比它要的多时（凌阳 A3-1 备注"第6F、34F"），多的留给后面没写帧的行；帧数要严格递增，有"下落"行而落地段没后移时不串，否则照旧只取一行。全库 28 个动作因此变了，凌阳 A3 → A4 原来断的连段接上了（心的步红尘 / 镇红尘、景燃的重击与原来手写的覆盖相同，覆盖已去掉；其余是没写模块的角色）。要并回的：TD-01 §13.1（优先级的取法）。
 11. 稳态起点自动跳过漂移的轮（2026-10-24，docs/engine-quality-plan.md §5 P3，`steadyStart`）：第 2 轮起有一轮离合并 DPS 1% 以上时，取最早一个"之后每一轮都在 ±1% 以内"的起点（至少留 4 轮、不少于一半；判的时候不算谐度破坏的伤害）；找不到照旧第 2 轮；挪了提示 `steadySkip`。心队 4 个对照场景的稳态变了（C2 比主场景 +15.6% → +13.2%）。要并回的：TD-10 §2（稳态口径）、总设计 §13（假设 steady-window 的写法）。
 12. 模糊测试按连段整块的变体（2026-10-24，docs/engine-quality-plan.md §5 P1，`blockChanges`、`tests/fuzz.test.ts`）：一行里接得上的连段算一块，整块挪动、去掉、对调；单个动作的变体与整块的各抽一半。要并回的：总设计 §11（模糊测试）。
+13. 校准点（2026-10-24，docs/calibration/README.md、docs/engine-quality-plan.md P4）：`docs/calibration/points.yaml` 登记能拿实测对照的数（面板一项、某一下的跳字、一轮的时长；schema `src/data/calibration.schema.ts`），`src/engine/calibration.ts` 取仿真值并比对（跳字按"不暴击 / 暴击"里接近实测的那个比），`pnpm calibrate [--md]` 出总表，`tests/calibration.test.ts` 把填了实测的点按容差检查、没填的列成待测。要并回的：TD-11 §6（调试工具）、总设计 §11（校准）。
