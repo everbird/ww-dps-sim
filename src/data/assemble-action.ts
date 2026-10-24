@@ -40,9 +40,13 @@ export function assembleBlock(
   }
   for (const id of Object.keys(overrides))
     if (!ids.has(id)) throw new Error(`${file.key} 的 actionOverrides 写了不存在的动作"${id}"`)
+  for (const [id, ov] of Object.entries(overrides))
+    for (const a of ov.absorb ?? []) if (!file.groups.some(g => g.id === a)) throw new Error(`${file.key} ${id} 的 absorb 写了不存在的组"${a}"`)
   const out: Record<string, ActionDef> = {}
   const put = (def: ActionDef) => { const ov = overrides[def.id]; out[def.id] = ov ? applyOverride(def, ov) : def }
-  for (const g0 of file.groups) {
+  for (const g00 of file.groups) {
+    const absorb = overrides[g00.id]?.absorb ?? []
+    const g0 = absorb.length ? { ...g00, rows: [...g00.rows, ...absorb.flatMap(a => file.groups.find(x => x.id === a)!.rows)] } : g00
     const shift = overrides[g0.id]?.shiftRows
     const g = shift ? { ...g0, rows: g0.rows.map(r => (shift[r.name] !== undefined ? shiftRow(r, shift[r.name]!) : r)) } : g0
     const split = overrides[g.id]?.splitRows ?? []
@@ -354,6 +358,7 @@ const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
   shiftRows: ['multiEnd', 'landingUnshifted'],   // 落地段的结束帧本来就与下落段不同
   cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames', 'noSwitchUnframed'],
+  air: ['airGuess'],
 }
 const J_HANDLED: Record<string, string[]> = {
   lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
@@ -371,6 +376,7 @@ export function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {
   if (ov.outroTriggerFrame !== undefined) out.outroTriggerFrame = ov.outroTriggerFrame
   if (ov.switchLockUntil !== undefined) { out.switchLockUntil = ov.switchLockUntil; delete out.switchLockFromInput }   // 手写的不再算推断
   if (ov.energyCost !== undefined) out.energyCost = ov.energyCost
+  if (ov.air !== undefined) { if (ov.air === null) delete out.air; else out.air = ov.air }
   if (ov.endOnSwitchOut !== undefined) out.endOnSwitchOut = ov.endOnSwitchOut
   if (ov.followUp !== undefined) out.followUp = ov.followUp
   if (ov.comboFrom !== undefined) out.comboFrom = ov.comboFrom
