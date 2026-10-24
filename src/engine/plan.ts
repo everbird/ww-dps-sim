@@ -57,10 +57,14 @@ function charOf(line: string): CharName | null {
 const endsFiller = (r: string) => /~\S*$/.test(r.split(' ').at(-1) ?? '')
 
 /** 套路序列写成循环轴：开头切到第一个套路的角色，之后角色变了就切。上一个套路以补位（~）结尾时写"switch X 变奏"
- *  （补位后面只能接同一角色的动作或写了"变奏"的切人，TD-09 §3.2）；循环轴开头的切人看最后一个套路 */
-export function renderRoutines(routines: readonly string[]): string[] {
+ *  （补位后面只能接同一角色的动作或写了"变奏"的切人，TD-09 §3.2）；循环轴开头的切人看最后一个套路。
+ *  onField：每轮开始时在前台的角色。第一个套路就是他时开头不切，改在末尾切回第一个套路的角色（没有启动轴的轴常这样写，
+ *  如 m0-team；R7，docs/review-2026-10-22.md）；close = false 时不补末尾的切人（只跑前缀时） */
+export function renderRoutines(routines: readonly string[], onField?: CharName, close = true): string[] {
   const out: string[] = []
-  let cur: CharName | null = null
+  const first = charOf(routines[0] ?? '')
+  const trailing = first !== null && first === onField
+  let cur: CharName | null = trailing ? first : null
   routines.forEach((r, i) => {
     const c = charOf(r)!
     const prev = i === 0 ? routines.at(-1)! : routines[i - 1]!
@@ -68,6 +72,7 @@ export function renderRoutines(routines: readonly string[]): string[] {
     out.push(r)
     cur = c
   })
+  if (trailing && close && cur !== first) out.push(`switch ${first}${endsFiller(routines.at(-1)!) ? ' 变奏' : ''}`)
   return out
 }
 
@@ -149,6 +154,9 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     && usedOf(seq).every((n, i) => n >= library[i]!.lo && n <= library[i]!.hi)
   const openingLast = [...sc.opening].reverse().map(l => charOf(clean(l))).find(c => c !== null)
     ?? sc.team[sc.initial.onField]!.char
+  // 没有启动轴时，第一个套路可以是开场在前台的角色（开头不切、末尾切回，见 renderRoutines）；有启动轴的保持原来的写法
+  const startOn = sc.opening.some(l => clean(l)) ? undefined : openingLast
+  const render = (seq: readonly string[], close = true) => renderRoutines(seq, startOn, close)
 
   const run = (rotation: string[], repeat: number) => {
     const variant: Scenario = { ...sc, rotation, options: { ...sc.options, repeat } }
@@ -171,7 +179,9 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   // beam search：每层给每个前缀接一个还没用完的套路
   type Node = { seq: string[]; score: number; tier: number }   // tier 1：补完一轮跑通（score 是那一轮的 DPS）；0：只有前缀的盈余
   let beam: Node[] = [{ seq: [], score: 0, tier: 0 }]
+  // 第 1 轮：有启动轴时读分轮；没有启动轴、只跑一轮时汇总没有分轮（不循环就不分轮，TD-10 §2），整个窗口就是第 1 轮（R7）
   const loop1 = (res: NonNullable<ReturnType<typeof run>>) => res.summary.perLoop?.find(p => p.loop === 1)
+    ?? (startOn !== undefined && !res.summary.perLoop ? { damage: res.summary.totalDamage, frames: res.summary.windowFrames, dps: res.summary.dps } : undefined)
   /** 剩下的套路按原轴里的先后接上 */
   const complete = (seq: readonly string[]): string[] => {
     const left = new Map(counts)
@@ -189,7 +199,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       for (const r of node.seq) used.set(r, (used.get(r) ?? 0) + 1)
       for (const { line, char, hi } of library) {
         if ((used.get(line) ?? 0) >= hi) continue
-        if (depth === 0 && char === openingLast) continue           // 循环轴要从切人开始：第一个套路的角色不能是启动轴最后在前台的
+        if (depth === 0 && char === openingLast && startOn === undefined) continue   // 循环轴要从切人开始：第一个套路的角色不能是启动轴最后在前台的
         const seq = [...node.seq, line]
         const key = seq.join(' | ')
         if (next.has(key)) continue
@@ -198,7 +208,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
         // 前缀以补位结尾：补位后面要接写了"变奏"的切人才编译得过（TD-09 §3.2），补一个切到别人的（排满时切回开头的角色）
         const last = charOf(line)!
         const to = charOf(seq[0]!) !== last ? charOf(seq[0]!)! : sc.team.find(m => m.char !== last)!.char
-        const res = run([...renderRoutines(seq), ...(endsFiller(line) ? [`switch ${to} 变奏`] : [])], 1)
+        const res = run([...render(seq, false), ...(endsFiller(line) ? [`switch ${to} 变奏`] : [])], 1)
         if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
         if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
         const loop = loop1(res)
@@ -208,7 +218,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
         const full = complete(seq)
         if (scoring === 'rollout' && charOf(full.at(-1)!) !== charOf(full[0]!)) {
           prefixRuns++
-          const rr = run(renderRoutines(full), 1)
+          const rr = run(render(full), 1)
           const l = rr && !rr.error && !bad(rr, 1) ? loop1(rr) : undefined
           if (l) cand = { seq, score: l.dps, tier: 1 }
         }
@@ -239,7 +249,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       if (extra === 0 && n.tier === 1 && complete(n.seq).length === n.seq.length) { pool.set(key, n); continue }
       const rounds = extra === 0 ? 1 : 2
       prefixRuns++
-      const rr = run(renderRoutines(n.seq), rounds)
+      const rr = run(render(n.seq), rounds)
       const l = rr && !rr.error && !bad(rr) ? rr.summary.perLoop?.find(p => p.loop === rounds) : undefined
       if (l) pool.set(key, { seq: n.seq, score: l.dps, tier: 1 })
     }
@@ -249,8 +259,13 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const refKey = refSeq.join(' | ')
   const leaves: PlanLeaf[] = []
   const best = [...pool.values()].sort((a, b) => b.tier - a.tier || b.score - a.score)
-  for (const node of (extra === 0 ? beam.filter(n => pool.has(n.seq.join(' | '))) : best).slice(0, top)) {
-    const plain = renderRoutines(node.seq)
+  // 原轴（排进了候选的话）总要完整跑一遍、标出排第几，即使排在 top 之外（R7：没有启动轴的 m0-team 原轴被 top 截掉）
+  const finals = (extra === 0 ? beam.filter(n => pool.has(n.seq.join(' | '))) : best)
+  const shown = finals.slice(0, top)
+  const refNode = finals.find(n => n.seq.join(' | ') === refKey)
+  if (refNode && !shown.includes(refNode)) shown.push(refNode)
+  for (const node of shown) {
+    const plain = render(node.seq)
     const res = run(plain, sc.options.repeat)
     if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
     if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }

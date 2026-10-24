@@ -140,6 +140,12 @@ export default defineCharacter('散华', {
         if (ice) ctx.addBuff(ice.buff, { target: 'enemy' })
         return
       }
+      // 重击居合在打出重击爆裂（重击居合-1）之前被取消（蓄力没完成、松手前被大招等打断）：没有重击爆裂，引爆计时作废
+      // （TD-04 §4 取消语义；R3，docs/review-2026-10-22.md）。切人不打断重击，后台照样引爆；5 链的冰到时自爆不受影响
+      if (ev.type === 'actionCancel' && ev.char === '散华' && ev.action === '重击居合') {
+        if (ev.dropped.includes('重击居合-1')) ctx.removeBuff('散华.引爆计时')
+        return
+      }
       if (ev.type !== 'buffExpire') return
       // 重击爆裂第 29 帧：引爆场上所有的冰
       if (ev.buff === '散华.引爆计时' && ev.reason === 'timeout') {

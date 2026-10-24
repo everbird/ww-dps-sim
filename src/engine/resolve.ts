@@ -137,6 +137,9 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   const weapon = data.weapons[m.weapon.name]
   if (!weapon) { issues.push(`${where}：没有武器"${m.weapon.name}"`); return null }
   if (weapon.type !== def.weaponType) issues.push(`${where}：${m.char} 用${def.weaponType}，${weapon.key} 是${weapon.type}`)
+  // 被动没写成机制的武器只算基础属性（TD-01 §14；R4，docs/review-2026-10-22.md）
+  if (!weapon.curated && weapon.effects.some(e => e.text.trim() !== ''))
+    warnings.push(`${m.char}：武器 ${weapon.key} 的被动还没写进 data/curated/weapons.ts，不计入，只算主副属性`)
   const chain = m.chain as Chain
   const rank = m.weapon.rank as Rank
 
@@ -155,7 +158,6 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   stat('武器', weapon.sub.stat, weapon.sub.value)
   for (const [k, v] of Object.entries(def.treeStats)) stat('技能树', k as StatKey, v)
   const echoes: ResolvedMember['echoes'] = []
-  const sets = new Map<string, number>()
   for (const [i, e] of m.echoes.entries()) {
     // 首位声骸要放技能，必须在声骸表里；其余几件只计入词条与套装，表里没有（1C 小怪多半不在）也行
     const edef = echoOf(data, e.name)
@@ -166,8 +168,8 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
     for (const [k, v] of Object.entries(e.main)) stat('声骸', k as StatKey, v!)
     for (const [k, v] of Object.entries(e.subs)) stat('声骸', k as StatKey, v!)
     echoes.push({ def: edef, set: e.set, main: e.main as StatValues, subs: e.subs as StatValues })
-    sets.set(e.set, (sets.get(e.set) ?? 0) + 1)
   }
+  const sets = setPieces(m.echoes)
 
   // 常驻与触发型 buff：角色（按共鸣链过滤）、武器被动（按谐振阶取值）、套装件数效果
   for (const b of def.buffs)
@@ -215,6 +217,20 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
     member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, actions, aliases },
     buffs, effects,
   }
+}
+
+/** 声骸的种类：异相与本体是同一种（"异相·X"取 X） */
+export const echoSpecies = (name: string): string => name.trim().replace(/^异相·/, '')
+
+/** 套装件数（TD-13 §1）：每套按不同种类的声骸计，同种装两件只算一件（词条照常都计入；R1，docs/review-2026-10-22.md） */
+export function setPieces(echoes: readonly { name: string; set: string }[]): Map<string, number> {
+  const kinds = new Map<string, Set<string>>()
+  for (const e of echoes) {
+    const k = kinds.get(e.set) ?? new Set<string>()
+    k.add(echoSpecies(e.name))
+    kinds.set(e.set, k)
+  }
+  return new Map([...kinds].map(([set, k]) => [set, k.size]))
 }
 
 /** 声骸名 → 定义：异相只换了配色、数值与本体相同（2026-10-04 用户确认），"异相·X"取 X */

@@ -9,7 +9,7 @@ import type { Scenario } from '../data/scenario.schema'
 import { basisOf, tierValue, type Basis } from './analysis'
 import type { HitRecord } from './context'
 import { accumulate, computeHit, matchesFilter, type HitContext } from './formula'
-import { resolveScenario } from './resolve'
+import { echoSpecies, resolveScenario, setPieces } from './resolve'
 import { simulate } from './simulate'
 import { battleFrameOf } from './summary'
 import type { ResolvedScenario, SimResult, StaticPanel, ZoneAccumulator } from './types'
@@ -157,7 +157,7 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   const main = member.echoes[0]!.name
   const plan: Record<string, number> = {}
   if (o.set) plan[o.set] = 5
-  else for (const e of member.echoes) plan[e.set] = (plan[e.set] ?? 0) + 1
+  else for (const [set, n] of setPieces(member.echoes)) plan[set] = n
   for (const [k, v] of Object.entries(plan)) if (v < 2) delete plan[k]
   const isRover = (n: string) => n === '漂泊者' || /^(雷|风|光|暗)主·[男女]$/.test(n)
   const isOwnerOf = (owner: string, c: string) => owner === c || (isRover(owner) && isRover(c))
@@ -179,6 +179,8 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
       const rest = kept.filter(p => p.id !== c1.id)
       const cnt: Record<string, number> = Object.fromEntries(sets.map(x => [x, x === c1.set ? 1 : 0]))
       const pick: InvPiece[] = []
+      // 套装按不同种类计（setPieces）：同套里已有同种的那件不再加件数
+      const counts = (p: InvPiece) => p.set in cnt && ![c1, ...pick].some(q => q.set === p.set && echoSpecies(q.name) === echoSpecies(p.name))
       const dfs = (from: number, cost: number) => {
         let need = 0
         for (const x of sets) need += Math.max(0, plan[x]! - cnt[x]!)
@@ -187,9 +189,10 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
         for (let i = from; i < rest.length; i++) {
           const p = rest[i]!
           if (cost + p.cost > 12) continue
-          pick.push(p); if (p.set in cnt) cnt[p.set]!++
+          const add = counts(p)
+          pick.push(p); if (add) cnt[p.set]!++
           dfs(i + 1, cost + p.cost)
-          pick.pop(); if (p.set in cnt) cnt[p.set]!--
+          pick.pop(); if (add) cnt[p.set]!--
         }
       }
       dfs(0, c1.cost)
@@ -200,13 +203,13 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   const valid = (b: readonly InvPiece[]): boolean => {
     if (b.reduce((a, p) => a + p.cost, 0) > 12) return false
     if (new Set(b.map(p => p.id)).size !== b.length) return false
-    const n: Record<string, number> = {}
-    for (const p of b) n[p.set] = (n[p.set] ?? 0) + 1
-    return Object.entries(plan).every(([s, k]) => (n[s] ?? 0) >= k)
+    const n = setPieces(b)
+    return Object.entries(plan).every(([s, k]) => (n.get(s) ?? 0) >= k)
   }
   const scOf = (b: readonly InvPiece[]) => withEchoes(sc, o.slot, b)
 
   const run0 = runRecorded(sc, data)
+  if (run0.res.error) throw new Error(`现在的配装跑不通（${run0.res.error.code}）：${run0.res.error.message}`)   // R6
   const base = basisOf(run0.res)
   let evaluated = 0
   const found = new Map<string, Build>()
@@ -275,8 +278,8 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   search(rep0)
   let verified = verify(top * 2)
   const best1 = [...found.values()].filter(b => b.dps !== null).sort((a, b) => b.dps! - a.dps!)[0]
-  if (best1) {
-    const run1 = runRecorded(scOf(best1.pieces), data)
+  const run1 = best1 ? runRecorded(scOf(best1.pieces), data) : null
+  if (run1 && !run1.res.error) {
     search(buildReplayer(run1.r, run1.res, run1.recs, o.slot))
     verified += verify(top * 2)
   }
