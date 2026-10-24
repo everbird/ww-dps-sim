@@ -73,8 +73,8 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
 })
 
 // 误差条与漂移（docs/engine-quality-plan.md P3）：窗口挪一轮、前后两半各算一次 DPS 变多少
-dataDescribe('稳态的误差条 steady.spread 与漂移提示 steadyDrift', () => {
-  test('心队原轴 10 轮：误差不到 1%；C2 前三轮靠开局的能量、第 4 轮起每轮才稳定：两半差近 4%，提示', async () => {
+dataDescribe('稳态的误差条 steady.spread、漂移提示 steadyDrift 与自动跳过漂移的轮 steadySkip', () => {
+  test('心队原轴：三轮一周期来回波动，稳态照旧从第 2 轮起、误差不到 1%；C2 前几轮靠开局的能量，稳态自动从第 5 轮起（2026-10-24）', async () => {
     const { readFileSync } = await import('node:fs')
     const { parse } = await import('yaml')
     const { loadGameData } = await import('../src/data/load')
@@ -84,11 +84,13 @@ dataDescribe('稳态的误差条 steady.spread 与漂移提示 steadyDrift', () 
     const data = await loadGameData()
     const run = (f: string) => simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(`scenarios/${f}`, 'utf8'))), data)).summary
     const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml')
+    expect(base.steady!.from).toBe(2)
     expect(base.steady!.spread).toBeGreaterThan(0)
     expect(base.steady!.spread).toBeLessThan(0.01)
-    expect(c2.steady!.spread).toBeGreaterThan(0.015)
-    const drift = c2.warnings.filter(w => w.code === 'steadyDrift')
-    expect(drift).toHaveLength(1)
-    expect(drift[0]!.message).toMatch(/^稳态（第 2–9 轮）前一半 DPS 63634、后一半 61166，差 -3\.9%/)
+    // C2：第 2–4 轮 66,136 / 65,744 / 62,134，之后各轮在 ±1% 以内；跳过以后两半不再差 1% 以上（原来第 2–9 轮两半差 -3.9%）
+    expect(c2.steady).toMatchObject({ from: 5, to: 9 })
+    expect(c2.steady!.spread).toBeLessThan(0.01)
+    expect(c2.warnings.filter(w => w.code === 'steadyDrift')).toEqual([])
+    expect(c2.warnings.find(w => w.code === 'steadySkip')!.message).toMatch(/^稳态从第 5 轮起：第 2–4 轮还在漂移/)
   }, 120_000)
 })
