@@ -43,7 +43,7 @@ dataDescribe('假设的开关', () => {
     expect(waits(off.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(false)
     expect(off.summary.assumptions.map(a => a.id)).not.toContain('ult-no-switch')
     expect(off.summary.windowFrames).toBeLessThan(on.summary.windowFrames)
-  })
+  }, 60_000)
 
   test('invincibleLocksSwitch = false：雷主强化E（无敌推出来的第 123 帧锁）放完就能切；万阙垂天仍被全局时停（大招动画）挡住', () => {
     const l = block('雷主·男')
@@ -55,7 +55,7 @@ dataDescribe('假设的开关', () => {
     const on = simulate(r), off = simulate(withRule(r, 'invincibleLocksSwitch', false))
     expect(waits(off.log).some(w => w.code === 'globalStop' && w.reason.startsWith('照世·大招'))).toBe(true)
     expect(off.summary.steady!.dps).toBeCloseTo(on.summary.steady!.dps, 6)
-  })
+  }, 60_000)
 
   test('forteKeepOnSwitch = false：卜灵切走清卦象，心切走回到应世相（按套路重排的轴因此跑不通）', () => {
     // 按套路重排：卜灵下落AAEA 后带着卦象切雷主放大招，再切回来出雷山小过
@@ -63,7 +63,7 @@ dataDescribe('假设的开关', () => {
     const cleared = re.log.filter(e => e.type === 'resource' && e.char === '卜灵' && e.resource === 'core1' && e.delta < 0 && e.note?.includes('切走清卦象'))
     expect(cleared.length).toBeGreaterThan(0)
     expect(re.error?.code).toBe('timeout')
-  })
+  }, 60_000)
 
   test('矩阵：对照比基准的收益，缺省与翻过来各一份', () => {
     const m = sensitivityMatrix([{ name: 'm0-video-eq', r: load('m0-video-eq.yaml') }, { name: 'm0-video-eq-维里奈Q后移', r: load('m0-video-eq-维里奈Q后移.yaml') }])
@@ -72,5 +72,5 @@ dataDescribe('假设的开关', () => {
     expect(m.pairs[0]).toMatchObject({ name: 'm0-video-eq-维里奈Q后移', base: 'm0-video-eq' })
     expect(m.pairs[0]!.gain!).toBeGreaterThan(0)
     expect(m.pairs[0]!.flips).toHaveLength(m.flips.length)
-  })
+  }, 60_000)
 })

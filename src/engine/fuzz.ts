@@ -2,7 +2,7 @@
 // 每条跑完查日志自洽（invariants.ts checkLog）；原轴另查两条变形关系：同样的输入两次结果相同、各项属性加一点伤害不降（时间轴不变）。
 // 跑不通（连段中断、等超时…）是轴的问题，不算；抛异常、invariant 报错、日志不自洽才是引擎的问题
 import { checkLog } from './invariants'
-import { neighbors, parseLines, lineText } from './search'
+import { neighbors, parseLines, lineText, type Change, type Line } from './search'
 import { compileRotation, type CompileMember } from './scheduler'
 import { simulate } from './simulate'
 import type { HitEvent, ResolvedScenario, SimResult } from './types'
@@ -42,12 +42,16 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
     if (!base.error) problems.push(...monotonic(r, base, run))
   }
 
-  // 变体：挪动任一动作、去掉任一动作、对调相邻两个
+  // 变体：挪动任一动作、去掉任一动作、对调相邻两个；另按连段整块挪动、去掉、对调（2026-10-24：单个挪多半把连段拆断，跑不通）
   const lines = parseLines(rotation)
   const acts = [...new Set(lines.flatMap(l => ('items' in l ? l.items.map(i => i.action) : [])))]
-  const all = neighbors(lines, { move: acts, drop: acts, swap: true, has })
+  const single = neighbors(lines, { move: acts, drop: acts, swap: true, has }), block = blockChanges(lines, members)
+  const all = [...single, ...block]
   const seen = new Set<string>()
-  const picked = all.filter((_, i) => all.length <= n || Math.floor(i * n / all.length) !== Math.floor((i - 1) * n / all.length))
+  // 两类各取一半（等距取，结果可重复）；块变体不够一半时余下的给单个的
+  const even = <T>(xs: readonly T[], k: number) => xs.filter((_, i) => xs.length <= k || Math.floor(i * k / xs.length) !== Math.floor((i - 1) * k / xs.length))
+  const nb = Math.min(block.length, Math.floor(n / 2))
+  const picked = [...even(single, n - nb), ...even(block, nb)]
   const rejected: Record<string, number> = {}
   let ran = 0, ok = 0
   for (const ch of picked) {
@@ -66,6 +70,47 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
     ok++
   }
   return { variants: all.length, ran, ok, rejected, problems }
+}
+
+/** 一行里的连段块：后一个动作的连段前置（comboFrom）含前一个的就接成一块（A1 A2 A3 A4），其余各自一块 */
+function blocks(items: readonly { action: string }[], m: CompileMember | undefined): [number, number][] {
+  const out: [number, number][] = []
+  items.forEach((it, i) => {
+    const id = m?.aliases[it.action] ?? it.action
+    const prev = i > 0 ? (m?.aliases[items[i - 1]!.action] ?? items[i - 1]!.action) : undefined
+    const linked = prev !== undefined && !!m?.actions[id]?.comboFrom?.includes(prev)
+    if (linked) out.at(-1)![1] = i + 1
+    else out.push([i, i + 1])
+  })
+  return out
+}
+
+/** 按连段整块的变体：同一行里把一块挪到别的块之间、去掉一块、与相邻块对调；只改至少有两块、且有一块是连段（两个动作以上）的行 */
+export function blockChanges(lines: readonly Line[], members: readonly CompileMember[]): Change[] {
+  const out: Change[] = []
+  lines.forEach((line, li) => {
+    if (!('char' in line)) return
+    const bs = blocks(line.items, members.find(m => m.name === line.char))
+    if (bs.length < 2 || !bs.some(([a, b]) => b - a > 1)) return
+    const seg = (k: number) => line.items.slice(bs[k]![0], bs[k]![1])
+    const name = (k: number) => seg(k).map(i => i.action).join(' ')
+    const put = (order: number[], desc: string) => {
+      const items = order.flatMap(seg)
+      out.push({ lines: lines.map((l, j) => (j === li ? { char: line.char, items } : l)), desc: `${line.char}（第 ${li + 1} 条）${desc}` })
+    }
+    const idx = bs.map((_, k) => k)
+    for (let k = 0; k < bs.length; k++) {
+      if (bs.length > 1) put(idx.filter(x => x !== k), `去掉连段「${name(k)}」`)
+      if (k + 1 < bs.length) put(idx.map(x => (x === k ? k + 1 : x === k + 1 ? k : x)), `对调「${name(k)}」与「${name(k + 1)}」`)
+      for (let t = 0; t <= bs.length; t++) {
+        if (t === k || t === k + 1) continue
+        const rest = idx.filter(x => x !== k)
+        const at = t > k ? t - 1 : t
+        put([...rest.slice(0, at), k, ...rest.slice(at)], `「${name(k)}」整块挪到第 ${t + 1} 块的位置`)
+      }
+    }
+  })
+  return out
 }
 
 /** 变形关系：生命、攻击、防御各加一点（固定值），出招与结算的时刻应完全不变，每一下的伤害不降 */

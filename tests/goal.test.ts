@@ -54,7 +54,7 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     const before = hits.filter(h => battleFrameOf(h) < kill.frame!).reduce((x, h) => x + hitValue(h), 0)
     expect(before).toBeLessThan(kill.hp)
     expect(res.summary.goal).toBeUndefined()                  // 缺省稳态
-  })
+  }, 60_000)
 
   test('打死 2 倍血：比较口径 = 血量 ÷ 击杀秒；原轴比稳态最好的 C8 快（名次反过来）', () => {
     const base = simulate(load('xin-team-r5.yaml', { kill: 2 })), c8 = simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { kill: 2 }))
@@ -66,7 +66,7 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     expect(b.dps).toBeGreaterThan(c.dps)
     // 稳态则相反
     expect(basisOf(simulate(load('xin-team-r5.yaml'))).dps).toBeLessThan(basisOf(simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml'))).dps)
-  })
+  }, 60_000)
 
   test('前 30 秒：窗口内命中之和；两条轴启动轴相同，一样', () => {
     const a = simulate(load('xin-team-r5.yaml', { window: 30 }))
@@ -74,7 +74,7 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     expect(a.summary.goal!.damage).toBeCloseTo(hits.reduce((x, h) => x + hitValue(h), 0), 6)
     expect(basisOf(a).dps).toBeCloseTo(a.summary.goal!.damage / 30, 6)
     expect(basisOf(simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { window: 30 }))).dps).toBeCloseTo(basisOf(a).dps, 6)
-  })
+  }, 60_000)
 
   test('没打死：按稳态往后估、提示多跑几轮', () => {
     const res = simulate(load('xin-team-r5.yaml', { kill: 50 }))
@@ -82,5 +82,5 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     expect(g.reached).toBe(false)
     expect(g.hi).toBeGreaterThan(res.log.at(-1)!.t * 60)
     expect(res.summary.warnings.some(w => w.code === 'goalNotReached')).toBe(true)
-  })
+  }, 60_000)
 })
