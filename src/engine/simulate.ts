@@ -61,6 +61,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     ...(opts.onHit ? { onHit: opts.onHit } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
+  // 按面板属性换算的 buff 在装配时按静态面板定了数值（BuffDef.scale）
+  for (const b of r.buffs) if (b.def.scale) assume(s, 'stat-scaling-static', b.def.id)
   // 共鸣回路的状态说明（钩子 forte，只读）：每个 tick 结束取一次，变了才记；只供时间轴的检查器显示
   const forte: ForteStep[] = []
   const shown: (string | undefined)[] = r.team.map(() => undefined)
@@ -293,6 +295,8 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     },
     get vars() { return s.chars[self].vars },
     heal: source => { log(s, { type: 'heal', char: m.def.name, source }) },
+    stat: name => { assume(s, 'stat-scaling-static', `${m.def.name} 的钩子读 ${name}`); return m.stats[name] },
+    shield: (source, target = self) => { log(s, { type: 'shield', char: sim.r.team[target].def.name, by: m.def.name, source }) },
     applyEffect: (effect, stacks, note) => applyEffect(sim, s, self, effect, stacks, note ?? `${m.def.name} 的钩子`),
     effectDamage: (effect, scale, judgment) => effectDamage(sim, s, self, effect, scale, judgment),
     takeBurst: (effect, note) => takeBurst(s, self, effect, note ?? `${m.def.name} 的钩子`),

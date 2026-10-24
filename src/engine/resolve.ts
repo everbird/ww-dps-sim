@@ -8,8 +8,8 @@ import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
-import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StatValues } from './types'
-import { round } from './num'
+import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StaticStats, StatValues } from './types'
+import { round, snap9 } from './num'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
 export const CHAR_BASE = { critRate: 0.05, critDamage: 1.5, energyRegen: 1 } as const
@@ -70,7 +70,10 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   const members = built as Built[]
   const team = members.map(b => b.member) as [ResolvedMember, ResolvedMember, ResolvedMember]
 
-  const buffs = [...members.flatMap(b => b.buffs), ...env]
+  // 按面板属性换算的 buff（BuffDef.scale）：先算各人的静态属性（不含这些 buff 自己），再定数值（假设 stat-scaling-static）
+  const raw = [...members.flatMap(b => b.buffs), ...env]
+  for (const m of team) m.stats = staticStats(m, raw)
+  const buffs = raw.map(b => (b.def.scale && b.owner !== 'env' ? { ...b, value: scaledValue(b.def.scale, b.value, team[b.owner].stats) } : b))
   const effects = members.flatMap(b => b.effects)
   // 触发条件 ownerHas 指向的 buff 要是同一持有者登记过的，否则永远不会触发（拼错了也不报）
   for (const { def, owner } of [...buffs, ...effects]) {
@@ -214,9 +217,29 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   const common = def.commonBlock ? data.commonActions[def.commonBlock] ?? {} : {}
   const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain), ...echoActions }
   return {
-    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, actions, aliases },
+    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, stats: { hp: 0, atk: 0, def: 0, energyRegen: 0 }, actions, aliases },
     buffs, effects,
   }
+}
+
+/** 静态属性：面板加常驻、不带过滤条件、作用到这个人的面板类 buff（按属性换算的不算）。生命 / 攻击 / 防御按面板合成取整 */
+export function staticStats(m: ResolvedMember, buffs: readonly RegisteredBuff[]): StaticStats {
+  const sum = (zone: string) => buffs.filter(b => b.def.zone === zone && b.def.trigger === 'always' && !b.def.filter && !b.def.scale && reaches(b, m.slot))
+    .reduce((a, b) => a + b.value, 0)
+  const compose = (p: StaticPanel['hp'], pct: string, flat: string) => Math.floor(p.base * (1 + p.pct + sum(pct))) + p.flat + sum(flat)
+  return {
+    hp: compose(m.panel.hp, 'hpPct', 'hpFlat'), atk: compose(m.panel.atk, 'atkPct', 'atkFlat'), def: compose(m.panel.def, 'defPct', 'defFlat'),
+    energyRegen: snap9(m.panel.energyRegen + sum('energyRegen')),
+  }
+}
+const reaches = (b: RegisteredBuff, slot: Slot): boolean =>
+  b.owner === 'env' || b.def.target === 'team' || (b.def.target === 'self' ? b.owner === slot : b.def.target === 'teamExceptSelf' && b.owner !== slot)
+
+/** 按属性换算：min(cap, 每份 × 份数)，份数 = (属性 + offset) / per（floor 时取整） */
+export function scaledValue(sc: NonNullable<BuffDef['scale']>, per: number, stats: StaticStats): number {
+  const units = (stats[sc.stat] + (sc.offset ?? 0)) / sc.per
+  const v = per * (sc.floor ? Math.floor(units + 1e-9) : units)
+  return snap9(sc.cap !== undefined ? Math.min(sc.cap, v) : v)
 }
 
 /** 声骸的种类：异相与本体是同一种（"异相·X"取 X） */

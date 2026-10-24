@@ -198,6 +198,13 @@ export const ASSUMPTIONS = [
     adjust: { how: '改 src/engine/matrix.ts 的 MATRIX_RULES；换 boss 清状态要把接力做进仿真内核（敌人序列）' },
   },
   {
+    id: 'stat-scaling-static', topic: '角色', tracked: true, impact: 'unknown', ref: 'TD-07、docs/jys-confirm.md',
+    what: '按面板属性换算的效果（守岸人星域按共鸣效率给暴击 / 暴伤，景燃按生命上限给攻击、热熔伤害加成、命火的倍率）按装配时的属性定数：' +
+      '静态面板加常驻 buff，战斗中触发的 buff（如生命%、共鸣效率的临时提升）不计入，也不随之变化',
+    why: '这几个角色的属性在战斗中基本不变（触发型的生命 / 共鸣效率加成很少）；按命中时实时换算要改 buff 系统，原型期先不做',
+    adjust: { how: '改 src/engine/resolve.ts 的 staticStats（加上某个触发 buff 的满层值）或在钩子的 modifyHit 里实时算' },
+  },
+  {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',
     what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）',
     why: '第 1 轮受开局资源影响；最后一轮没有下一轮起手的边界，偏高',

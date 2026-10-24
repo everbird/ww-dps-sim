@@ -29,7 +29,10 @@ export function outroOf(m: ResolvedMember): ActionDef | undefined {
 /** TD-09 的 onSwitch（§2）：记 switch → 切出者的 switchOut（清除 buff、切人结束技能）→ 切入者的 switchIn（挂起的 nextIn）
  *  → 变奏时开始变奏动作（其后发施放资源）→ intro。switchOut / switchIn 的触发由 switch 事件派生（TD-07 §4.1） */
 export function onSwitch(sim: Sim, s: SimState, from: Slot, to: Slot, cmd: CommandRef): void {
-  const introDef = introOf(sim.r.team[to])
+  // 变奏动作随状态换（守岸人解限星域里是洞悉）：钩子 introAction 返回动作 ID，缺省按别名 QTE
+  const pick = sim.hooks[to]?.introAction?.(sim.ctxs[to]!)
+  const introDef = pick !== undefined ? sim.r.team[to].actions[pick] : introOf(sim.r.team[to])
+  if (pick !== undefined && !introDef) throw new Error(`${sim.r.team[to].def.name} 的钩子 introAction 返回的"${pick}"不是它的动作`)
   const full = s.chars[from].concerto >= sim.r.rules.concertoMax
   const intro = full && introDef !== undefined
   log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[to].name, intro, cmd })
