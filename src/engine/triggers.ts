@@ -62,6 +62,7 @@ function describe(e: SimEvent): string {
     case 'resource': return ` ${e.char} ${e.resource} ${e.delta > 0 ? '+' : ''}${e.delta}（${e.cause}）`
     case 'buffApply': return ` ${e.buff} 施加到 ${e.target}`
     case 'heal': return ` ${e.char} 的治疗（${e.source}）`
+    case 'shield': return ` ${e.char} 获得护盾（${e.by}：${e.source}）`
     default: return ` ${e.type} 事件`
   }
 }
@@ -74,7 +75,7 @@ function handle(sim: Sim, s: SimState, ev: SimEvent): void {
     for (const reg of sim.r.buffs) {
       if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
-      if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined)
+      if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks)
     }
     for (const e of sim.r.effects) {                  // 已按共鸣链过滤、按谐振阶取值（resolve）
       const occ = firing(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs)
@@ -96,6 +97,7 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     case 'hit':                                     // 异常效应自身的伤害不是判定结算，不触发"命中时"（TD-06 §18）
       return ev.effect ? [] : [{ on: 'judgmentSettle', by: slot(ev.char), action: ev.action, judgment: ev.judgment, tags: ev.tags, element: ev.element }]
     case 'heal': return [{ on: 'heal', by: slot(ev.char) }]
+    case 'shield': return [{ on: 'shield', by: slot(ev.char) }]       // by = 获得护盾的人
     case 'intro': return [{ on: 'intro', by: slot(ev.char), action: ev.action }]
     case 'outro': return [{ on: 'outro', by: slot(ev.char), to: slot(ev.to) }]
     case 'switch': return [{ on: 'switchOut', by: slot(ev.from) }, { on: 'switchIn', by: slot(ev.to) }]
@@ -130,10 +132,12 @@ function matches(s: SimState, on: TriggerSpec['on'], where: TriggerFilter | unde
 /** 这条定义被这批触发点中的哪一个触发（数组写法任一满足即可，一条事件只触发一次）；内置冷却按（持有者, 定义）记在 lastTrigger（§4.4） */
 function firing(
   s: SimState, trigger: BuffDef['trigger'], owner: Slot | 'env', id: string, icd: number | undefined, occs: Occurrence[],
-): Occurrence | undefined {
+): (Occurrence & { stacks?: number }) | undefined {
   if (typeof trigger === 'string') return undefined
   const specs = Array.isArray(trigger) ? trigger : [trigger]
-  const occ = occs.find(o => specs.some(sp => matches(s, sp.on, sp.where, owner, o)))
+  let spec: TriggerSpec | undefined
+  const found = occs.find(o => (spec = specs.find(sp => matches(s, sp.on, sp.where, owner, o))) !== undefined)
+  const occ = found && spec?.stacks !== undefined ? { ...found, stacks: spec.stacks } : found
   if (!occ || icd === undefined) return occ
   const key = `${owner}|${id}`
   const last = s.lastTrigger[key]
