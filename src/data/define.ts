@@ -14,6 +14,11 @@ export interface ActionOverride {
    *  都是从落地起算的，装配前整体后移；这时动作结束帧取各行结束帧的最大值（卜灵空中攻击下落 38 帧落地，落地段第 10 帧结束 → 48）。
    *  先按住再松手的动作同样用它：各行的帧从松手算（散华重击居合按住半秒，各行后移 30 帧） */
   shiftRows?: Record<string, Frame>
+  /** 装配前并入这些组的行（帧数照原样，都从本动作起手算），被并入的组照旧另成动作：守岸人的"E-地面"只有起手，
+   *  五只黯星·蝶写在"E"组（"E（17F）脱手后自行生成"） */
+  absorb?: ActionId[]
+  /** 改写在空中的局部帧（null = 一直在地面）：飞行道具那几行的「位置状态」写的是"空中"，装配推成角色在空中（airGuess），如守岸人的大招领域、变奏的黯星·蝶 */
+  air?: { from: Frame; until: Frame | null } | null
   copyAs?: ActionId[]                       // 另存为这些动作：同一组行（去掉 dropRows、splitRows 之后）按新 ID 再装配一次，不带本组的其余覆盖；
                                             // xlsx 没写、实测得知的，如椿的地面出场技就是 A2（新 ID 不推连段前置）
   kind?: ActionKind

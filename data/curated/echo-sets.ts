@@ -49,6 +49,43 @@ const sets: EchoSetModule[] = [
     },
   }),
 
+  // 景燃 · 尤诺 · 守岸人（2026-10-24）。"获得护盾时"= shield 事件（护盾量不建模）
+  defineEchoSet({
+    name: '冥途夜行之灯',                   // 景燃。满 4 层时"热熔伤害提升15%"写在景燃的模块里（要看层数）
+    pieces: {
+      2: [{ id: '冥途夜行之灯.2', source: '生命提升10%', zone: 'hpPct', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [{
+        id: '冥途夜行之灯.5', source: '角色获得护盾时，自身暴击提升5%，该效果可叠加4层，持续5秒，每0.5秒可触发一次。叠至满层时，自身造成的热熔伤害提升15%。',
+        zone: 'critRate', value: 0.05, maxStacks: 4, icd: 30, target: 'self', duration: 300, trigger: { on: 'shield' },
+      }],
+    },
+  }),
+  defineEchoSet({
+    name: '荣斗铸锋之冠',                   // 尤诺（三件套）
+    pieces: {
+      3: [
+        {
+          id: '荣斗铸锋之冠.3攻击', source: '角色获得护盾时，自身攻击提升6%，暴击伤害提升4%，该效果可叠加5层，持续4秒，每0.5秒可触发一次。',
+          zone: 'atkPct', value: 0.06, maxStacks: 5, icd: 30, target: 'self', duration: 240, trigger: { on: 'shield' },
+        },
+        {
+          id: '荣斗铸锋之冠.3暴伤', source: '角色获得护盾时，自身攻击提升6%，暴击伤害提升4%，该效果可叠加5层，持续4秒，每0.5秒可触发一次。',
+          zone: 'critDamage', value: 0.04, maxStacks: 5, icd: 30, target: 'self', duration: 240, trigger: { on: 'shield' },
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
+    name: '啸谷长风',                       // 尤诺（两件）
+    pieces: {
+      2: [{ id: '啸谷长风.2', source: '气动伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['气动'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [{
+        id: '啸谷长风.5', source: '使用变奏技能登场时，气动伤害提升30%，持续15秒',
+        zone: 'DamageChangeElement', value: 0.3, filter: { elements: ['气动'] }, target: 'self', duration: 900, trigger: { on: 'intro' },
+      }],
+    },
+  }),
+
   defineEchoSet({
     name: '衔梦照世之心',                   // 心（xlsx 伤害配置 R164、R165"心锁套"）
     pieces: {
