@@ -76,6 +76,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
       ...r.warnings.map(message => ({ code: 'resolve', message })),
       ...log.flatMap(e => (e.type === 'warning' ? [{ code: e.code, message: e.message, ...(e.line !== undefined ? { line: e.line } : {}) }] : [])),
       ...steadyPhase(log, lp),
+      ...steadySkip(lp),
       ...steadyDrift(lp),
       ...(goal?.warning ? [goal.warning] : []),
     ],
@@ -169,6 +170,35 @@ function steadyDrift(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings
   }]
 }
 
+/** 稳态从第几轮起（P3，2026-10-24）：缺省第 2 轮。第 2 轮起各轮 DPS 有一轮离合并的 DPS 1% 以上（DRIFT_WARN）时，往后找最早一个
+ *  "之后每一轮都在 ±1% 以内"（稳住了）的起点（各轮的 DPS 不算谐度破坏的伤害，见调用处）；挪完至少留 4 轮、且不少于原来的一半。找不到（来回波动，比如心队三轮一周期的协奏、
+ *  谐度破坏的相位）就照旧第 2 轮，由 steadyDrift 提示。心队 C2 前几轮靠开局的能量，自动从第 5 轮起 */
+function steadyStart<T extends { loop: number; dps: number; damage: number; frames: number }>(
+  rounds: readonly T[], to: number, sumOf: (ps: readonly T[]) => number,
+): number {
+  const settled = (from: number) => {
+    const part = rounds.filter(p => p.loop >= from && p.loop <= to)
+    const all = sumOf(part)
+    return all > 0 && part.every(p => Math.abs(p.dps / all - 1) < DRIFT_WARN)
+  }
+  const n = to - 1                                     // 第 2 轮到 to 的轮数
+  if (n < 4 || settled(2)) return 2
+  for (let from = 3; to - from + 1 >= Math.max(4, Math.ceil(n / 2)); from++) if (settled(from)) return from
+  return 2
+}
+
+/** 稳态没从第 2 轮起（steadyStart 挪过）时说一声：前面几轮在漂移 */
+function steadySkip(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings'] {
+  const st = lp.steady
+  if (!st || st.from <= 2 || !lp.perLoop) return []
+  const early = lp.perLoop.filter(p => p.loop >= 2 && p.loop < st.from)
+  return [{
+    code: 'steadySkip',
+    message: `稳态从第 ${st.from} 轮起：第 ${st.from === 3 ? '2' : `2–${st.from - 1}`} 轮还在漂移（DPS ${early.map(p => Math.round(p.dps)).join('、')}，`
+      + `之后各轮都在合并 DPS ${Math.round(st.dps)} 的 ±${DRIFT_WARN * 100}% 以内），多半是开局的资源还没用完`,
+  }]
+}
+
 /** Summary.enemy：窗口内的敌人量表事件与谐度破坏伤害（TD-06 §13） */
 function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {
   const out = { disharmony: 0, tuneBreaks: 0, tuneBreakDamage: 0, breaks: 0 }
@@ -207,12 +237,14 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
   }
   at.push({ energy: [...energy], concerto: [...concerto] })
   const damage = starts.map(() => 0)
+  const tuneBreak = starts.map(() => 0)                     // 各轮谐度破坏的伤害：判稳态起点时不算（相位，steadyStart）
   for (const h of hits) {
     const f = battleFrameOf(h)
     if (f >= W) continue
     let k = 0
     while (k + 1 < starts.length && f >= starts[k + 1]!) k++
     damage[k]! += hitValue(h)
+    if (h.tags.includes('谐度破坏')) tuneBreak[k]! += hitValue(h)
   }
   const delta = (k: number, x: 'energy' | 'concerto') =>
     [0, 1, 2].map(i => roundTo(at[k + 1]![x][i]! - at[k]![x][i]!, 1e6)) as [number, number, number]
@@ -223,9 +255,15 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
   // 稳态只看循环轴的轮（启动轴是第 0 轮，不算）：第 2 轮到倒数第 2 轮；只有 2 轮时取第 2 轮；不到 2 轮没有稳态
   const rounds = perLoop.filter(p => p.loop >= 1)
   if (rounds.length < 2) return { perLoop }
-  const from = 2, to = Math.max(2, rounds.length - 1)
+  const to = Math.max(2, rounds.length - 1)
+  const sumOf = (ps: readonly typeof rounds[number][]) => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0))
+  // 判稳态起点用去掉谐度破坏伤害的 DPS：谐度破坏不跟着轮走，赶上两次的那一轮高一截是相位，不是漂移
+  const noTune = rounds.map(p => {
+    const d = p.damage - tuneBreak[perLoop.indexOf(p)]!
+    return { loop: p.loop, frames: p.frames, damage: d, dps: dpsOf(d, p.frames) }
+  })
+  const from = steadyStart(noTune, to, ps => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0)))
   const part = rounds.filter(p => p.loop >= from && p.loop <= to)
-  const sumOf = (ps: typeof part) => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0))
   const frames = part.reduce((x, p) => x + p.frames, 0), dmg = part.reduce((x, p) => x + p.damage, 0)
   const dps = dpsOf(dmg, frames)
   // 误差条（P3）：窗口挪一轮（去掉第一轮或最后一轮），以及前一半与后一半各算一次（还在漂移的轴两半差得多）；取离稳态最远的。

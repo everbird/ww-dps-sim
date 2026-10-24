@@ -206,8 +206,8 @@ export const ASSUMPTIONS = [
   },
   {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',
-    what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）',
-    why: '第 1 轮受开局资源影响；最后一轮没有下一轮起手的边界，偏高',
+    what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）；第 2 轮起还在漂移时，从之后各轮都在 ±1% 以内的那一轮起（steadySkip）',
+    why: '第 1 轮受开局资源影响；开局多出来的资源有时要好几轮才用完（心队 C2 到第 5 轮）；最后一轮没有下一轮起手的边界，偏高',
   },
 ] as const satisfies readonly Assumption[]
 
