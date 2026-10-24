@@ -45,8 +45,13 @@
       <tbody>
         {#each out.rows as r (r.stat)}
           <tr>
-            <td>{r.stat}</td><td class="r">+{statValue(r.stat, r.value)}</td><td class="r">{fmt(r.dps)}</td>
-            <td class="r" class:up={r.delta > 0.5} class:down={r.delta < -0.5}>{signed(r.delta)}</td><td class="r">{signed(r.pct, pct2)}</td>
+            <td>{r.stat}</td><td class="r">+{statValue(r.stat, r.value)}</td>
+            {#if r.error !== undefined}
+              <td colspan="3">跑不通：{r.error}</td>
+            {:else}
+              <td class="r">{fmt(r.dps)}</td>
+              <td class="r" class:up={r.delta > 0.5} class:down={r.delta < -0.5}>{signed(r.delta)}</td><td class="r">{signed(r.pct, pct2)}</td>
+            {/if}
             <td class="barcol"><span class="bar" style:width="{(Math.max(0, r.delta) / max) * 100}%"></span></td>
           </tr>
         {/each}

@@ -72,6 +72,8 @@ export default defineCharacter('维里奈', {
     canStart(ctx, id) {
       const e = ctx.state.chars[ctx.self].core[0]                              // 光合能量
       if (id === '重击') return e >= 1 ? true : '强化重击要光合能量'
+      // 空中攻击星星花绽放（强化空中A1–A3）同样要有光合能量，每段命中消耗 1 层（nanoka 3.7；R2，docs/review-2026-10-22.md）
+      if (id === '强化空中A1' || id === '强化空中A2' || id === '强化空中A3') return e >= 1 ? true : '强化空中攻击要光合能量'
       if (id === '重击-冲') return e < 1 ? true : '有光合能量时重击是强化重击（动作"重击"）'
       return true
     },

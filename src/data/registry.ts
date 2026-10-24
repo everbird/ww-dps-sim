@@ -241,7 +241,7 @@ export function buildEcho(e: GenEcho, mod: EchoModule | undefined): EchoDef {
     key: e.key, cost: mod?.cost ?? e.cost, actions, q, qFor: { ...(mod?.qFor ?? {}) }, description: e.description,
     mainSlotBuffs: (mod?.mainSlotBuffs ?? []).map(b => buff(b, `声骸 ${e.key}`)),
     resourceEffects: (mod?.resourceEffects ?? []).map(x => effect(x, `声骸 ${e.key}`)),
-    curated: mod !== undefined,
+    curated: (mod?.mainSlotBuffs?.length ?? 0) + (mod?.resourceEffects?.length ?? 0) > 0,
     flags: e.flags.filter(f => !handled.has(f)),
   }
 }
@@ -260,5 +260,6 @@ function buildWeapon(w: GenWeapon, mod: WeaponModule | undefined): WeaponDef {
     effects: w.effects,
     passives: (mod?.passives ?? []).map(b => buff(b, `武器 ${w.key}`)),
     resourceEffects: (mod?.resourceEffects ?? []).map(e => effect(e, `武器 ${w.key}`)),
+    curated: mod !== undefined,
   }
 }

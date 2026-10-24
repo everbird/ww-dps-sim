@@ -30,8 +30,10 @@ async function main(): Promise<number> {
     console.log(`\n${char} · 副词条各加一档（${TIERS[tier]}，加在最后一件声骸上） · 基准 ${m.base.label} DPS ${fmt(m.base.dps)}`)
     console.log(`  ${padEnd('副词条', 18)}${padStart('一档', 8)}${padStart('DPS', 10)}${padStart('增加', 10)}${padStart('比例', 9)}`)
     for (const r of m.rows)
-      console.log(`  ${padEnd(r.stat, 18)}${padStart(`+${statValue(r.stat, r.value)}`, 8)}${padStart(fmt(r.dps), 10)}` +
-        `${padStart(signed(r.delta), 10)}${padStart(signed(r.pct, x => pct2(x)), 9)}`)
+      console.log(r.error !== undefined
+        ? `  ${padEnd(r.stat, 18)}${padStart(`+${statValue(r.stat, r.value)}`, 8)}  跑不通：${r.error}`
+        : `  ${padEnd(r.stat, 18)}${padStart(`+${statValue(r.stat, r.value)}`, 8)}${padStart(fmt(r.dps), 10)}` +
+          `${padStart(signed(r.delta), 10)}${padStart(signed(r.pct, x => pct2(x)), 9)}`)
   }
   return 0
 }

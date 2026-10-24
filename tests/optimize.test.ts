@@ -34,7 +34,7 @@ function data(): GameData {
   return d
 }
 const P = (id: string, cost: 1 | 3 | 4, set: string, main: InvPiece['main'], subs: InvPiece['subs'], owner?: string): InvPiece =>
-  ({ id, name: cost === 4 ? '角' : `小${cost}`, set, cost, main, subs, ...(owner ? { owner } : {}) })
+  ({ id, name: cost === 4 ? '角' : `小${cost}·${id}`, set, cost, main, subs, ...(owner ? { owner } : {}) })   // 小怪各是不同种（套装按种类计，R1）
 const INV: InvPiece[] = [
   P('m1', 4, '测试套', { 暴击率: 0.22, 攻击: 150 }, { 暴击伤害: 0.1 }),
   P('m2', 4, '测试套', { 暴击伤害: 0.44, 攻击: 150 }, { 暴击率: 0.05 }),

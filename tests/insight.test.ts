@@ -52,7 +52,7 @@ dataDescribe('结论（M0 代表轴）', () => {
       const c = (w.cmd.loop === 0 ? r.opening : r.commands).find(x => x.line === w.cmd.line && x.item === w.cmd.item)!
       if (c.kind === 'act') expect([c.action, r.team[c.slot].actions[c.action]!.comboFrom ?? []]).toEqual([c.action, []])
     }
-  })
+  }, 60_000)
 
   test('四项结论：能量需求不高于现在（这条轴不等能量）、操作越晚 DPS 越低、敏感度列出能翻的假设', () => {
     const x = insight(load(), { delays: [0, 3, 6], tight: 0 })
@@ -76,7 +76,7 @@ dataDescribe('结论（M0 代表轴）', () => {
     expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'switch-no-lock', 'forte-keep-on-switch', 'tune-break-auto'])   // 椿大招的全局时停盖过了 ult-no-switch（2026-10-22）
     expect(x.notHit).toEqual(['def-no-floor', 'effect-tick', 'effect-owner', 'ult-no-switch'])    // M0 没有减防、没有异常效应：翻了也一样，不跑
     for (const w of x.waits) expect(w.share).toBeGreaterThan(0)
-  })
+  }, 60_000)   // 敏感度要跑好几遍：全量并发时会超过缺省的 5 秒（docs/engine-acceptance-2026-10-22.md P3）
 
   test('共鸣效率需求：把现在的共鸣效率压到需求以下就会等能量', () => {
     const r = load()
@@ -86,7 +86,7 @@ dataDescribe('结论（M0 代表轴）', () => {
     const low = simulate({ ...r, team: r.team.map(t => (t.slot === 2 ? { ...t, panel: { ...t.panel, energyRegen: panel } } : t)) as typeof r.team })
     const waits = eventsOfLog(low.log, 'wait').filter(w => w.code === 'resource' && w.reason.startsWith('大招能量'))
     expect(low.error !== undefined || waits.length > 0).toBe(true)
-  })
+  }, 60_000)
 })
 
 dataDescribe('卡帧点（TD-10 §6 ⑥）：M0 视频轴 EQ 版', () => {

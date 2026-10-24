@@ -151,6 +151,7 @@ export interface WeaponDef {
   effects: GenWeapon['effects']                     // 原始被动数据（文本 + R1–R5 数值）
   passives: BuffDef[]                               // curated 写成的 buff
   resourceEffects: ResourceEffect[]                 // curated 写成的资源型效果（TD-07 §9）
+  curated: boolean                                  // data/curated/weapons.ts 写了它的被动（没写的只算基础属性，装配时提示；R4）
 }
 
 export interface EchoDef {
@@ -163,7 +164,8 @@ export interface EchoDef {
   description: string | null                        // 技能说明原文
   mainSlotBuffs: BuffDef[]                          // 首位加成与技能附带的 buff（curated）
   resourceEffects: ResourceEffect[]                 // 技能附带的资源型效果（curated）
-  curated: boolean                                  // data/curated/echoes.ts 有没有它
+  /** 首位加成与技能附带的效果写进了 data/curated/echoes.ts（只覆盖冷却、COST 的不算；R5，docs/review-2026-10-22.md） */
+  curated: boolean
   flags: string[]                                   // 声骸级的 flag（cooldownText、charges、stagesGuess…）
 }
 

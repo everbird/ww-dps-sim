@@ -45,7 +45,7 @@ export function synthData(chars: SynthChar[]): GameData {
     weapons: {
       测试武器: {
         key: '测试武器', rarity: 5, type: '迅刀', main: { stat: '攻击', value: 0 }, sub: { stat: '暴击率', value: 0 },
-        effects: [], passives: [], resourceEffects: [],
+        effects: [], passives: [], resourceEffects: [], curated: true,
       },
     },
     echoes: {}, echoSets: {}, echoStats: null, enemies: {}, effects: {}, abnormalBaseByLevel: [],

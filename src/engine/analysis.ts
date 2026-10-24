@@ -107,7 +107,8 @@ export function compareRuns(a: Run, b: Run): Comparison {
 }
 
 export type Tier = 'avg' | 'max' | 'min'
-export interface MarginalRow { stat: StatKey; value: number; dps: number; delta: number; pct: number }
+/** error：加了这一条之后仿真跑不通（dps、delta、pct 记 0，排在最后，不参与排名） */
+export interface MarginalRow { stat: StatKey; value: number; dps: number; delta: number; pct: number; error?: string }
 
 /** 一档的数值：各档平均（比例取到 0.0001，固定值取整）/ 最高 / 最低 */
 export function tierValue(values: readonly number[], tier: Tier): number {
@@ -124,16 +125,21 @@ export function marginal(sc: Scenario, data: GameData, slot: Slot, tier: Tier = 
   if (!tiers) throw new Error('没有副词条各档（echo-stats.json），先 pnpm build:data')
   const who = sc.team[slot]!
   if (who.echoes.length === 0) throw new Error(`${who.char} 没装声骸：副词条要加在声骸上`)
-  const base = basisOf(runScenario(sc, data).res)
+  // 跑不通的仿真只有前半段日志，汇总的数不能当结果比（R6，docs/review-2026-10-22.md）：基准跑不通就停，变体跑不通单独标出
+  const res0 = runScenario(sc, data).res
+  if (res0.error) throw new Error(`原场景跑不通（${res0.error.code}）：${res0.error.message}`)
+  const base = basisOf(res0)
   const rows: MarginalRow[] = []
   for (const [stat, values] of Object.entries(tiers) as [StatKey, number[]][]) {
     const value = tierValue(values, tier)
     const variant = structuredClone(sc)
     const last = variant.team[slot]!.echoes.at(-1)!
     last.subs = { ...last.subs, [stat]: (last.subs[stat] ?? 0) + value }
-    const b = basisOf(runScenario(variant, data).res)
+    const res = runScenario(variant, data).res
+    if (res.error) { rows.push({ stat, value, dps: 0, delta: 0, pct: 0, error: `${res.error.code}：${res.error.message}` }); continue }
+    const b = basisOf(res)
     rows.push({ stat, value, dps: b.dps, delta: b.dps - base.dps, pct: base.dps > 0 ? (b.dps - base.dps) / base.dps : 0 })
   }
-  rows.sort((x, y) => y.delta - x.delta)
+  rows.sort((x, y) => Number(x.error !== undefined) - Number(y.error !== undefined) || y.delta - x.delta)
   return { base, rows }
 }
