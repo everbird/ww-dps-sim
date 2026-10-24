@@ -59,7 +59,13 @@ dataDescribe('R1–R7（依赖数据）', () => {
     const hits = (n: number) => run(n).log.flatMap(e => (e.type === 'hit' && /^强化空中A\d$/.test(e.judgment) ? [e.judgment] : []))
     expect(hits(0)).toEqual([])
     expect(hits(1)).toEqual(['强化空中A1'])
-    expect(hits(3)).toEqual(['强化空中A1', '强化空中A2', '强化空中A3'])
+    // 第三段 3 下（nanoka 3.7"30.50%*3"，2026-10-24），光合能量只扣 1 层：三段打完还剩 0
+    expect(hits(3)).toEqual(['强化空中A1', '强化空中A2', '强化空中A3', '强化空中A3', '强化空中A3'])
+    const photo = (rotation: string[], n: number) => m0Run(gd, { initial: { onField: 2, core: { 维里奈: { 光合能量: n } } }, rotation, options: { tuneBreak: 'off' } })
+      .log.flatMap(e => (e.type === 'hit' && e.char === '维里奈' && e.gains.core[0] !== 0 ? [e.gains.core[0]] : []))
+    expect(photo(['维里奈 跳跃 强化空中A1 强化空中A2 强化空中A3'], 3)).toEqual([-1, -1, -1])
+    // E 第一段同样改成 3 下（"35.79%*3"），光合能量照旧只给 1 层
+    expect(photo(['维里奈 E', 'wait 60'], 0)).toEqual([1])
     // 被拒绝的强化攻击也不给固有1 的攻击提升
     expect(run(0).log.some(e => e.type === 'buffApply' && e.buff === '维里奈.固有1')).toBe(false)
   })

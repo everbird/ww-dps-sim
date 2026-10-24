@@ -120,8 +120,13 @@ export default defineCharacter('维里奈', {
     大招: { cooldown: 1500, judgments: { '大招-标记': { heals: true }, '大招-协同伤害': { spawnFrame: null, heals: true } } },
     强化空中A1: { judgments: { 强化空中A1: { heals: true } } },
     强化空中A2: { judgments: { 强化空中A2: { heals: true } } },
-    强化空中A3: { judgments: { 强化空中A3: { heals: true } } },
-    E: { cooldown: 720 },                  // 共鸣技能冷却 12 秒，不是按次数充能（2026-09-27 用户提供）
+    // 第三段是 3 下（nanoka 3.7"30.50%*3"、WuwaLAB 第 24 / 28 / 32 帧各一下），xlsx 只有一行一次：按每 4 帧 3 次；
+    // 光合能量施放时扣 1 层（WuwaLAB on_cast），不随次数乘（2026-10-24，pnpm check:data --flags 的 nanoka 段数核对）
+    强化空中A3: { judgments: { 强化空中A3: { heals: true, ticks: 3, tickInterval: 4, coreOncePerAction: [true, false, false] } } },
+    // 共鸣技能冷却 12 秒，不是按次数充能（2026-09-27 用户提供）。
+    // 第一段是 3 下（nanoka 3.7"35.79%*3+71.58%"、WuwaLAB 第 24 / 27 / 30 帧），xlsx 只有一行一次：按每 3 帧 3 次，持续帧放到 9 才排得下第 3 次；
+    // 光合能量施放时给 1 层，不随次数乘（同上，2026-10-24）
+    E: { cooldown: 720, judgments: { 'E-1': { ticks: 3, tickInterval: 3, lifeFrames: 9, coreOncePerAction: [true, false, false] } } },
 
   },
 })

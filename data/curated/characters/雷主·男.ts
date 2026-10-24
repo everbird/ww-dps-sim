@@ -72,7 +72,9 @@ export default defineCharacter('雷主·男', {
     '强化E-长按超负荷': { cooldown: 1500, cooldownGroup: '超负荷', ...P1 },
     空中强化E: { cooldown: 1500, cooldownGroup: '超负荷', ...P1 },
     '空中强化E-长按': { cooldown: 1500, cooldownGroup: '超负荷', ...P1 },
-    A3: { accept: ['ticksGuess'] },                 // "持续帧内每6F进行一次判定"没写次数：持续 36 帧，按 6 次
+    // "持续帧内每6F进行一次判定"没写次数，持续 36 帧按规则只排得下 6 次；nanoka 3.7"13.27%*7"、WuwaLAB 第 30–66 帧 7 下，
+    // 第 7 下正好在持续帧末尾：改 7 次、持续帧放到 37（2026-10-24，pnpm check:data --flags 的 nanoka 段数核对）
+    A3: { judgments: { A3: { ticks: 7, lifeFrames: 37 } } },
     // 普攻第 4 段先跳起（A4-下落，46 帧落地），两段落地伤害的帧数从落地起算
     A4: { shiftRows: { 'A4-落地1': 46, 'A4-落地2': 46 } },
   },
