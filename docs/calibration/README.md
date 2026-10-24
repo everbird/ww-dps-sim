@@ -30,6 +30,15 @@
 - 改了什么（规则表、场景、数据修正），对应的提交
 ```
 
+## 校准点：测完填一个数，就成为回归测试（2026-10-24）
+
+记录里每个能对照的数（面板一项、某一下的跳字、一轮的时长）另在 `points.yaml` 里登记成一个"点"（写法见 `src/data/calibration.schema.ts`）：
+
+- 测完把游戏里看到的数填进该点的 `game`。比例写小数（90% 写 0.9）；跳字照抄，暴击与否不用写，会和仿真的"不暴击 / 暴击"里接近的那个比。
+- `pnpm calibrate`（`--md` 出表格）列出全部点：仿真值、实测值、差多少、对上没有。有超出容差的，退出码是 1。
+- `tests/calibration.test.ts` 把填了数的点按容差检查。缺省容差：面板 0.1%、跳字 0.2%、时长 1%，单个点可以写 `tolerance` 另定。没填的列成待测（todo），不算失败。
+- 对上了的点从此是回归测试：以后改引擎、换数据版本，对上过的数不会悄悄跑偏。对不上时按 TD-11 分层查，查清后改数据或规则，或在点上注明原因。
+
 ## 视频时间点
 
 写进场景的 `video` 段（TD-11 §6.3），用 `pnpm trace <场景> --md` 生成对照表；把生成的 Markdown（`out/` 下，不进 git）里要留的部分摘进记录。
@@ -38,5 +47,5 @@
 
 | 记录 | 对的是什么 | 状态 |
 |---|---|---|
-| `2026-10-21-跳字-心开场AAA.md` | 心的面板与开场三下普攻的跳字（全息 6 无常凶鹭），表由 `pnpm trace scenarios/xin-team-r5.yaml --loop 0 --hits --char 心` 出 | 待实测 |
-| `2026-10-21-跳字-椿开场AAE.md` | 椿的面板与开场 AAE 的跳字（全息 6 朔雷之鳞），表由 `pnpm trace scenarios/m0-video-eq.yaml --loop 0 --hits --char 椿` 出 | 待实测 |
+| `2026-10-21-跳字-心开场AAA.md` | 心的面板与开场三下普攻的跳字（全息 6 无常凶鹭），表由 `pnpm trace scenarios/xin-team-r5.yaml --loop 0 --hits --char 心` 出 | 待实测；`points.yaml` 里 22 个点 |
+| `2026-10-21-跳字-椿开场AAE.md` | 椿的面板与开场 AAE 的跳字（全息 6 朔雷之鳞），表由 `pnpm trace scenarios/m0-video-eq.yaml --loop 0 --hits --char 椿` 出 | 待实测；`points.yaml` 里 15 个点 |
