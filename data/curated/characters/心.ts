@@ -329,6 +329,17 @@ export default defineCharacter('心', {
       judgments: { '增幅强化重击-异常': { applies: { effect: '电磁效应', stacks: 1 } } },
     },
     QTE: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } } } },
+    // 2026-10-24 清标记（docs/xin-confirm.md Y20）：空中攻击的落地段从落地起算，下落行的结束帧就是落地时刻（第 38 帧）；
+    // 补上后命中在第 40 帧，与 WuwaLAB"Answering Form (Mid-Air)"的第 40 帧一致。应世 E 的落地段（第 84 帧 / WuwaLAB 69 帧）对不上，等 C7 实测
+    空中攻击: { shiftRows: { '空中攻击-落地': 38 } },
+    空中重击派生: { shiftRows: { '空中重击派生-落地': 38 } },
+    协同: { kind: 'other', accept: ['noEnd'] },                  // 飞阙由钩子生成（敕令），不单独施放
+    '借相-地面切换岁主': { kind: 'other', accept: ['noEnd'] },   // 切换形态的说明行（"立即施放照世上挑"），切形态由钩子按借相处理
+    '借相-空中切换岁主': { kind: 'other', accept: ['noEnd'] },
+    特殊能量: { accept: ['noEnd', 'noPriority', 'kindGuess'] },  // 以下四个是状态的说明行，不是动作
+    通用状态: { accept: ['noEnd', 'noPriority', 'kindGuess'] },
+    同奏模态: { accept: ['noEnd', 'noPriority', 'kindGuess'] },
+    电磁模态: { accept: ['noEnd', 'noPriority', 'kindGuess'] },
     // 照世相
     // A1-150点核心能量只在有额外能量Buff时引爆魔方才给（钩子）。
     // A1-1 的 dmg 行（20261019 版 R3888）倍率 27.84%，和应世相 A1 第一下相同；nanoka 3.7 照世相第一段"12.55%*2+37.65%"、
@@ -343,6 +354,12 @@ export default defineCharacter('心', {
     [`${P}强化A3`]: { judgments: { '强化A3-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}强化A4`]: { judgments: { '强化A4-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}增幅强化重击`]: { cooldown: 1440, cooldownGroup: '承天则', judgments: { '增幅强化重击-2': { applies: { effect: '电磁效应', stacks: 5 } } } },
-    [`${P}QTE`]: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } } } },
+    // 电磁QTE-3："11.42%*4+11.42%*2+39.97%*4"的第二组 2 下（nanoka 3.7），持续 4 帧每 4 帧一次只排得下 1 次
+    [`${P}QTE`]: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } }, '电磁QTE-3': { ticks: 2, lifeFrames: 5 } } },
+    // 照世空中攻击的落地段：下落行第 29 帧落地，补上后两下在第 31 / 47 帧（WuwaLAB"Illumining Form (Mid-Air)"同）
+    [`${P}空中攻击`]: { shiftRows: { '空中攻击-落地1': 29, '空中攻击-落地2': 29 } },
+    [`${P}借相-地面切换常态`]: { kind: 'other', accept: ['noEnd'] },
+    [`${P}借相-空中切换常态`]: { kind: 'other', accept: ['noEnd'] },
+    [`${P}延奏-伤害`]: { accept: ['noEnd'] },                    // 延奏走独立时间线，结束帧用不到
   },
 })
