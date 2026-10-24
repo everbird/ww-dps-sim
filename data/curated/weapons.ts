@@ -50,6 +50,67 @@ export default [
       },
     ],
   }),
+  // 景燃 · 尤诺 · 守岸人的专武（2026-10-24，docs/jys-confirm.md）。"获得护盾时"= shield 事件（护盾量不建模）
+  defineWeapon({
+    name: '千般渡',                          // 景燃。承天满 6 层时重击暴击 +48%、载物的消耗写在景燃的模块里（要看层数）
+    passives: [
+      {
+        id: '千般渡.全属性', source: '全属性伤害加成提升12%',
+        zone: 'DamageChangeElement', value: [0.12, 0.15, 0.18, 0.21, 0.24], filter: { elements: ['冷凝', '热熔', '导电', '气动', '衍射', '湮灭'] },
+        target: 'self', duration: 'inf', trigger: 'always',
+      },
+      {
+        // 内置冷却 0.5 秒原文只对护盾，这里两种触发共用（变奏与护盾相隔不到 0.5 秒时少一层）
+        id: '千般渡.承天', source: '施放变奏技能或获得护盾时，获得1层【承天】……每0.5秒可通过获得护盾触发1次，可叠加6层，持续7秒，不处于前台时移除所有层数。承天：每层使暴击伤害提升4%',
+        zone: 'critDamage', value: [0.04, 0.05, 0.06, 0.07, 0.08], maxStacks: 6, onSwitchOut: 'clear', icd: 30,
+        target: 'self', duration: 420, trigger: [{ on: 'intro' }, { on: 'shield' }],
+      },
+      {
+        id: '千般渡.载物', source: '施放变奏技能或获得护盾时，获得……1层【载物】……可叠加6层，持续7秒，不处于前台时移除所有层数。',
+        maxStacks: 6, onSwitchOut: 'clear', icd: 30, target: 'self', duration: 420, trigger: [{ on: 'intro' }, { on: 'shield' }],
+      },
+      {
+        id: '千般渡.无视防御', source: '载物：每次施放重击时，消耗最多2层【载物】，每消耗1层【载物】，重击伤害无视目标15%防御，持续2秒。',
+        zone: 'RoleIgnoreDefRate', value: [0.15, 0.175, 0.2, 0.225, 0.25], filter: { tags: ['重击'] }, maxStacks: 2,
+        target: 'self', duration: 120, trigger: 'hook',
+      },
+    ],
+  }),
+  defineWeapon({
+    name: '万物持存的注释',                  // 尤诺
+    passives: [
+      { id: '万物持存的注释.攻击', source: '攻击提升12%', zone: 'atkPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        id: '万物持存的注释.大招加成', source: '施放变奏或大招后，获得持续时间为15秒的20%大招伤害加成提升buff。',
+        zone: 'DamageChangeType', value: [0.2, 0.25, 0.3, 0.35, 0.4], filter: { tags: ['共鸣解放'] },
+        target: 'self', duration: 900, trigger: { on: 'actionStart', where: { actionKinds: ['intro', 'liberation'] } },
+      },
+      {
+        // "施放变奏技能时……视为满层（36%），持续3秒"：按变奏时直接加满 5 层算（层数照常持续 7 秒；尤诺每个动作都给自己护盾，3 秒后多半仍是满层）
+        id: '万物持存的注释.无视防御', source: '获得护盾后，7秒内大招伤害无视目标7.2%防御，每0.5秒可生效1次，可叠加5层。施放变奏技能时，大招伤害无视目标防御的效果视为满层（36%），持续3秒。',
+        zone: 'RoleIgnoreDefRate', value: [0.072, 0.084, 0.096, 0.108, 0.12], filter: { tags: ['共鸣解放'] }, maxStacks: 5, icd: 30,
+        target: 'self', duration: 420, trigger: [{ on: 'shield' }, { on: 'intro', stacks: 5 }],
+      },
+    ],
+  }),
+  defineWeapon({
+    name: '星序协响',                        // 守岸人
+    passives: [
+      { id: '星序协响.生命', source: '生命提升12%', zone: 'hpPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        // "造成治疗的伤害类型为共鸣技能伤害时"：共鸣技能混沌理论、变奏技能启迪（伤害为共鸣技能伤害）都回复生命值
+        id: '星序协响.攻击', source: '造成治疗的伤害类型为共鸣技能伤害时，20米内的全队角色获得持续时间为30s的14%攻击提升buff',
+        zone: 'atkPct', value: [0.14, 0.175, 0.21, 0.245, 0.28],
+        target: 'team', duration: 1800, trigger: { on: 'actionStart', where: { actions: ['E-地面', 'E-空中', 'QTE'] } },
+      },
+    ],
+    resourceEffects: [
+      {
+        id: '星序协响.协奏', source: '施放大招后，获得8点协奏能量，冷却20秒。',
+        resource: 'concerto', amount: 8, icd: 1200, trigger: { on: 'actionStart', where: { actionKinds: ['liberation'] } },
+      },
+    ],
+  }),
   // 行进序曲（散华）、奇幻变奏（维里奈、卜灵）：被动都是回复协奏，写成资源型触发效果（TD-07 §9）
   defineWeapon({ name: '行进序曲', passives: [], resourceEffects: [concertoOnSkill('行进序曲')] }),
   defineWeapon({ name: '奇幻变奏', passives: [], resourceEffects: [concertoOnSkill('奇幻变奏')] }),

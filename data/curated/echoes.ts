@@ -119,6 +119,29 @@ const echoes: EchoModule[] = [
     ],
   }),
 
+  // 景燃 · 尤诺 · 守岸人（2026-10-24，docs/jys-confirm.md）
+  defineEcho({
+    name: '海之女',                         // 尤诺的首位
+    mainSlotBuffs: [
+      { id: '海之女.气动', source: '在首位装配该声骸技能时，自身气动伤害加成提升12.00%', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['气动'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '海之女.大招', source: '在首位装配该声骸技能时，……共鸣解放伤害加成提升12.00%', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 'inf', trigger: 'always' },
+    ],
+    // 召唤类，走独立时间线（同天演溯心）。龙卷1、龙卷2 各"持续帧内每12F一次"、58 帧 → 各 5 次，合计"至多十段"；
+    // 黑潮只聚怪不出伤害，"持续帧结束后生成爆炸"：爆炸在黑潮的第 60 帧（第 61 帧）生成
+    actionOverrides: {
+      'Q·龙卷1': { accept: ['noEnd'], judgments: { 龙卷1: { ticks: 5 }, 龙卷2: { ticks: 5 }, 黑潮爆炸: { spawnFrame: 61 } } },
+    },
+  }),
+  defineEcho({
+    name: '万囮牢',                         // 景燃的首位
+    mainSlotBuffs: [
+      { id: '万囮牢.热熔', source: '在首位装配该声骸技能时，自身热熔伤害加成提升12.00%', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '万囮牢.重击', source: '在首位装配该声骸技能时，……重击伤害加成提升12.00%', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['重击'] }, target: 'self', duration: 'inf', trigger: 'always' },
+    ],
+    // 倍率按 nanoka（dmg-join.json）："首次……10.20%生命上限，……至多19次，每次……0.37%生命上限"：遛弯-2 每 6 帧一次、108 帧 → 18 次，取原文 19 次
+    actionOverrides: { 'Q·遛弯': { judgments: { '遛弯-2': { ticks: 19, lifeFrames: 115 } } } },
+  }),
+
   // 以下四个的「冷却」列与解包（Wuthery 3.7.15 PhantomSkill）、nanoka 3.7 不同，以后两者为准（docs/wuthery-data-crosscheck-2026-10-21.md）
   defineEcho({
     name: '梦魇·无常凶鹭',

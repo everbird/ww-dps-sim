@@ -48,11 +48,14 @@ export interface ResolvedMember {
   echoes: { def: EchoDef | null; set: string; main: StatValues; subs: StatValues }[]   // 第一个是首位声骸（技能 Q）；
                                             // def 为 null：不在声骸表里的非首位声骸（只计入词条与套装）
   panel: StaticPanel
+  /** 静态面板加常驻 buff 后的属性（生命、攻击、防御取整后的值，共鸣效率是比例）：按属性换算的 buff（BuffDef.scale）与钩子的 ctx.stat 用（假设 stat-scaling-static） */
+  stats: StaticStats
   actions: Record<ActionId, ActionDef>      // 角色动作 + 体型通用动作 + 首位声骸动作
   aliases: Record<string, ActionId>         // 角色别名 + 'Q'（首位声骸技能）
 }
 
 export type StatValues = Partial<Record<StatKey, number>>
+export interface StaticStats { hp: number; atk: number; def: number; energyRegen: number }
 
 /** 静态面板只放"面板类"乘区；带过滤条件的加成（元素 / 类型伤害加成等）一律转成常驻 buff 实例 */
 export interface StaticPanel {
@@ -296,6 +299,8 @@ export type SimEvent =
   | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
   // 治疗：char 提供了一次治疗（标了 heals 的判定结算、钩子记的持续回复每一跳）；治疗量不建模，只用来触发"提供治疗时"的效果
   | (EventBase & { type: 'heal'; char: CharName; source: string })
+  // 护盾：char 获得了一次护盾（by 给的，source 出处）；护盾量不建模，只用来触发"获得护盾时"的效果（千般渡、冥途夜行之灯、满月领域…）
+  | (EventBase & { type: 'shield'; char: CharName; by: CharName; source: string })
   // effectApplied（TD-06 §18）：by 谁附加的，added 这次加了几层、stacks 加完是几层；有额外层（电磁爆发）的效应另记 burstAdded、burst。
   // effectEnd：effect 到时消失。effectConsumed：被技能消耗了层数（心消耗电磁爆发），stacks、burst 是之后剩下的。
   // by 是触发"附加…后"的发出者
@@ -379,6 +384,8 @@ export interface CharacterHooks<V extends HookVars = HookVars> {
   onEvent?(ctx: HookContext<V>, ev: SimEvent): void
   /** 在收集 buff 之前调用（TD-03 §4）：可改倍率、附加值、元素 / 标签，或直接补乘区值 */
   modifyHit?(ctx: HookContext<V>, hit: HitDraft): void
+  /** 变奏切入时用哪个变奏动作（守岸人解限星域里是洞悉 = 强化QTE）；不写或返回 undefined 按别名 QTE */
+  introAction?(ctx: HookContext<V>): ActionId | undefined
   /** 共鸣回路的状态说明（只读，不能改状态）：每个 tick 结束调用，返回一行短文本，时间轴的检查器显示。
    *  核心资源的数值检查器按日志另算，这里写状态量、状态 buff 里才有的（卜灵卦象的排列、心是应世相还是照世相…）；不随帧变的才写，免得每帧一条 */
   forte?(ctx: HookContext<V>): string
@@ -409,6 +416,10 @@ export interface HookContext<V extends HookVars = HookVars> {
   readonly vars: V
   /** 记一次本角色提供的治疗（不在任何判定上的治疗，如持续回复的每一跳）：日志 heal 事件，触发"提供治疗时"的效果 */
   heal(source: string): void
+  /** 给 target（缺省自己）一次护盾：日志 shield 事件，触发"获得护盾时"的效果；护盾量不建模 */
+  shield(source: string, target?: Slot): void
+  /** 本角色装配时的属性（静态面板 + 常驻 buff，不含战斗中的触发 buff；假设 stat-scaling-static） */
+  stat(stat: keyof StaticStats): number
   warn(message: string): void
   /** 记一次碰到的假设（总设计 T16，src/engine/assumptions.ts 里 tracked 的那些）：角色模块里推断着写、还没查证的机制 */
   assume(id: TrackedId, detail?: string): void
