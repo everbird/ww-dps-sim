@@ -321,11 +321,11 @@ export default defineCharacter('心', {
       kind: 'liberation', cooldown: 1500, switchLockUntil: 255,
       judgments: { '大招-异常': { applies: { effect: '电磁效应', stacks: 5 } } },
     },   // 转相冷却 25 秒
-    // 步红尘 / 镇红尘：xlsx"第114F前霸体、不能切人，第114F解锁大招"，优先级第 1 帧升到 11、第 114 帧降到 2（两行各写了一半，装配只取到前一半）。
+    // 步红尘 / 镇红尘：xlsx"第114F前霸体、不能切人，第114F解锁大招"，优先级第 1 帧升到 11、第 114 帧降到 2（两行各写了一半，
+    // 2026-10-24 起装配自动串起来，原来写在这里的覆盖去掉了）。
     // 了尘愿（倍率增幅）24 秒一次：有的时候重击就是镇红尘，所以冷却挂在镇红尘上
-    强化重击: { priority: [{ fromFrame: 0, value: 5 }, { fromFrame: 1, value: 11 }, { fromFrame: 114, value: 2 }] },
     增幅强化重击: {
-      priority: [{ fromFrame: 0, value: 5 }, { fromFrame: 1, value: 11 }, { fromFrame: 114, value: 2 }], cooldown: 1440, cooldownGroup: '了尘愿',
+      cooldown: 1440, cooldownGroup: '了尘愿',
       judgments: { '增幅强化重击-异常': { applies: { effect: '电磁效应', stacks: 1 } } },
     },
     QTE: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } } } },

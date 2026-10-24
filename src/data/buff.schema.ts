@@ -6,9 +6,10 @@ import { ACTION_KINDS, DAMAGE_TAGS, EFFECT_NAMES, ELEMENTS, RESOURCE_KINDS, ZONE
 export const BUFF_TARGETS = ['self', 'team', 'teamExceptSelf', 'onField', 'nextIn', 'enemy'] as const
 export type BuffTarget = (typeof BUFF_TARGETS)[number]
 
-/** 触发事件目录（总设计 §6.8）。heal（2026-10-04 新增）：提供了一次治疗——标了 heals 的判定结算、钩子记的持续回复每一跳 */
+/** 触发事件目录（总设计 §6.8）。heal（2026-10-04 新增）：提供了一次治疗——标了 heals 的判定结算、钩子记的持续回复每一跳。
+ *  shield（2026-10-24 新增，景尤守）：获得了一次护盾，事件的角色是获得护盾的人（by: 'self' = 持有者自己获得）；护盾量不建模 */
 export const TRIGGER_EVENTS = [
-  'actionStart', 'judgmentSettle', 'intro', 'outro', 'switchIn', 'switchOut', 'enemyState', 'resourceFull', 'heal',
+  'actionStart', 'judgmentSettle', 'intro', 'outro', 'switchIn', 'switchOut', 'enemyState', 'resourceFull', 'heal', 'shield',
 ] as const
 export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 
@@ -50,7 +51,10 @@ export const TriggerFilterSchema = z.strictObject({
 export type TriggerFilter = z.output<typeof TriggerFilterSchema>
 
 /** 触发条件：一个事件（可带过滤），或它们的数组（任一事件都触发，TD-07 §1） */
-export const TriggerSpecSchema = z.strictObject({ on: z.enum(TRIGGER_EVENTS), where: TriggerFilterSchema.optional() })
+export const TriggerSpecSchema = z.strictObject({
+  on: z.enum(TRIGGER_EVENTS), where: TriggerFilterSchema.optional(),
+  stacks: z.number().int().min(1).optional(),     // 这种触发加几层（缺省 stackGain）：万物持存的注释"施放变奏技能时……视为满层"
+})
 export type TriggerSpec = z.output<typeof TriggerSpecSchema>
 const Triggers = z.union([TriggerSpecSchema, z.array(TriggerSpecSchema).min(1)])
 const RankValue = z.union([Ratio, z.tuple([Ratio, Ratio, Ratio, Ratio, Ratio])])   // 数组 = 武器 R1–R5
@@ -77,6 +81,16 @@ export const BuffDefSchema = z.strictObject({
   }).optional(),
   requires: Requires.optional(),                                     // 共鸣链门槛
   ownerOnField: z.literal(true).optional(),                          // 给的人在前台时才算（"若装备者处于前台"，玉阙玄华第 4 条）
+  /** 数值按持有者的面板属性换算（2026-10-24，景尤守）：实际值 = min(cap, value × 份数)，份数 = (属性 + offset) / per，floor 时取整。
+   *  属性取装配时的静态面板加常驻 buff（假设 stat-scaling-static）：守岸人深潜星域"每 0.2% 共鸣效率计算为 0.01% 暴击"写
+   *  { stat: 'energyRegen', per: 0.002 }、value 0.0001；景燃"每 1000 点生命上限获得 36 点攻击，上限 1800"写 { stat: 'hp', per: 1000, cap: 1800 }、value 36 */
+  scale: z.strictObject({
+    stat: z.enum(['hp', 'atk', 'def', 'energyRegen']),
+    per: z.number().positive(),
+    offset: z.number().optional(),                        // 加在属性上再换算（守岸人"处于星域内共鸣效率 +10%"）
+    floor: z.literal(true).optional(),
+    cap: z.number().optional(),
+  }).optional(),
 }).superRefine((b, ctx) => {
   if ((b.zone === undefined) !== (b.value === undefined))
     ctx.addIssue({ code: 'custom', path: ['value'], message: '乘区与数值要么都写，要么都不写（都不写 = 标记型 buff）' })
@@ -84,6 +98,8 @@ export const BuffDefSchema = z.strictObject({
     ctx.addIssue({ code: 'custom', path: ['filter', 'critOnly'], message: '暴击率 / 暴伤本来就只影响暴击，不需要 critOnly' })
   if (b.trigger === 'always' && b.duration !== 'inf')
     ctx.addIssue({ code: 'custom', path: ['duration'], message: "常驻 buff（trigger: 'always'）的 duration 必须是 'inf'" })
+  if (b.scale && b.value === undefined)
+    ctx.addIssue({ code: 'custom', path: ['scale'], message: '按属性换算（scale）要写乘区与每份的数值' })
   if (b.stackGain > b.maxStacks)
     ctx.addIssue({ code: 'custom', path: ['stackGain'], message: 'stackGain 不能大于 maxStacks' })
 })
