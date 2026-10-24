@@ -71,7 +71,7 @@ docs/               设计文档
 
 ```bash
 pnpm install
-pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
+pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
                                              # --strict 名单有未连上的伤害判定时退出码 1
                                              # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
@@ -117,7 +117,7 @@ pnpm trace scenarios/m0-video.yaml          # 调试表（TD-11 §6）：某一�
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
-**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心 --nanoka 3.7 && pnpm check:data`。
+**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人 --nanoka 3.7 && pnpm check:data`。
 
 ## 约定
 
