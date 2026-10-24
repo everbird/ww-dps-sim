@@ -136,7 +136,7 @@ export function assembleGroup(
     row: r.row,
   }))
 
-  const priority = assemblePriority(rows, flags)
+  const priority = assemblePriority(rows, flags, laterEnd)
   const kind = opts.kind ?? kindOfGroup(g.id, rows, flags)
 
   // 连段前置：A{n} ← A{n−1}（同前缀、块内存在）；闪避反击 ← 极限闪避（TD-04 §6.2）
@@ -305,10 +305,14 @@ function airOf(rows: GenRow[], endFrame: number, flags: Set<string>): ActionDef[
   return { from, until: Math.max(from, endFrame) }
 }
 
-/** 优先级：取值最多的一行；变化帧依次取 K 列 → 组内备注 → （仅两段）不能闪避 / 不响应输入 → 该行派生帧（TD-01 §13.1） */
-function assemblePriority(rows: GenRow[], flags: Set<string>): PriorityStep[] {
+/** 优先级：取值最多的一行；变化帧依次取 K 列 → 组内备注 → （仅两段）不能闪避 / 不响应输入 → 该行派生帧（TD-01 §13.1）。
+ *  几行接续写的（后一行的起始值 = 前一行的末值，如景燃重击"-1"行 7 → 5、最后一段 5 → 0），先试着串起来（chainedPriority） */
+function assemblePriority(rows: GenRow[], flags: Set<string>, shifted = false): PriorityStep[] {
   const withP = rows.filter(r => r.priority !== null)
   if (withP.length === 0) { flags.add('noPriority'); return [{ fromFrame: 0, value: 0 }] }
+  // 有"下落"行而落地段没后移时，落地行的帧从落地算，串起来帧数对不上意思，不串
+  const chained = shifted || !rows.some(r => r.name.includes('下落')) ? chainedPriority(withP, flags) : undefined
+  if (chained) return chained
   const row = withP.reduce((best, r) => (r.priority!.length > best.priority!.length ? r : best))
   const values = row.priority!
   if (values.length === 1) return [{ fromFrame: 0, value: values[0]! }]
@@ -325,6 +329,34 @@ function assemblePriority(rows: GenRow[], flags: Set<string>): PriorityStep[] {
   if (frames.length < values.length - 1) flags.add('priorityChangeMissing')
   const steps: PriorityStep[] = [{ fromFrame: 0, value: values[0]! }]
   for (let i = 1; i < values.length && i - 1 < frames.length; i++) steps.push({ fromFrame: frames[i - 1]!, value: values[i]! })
+  return steps
+}
+
+/** 接续写的优先级（2026-10-24）：按行序找"后一行起始值 = 前一行末值"的几行（每行至少两个值），各行的变化帧取 K 列 → 本行备注 →
+ *  本行派生帧（推断，打 priorityChangeGuess）。至少串上两行、帧数严格递增才用；否则返回 undefined 照旧取一行
+ *  （帧从落地算、还没后移的落地段，或互斥的 C0 / C3 版本，都串不上） */
+function chainedPriority(rows: GenRow[], flags: Set<string>): PriorityStep[] | undefined {
+  const multi = rows.filter(r => r.priority!.length >= 2)
+  if (multi.length < 2) return undefined
+  const steps: PriorityStep[] = [{ fromFrame: 0, value: multi[0]!.priority![0]! }]
+  let used = 0, guessed = false
+  let spare: number[] = []                 // 一行写的变化帧比它自己要的多（凌阳 A3-1 备注"第6F、34F"）：多的留给后面没写帧的行
+  for (const r of multi) {
+    const values = r.priority!
+    if (values[0] !== steps.at(-1)!.value) continue
+    let frames = r.priorityChange ?? r.hints.priorityChangeFrames
+    if (!frames && spare.length >= values.length - 1) frames = spare
+    if (!frames && values.length === 2 && r.deriveFrame !== null) { frames = [r.deriveFrame]; guessed = true }
+    if (!frames || frames.length < values.length - 1) return undefined
+    for (let i = 1; i < values.length; i++) {
+      if (frames[i - 1]! <= steps.at(-1)!.fromFrame && steps.length > 1) return undefined
+      steps.push({ fromFrame: frames[i - 1]!, value: values[i]! })
+    }
+    spare = frames.slice(values.length - 1)
+    used++
+  }
+  if (used < 2) return undefined
+  if (guessed) flags.add('priorityChangeGuess')
   return steps
 }
 
