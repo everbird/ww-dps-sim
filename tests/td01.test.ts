@@ -192,3 +192,38 @@ dataDescribe('T01-15 M0 队伍的确认结果（m0-confirm 第 2 节：椿 0 链
     expect(start(before)).toEqual([61])
   })
 })
+
+describe('T01-16 接续写的优先级（2026-10-24）：后一行起始值 = 前一行末值的几行串起来', () => {
+  const pri = (rows: GenRow[]) => assembleBlock(file([group('重击', rows)]))['重击']!.priority.map(p => `${p.fromFrame}:${p.value}`)
+  test('景燃重击：7 → 5（第 1 帧）、5 → 0（第 78 帧）', () => {
+    expect(pri([
+      row(1, '重击-1', { priority: [7, 5], priorityChange: [1], endFrame: 170 }),
+      row(2, '重击-2', { priority: [5] }),
+      row(3, '重击-4', { priority: [5, 0], priorityChange: [78] }),
+    ])).toEqual(['0:7', '1:5', '78:0'])
+  })
+  test('串不上照旧取一行：互斥版本（值不接续）、帧不递增、没后移的落地段', () => {
+    expect(pri([row(1, 'C0-1', { priority: [10, 0], priorityChange: [239], endFrame: 280 }), row(2, 'C3-1', { priority: [10, 0], priorityChange: [239] })]))
+      .toEqual(['0:10', '239:0'])
+    expect(pri([row(1, 'a', { priority: [4, 6], priorityChange: [42], endFrame: 80 }), row(2, 'b', { priority: [6, 2], priorityChange: [26] })]))
+      .toEqual(['0:4', '42:6'])
+    expect(pri([
+      row(1, '空中攻击-下落', { priority: [3, 9], priorityChange: [2], spawnFrame: 2, endFrame: 40 }),
+      row(2, '空中攻击-落地', { priority: [9, 2], priorityChange: [10], spawnFrame: 4 }),
+    ])).toEqual(['0:3', '2:9'])
+  })
+})
+
+describe('T01-17 覆盖 absorb（并入别组的行）与 air（改写在空中的帧）', () => {
+  const f = file([
+    group('E-地面', [row(1, 'E-地面', { kind: 'gain', spawnFrame: 17, endFrame: 78, position: '地面' })]),
+    group('E', [row(2, 'E-蝶1', { spawnFrame: 55, position: '空中' }), row(3, 'E-蝶2', { spawnFrame: 58, position: '空中' })]),
+  ])
+  test('E-地面并进 E 组的两行，帧照原样；air: null 改回在地面', () => {
+    const plain = assembleBlock(f, { 'E-地面': { absorb: ['E'] } })['E-地面']!
+    expect(names(plain)).toEqual(['E-蝶1', 'E-蝶2'])
+    expect(plain.judgments.map(j => j.spawnFrame)).toEqual([55, 58])
+    expect(assembleBlock(f, { 'E-地面': { absorb: ['E'], air: null } })['E-地面']!.air).toBeUndefined()
+    expect(() => assembleBlock(f, { 'E-地面': { absorb: ['没有'] } })).toThrow(/absorb 写了不存在的组/)
+  })
+})
