@@ -484,7 +484,7 @@ exports[`场景回归快照 > xin-team.yaml 1`] = `
   "steady": "第 2–9 轮：15804 帧，DPS 49507.75",
   "totalDamage": 17526932.96,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "启动第 7 条 switch 雷主·男 变奏：卜灵 协奏 98.9，没满 100，这次是普通切人（卜灵 的延奏没出，雷主·男 没有变奏），轴这里可能有问题",
@@ -579,7 +579,7 @@ exports[`场景回归快照 > xin-team-r5.yaml 1`] = `
   "steady": "第 2–9 轮：15490 帧，DPS 53969.9",
   "totalDamage": 18996885,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态（第 2–9 轮）前一半 DPS 53629、后一半 54312，差 1.3%（各轮 32.7、32.1、33.0、31.6、32.0、33.0、31.7、32.1 秒）：轴可能还没进入稳定（资源在漂移，稳态偏向前几轮），或者各轮来回波动；多跑几轮看后面的轮，比较时看误差条",
@@ -669,7 +669,7 @@ exports[`场景回归快照 > xin-team-r5-卜灵Q先放.yaml 1`] = `
   "steady": "第 2–9 轮：14756 帧，DPS 56595.74",
   "totalDamage": 18950619.65,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
   ],
@@ -755,7 +755,7 @@ exports[`场景回归快照 > xin-team-r5-心共鸣效率.yaml 1`] = `
   "steady": "第 5–9 轮：8320 帧，DPS 61102.02",
   "totalDamage": 18451751.35,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态从第 5 轮起：第 2–4 轮还在漂移（DPS 66136、65744、62134，之后各轮都在合并 DPS 61102 的 ±1% 以内），多半是开局的资源还没用完",
@@ -845,7 +845,7 @@ exports[`场景回归快照 > xin-team-r5-按套路重排.yaml 1`] = `
   "steady": "第 4–9 轮：10855 帧，DPS 58462.16",
   "totalDamage": 19174647.55,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态从第 4 轮起：第 2–3 轮还在漂移（DPS 58958、60039，之后各轮都在合并 DPS 58462 的 ±1% 以内），多半是开局的资源还没用完",
@@ -937,7 +937,7 @@ exports[`场景回归快照 > xin-team-r5-按套路重排-心补EQ.yaml 1`] = `
   "steady": "第 2–9 轮：13280 帧，DPS 65094.8",
   "totalDamage": 19701105.59,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
   ],
@@ -1027,7 +1027,7 @@ exports[`场景回归快照 > xin-team-r5-按套路重排-心补EQ-共鸣效率�
   "steady": "第 2–9 轮：13280 帧，DPS 65094.8",
   "totalDamage": 19701105.59,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
   ],
@@ -1117,7 +1117,7 @@ exports[`场景回归快照 > xin-team-r5-按套路重排-心补EQ-卜灵Q先放
   "steady": "第 3–9 轮：11270 帧，DPS 66147.42",
   "totalDamage": 19459856.59,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态从第 3 轮起：第 2 轮还在漂移（DPS 64612，之后各轮都在合并 DPS 66147 的 ±1% 以内），多半是开局的资源还没用完",
@@ -1206,7 +1206,7 @@ exports[`场景回归快照 > xin-team-r5-按套路重排-雷主多一次E.yaml 
   "steady": "第 4–9 轮：9822 帧，DPS 64840.55",
   "totalDamage": 19249469.94,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态从第 4 轮起：第 2–3 轮还在漂移（DPS 67728、63846，之后各轮都在合并 DPS 64841 的 ±1% 以内），多半是开局的资源还没用完",
@@ -1296,7 +1296,7 @@ exports[`场景回归快照 > xin-team-r5-绝息魄.yaml 1`] = `
   "steady": "第 2–9 轮：15490 帧，DPS 54148.62",
   "totalDamage": 19070551.03,
   "warnings": [
-    "心 有 35 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
+    "心 有 3 处装配时推断的值（pnpm check:data -- --flags 心 查看）",
     "雷主·男 有 13 处装配时推断的值（pnpm check:data -- --flags 雷主·男 查看）",
     "卜灵 有 4 处装配时推断的值（pnpm check:data -- --flags 卜灵 查看）",
     "稳态（第 2–9 轮）前一半 DPS 53815、后一半 54483，差 1.2%（各轮 32.7、32.1、33.0、31.6、32.0、33.0、31.7、32.1 秒）：轴可能还没进入稳定（资源在漂移，稳态偏向前几轮），或者各轮来回波动；多跑几轮看后面的轮，比较时看误差条",
