@@ -69,6 +69,13 @@ dataDescribe('爱琳莫 / 爱琳守', () => {
     expect(ev.some(e => e.type === 'buffApply' && e.buff === '琳奈.视觉冲击' && e.target === '爱弥斯')).toBe(true)
   })
 
+  test('声骸起手的优先级取通用块"召唤声骸 / 变身声骸"行（5），不改共用的声骸定义（假设 echo-input-priority）', () => {
+    const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/alm-爱琳守.yaml', import.meta.url), 'utf8'))), gd)
+    const q = r.team.map(m => m.actions[m.aliases.Q!]!)
+    expect(q.map(a => [a.id, a.summon ?? false, a.inputPriority])).toEqual([['Q·A', true, 5], ['Q·棱镜1', true, 5], ['Q·爆气', true, 5]])
+    expect(gd.echoes['无归的谬误']!.actions['Q·爆气']!.inputPriority).toBeUndefined()
+  })
+
   test('爱琳守：守岸人没有响应，干涉时只有爱弥斯、琳奈响应（轨迹 20 层）；谐度破坏隔一轮才赶上一次', () => {
     const log = logs['守']!
     const resp = log.flatMap(e => (e.type === 'enemyState' && e.change === 'response' ? [e.by] : []))

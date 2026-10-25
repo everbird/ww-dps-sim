@@ -65,7 +65,7 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
     }
     const four = run('scenarios/xin-team.yaml', 4)
     expect(four).toHaveLength(1)
-    expect(four[0]!.message).toMatch(/^稳态只取了 2 轮（第 2–3 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 1、1、2、1 次）/)
+    expect(four[0]!.message).toMatch(/^稳态只取了 2 轮（第 2–3 轮），可各轮赶上的谐度破坏次数不一样（第 1 轮起依次 1、1、1、2 次）/)
     expect(run('scenarios/xin-team.yaml')).toEqual([])
     expect(run('scenarios/m0-video-eq.yaml')).toEqual([])
     expect(run('scenarios/m0-team.yaml')).toEqual([])    // 第 1、4 轮 DPS 不同是首尾的缘故（从空闲开始、没有下一轮的边界），不算
@@ -82,8 +82,13 @@ dataDescribe('稳态的误差条 steady.spread、漂移提示 steadyDrift 与自
     const { resolveScenario } = await import('../src/engine/resolve')
     const { simulate } = await import('../src/engine/simulate')
     const data = await loadGameData()
-    const run = (f: string) => simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(`scenarios/${f}`, 'utf8'))), data)).summary
-    const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml')
+    const run = (f: string, rules?: Record<string, unknown>) => {
+      const raw = parse(readFileSync(`scenarios/${f}`, 'utf8'))
+      if (rules) raw.options.rules = { ...raw.options.rules, ...rules }
+      return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary
+    }
+    // C2 按 2026-10-25 之前的声骸优先级跑（echo-input-priority 关掉）：现在的做法下 C2 一轮短了、能量够，不再漂移，测不到跳过
+    const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml', { echoInputPriority: false })
     expect(base.steady!.from).toBe(2)
     expect(base.steady!.spread).toBeGreaterThan(0)
     expect(base.steady!.spread).toBeLessThan(0.01)

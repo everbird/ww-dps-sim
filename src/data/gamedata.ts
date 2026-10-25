@@ -64,6 +64,9 @@ export interface ActionDef {
   endFrame: Frame                                   // 动作结束帧：局部帧到达它时回到空闲（TD-04 §4.3）
   cancelWindows: CancelWindow[]                     // 派生窗口 [from, until)，可越过 endFrame（TD-04 §6.1）
   priority: PriorityStep[]                          // 按 fromFrame 升序，第一项 fromFrame = 0
+  /** 起手时拿来和当前动作比的中断优先级（缺省取 priority 第 0 帧）：声骸取角色通用块"召唤声骸 / 变身声骸"行（5），
+   *  声骸表各行写的（多为 0）是放出来之后的（装配进角色时填，TD-04 §6.1，假设 echo-input-priority） */
+  inputPriority?: number
   comboFrom?: ActionId[]                            // 连段前置：只能在这些动作的派生窗口内开始（A2 ← A1，TD-04 §6.2）
   inputLocks: InputLock[]                           // "第 nF 前不响应输入 / 不能闪避…"（TD-04 §6.3）
   judgments: JudgmentDef[]                          // 按 spawnFrame 升序；事件生成的（spawnFrame = null）排在最后
@@ -250,6 +253,9 @@ export interface Rules {
   /** 写了"第 n 帧前不能切人"、比全局时停早结束的（守岸人大招 178 / 207），过了那一帧就能切；切人时切出者这个动作剩下的
    *  时停、全局时停一起结束（缺省 true，假设 switch-ends-stop）。false：全局时停整段挡切人（2026-10-22 的做法） */
   switchEndsStop: boolean
+  /** 声骸起手按 inputPriority（通用块召唤声骸 / 变身声骸行的 5）比优先级，能打断重击、技能的后摇（缺省 true，假设 echo-input-priority）。
+   *  false：按声骸表的优先级（多为 0），要等当前动作结束或进同级派生窗口（2026-10-25 之前的做法） */
+  echoInputPriority: boolean
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -284,6 +290,7 @@ export const DEFAULT_RULES: Rules = {
   ultInputLocksSwitch: true,                        // 实战体感，未实测（verify-guide B7、C5）
   invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
   switchEndsStop: true,                             // xlsx 写的帧 + 视频 A 逐帧量（docs/jys-videos.md §6.3）
+  echoInputPriority: true,                          // xlsx 通用块 + 视频 A 守岸人一段对上（docs/jys-videos.md §6.4）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,

@@ -8,6 +8,7 @@ import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { compileRotation, type CompileMember } from './scheduler'
+import { priorityAt } from './kernel'
 import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StaticStats, StatValues } from './types'
 import { round, snap9 } from './num'
 
@@ -191,7 +192,7 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   const main = echoes[0]?.def
   if (main) {
     const picked = echoActionsFor(main, def.bodyType)
-    echoActions = picked.actions
+    echoActions = { ...picked.actions }                          // 下面要填 inputPriority，别改到共用的声骸定义
     if (aliases.Q !== undefined) issues.push(`${where}：角色模块的别名 Q 与首位声骸技能冲突`)
     aliases.Q = main.qFor[m.char] ?? picked.q                     // 按装配的角色换技能版本（天演溯心装在心身上）
     if (picked.note) warnings.push(`${m.char}：首位声骸 ${main.key} ${picked.note}`)
@@ -215,6 +216,11 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
 
   // 动作表：体型通用动作 + 角色动作（按共鸣链挑判定）+ 首位声骸动作（'Q·…'，不会与前两者重名）
   const common = def.commonBlock ? data.commonActions[def.commonBlock] ?? {} : {}
+  // 声骸起手的优先级取通用块"召唤声骸 / 变身声骸"那行（5）：声骸表各行写的是放出来之后的（TD-04 §6.1，假设 echo-input-priority）
+  for (const [id, a] of Object.entries(echoActions)) {
+    const g = common[a.summon ? '召唤声骸' : '变身声骸']
+    if (g) echoActions[id] = { ...a, inputPriority: priorityAt(g, 0) }
+  }
   const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain), ...echoActions }
   return {
     member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, stats: { hp: 0, atk: 0, def: 0, energyRegen: 0, tunabilityRate: 0 }, actions, aliases },

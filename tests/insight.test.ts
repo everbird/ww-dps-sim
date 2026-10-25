@@ -73,7 +73,7 @@ dataDescribe('结论（M0 代表轴）', () => {
     const dps = x.tolerance.map(t => t.dps!)
     expect(dps[1]!).toBeLessThan(dps[0]!)
     expect(dps[2]!).toBeLessThan(dps[1]!)
-    expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'switch-no-lock', 'forte-keep-on-switch', 'switch-ends-stop', 'tune-break-auto'])   // 椿大招的全局时停盖过了 ult-no-switch（2026-10-22）；谐度破坏 89 帧能切、时停到 92，切人时清掉剩下的（2026-10-25）
+    expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'switch-no-lock', 'forte-keep-on-switch', 'switch-ends-stop', 'echo-input-priority', 'tune-break-auto'])   // 椿大招的全局时停盖过了 ult-no-switch（2026-10-22）；谐度破坏 89 帧能切、时停到 92，切人时清掉剩下的（2026-10-25）
     expect(x.notHit).toEqual(['def-no-floor', 'effect-tick', 'effect-owner', 'ult-no-switch', 'resonance-rules', 'track-no-consume'])    // M0 没有减防、没有异常效应：翻了也一样，不跑
     for (const w of x.waits) expect(w.share).toBeGreaterThan(0)
   }, 60_000)   // 敏感度要跑好几遍：全量并发时会超过缺省的 5 秒（docs/engine-acceptance-2026-10-22.md P3）
@@ -90,17 +90,15 @@ dataDescribe('结论（M0 代表轴）', () => {
 })
 
 dataDescribe('卡帧点（TD-10 §6 ⑥）：M0 视频轴 EQ 版', () => {
-  // 2026-10-22 椿 E2 补上落地段（多 50 帧左右）之后，一轮 25.12 秒、超过两个大招 25 秒的冷却：以前只有两个大招与 E3 卡帧、其余有余量，
-  // 现在几乎每个决策点都在关键路径上
-  test('一轮 25.12 秒、超过大招冷却：几乎每个决策点晚 6 帧一轮就跟着变长，只剩两三处有余量', async () => {
+  // 2026-10-22 椿 E2 补上落地段后一轮 25.12 秒、超过两个大招 25 秒的冷却，几乎每个决策点都在关键路径上；
+  // 2026-10-25 声骸起手能打断后摇（假设 echo-input-priority）后一轮回到 25.00 秒、等维里奈大招冷却：只有它晚了一轮跟着变长
+  test('一轮 25.00 秒、等维里奈大招冷却：只有维里奈大招晚 6 帧一轮多 6 帧，其余不加长', async () => {
     const data = await loadGameData()
     const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
     const x = insight(r, { delays: [0] })
     expect(x.tightFrames).toBe(6)
-    const time = x.tight.filter(t => t.kind === 'time')
-    expect(time.length).toBeGreaterThan(25)
-    expect(time.filter(t => t.extraFrames === 6).length).toBeGreaterThan(25)          // 多数晚几帧一轮就多几帧；有两三处只多 2～5 帧（部分余量）
-    expect(x.tight.filter(t => t.kind === 'slack').length).toBeLessThanOrEqual(3)
+    expect(x.tight.filter(t => (t.extraFrames ?? 0) > 0).map(t => t.what)).toEqual(['维里奈 大招'])
+    expect(x.tight.filter(t => t.kind === 'slack').length).toBeGreaterThan(10)
     expect(x.tight.some(t => t.kind === 'better' || t.error)).toBe(false)
     // 连段后续不算决策点（玩家预输入）
     expect(x.tight.some(t => /盛绽·A2|A4|A5|强化空中A2/.test(t.what))).toBe(false)
