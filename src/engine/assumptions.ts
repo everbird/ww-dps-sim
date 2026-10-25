@@ -10,7 +10,7 @@ export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小'
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
 export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
-  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'options.inputDelay' | 'options.tuneBreak'
+  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -137,7 +137,13 @@ export const ASSUMPTIONS = [
     what: '偏移 / 干涉 / 响应：对挂着震谐·偏移的目标谐度破坏命中 → 震谐·干涉 8 秒（偏移消耗掉，期间偏谐值不累积）；'
       + '队里有"震谐响应"动作的角色（在后台也算）各出一次响应，同一角色对同一目标 8 秒一次；响应伤害按谐度破坏的公式（TD-03 §6）、行上的元素。集谐没建',
     why: '游戏内说明（三人的谐度破坏技能"响应【震谐·干涉】：…同一目标每8秒仅可受到1次"）、xlsx 响应行备注；8 秒与偏移被消耗取自第三方攻略（docs/m4-verify-answers-genmini.md R1），没实测',
-    adjust: { how: '场景里 options.rules.interferenceFrames / responseCooldown 改时长' },
+    adjust: { how: '场景里 options.rules.interferenceFrames / responseCooldown 改时长（敏感度矩阵翻成 300 帧：干涉 5 秒，同普通谐破冷却）', path: 'rules.interferenceFrames', values: [300] },
+  },
+  {
+    id: 'track-no-consume', topic: '角色', tracked: true, impact: 'large', ref: 'docs/alm-confirm.md Y5',
+    what: '爱弥斯过载后的"轨迹无消耗"：下一次光翼共奏不移除震谐轨迹、照样按层数加成（所以循环里两次光翼共奏都吃满轨迹）',
+    why: 'xlsx 特殊能量行"状态期间，施放强化E不会移除目标持有的震谐轨迹"；"照样按层数加成"是推断（原文只说不移除），与攻略"2 个强化技能都吃满处决倍率"一致，没实测',
+    adjust: { how: '场景里 options.rules.trackNoConsume: false：过载后第一次光翼共奏也拿不到轨迹加成（第二次照常吃满）', path: 'rules.trackNoConsume', values: [false] },
   },
   {
     id: 'switch-ends-stop', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §3.3，docs/jys-videos.md §6.3',
