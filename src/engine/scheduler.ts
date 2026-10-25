@@ -154,6 +154,7 @@ export function newQueue(commands: Command[], repeat = 1, opening: Command[] = [
   return { commands, opening, repeat, next: 0, loop: opening.length > 0 ? 0 : 1, loopBegun: false, waited: 0, readyAt: null, extra: null, until: null, seg: null }
 }
 /** 正在执行的那一段：第 0 轮是启动轴，其余是循环轴 */
+const STOP_TYPES: readonly string[] = ['时停', '全局时停']
 const listOf = (q: QueueState): Command[] => (q.loop === 0 ? q.opening : q.commands)
 
 type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
@@ -245,9 +246,13 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       if (s.switchCd > 0) return { go: false, code: 'switchCd', reason: `切人冷却还剩 ${Math.ceil(s.switchCd)} 帧` }
       // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
       const last = s.chars[s.onField].last
-      // 全局时停（大招动画、隐藏 HUD）期间切不了人：物理上按不了，不是推断，开关管不到（2026-10-22，WuwaLAB 的大招都只记 time_stop、no_swap 为 0）
+      // 全局时停（大招动画、隐藏 HUD）期间切不了人：物理上按不了（2026-10-22，WuwaLAB 的大招都只记 time_stop、no_swap 为 0）。
+      // 例外：写了"第 n 帧前不能切人"、比全局时停早的（守岸人大招 178 / 207），过了那一帧就能切，切人时剩下的时停结束
+      // （execute；2026-10-25 视频 A 逐帧量，假设 switch-ends-stop）
       const stop = last?.def.globalStopUntil
-      if (last && stop !== undefined && last.localFrame < stop) return { go: false, code: 'globalStop', reason: `${last.id} 全局时停到第 ${stop} 帧（动画中切不了人）` }
+      const written = last?.def.switchLockUntil !== undefined && !last.def.switchLockFromInput && !last.def.switchLockFromInvincible
+      const early = k.rules.switchEndsStop && written && stop !== undefined && last!.def.switchLockUntil! < stop && last!.localFrame >= last!.def.switchLockUntil!
+      if (last && stop !== undefined && last.localFrame < stop && !early) return { go: false, code: 'globalStop', reason: `${last.id} 全局时停到第 ${stop} 帧（动画中切不了人）` }
       // 补位后面接"switch <角色> 变奏"：补的那一下打出去了、协奏还没满，就等它出手再切——补位就是为了这一下的协奏
       // （TD-09 §3.2；2026-10-25 景尤守 5R18Z：不等的话切人与补位同一 tick，补的普攻还没命中就被切掉，最后一下补位总是白打）
       const prev = listOf(q)[q.next - 1]
@@ -362,6 +367,13 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       const from = s.onField
       // 写了"变奏"（switch <角色> 变奏）而切出者协奏没满：照常普通切人，记一条警告——轴这里可能有问题（TD-09 §3.5）
       const short = c.expectIntro && s.chars[from].concerto < k.rules.concertoMax ? s.chars[from].concerto : null
+      // 切出者登记的时停、全局时停还没走完的，随切人结束（守岸人大招 178 帧切人、全局时停到 207：剩下的不再冻住切进来的人和战斗时钟；
+      // 中间可能接了补位的普攻，所以按切出者而不是按最近一个动作找；假设 switch-ends-stop）
+      const stops = s.dilations.filter(d => d.source === from && STOP_TYPES.includes(d.type))
+      if (k.rules.switchEndsStop && stops.length) {
+        assume(s, 'switch-ends-stop', `${s.chars[from].name} 切人时还剩 ${Math.max(...stops.map(d => d.remaining))} 帧时停`)
+        s.dilations = s.dilations.filter(d => !stops.includes(d))
+      }
       s.onField = c.to
       s.switchCd = k.rules.switchCooldown
       // 出场技要地面普通切入（TD-09 §3.5）：切入者自己在后台的动作要走完、切出者要在地面（切入者出现在切出者的位置）；

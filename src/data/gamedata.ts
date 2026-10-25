@@ -241,6 +241,9 @@ export interface Rules {
   ultInputLocksSwitch: boolean
   /** 没写帧数的"无敌期间不能切人"等推断出来的切人锁生效（缺省 true，假设 switch-no-lock）；false：这类动作不锁切人 */
   invincibleLocksSwitch: boolean
+  /** 写了"第 n 帧前不能切人"、比全局时停早结束的（守岸人大招 178 / 207），过了那一帧就能切；切人时切出者这个动作剩下的
+   *  时停、全局时停一起结束（缺省 true，假设 switch-ends-stop）。false：全局时停整段挡切人（2026-10-22 的做法） */
+  switchEndsStop: boolean
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -271,6 +274,7 @@ export const DEFAULT_RULES: Rules = {
   forteKeepOnSwitch: true,                          // 用户 2026-10-21 的印象，未实测（docs/verify-guide.md B1、B2）
   ultInputLocksSwitch: true,                        // 实战体感，未实测（verify-guide B7、C5）
   invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
+  switchEndsStop: true,                             // xlsx 写的帧 + 视频 A 逐帧量（docs/jys-videos.md §6.3）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,
