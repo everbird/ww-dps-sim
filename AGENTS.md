@@ -37,6 +37,7 @@
 | `xin-conclusions.md` | 心 · 雷主 · 卜灵 的结论：副词条先堆哪个（心先把共鸣效率堆到约 130%）、共鸣效率要多少、手慢几帧掉多少、电磁效应两处读法的敏感度（注明按哪条轴、哪个数据版本算的） |
 | `jys-confirm.md` | 景燃 · 尤诺 · 守岸人（景尤守）的确认清单：文字轴怎么落成场景（按住 Z 的读法等）、按原文推断的机制（护盾、鬼护、星域…）、引擎为这队加的东西、要实测的 |
 | `jys-videos.md` | 景尤守的三份攻略轴（5R18Z、5R20Z、轮椅）怎么写成场景、和视频对时间（一轮多长、哪段慢）、视频带出来的引擎问题（大招全局时停里能不能切人） |
+| `alm-confirm.md` | 爱弥斯 · 琳奈 · 莫宁 / 守岸人（爱琳莫、爱琳守）的确认清单：养成、偏移 / 干涉 / 响应（震谐）怎么算、三人的模块与要实测的 |
 | `team3-candidates.md` | 第三支队伍的候选：两个账号里装满声骸、还没写模块的角色，数据要处理多少（待处理的推断值、没连上倍率的判定） |
 | `endgame-fights.md` | 两队打深塔、矩阵几只 boss 各要多少战斗秒（单体近似，没算场地 buff、多波、时限），只能横向比 |
 | `matrix.md` | 矩阵（终焉矩阵 · 奇点扩张）的计分规则（取自 DPM-Team-Builder，血量与敌人表"矩8"对得上）、`pnpm matrix` 怎么接力、两队的出场顺序 |
@@ -150,3 +151,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 13. 校准点（2026-10-24，docs/calibration/README.md、docs/engine-quality-plan.md P4）：`docs/calibration/points.yaml` 登记能拿实测对照的数（面板一项、某一下的跳字、一轮的时长；schema `src/data/calibration.schema.ts`），`src/engine/calibration.ts` 取仿真值并比对（跳字按"不暴击 / 暴击"里接近实测的那个比），`pnpm calibrate [--md]` 出总表，`tests/calibration.test.ts` 把填了实测的点按容差检查、没填的列成待测。要并回的：TD-11 §6（调试工具）、总设计 §11（校准）。
 14. 补位后面接变奏切人、buff 覆盖率（2026-10-25，docs/jys-videos.md §6）：补位后面紧接 `switch <角色> 变奏`、切出者协奏没满、补的那一下还有判定没出手时，切人等它出手（等待代码 `settled`；原来同一帧切掉，最后一下补位总是白打，用例 td09）；`buffUptime` 到期当帧又挂上的从上一段的终点接着算（原来那一帧算两次，整局不断的计时 buff 覆盖率超过 1，用例 summary）。要并回的：TD-09 §3.2（补位）、TD-10 §2（覆盖率）。
 15. 写了"不能切人"、比全局时停早的动作（2026-10-25，docs/jys-videos.md §6.3，修订差异第 3 条）：守岸人大招"第178F前不能切人"、全局时停 207 帧，视频 A 逐帧量出约 180 帧就切人、计时器接着走。现在写了的切人锁比全局时停早结束时，过了锁就能切；切人时切出者登记的时停、全局时停一起结束（推断出来的锁不算）。开关 `rules.switchEndsStop`（缺省 true，false 是原来的做法），假设 `switch-ends-stop`，用例 td09；影响很小（jys-team 69,088 → 69,125，其余场景 DPS 不变）。要并回的：TD-02（Rules 的键）、TD-04 §3.3、TD-05 §2（全局时停与切人锁）、总设计 §13（假设）。
+16. 偏移 / 干涉 / 响应（震谐，2026-10-25，docs/alm-confirm.md §2）：敌人的 `shift`（种类、谁挂的、剩余帧）与 `interference`、钩子 `ctx.applyShift`；谐度破坏命中挂着震谐·偏移的目标 → 震谐·干涉 8 秒（`rules.interferenceFrames`，偏移消耗、期间偏谐值不累积），队里有"震谐响应"动作的角色在独立时间线上各出一次响应（`rules.responseCooldown` 8 秒一次）；震谐响应伤害按 TD-03 §6 算（不再记 0）；`enemyState` 多了 `shiftEnd` / `interferenceEnd` / `response`；假设 `resonance-rules`，集谐没建。用例 `tests/resonance.test.ts`。要并回的：TD-06 新 §19（并改 §13、Q13）、TD-03 §6（响应的元素与没有对失谐项）、TD-02（`EnemyRuntime.shift / interference`、`ResonanceKind`、`HookContext.applyShift`、Rules 两个键、`ENEMY_STATE_CHANGES`）、总设计 §13（假设）。

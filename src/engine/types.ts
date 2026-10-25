@@ -223,12 +223,18 @@ export interface EnemyRuntime {
   tunabilityLockedUntil: number             // 战斗帧：谐度破坏后的谐破冷却（真空期），此前不累积偏谐值
   tuneButtonUntil: number                   // 战斗帧：谐度破坏按钮亮到这一帧（不含）；前台角色对失谐目标打出偏谐值不为 0 的伤害时点亮
   tuneBreakBy?: number                      // 消耗这次失谐的谐度破坏动作实例（它的各段伤害按对失谐算）
-  shift?: 'zhenxie' | 'jixie'
-  interference?: { kind: 'zhenxie' | 'jixie'; stacks: number; remaining: number }
+  /** 偏移（TD-06 §19）：谁挂的、还剩几个战斗帧；震谐 / 集谐互斥，后挂的覆盖前面的 */
+  shift?: { kind: ResonanceKind; by: Slot; remaining: number }
+  /** 干涉（TD-06 §19）：对挂着偏移的目标放谐度破坏后进入，期间偏谐值不累积；还剩几个战斗帧 */
+  interference?: { kind: ResonanceKind; stacks: number; remaining: number }
   /** 目标身上的异常效应（TD-06 §18）：层数、额外层（电磁爆发）、剩余战斗帧（全部层数共用，附加时刷新）、下次结算的战斗帧、最后附加的人 */
   effects: Partial<Record<EffectName, EffectRuntime>>
+  /** 响应的冷却：角色 → 到这个战斗帧（不含）之前不再响应（"同一目标每8秒仅可受到1次该伤害"） */
   responseCd: Partial<Record<CharName, number>>
 }
+
+/** 偏移 / 干涉的种类（TD-06 §19）：现在只建了震谐 */
+export type ResonanceKind = '震谐' | '集谐'
 
 /** source：最后附加的人；origin：第一次附加的人（这一次出现以来）。定时结算记在谁名下按 rules.effectOwner（TD-06 §18） */
 export interface EffectRuntime { stacks: number; burst: number; remaining: number; nextTick: number; source: Slot; origin: Slot }
@@ -407,6 +413,9 @@ export interface HookContext<V extends HookVars = HookVars> {
   skipJudgments(instance: number, names: string[]): void
   /** 以本角色的名义为目标附加异常效应（TD-06 §18）：层数规则同判定的 applies，记 enemyState effectApplied；note 写进事件的 detail */
   applyEffect(effect: EffectName, stacks: number, note?: string): void
+  /** 以本角色的名义为目标挂偏移（TD-06 §19）：frames 个战斗帧，覆盖已有的（震谐 / 集谐互斥）；记 enemyState shift。
+   *  目标正处于干涉时也照挂（干涉结束后下一次谐度破坏才用得上） */
+  applyShift(kind: ResonanceKind, frames: number, note?: string): void
   /** 以本角色的名义主动触发一次异常效应伤害（心的踏月归心）：倍率 = scale × 目标当前层数对应的倍率（不含电磁爆发）。
    *  不算一次结算（不减层、不动电磁爆发、不改下次结算的时刻）；目标没有该效应时不出伤害。judgment 是 hit 事件里的名字，返回伤害 */
   effectDamage(effect: EffectName, scale: number, judgment: string): number

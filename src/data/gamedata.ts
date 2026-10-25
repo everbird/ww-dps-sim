@@ -228,6 +228,10 @@ export interface Rules {
   concertoTiming: 'onCast' | 'onHit'
   energyShare: { dealer: number; others: number }
   breakEnergy: number
+  /** 震谐·干涉持续多久（战斗帧），期间偏谐值不累积（TD-06 §19，第三方攻略"震谐干涉的 buff 持续 8秒…无法进行处决和积攒"） */
+  interferenceFrames: number
+  /** 同一角色对同一目标两次响应至少隔多久（战斗帧；xlsx"赋予目标8秒【…震谐响应冷却】"） */
+  responseCooldown: number
   critRateCap: number
   defFactorCap: number
   defFloor: boolean                                 // 减防、无视防御之后的目标防御先取整（TD-03 Q1；缺省不取整，假设 def-no-floor）
@@ -266,6 +270,8 @@ export const DEFAULT_RULES: Rules = {
   concertoTiming: 'onHit',                          // 逐段所得按命中给，"起手即得"仍在动作开始时（2026-10-03 用户实测，TD-06 Q1）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1
   breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
+  interferenceFrames: 480,                          // 8 秒（假设 resonance-rules）
+  responseCooldown: 480,                            // 8 秒（xlsx 三人"震谐响应"行的备注）
   critRateCap: 1,
   defFactorCap: 2,                                  // min(2, …)（TD-03 §3.2）
   defFloor: false,                                  // xlsx 多数公式不取整（TD-03 Q1）；true = 物理、谐度破坏公式那样先取整

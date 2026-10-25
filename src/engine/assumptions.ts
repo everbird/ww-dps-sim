@@ -39,7 +39,7 @@ export const ASSUMPTIONS = [
   },
   {
     id: 'later-damage', topic: '公式', tracked: true, impact: 'unknown', ref: 'TD-03 §5、§6，总设计 §13',
-    what: '震谐响应、骇破响应，以及动作表里标了"异常效应"的直接判定，伤害还没算，记 0（异常效应的定时结算与钩子主动触发的已经算了，TD-06 §18）',
+    what: '骇破响应，以及动作表里标了"异常效应"的直接判定，伤害还没算，记 0（异常效应的定时结算与钩子主动触发的已经算了，TD-06 §18；震谐响应 2026-10-25 起按 TD-03 §6 算，TD-06 §19）',
     why: '公式已定，触发时机要等加了用得到的角色再做（TD-06）；现在的队伍不出这几类伤害',
   },
   {
@@ -131,6 +131,13 @@ export const ASSUMPTIONS = [
       + '全局时停（大招动画）本来就挡切人，盖住了的不算（椿 240 帧盖过 239）；现在只有卜灵（全局时停 231 帧之后再挡 7 帧）还碰得到',
     why: '大招出招阶段不能切人是实战体感（2026-10-19），待实机验证；xlsx 有的大招两种都写、帧数不同（仇远 200 / 230、凌阳 210 / 180）',
     adjust: { how: '场景里 options.rules.ultInputLocksSwitch: false 改成不挡；实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖', path: 'rules.ultInputLocksSwitch', values: [false] },
+  },
+  {
+    id: 'resonance-rules', topic: '敌人', tracked: true, impact: 'unknown', ref: 'TD-06 §19，docs/alm-confirm.md',
+    what: '偏移 / 干涉 / 响应：对挂着震谐·偏移的目标谐度破坏命中 → 震谐·干涉 8 秒（偏移消耗掉，期间偏谐值不累积）；'
+      + '队里有"震谐响应"动作的角色（在后台也算）各出一次响应，同一角色对同一目标 8 秒一次；响应伤害按谐度破坏的公式（TD-03 §6）、行上的元素。集谐没建',
+    why: '游戏内说明（三人的谐度破坏技能"响应【震谐·干涉】：…同一目标每8秒仅可受到1次"）、xlsx 响应行备注；8 秒与偏移被消耗取自第三方攻略（docs/m4-verify-answers-genmini.md R1），没实测',
+    adjust: { how: '场景里 options.rules.interferenceFrames / responseCooldown 改时长' },
   },
   {
     id: 'switch-ends-stop', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §3.3，docs/jys-videos.md §6.3',
