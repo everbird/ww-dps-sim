@@ -537,14 +537,17 @@ describe('出场技要普通切人入场后第一个出', () => {
     expect(why(go(['乙 A2-地面出场技', 'switch 甲', 'switch 乙'], 0, 1))).toEqual(['entrySkill', '开场就在前台，不是切人入场）'])
   })
   // 2026-10-21 用户：后台的动作走完、切出者在地面，切回来才是地面出场技（m0-confirm §14 D2）
-  test('切回来时自己在后台的动作没走完、切出者在空中：报错；走完了、落地了照常', () => {
+  test('切出者在空中：报错；落地了照常。切回来时自己在后台的动作没走完：切人等它走完（entryBusy，2026-10-25 景莫守）', () => {
     const 甲: SynthChar = { name: '甲', actions: [action({ id: '跳', endFrame: 30, air: { from: 0, until: null } }), action({ id: '砸', endFrame: 30, air: { from: 0, until: 20 } })] }
     const 乙2: SynthChar = { ...乙, actions: [...乙.actions, action({ id: '长E', endFrame: 300 })] }
     const go2 = (rotation: string[]) => synthRun([甲, 乙2, idle('丙')], { initial: { onField: 0 }, rotation, options: { repeat: 1 } })
     const why = (r: ReturnType<typeof go2>) => [r.error?.code, r.error?.message.split('（')[1]]
     expect(why(go2(['甲 跳', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '切出的角色在空中，切进来也在空中）'])
     expect(go2(['甲 砸', 'wait 25', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']).error).toBeUndefined()   // 第 20 帧落地
-    expect(why(go2(['switch 乙', '乙 长E', 'switch 甲', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']))).toEqual(['entrySkill', '切回来时自己在后台的动作还没走完）'])
+    const busy = go2(['switch 乙', '乙 长E', 'switch 甲', 'switch 乙', '乙 A2-地面出场技', 'switch 甲'])
+    expect(busy.error).toBeUndefined()
+    expect(eventsOfLog(busy.log, 'wait').map(e => [e.code, e.reason])).toContainEqual(['entryBusy', '等 乙 在后台的 长E 走完，切进来才是出场技'])
+    expect(eventsOfLog(busy.log, 'switch').filter(e => e.to === '乙')[1]!.f).toBeGreaterThanOrEqual(300)
     expect(go2(['switch 乙', '乙 长E', 'switch 甲', 'wait 300', 'switch 乙', '乙 A2-地面出场技', 'switch 甲']).error).toBeUndefined()
   })
   test('有出场技的角色，地面普通切人入场后第一下写 A1：报错，要写出场技；不是第一下、变奏入场的照常', () => {

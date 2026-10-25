@@ -37,6 +37,7 @@
 | `xin-conclusions.md` | 心 · 雷主 · 卜灵 的结论：副词条先堆哪个（心先把共鸣效率堆到约 130%）、共鸣效率要多少、手慢几帧掉多少、电磁效应两处读法的敏感度（注明按哪条轴、哪个数据版本算的） |
 | `jys-confirm.md` | 景燃 · 尤诺 · 守岸人（景尤守）的确认清单：文字轴怎么落成场景（按住 Z 的读法等）、按原文推断的机制（护盾、鬼护、星域…）、引擎为这队加的东西、要实测的 |
 | `jys-videos.md` | 景尤守的三份攻略轴（5R18Z、5R20Z、轮椅）怎么写成场景、和视频对时间（一轮多长、哪段慢）、视频带出来的引擎问题（大招全局时停里能不能切人） |
+| `jms-confirm.md` | 景燃 · 莫特斐 · 守岸人（景莫守）的确认清单：配装（莫特斐用 Evariste 账号）、莫特斐的模块（火焰闪电、怒气值、浮翼狂想的加强音与公用冷却、各链）、作者流程图怎么落成场景（出场技、补位）、要实测的 |
 | `alm-confirm.md` | 爱弥斯 · 琳奈 · 莫宁 / 守岸人（爱琳莫、爱琳守）的确认清单：养成、偏移 / 干涉 / 响应（震谐）怎么算、三人的模块与要实测的 |
 | `video-input-guide.md` | 攻略视频与文字轴：什么材料有用（连续实战 + 计时器、作者流程图、自己账号的录像）、文字轴的写法、给 Gemini 的提示词、怎么拿视频核对 |
 | `team-scorecard.md` | 景尤守、爱琳莫、爱琳守、心队、M0 的代表轴卡片（`pnpm scorecard` 生成，开头有手写的读法）：稳态、打死几倍血、手速、养成门槛、最脆弱的假设 |
@@ -75,7 +76,7 @@ docs/               设计文档
 
 ```bash
 pnpm install
-pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
+pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
                                              # --strict 名单有未连上的伤害判定时退出码 1
                                              # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
@@ -122,7 +123,7 @@ pnpm trace scenarios/m0-video.yaml          # 调试表（TD-11 §6）：某一�
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
-**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯 --nanoka 3.7 && pnpm check:data`。
+**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐 --nanoka 3.7 && pnpm check:data`。
 
 ## 约定
 
@@ -159,3 +160,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 19. 核心资源槽的核对（2026-10-25，docs/alm-confirm.md Y1）：`pnpm check:data -- --flags` 多列一项"核心资源槽"——某一槽单次加 / 扣的量比上限大（槽名或上限和动作表的列对不上）、或用到了但上限 ≥ 1000（按百分数记的），按角色模块改过的 coreNames / coreCaps 查（`src/data/core-check.ts`，用例 `tests/core-check.test.ts`）。要并回的：TD-01 §14（check:data 的核对项）、Q22。
 20. 震谐的两个敏感度开关（2026-10-25，docs/assumption-sensitivity.md 读法 2026-10-25 一节）：假设 `resonance-rules` 挂上 `rules.interferenceFrames`（矩阵翻成 300 帧）；新假设 `track-no-consume` 与开关 `rules.trackNoConsume`（缺省 true，爱弥斯模块的记录点）。矩阵重跑（22 个场景 × 12 个开关）：干涉 5 秒时爱琳守 +11%，轨迹无消耗关掉爱琳莫 −4%。要并回的：TD-02（Rules 两个键）、TD-06 §19、总设计 §13（假设）。
 21. 声骸起手的优先级（2026-10-25，docs/jys-videos.md §6.4）：`ActionDef.inputPriority`（起手时拿来和当前动作比的优先级），装配进角色时声骸动作取通用块"召唤声骸 / 变身声骸"行（5），声骸表各行（多为 0）当作放出来之后的；`gate` 的第三个参数、`GateResult.via` 多了 `echoInput`；开关 `rules.echoInputPriority`（缺省 true），假设 `echo-input-priority`（调度器记录）。声骸能打断重击（4）、多数技能的后摇，照样等判定出手。视频 A 守岸人变奏 → 大招一段 5.59 秒，改前 6.67、改后 5.52。多数场景稳态 +2%～+8%（M0 视频轴 EQ 版 −1.1%）；m0-conclusions、xin-conclusions 的数是改之前的。用例 T04-15、alm"声骸起手的优先级"。要并回的：TD-04 §6.1、TD-02（`ActionDef.inputPriority`、Rules 的键）、TD-01（通用块两行的用法）、总设计 §13（假设）。
+22. 景燃 · 莫特斐 · 守岸人（2026-10-25，docs/jms-confirm.md）：莫特斐的模块（火焰闪电前置生成即爆炸、怒气值决定 E 是激昂变奏还是怒火赋格、浮翼狂想：登场角色普攻 / 重击命中给 1 / 2 发加强音、公用冷却 23 帧、节奏自由、1–6 链，1 / 5 链的额外加强音用 copyAs 另存成 `C1加强音` / `C5加强音`）；高天共奏之曲、赫卡忒首位、华彩乐段；dmg-join；地面出场技：景燃阳A2（"阳状态地面出场技复用"）、莫特斐 A4。调度器：切人后第一下是地面出场技、切进来的人自己在后台的动作还没走完时，切人等它走完（等待代码 `entryBusy`；原来直接报错 entrySkill"切回来时自己在后台的动作还没走完"，td09 用例跟着改）。构建的 --strict 名单加了莫特斐。用例 `tests/jms.test.ts`。要并回的：TD-08（莫特斐的模块、景燃的出场技）、TD-09 §3.3（等待代码）、§3.5（出场技的 busy 改成等）、TD-02（`WaitCode`）、TD-07（"协同攻击"目前按判定名过滤）。

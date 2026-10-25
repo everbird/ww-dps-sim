@@ -174,6 +174,16 @@ const echoes: EchoModule[] = [
     actionOverrides: { 'Q·A': { priority: [{ fromFrame: 0, value: 0 }] } },
   }),
   defineEcho({
+    name: '赫卡忒',                         // 莫特斐的首位（Evariste 账号，景莫守 jms-5r18z.yaml）
+    // 协同攻击：现有角色里只有莫特斐的加强音（协同-加强音，1 / 5 链的额外加强音同名）
+    mainSlotBuffs: [{
+      id: '赫卡忒.协同', source: '在首位装配该声骸技能时，自身协同攻击造成的伤害提升40.00%。',
+      zone: 'DamageChange', value: 0.4, filter: { judgments: ['协同-加强音'] }, target: 'self', duration: 'inf', trigger: 'always',
+    }],
+    // 召唤类（脱手），结束帧是推的；三个冥月侍女各 3 段（"逆势回击时重置存在时间"不建模）
+    actionOverrides: { 'Q·冥月侍女': { accept: ['noEnd'] } },
+  }),
+  defineEcho({
     name: '炉芯机骸',                       // 莫宁的首位
     mainSlotBuffs: [{ id: '炉芯机骸.共鸣效率', source: '在首位装配该声骸技能时，自身共鸣效率提升10.00%。', zone: 'energyRegen', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
   }),

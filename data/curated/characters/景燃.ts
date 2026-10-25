@@ -158,6 +158,11 @@ export default defineCharacter('景燃', {
   },
   actionOverrides: {
     // 重击的优先级分在两行（"-1"行 7 → 5 在第 1 帧，最后一段 5 → 0 在第 78 / 76 帧）：装配自动串起来（chainedPriority）
+    // 地面出场技（普通切人入场按 A）是阳A2：xlsx 阳A2-1 备注"阳状态地面出场技复用"，BV1VJYL6HEuQ 作者"景燃出场打出的是A2"、
+    // 之后接 A3（"A3 这一脚落地"）、A4（2026-10-25，docs/jys-videos.md §8.1）。负阴状态没写出场技
+    阳A2: { copyAs: ['阳A2-地面出场技'] },
+    '阳A2-地面出场技': { comboFrom: [] },
+    阳A3: { comboFrom: ['阳A2', '阳A2-地面出场技'] },
     阳E1: { cooldown: 900 },                          // 阳焚身冷却 15 秒
     阴E1: { cooldown: 900 },                          // 阴蚀骨冷却 15 秒
     // 往生送 / 黄泉渡的落地段：帧数从落地起算（下落行第 66 / 60 帧落地）
