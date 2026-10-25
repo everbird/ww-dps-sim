@@ -306,18 +306,21 @@ function resourceTimeline(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
 export function buffUptime(log: readonly SimEvent[], lo: number, hi: number): Record<string, number> {
   const W = hi - lo
   const since = new Map<string, number>()
+  const ended = new Map<string, number>()                  // 上一段算到哪一帧（不含）：到期那一帧整帧算过，同一帧又挂上的从这里接着算
   const frames = new Map<string, number>()
   const add = (k: string, from: number, to: number) => frames.set(k, (frames.get(k) ?? 0) + Math.max(0, Math.min(to, hi) - Math.max(from, lo)))
   for (const e of log) {
     if (e.type === 'buffApply') {
       const k = `${e.buff}→${e.target}`
-      if (!since.has(k)) since.set(k, battleFrameOf(e))
+      if (!since.has(k)) since.set(k, Math.max(battleFrameOf(e), ended.get(k) ?? -Infinity))
       if (!frames.has(k)) frames.set(k, 0)
     } else if (e.type === 'buffExpire') {
       const k = `${e.buff}→${e.target}`
       const from = since.get(k)
       if (from === undefined) continue
-      add(k, from, battleFrameOf(e) + (e.reason === 'timeout' ? 1 : 0))
+      const to = battleFrameOf(e) + (e.reason === 'timeout' ? 1 : 0)
+      add(k, from, to)
+      ended.set(k, to)
       since.delete(k)
     }
   }

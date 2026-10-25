@@ -403,6 +403,17 @@ describe('T09-补位 "~"：后面那个动作因为状态条件放不出来时�
     expect(eventsOfLog(out.log, 'skip').map(e => e.reason)).toEqual(['协奏满了，变奏不用补 A'])
     expect(eventsOfLog(out.log, 'switch').map(e => e.intro)).toEqual([true, false])
   })
+  test('补位后面接"switch <角色> 变奏"：补的那一下打出去了、协奏还没满，等它出手再切（2026-10-25，景尤守 5R18Z）', () => {
+    // 甲的 A 第 8 帧命中 +40 协奏，开局 70：补一下就满，可要等命中；原来切人与补位同一帧，A 还没命中就被切掉
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'A', endFrame: 20, judgments: [judgment({ name: 'a', spawnFrame: 8, gains: { energy: 0, concerto: 40, core: [0, 0, 0] } })] })] }
+    const 乙: SynthChar = { name: '乙', aliases: { QTE: 'QTE' }, actions: [action({ id: 'QTE', kind: 'intro', endFrame: 30 })] }
+    const out = synthRun([甲, 乙, idle('丙')], { rotation: ['甲 A~', 'switch 乙 变奏', 'switch 甲'], initial: { concerto: [70, 0, 0] } })
+    expect(out.error).toBeUndefined()
+    const sw = eventsOfLog(out.log, 'switch')
+    expect(sw.map(e => e.intro)).toEqual([true, false])
+    expect(sw[0]!.f).toBeGreaterThanOrEqual(8)
+    expect(out.summary.warnings.filter(w => w.code === 'introMissed')).toEqual([])
+  })
   // E 要到第 from 帧才满足角色条件（模拟"一日花要协奏满"）；A1 → A2 连段，A2 第 10 帧起可派生
   const gateE = (from: number) => ({ canStart: (st: { frame: number }, _slot: number, def: ActionDef) => def.id !== 'E' || st.frame >= from ? true as const : '协奏不够' })
   const cmds = (n: 1 | 2): Cmd[] => [{ act: 0, action: 'A1', filler: true }, ...(n === 2 ? [{ act: 0, action: 'A2', filler: true } as Cmd] : []), { act: 0, action: 'E' }]
