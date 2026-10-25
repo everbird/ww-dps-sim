@@ -174,6 +174,13 @@ const echoes: EchoModule[] = [
     actionOverrides: { 'Q·A': { priority: [{ fromFrame: 0, value: 0 }] } },
   }),
   defineEcho({
+    name: '梦魇·云闪之鳞',                  // 渊武的首位（视频 BV1o7kfBPE6y 的配装）
+    mainSlotBuffs: [
+      { id: '梦魇·云闪之鳞.导电', source: '在首位装配该声骸技能时，自身导电伤害加成提升12.00%，共鸣解放伤害加成提升12.00%。', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['导电'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '梦魇·云闪之鳞.大招', source: '在首位装配该声骸技能时，……共鸣解放伤害加成提升12.00%。', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 'inf', trigger: 'always' },
+    ],
+  }),
+  defineEcho({
     name: '赫卡忒',                         // 莫特斐的首位（Evariste 账号，景莫守 jms-5r18z.yaml）
     // 协同攻击：现有角色里只有莫特斐的加强音（协同-加强音，1 / 5 链的额外加强音同名）
     mainSlotBuffs: [{

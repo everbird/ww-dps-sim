@@ -115,6 +115,25 @@ export default [
   defineWeapon({ name: '行进序曲', passives: [], resourceEffects: [concertoOnSkill('行进序曲')] }),
   defineWeapon({ name: '奇幻变奏', passives: [], resourceEffects: [concertoOnSkill('奇幻变奏')] }),
   defineWeapon({ name: '异响空灵', passives: [], resourceEffects: [concertoOnSkill('异响空灵')] }),   // 莫宁（爱琳莫）
+  defineWeapon({
+    name: '时和岁稔',                        // 桃祈（视频 BV1o7kfBPE6y 的配装）
+    passives: [
+      {
+        id: '时和岁稔.全属性', source: '全属性伤害加成提升12%',
+        zone: 'DamageChangeElement', value: [0.12, 0.15, 0.18, 0.21, 0.24], filter: { elements: ['冷凝', '热熔', '导电', '气动', '衍射', '湮灭'] },
+        target: 'self', duration: 'inf', trigger: 'always',
+      },
+      {
+        id: '时和岁稔.变奏', source: '变奏后，获得持续时间为12s的24%共鸣技能伤害加成提升buff',
+        zone: 'DamageChangeType', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['共鸣技能'] }, target: 'self', duration: 720, trigger: { on: 'intro' },
+      },
+      {
+        id: '时和岁稔.技能', source: '施放共鸣技能后，获得持续时间为12s的24%共鸣技能伤害加成提升buff',
+        zone: 'DamageChangeType', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['共鸣技能'] }, target: 'self', duration: 720,
+        trigger: { on: 'actionStart', where: { actionKinds: ['skill'] } },
+      },
+    ],
+  }),
   defineWeapon({ name: '华彩乐段', passives: [], resourceEffects: [concertoOnSkill('华彩乐段')] }),   // 莫特斐（景莫守）
   defineWeapon({
     name: '永远的启明星',                    // 爱弥斯

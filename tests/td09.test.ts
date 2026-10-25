@@ -183,6 +183,31 @@ describe('脱手的声骸不打断连段（2026-10-25 用户确认，爱弥斯�
   })
 })
 
+// 录像对时（2026-10-25 桃渊散录像轴）：at <世界秒> 等到那一刻；前面的补位 "~" 看它——还没到就接着补，到了就跳过剩下的
+describe('at <世界秒>：照录像对时', () => {
+  const 甲: SynthChar = {
+    name: '甲',
+    actions: [
+      action({ id: 'A1', endFrame: 20, cancelWindows: [{ from: 10, until: 40, row: 0 }] }),
+      action({ id: 'A2', endFrame: 20, comboFrom: ['A1'], cancelWindows: [{ from: 10, until: 40, row: 0 }] }),
+    ],
+  }
+  const go = (rot: string[]) => synthRun([甲, idle('乙'), idle('丙')], { rotation: rot, options: { repeat: 1 } })
+  test('at 等到世界帧；补位打到那一刻为止，没用上的记 skip', () => {
+    const r = go(['甲 A1~ A2~ A1~ A2~ A1~ A2~', 'at 0.5', 'switch 乙'])
+    expect(r.error).toBeUndefined()
+    const starts = eventsOfLog(r.log, 'actionStart').map(e => `${e.action}@${e.f}`)
+    expect(eventsOfLog(r.log, 'switch')[0]!.f).toBe(30)
+    expect(starts).toEqual(['A1@0', 'A2@10', 'A1@20'])            // 第 30 帧到了：第四下起不用补
+    expect(eventsOfLog(r.log, 'skip').map(e => e.reason)).toContain('到第 30 帧了，不用补 A2')
+  })
+  test('写成 at 秒数；格式不对报错', () => {
+    expect(parseRotationLine('at 12.5')).toEqual([{ kind: 'at', seconds: 12.5 }])
+    expect(parseRotationLine('对时 3')).toEqual([{ kind: 'at', seconds: 3 }])
+    expect(parseRotationLine('at 甲')).toHaveProperty('error')
+  })
+})
+
 describe('T09-6 切人（§3.5）', () => {
   test('切人冷却 60 帧，每人单独计：被切走的人 60 帧内不能切回来，切给别人不用等（2026-10-25 用户更正）', () => {
     const r = run([acts, acts, acts], [{ switch: 1 }, { switch: 0 }])

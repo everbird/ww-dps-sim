@@ -48,14 +48,15 @@ export function compileRotation(lines: string[], team: CompileMember[], onField:
   return issues.length > 0 ? { ok: false, issues } : { ok: true, commands: rot.commands, opening: open.commands }
 }
 
-/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）；
- *  遇到别的切人、等待或别的角色就没有 */
-function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' | 'switch' }> | undefined {
+/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）、
+ *  "at <世界秒>"（还没到就接着补）；遇到别的切人、等待或别的角色就没有 */
+function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' | 'switch' | 'at' }> | undefined {
   const c = list[i]
   if (c?.kind !== 'act') return undefined
   for (let j = i + 1; j < list.length; j++) {
     const n = list[j]!
     if (n.kind === 'switch' && n.expectIntro) return n
+    if (n.kind === 'at') return n
     if (n.kind !== 'act' || n.slot !== c.slot) return undefined
     if (!n.filler) return n
   }
@@ -78,6 +79,7 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
     items.forEach((it, j) => {
       const item = j + 1
       if (it.kind === 'wait') { commands.push({ kind: 'wait', line, item, frames: it.frames }); return }
+      if (it.kind === 'at') { commands.push({ kind: 'at', line, item, frame: Math.round(it.seconds * 60) }); return }
       const slot = slotOf.get(it.char)
       if (slot === undefined) {
         issues.push({ line, item, message: `${it.char} 不在队伍里（队伍：${team.map(m => m.name).join('、')}）` })
@@ -194,10 +196,12 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       if (c.kind === 'act' && c.filler) {
         const t = fillerTarget(listOf(q), q.next)
         const ready = t?.kind === 'switch' ? s.chars[c.slot].concerto >= k.rules.concertoMax
+          : t?.kind === 'at' ? s.frame >= t.frame
           : t !== undefined && stateVerdict(s, opts, t.slot, actions[t.slot]![t.action]!).go
         if (ready) {
           closeSeg(s, ref)
-          const why = t!.kind === 'switch' ? `协奏满了，变奏不用补 ${c.action}` : `${t!.action} 已经能放，不用补 ${c.action}`
+          const why = t!.kind === 'switch' ? `协奏满了，变奏不用补 ${c.action}`
+            : t!.kind === 'at' ? `到第 ${t!.frame} 帧了，不用补 ${c.action}` : `${t!.action} 已经能放，不用补 ${c.action}`
           log(s, { type: 'skip', cmd: ref, code: 'filler', reason: why })
           q.next += 1
           q.waited = 0
