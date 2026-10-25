@@ -4,6 +4,8 @@
 // 谐破冷却（按敌人 COST）与按钮时长取 xlsx 附页2 的偏谐通用规则（m0-confirm §10 H2、H4）。
 // 异常效应（§18）：判定的 applies 与钩子 applyEffect 附加层数；P6 定时结算（伤害按 TD-03 §5，之后减层、电磁爆发清零）、计时到期；
 // 钩子主动触发的效应伤害（心的踏月归心）与消耗电磁爆发（心的霆心域）也在这里。
+// 偏移 / 干涉 / 响应（§19）：钩子 applyShift 挂偏移；对挂着震谐·偏移的目标谐度破坏命中 → 震谐·干涉（期间偏谐值不累积），
+// 队里有"震谐响应"动作的角色各出一次响应判定（在后台也算，同一角色对同一目标 8 秒一次）。
 import { EFFECT_NAMES, type EffectName, type Slot } from '../data/common'
 import type { ActionDef, EffectDef } from '../data/gamedata'
 import { assume } from './assumptions'
@@ -11,9 +13,9 @@ import { activeFor } from './buffs'
 import type { Sim } from './context'
 import { abnormalBase, abnormalHit, accumulate, contributes, type HitView } from './formula'
 import { checkHit } from './invariants'
-import { log, SLOTS } from './kernel'
+import { log, SLOTS, spawnJudgment } from './kernel'
 import { grant } from './resources'
-import type { JudgmentRuntime, Rates, SimState } from './types'
+import type { JudgmentRuntime, Rates, ResonanceKind, SimState } from './types'
 
 /** 角色的谐度破坏动作，ID 为"谐度破坏"的排第一。椿另有盛绽版（组名"谐度破坏-时停"，结束帧与派生窗口不同）：
  *  哪个能放由角色钩子 canStart 按形态判断，自动插的时候挑钩子允许的那个（m0-confirm §10 H5） */
@@ -66,6 +68,7 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
     e.tunabilityLockedUntil = s.battleFrames + sim.r.tuneBreakTiming.lockFrames    // 谐破冷却按敌人 COST（附页2）
     e.tuneButtonUntil = 0
     log(s, { type: 'enemyState', change: 'harmonyBreak', detail: `${s.chars[j.owner].name} ${j.action}` })
+    if (e.shift) interfere(sim, s, j.owner)
   } else if (sim.r.options.tuneBreak !== 'off' && p.tunabilityMax > 0 && d.gauges.tunability > 0
     && !e.disharmony && s.battleFrames >= e.tunabilityLockedUntil) {
     assume(s, 'tunability-base', s.chars[j.owner].name)          // 偏谐效率的基础值是推定的（TD-01 Q17）
@@ -97,6 +100,41 @@ export function hitGauges(sim: Sim, s: SimState, j: JudgmentRuntime): void {
   }
 }
 
+/** 谐度破坏命中挂着偏移的目标（§19）：偏移转成干涉（偏移消耗掉），干涉期间偏谐值不累积（谐破冷却取两者长的）；
+ *  震谐·干涉：队里有"震谐响应"动作的角色各出一次响应——动作的判定在独立时间线上生成（不占前台、不打断谁），
+ *  同一角色对同一目标 responseCooldown 内只响应一次。集谐·干涉（层数、按谐破增幅加最终伤害）还没建 */
+function interfere(sim: Sim, s: SimState, by: Slot): void {
+  const e = s.enemy
+  const kind = e.shift!.kind
+  delete e.shift
+  assume(s, 'resonance-rules', `${s.chars[by].name} 谐度破坏 → ${kind}·干涉`)
+  if (kind !== '震谐') {
+    log(s, { type: 'warning', code: 'later', message: `${kind}·干涉还没建：这次只当普通的谐度破坏` })
+    return
+  }
+  const frames = sim.r.rules.interferenceFrames
+  e.interference = { kind, stacks: 1, remaining: frames }
+  e.tunabilityLockedUntil = Math.max(e.tunabilityLockedUntil, s.battleFrames + frames)
+  log(s, { type: 'enemyState', change: 'interference', by: s.chars[by].name, detail: `${kind}·干涉` })
+  for (const slot of SLOTS) {
+    const m = sim.r.team[slot]
+    const act = m.actions['震谐响应']
+    if (!act) continue
+    const name = m.def.name
+    if (s.battleFrames < (e.responseCd[name] ?? 0)) continue
+    e.responseCd[name] = s.battleFrames + sim.r.rules.responseCooldown
+    const instance = s.nextId++
+    for (const jd of act.judgments) spawnJudgment(s, slot, act.id, instance, jd, undefined, `${kind}·干涉的响应`)
+    log(s, { type: 'enemyState', change: 'response', by: name, detail: `${kind}响应` })
+  }
+}
+
+/** 为目标挂偏移（§19，钩子 applyShift）：覆盖已有的（震谐 / 集谐互斥，后挂的覆盖前面的），持续 frames 个战斗帧 */
+export function applyShift(s: SimState, by: Slot, kind: ResonanceKind, frames: number, why: string): void {
+  s.enemy.shift = { kind, by, remaining: frames }
+  log(s, { type: 'enemyState', change: 'shift', by: s.chars[by].name, detail: `${kind}·偏移（${why}）` })
+}
+
 /** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18）。定时结算在它之前（effectTicks） */
 export function enemyTimers(s: SimState, rates: Rates): void {
   const e = s.enemy
@@ -104,6 +142,14 @@ export function enemyTimers(s: SimState, rates: Rates): void {
     e.broken = false
     e.whiteBar = e.preset.whiteBarTough
     log(s, { type: 'enemyState', change: 'breakEnd' })
+  }
+  if (e.shift && (e.shift.remaining -= rates.battle) <= 0) {
+    log(s, { type: 'enemyState', change: 'shiftEnd', detail: `${e.shift.kind}·偏移` })
+    delete e.shift
+  }
+  if (e.interference && (e.interference.remaining -= rates.battle) <= 0) {
+    log(s, { type: 'enemyState', change: 'interferenceEnd', detail: `${e.interference.kind}·干涉` })
+    delete e.interference
   }
   for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
     const x = e.effects[name]

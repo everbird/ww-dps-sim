@@ -9,7 +9,7 @@ import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import {
-  applyEffect, canTuneBreak, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
+  applyEffect, applyShift, canTuneBreak, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
@@ -163,7 +163,7 @@ function initialState(r: ResolvedScenario): SimState {
 
 /** 这几类判定的伤害走另外的公式（TD-03 §5、§6）与触发时机，还没接上；不按直接伤害算，只提示一次。
  *  异常效应自身的伤害（定时结算、钩子主动触发）在 enemy.ts，不经过判定（TD-06 §18） */
-const LATER: readonly DamageTag[] = ['异常效应', '震谐响应', '骇破响应']
+const LATER: readonly DamageTag[] = ['异常效应', '骇破响应']
 
 function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   const r = sim.r
@@ -191,12 +191,14 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     const acc = accumulate(view, active, draft)
     if (acc.zones.TargetDefRate !== 0 || acc.zones.RoleIgnoreDefRate !== 0)
       assume(s, 'def-no-floor', `${m.def.name} ${d.name}`)                    // 有减防 / 无视防御时，取不取整才有区别（TD-03 Q1）
-    if (draft.tags.includes('谐度破坏')) {
-      // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001
+    if (draft.tags.includes('谐度破坏') || draft.tags.includes('震谐响应')) {
+      // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001。
+      // 震谐响应（伤害类型 12，含爱弥斯光翼共奏追加的震谐伤害）同一公式：按行上的元素算抗性，没有"目标未失谐"这一项（TD-03 §6、TD-06 §19）
+      const tb = draft.tags.includes('谐度破坏')
       const v = computeTuneBreak({
         base: tuneBase(r.data.tuneBreak, r.rules.charLevel, r.enemy.cost), rate: draft.multiplier, level: r.rules.charLevel,
-        enemy: { def: r.enemy.def, res: r.enemy.res['物理'] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
-        ...(s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
+        enemy: { def: r.enemy.def, res: r.enemy.res[tb ? '物理' : draft.element] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
+        ...(tb && s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
       }, acc, r.rules)
       dmg = { nonCrit: v, crit: v, expected: v }
     } else {
@@ -298,6 +300,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     stat: name => { assume(s, 'stat-scaling-static', `${m.def.name} 的钩子读 ${name}`); return m.stats[name] },
     shield: (source, target = self) => { log(s, { type: 'shield', char: sim.r.team[target].def.name, by: m.def.name, source }) },
     applyEffect: (effect, stacks, note) => applyEffect(sim, s, self, effect, stacks, note ?? `${m.def.name} 的钩子`),
+    applyShift: (kind, frames, note) => applyShift(s, self, kind, frames, note ?? `${m.def.name} 的钩子`),
     effectDamage: (effect, scale, judgment) => effectDamage(sim, s, self, effect, scale, judgment),
     takeBurst: (effect, note) => takeBurst(s, self, effect, note ?? `${m.def.name} 的钩子`),
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
