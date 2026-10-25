@@ -121,6 +121,47 @@ const sets: EchoSetModule[] = [
       ],
     },
   }),
+  defineEchoSet({
+    name: '长路启航之星',                   // 爱弥斯
+    pieces: {
+      2: [{ id: '长路启航之星.2', source: '热熔伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      // "为敌人添加【聚爆效应】或【震谐·偏移】时"：自己挂偏移（enemyState shift，TD-06 §19）
+      5: [
+        {
+          id: '长路启航之星.5暴击', source: '角色为敌人添加【聚爆效应】或【震谐·偏移】时，自身暴击提升20%，热熔伤害提升20%，持续8秒。',
+          zone: 'critRate', value: 0.2, target: 'self', duration: 480, trigger: { on: 'enemyState', where: { enemyState: 'shift' } },
+        },
+        {
+          id: '长路启航之星.5热熔', source: '角色为敌人添加【聚爆效应】或【震谐·偏移】时，自身暴击提升20%，热熔伤害提升20%，持续8秒。',
+          zone: 'DamageChangeElement', value: 0.2, filter: { elements: ['热熔'] }, target: 'self', duration: 480,
+          trigger: { on: 'enemyState', where: { enemyState: 'shift' } },
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
+    name: '逆光跃彩之约',                   // 琳奈
+    pieces: {
+      2: [{ id: '逆光跃彩之约.2', source: '衍射伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['衍射'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      // "其每点谐度破坏增幅还会使攻击额外提升0.3%，上限15%"：按下一个登场角色的谐破增幅算，buff 定义里只能按持有者的属性换算——
+      // 先只算前一半（攻击 +15%），后一半记在 docs/alm-confirm.md
+      5: [{
+        id: '逆光跃彩之约.5', source: '角色施放延奏技能后，下一个变奏技能登场的角色攻击提升15%，其每点谐度破坏增幅还会使攻击额外提升0.3%，上限15%，持续15秒，若切换至其他角色则该效果提前结束。',
+        zone: 'atkPct', value: 0.15, target: 'nextIn', duration: 900, onSwitchOut: 'clear', trigger: { on: 'outro' },
+      }],
+    },
+  }),
+  defineEchoSet({
+    name: '星构寻辉之环',                   // 莫宁
+    pieces: {
+      2: [{ id: '星构寻辉之环.2', source: '治疗效果提升10%', zone: 'healBonus', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [{
+        id: '星构寻辉之环.5', source: '为队伍中角色提供治疗时，自身每1%的偏谐值累积效率使队伍中角色攻击提升0.2%，上限25%，持续4秒，同名效果之间不可叠加。',
+        zone: 'atkPct', value: 0.002, scale: { stat: 'tunabilityRate', per: 0.01, cap: 0.25 },
+        target: 'team', duration: 240, trigger: { on: 'heal' },
+      }],
+    },
+  }),
 ]
 
 export default sets

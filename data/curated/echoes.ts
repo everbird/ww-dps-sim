@@ -163,6 +163,35 @@ const echoes: EchoModule[] = [
     // xlsx「冷却」列 15 秒，说明、解包、nanoka 20 秒
     actionOverrides: { 'Q·喷火': { cooldown: 1200 } },
   }),
+  defineEcho({
+    name: '辛吉勒姆',                       // 爱弥斯的首位（异相·辛吉勒姆）
+    mainSlotBuffs: [{
+      id: '辛吉勒姆.大招', source: '在首位装配该声骸技能时，若装配角色为爱弥斯，则自身共鸣解放伤害加成提升25.00%。',
+      zone: 'DamageChangeType', value: 0.25, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 'inf', trigger: 'always',
+    }],
+  }),
+  defineEcho({
+    name: '炉芯机骸',                       // 莫宁的首位
+    mainSlotBuffs: [{ id: '炉芯机骸.共鸣效率', source: '在首位装配该声骸技能时，自身共鸣效率提升10.00%。', zone: 'energyRegen', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
+  }),
+  defineEcho({
+    name: '海维夏',                         // 琳奈的首位
+    mainSlotBuffs: [{
+      // "在此后15秒内，若自身施放延奏技能"：按 Q 之后 15 秒内的延奏算——Q 起手挂 15 秒标记，延奏时有标记才给下一位
+      id: '海维夏.窗口', source: '使用声骸技能……在此后15秒内', target: 'self', duration: 900, trigger: { on: 'actionStart', where: { actionKinds: ['echo'] } },
+    }, {
+      id: '海维夏.全属性', source: '在此后15秒内，若自身施放延奏技能，使下一个变奏技能登场的角色全属性伤害加成提升10.00%，持续15秒。',
+      zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['冷凝', '热熔', '导电', '气动', '衍射', '湮灭'] },
+      target: 'nextIn', duration: 900, trigger: { on: 'outro', where: { ownerHas: '海维夏.窗口' } },
+    }],
+    // 十道激光：每个棱镜"持续帧结束后生成激光"（棱镜持续 132 帧，激光 27.36%）。按棱镜出现后延迟 132 帧出伤害写，倍率按 nanoka
+    actionOverrides: {
+      'Q·棱镜1': {
+        accept: ['noEnd'],
+        judgments: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`棱镜${i + 1}`, { multiplier: 0.2736, element: '衍射' as const, relatedAttr: 'atk' as const, delayFrames: 132 }])),
+      },
+    },
+  }),
 ]
 
 export default echoes

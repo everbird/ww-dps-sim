@@ -114,6 +114,38 @@ export default [
   // 行进序曲（散华）、奇幻变奏（维里奈、卜灵）：被动都是回复协奏，写成资源型触发效果（TD-07 §9）
   defineWeapon({ name: '行进序曲', passives: [], resourceEffects: [concertoOnSkill('行进序曲')] }),
   defineWeapon({ name: '奇幻变奏', passives: [], resourceEffects: [concertoOnSkill('奇幻变奏')] }),
+  defineWeapon({ name: '异响空灵', passives: [], resourceEffects: [concertoOnSkill('异响空灵')] }),   // 莫宁（爱琳莫）
+  defineWeapon({
+    name: '永远的启明星',                    // 爱弥斯
+    passives: [
+      {
+        id: '永远的启明星.全属性', source: '全属性伤害加成提升12%',
+        zone: 'DamageChangeElement', value: [0.12, 0.15, 0.18, 0.21, 0.24], filter: { elements: ['冷凝', '热熔', '导电', '气动', '衍射', '湮灭'] },
+        target: 'self', duration: 'inf', trigger: 'always',
+      },
+      // "附加震谐·偏移或聚爆效应时"：自己给目标挂上偏移（enemyState shift，by 自己，TD-06 §19）
+      {
+        id: '永远的启明星.无视防御', source: '附加震谐·偏移或聚爆效应时，共鸣解放伤害无视目标32%防御，持续8秒。',
+        zone: 'RoleIgnoreDefRate', value: [0.32, 0.4, 0.48, 0.56, 0.64], filter: { tags: ['共鸣解放'] },
+        target: 'self', duration: 480, trigger: { on: 'enemyState', where: { enemyState: 'shift' } },
+      },
+      {
+        id: '永远的启明星.无视抗性', source: '附加震谐·偏移或聚爆效应时，共鸣解放伤害无视目标10%热熔抗性，持续8秒。',
+        zone: 'RoleIgnoreResistance', value: [0.1, 0.15, 0.2, 0.25, 0.3], filter: { tags: ['共鸣解放'], elements: ['热熔'] },
+        target: 'self', duration: 480, trigger: { on: 'enemyState', where: { enemyState: 'shift' } },
+      },
+    ],
+  }),
+  defineWeapon({
+    name: '停驻之烟',                        // 琳奈（爱琳莫、爱琳守）
+    passives: [
+      { id: '停驻之烟.共鸣效率', source: '共鸣效率提升12.8%', zone: 'energyRegen', value: [0.128, 0.16, 0.192, 0.224, 0.256], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        id: '停驻之烟.攻击', source: '触发延奏后，当前变奏入场角色获得持续时间为14s的10%攻击提升buff',
+        zone: 'atkPct', value: [0.1, 0.125, 0.15, 0.175, 0.2], target: 'nextIn', duration: 840, trigger: { on: 'outro' },
+      },
+    ],
+  }),
 ]
 
 /** 协奏按阶 8 / 10 / 12 / 14 / 16：xlsx 武器表只有 1 阶的文本"回复8点"（没有各阶数值），各阶按 nanoka 3.7（武器 21020024、21050024 的 param） */

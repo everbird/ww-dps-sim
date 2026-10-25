@@ -431,6 +431,9 @@ describe('T09-补位 "~"：后面那个动作因为状态条件放不出来时�
     expect(sw.map(e => e.intro)).toEqual([true, false])
     expect(sw[0]!.f).toBeGreaterThanOrEqual(8)
     expect(out.summary.warnings.filter(w => w.code === 'introMissed')).toEqual([])
+    // 不是补位也一样（2026-10-25 爱琳莫：琳奈视觉冲击的落地段还没打出来就切走）
+    const plain = synthRun([甲, 乙, idle('丙')], { rotation: ['甲 A', 'switch 乙 变奏', 'switch 甲'], initial: { concerto: [70, 0, 0] } })
+    expect(eventsOfLog(plain.log, 'switch').map(e => [e.intro, e.f >= 8])).toEqual([[true, true], [false, true]])
   })
   // E 要到第 from 帧才满足角色条件（模拟"一日花要协奏满"）；A1 → A2 连段，A2 第 10 帧起可派生
   const gateE = (from: number) => ({ canStart: (st: { frame: number }, _slot: number, def: ActionDef) => def.id !== 'E' || st.frame >= from ? true as const : '协奏不够' })

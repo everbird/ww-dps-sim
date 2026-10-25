@@ -87,7 +87,7 @@ export const BuffDefSchema = z.strictObject({
    *  属性取装配时的静态面板加常驻 buff（假设 stat-scaling-static）：守岸人深潜星域"每 0.2% 共鸣效率计算为 0.01% 暴击"写
    *  { stat: 'energyRegen', per: 0.002 }、value 0.0001；景燃"每 1000 点生命上限获得 36 点攻击，上限 1800"写 { stat: 'hp', per: 1000, cap: 1800 }、value 36 */
   scale: z.strictObject({
-    stat: z.enum(['hp', 'atk', 'def', 'energyRegen']),
+    stat: z.enum(['hp', 'atk', 'def', 'energyRegen', 'tunabilityRate']),   // tunabilityRate：偏谐值累积效率（星构寻辉之环，2026-10-25）
     per: z.number().positive(),
     offset: z.number().optional(),                        // 加在属性上再换算（守岸人"处于星域内共鸣效率 +10%"）
     floor: z.literal(true).optional(),

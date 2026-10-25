@@ -13,7 +13,7 @@ import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
 describe('按属性换算（BuffDef.scale）', () => {
-  const stats = { hp: 39881, atk: 1000, def: 0, energyRegen: 2.6464 }
+  const stats = { hp: 39881, atk: 1000, def: 0, energyRegen: 2.6464, tunabilityRate: 1 }
   test('取整的按整千算，有上限；不取整的按比例', () => {
     expect(scaledValue({ stat: 'hp', per: 1000, floor: true, cap: 0.75 }, 0.015, stats)).toBeCloseTo(0.585, 9)   // 39 层
     expect(scaledValue({ stat: 'hp', per: 1000, floor: true, cap: 1800 }, 36, stats)).toBe(1404)

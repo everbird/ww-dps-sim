@@ -55,7 +55,7 @@ export interface ResolvedMember {
 }
 
 export type StatValues = Partial<Record<StatKey, number>>
-export interface StaticStats { hp: number; atk: number; def: number; energyRegen: number }
+export interface StaticStats { hp: number; atk: number; def: number; energyRegen: number; tunabilityRate: number }
 
 /** 静态面板只放"面板类"乘区；带过滤条件的加成（元素 / 类型伤害加成等）一律转成常驻 buff 实例 */
 export interface StaticPanel {

@@ -124,7 +124,7 @@ function interfere(sim: Sim, s: SimState, by: Slot): void {
     if (s.battleFrames < (e.responseCd[name] ?? 0)) continue
     e.responseCd[name] = s.battleFrames + sim.r.rules.responseCooldown
     const instance = s.nextId++
-    for (const jd of act.judgments) spawnJudgment(s, slot, act.id, instance, jd, undefined, `${kind}·干涉的响应`)
+    for (const jd of act.judgments) spawnJudgment(s, slot, act.id, instance, jd, true, `${kind}·干涉的响应`)   // 脱手：不随谁的动作取消
     log(s, { type: 'enemyState', change: 'response', by: name, detail: `${kind}响应` })
   }
 }
