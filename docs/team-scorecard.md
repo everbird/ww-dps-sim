@@ -1,4 +1,4 @@
-# 五支队伍的轴卡片（2026-10-25）
+# 五支队伍的轴卡片（2026-10-25，震谐开关加上后重生成）
 
 景尤守、爱琳莫、爱琳守、心队、M0 各取代表轴，用 `pnpm scorecard … --md` 生成（表在下面，TD-10 §6.3）。数据 20261019，配装都是你的账号；切人冷却按每人单独计（AGENTS.md 差异第 18 条）。
 
@@ -16,7 +16,10 @@
   - 降到"5 星 0 链 1 精"影响都在 3% 以内（爱琳莫、爱琳守主要是停驻之烟 5 → 1 精，−2.2%）。
   - 共鸣效率：守岸人、莫宁都要堆约 5–6 条副词条，靠主词条才够；爱弥斯、景燃 1 条上下。
 - **靠不靠得住**：
-  - "翻过来变得最多"只看有开关的假设。爱弥斯两队最关键的是震谐规则（`resonance-rules`：干涉 8 秒、轨迹叠法，见 docs/alm-confirm.md Y4、Y5），它没有自动翻的开关，所以表里显示"最多 −0.2%"偏乐观。
+  - "翻过来变得最多"只看有开关的假设。爱弥斯两队的震谐规则 2026-10-25 加了开关（AGENTS.md 差异第 20 条）：
+    - 爱琳守最敏感的是干涉时长（`resonance-rules`，8 → 5 秒 +11.1%）：没有莫宁的谐振场，干涉锁得越久，谐度破坏越赶不上每轮一次；
+    - 爱琳莫最敏感的是"过载后第一次强化 E 不消耗轨迹"（`track-no-consume`，关掉 −4.0%）。
+    - 两队写的是手动谐度破坏（`tuneBreak: manual`），表里不翻"谐度破坏自动放"；全关掉的话爱琳莫 −33%、爱琳守跑不通（docs/assumption-sensitivity.md）。
   - 景尤守、M0 对"谐度破坏自动放"最敏感（关掉 −3.6% / −8.2%）。
 
 ## ① 目标
@@ -64,9 +67,9 @@
 - **jys-5r18z**：碰到的假设 def-no-floor、wait-settled、switch-ends-stop、dilation-rules、summon-clock、white-bar、tune-break-auto、tunability-base、data-guess、module-guess、stat-scaling-static；翻过来变得最多：tune-break-auto（options.tuneBreak = off）−3.6%
 - **jys-5r18z-尤诺快开大**：碰到的假设 def-no-floor、wait-settled、switch-ends-stop、dilation-rules、summon-clock、white-bar、tune-break-auto、tunability-base、data-guess、module-guess、stat-scaling-static；翻过来变得最多：tune-break-auto（options.tuneBreak = off）−3.7%
 - **jys-轮椅**：碰到的假设 def-no-floor、wait-settled、switch-ends-stop、dilation-rules、summon-clock、white-bar、tune-break-auto、tunability-base、data-guess、module-guess、stat-scaling-static；翻过来变得最多：tune-break-auto（options.tuneBreak = off）−3.3%
-- **alm-爱琳莫**：碰到的假设 def-no-floor、wait-settled、resonance-rules、switch-ends-stop、dilation-rules、summon-clock、white-bar、tunability-base、module-guess、stat-scaling-static；翻过来变得最多：switch-ends-stop（rules.switchEndsStop = false）−0.1%
-- **alm-爱琳守**：碰到的假设 def-no-floor、wait-settled、resonance-rules、switch-ends-stop、dilation-rules、summon-clock、white-bar、tunability-base、data-guess、module-guess、stat-scaling-static；翻过来变得最多：switch-ends-stop（rules.switchEndsStop = false）−0.2%
+- **alm-爱琳莫**：碰到的假设 def-no-floor、wait-settled、resonance-rules、track-no-consume、switch-ends-stop、dilation-rules、summon-clock、white-bar、tunability-base、module-guess、stat-scaling-static；翻过来变得最多：track-no-consume（rules.trackNoConsume = false）−4.0%
+- **alm-爱琳守**：碰到的假设 def-no-floor、wait-settled、resonance-rules、track-no-consume、switch-ends-stop、dilation-rules、summon-clock、white-bar、tunability-base、data-guess、module-guess、stat-scaling-static；翻过来变得最多：resonance-rules（rules.interferenceFrames = 300）+11.1%
 - **xin-team-r5-按套路重排-心补EQ**：碰到的假设 effect-tick、effect-owner、wait-settled、ult-no-switch、switch-ends-stop、dilation-rules、summon-clock、white-bar、tune-break-auto、tunability-base、data-guess、module-guess；翻过来变得最多：forte-keep-on-switch（rules.forteKeepOnSwitch = false）跑不通
 - **m0-video-eq**：碰到的假设 wait-settled、dilation-rules、summon-clock、white-bar、tune-break-auto、tunability-base、data-guess、burst-release；翻过来变得最多：tune-break-auto（options.tuneBreak = off）−8.2%
 
-共 298 次仿真，100 秒。
+共 302 次仿真，99 秒。
