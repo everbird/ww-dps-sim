@@ -265,7 +265,7 @@ export interface DilationRule {
 export const DEFAULT_RULES: Rules = {
   fps: 60,
   charLevel: 90,
-  switchCooldown: 60,                               // 机制设计 5.4
+  switchCooldown: 60,                               // 被切走的人 1 秒内不能切回来，每人单独计（机制设计 5.4 写的是全局，2026-10-25 用户更正）
   concertoMax: 100,
   concertoTiming: 'onHit',                          // 逐段所得按命中给，"起手即得"仍在动作开始时（2026-10-03 用户实测，TD-06 Q1）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1

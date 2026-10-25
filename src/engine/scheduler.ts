@@ -243,7 +243,9 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       return s.frame >= c.frame ? GO : { go: false, code: 'at', reason: `等到第 ${c.frame} 帧` }
     case 'switch': {
       if (c.to === s.onField) throw fail(s, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
-      if (s.switchCd > 0) return { go: false, code: 'switchCd', reason: `切人冷却还剩 ${Math.ceil(s.switchCd)} 帧` }
+      // 切人冷却每人单独计：被切走的人一段时间内不能再切回来（2026-10-25 用户确认；视频 A 里尤诺 → 景燃 → 守岸人两次切人只隔约 18 帧）
+      const back = s.chars[c.to].switchCd
+      if (back > 0) return { go: false, code: 'switchCd', reason: `${s.chars[c.to].name} 的切人冷却还剩 ${Math.ceil(back)} 帧` }
       // 用 last 而不是 action：锁可以越过结束帧（散华 QTE 结束帧 63，"第70F前不能切人"），与派生窗口一样按局部帧照走（TD-04 §6.2）
       const last = s.chars[s.onField].last
       // 全局时停（大招动画、隐藏 HUD）期间切不了人：物理上按不了（2026-10-22，WuwaLAB 的大招都只记 time_stop、no_swap 为 0）。
@@ -373,7 +375,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
         s.dilations = s.dilations.filter(d => !stops.includes(d))
       }
       s.onField = c.to
-      s.switchCd = k.rules.switchCooldown
+      s.chars[from].switchCd = k.rules.switchCooldown
       // 出场技要地面普通切入（TD-09 §3.5）：切入者自己在后台的动作要走完、切出者要在地面（切入者出现在切出者的位置）；
       // 变奏切人时 onSwitch 随即开始变奏动作，记成 intro
       const back = s.chars[c.to].action

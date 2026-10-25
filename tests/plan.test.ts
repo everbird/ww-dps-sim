@@ -25,24 +25,25 @@ describe('套路序列与写回成轴', () => {
 })
 
 dataDescribe('排回原轴：M0 视频轴 EQ 版', () => {
-  test('8 个套路打乱后重排，原轴排第 1；出场技放不出的（变奏入场、切出者在空中…）调度器报错 entrySkill、被剪掉', async () => {
+  // 2026-10-25 切人冷却改成每人单独计后，"椿出场技"与"维里奈出场技"两段对调（A C B D…）比原轴高 0.21%，原轴排第 2
+  test('8 个套路打乱后重排，原轴排前 2、与第 1 差不到 0.5%；出场技放不出的（变奏入场、切出者在空中…）调度器报错 entrySkill、被剪掉', async () => {
     const data = await loadGameData()
     const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
     const x = planRotation(sc, data, { width: 3 })
     expect(x.library).toHaveLength(8)
-    expect(x.refRank).toBe(1)
-    expect(x.leaves[0]!.dps).toBeCloseTo(x.ref.dps, 6)
+    expect(x.refRank).toBeLessThanOrEqual(2)
+    expect(x.leaves[0]!.dps / x.ref.dps - 1).toBeLessThan(0.005)
     expect(x.failures['entrySkill']).toBeGreaterThan(0)
     expect(x.leaves.every(l => l.introMissed === 0)).toBe(true)
   }, 120_000)
 })
 
 dataDescribe('套路次数可变（--vary）：M0 视频轴 EQ 版', () => {
-  test('次数 ±1：原轴仍排第 1（一轮卡在维里奈、椿 25 秒的大招冷却上，加减一段都接不上）；改了次数的标出差几次；跑出来一样的合成一条', async () => {
+  test('次数 ±1：第 1 仍是原来的次数（一轮卡在维里奈、椿 25 秒的大招冷却上，加减一段都接不上；顺序可能对调了两段）；改了次数的标出差几次；跑出来一样的合成一条', async () => {
     const data = await loadGameData()
     const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
     const x = planRotation(sc, data, { width: 3, vary: 1 })
-    expect(x.refRank).toBe(1)
+    expect(x.refRank).toBeLessThanOrEqual(2)
     expect(x.leaves[0]!.counts).toEqual({})
     const varied = x.leaves.filter(l => Object.keys(l.counts).length > 0)
     for (const l of varied) {

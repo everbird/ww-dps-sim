@@ -31,7 +31,7 @@ export function checkTick(sim: Sim, s: SimState, lastBattle: number): void {
     for (const k in c.cooldowns) if (!(c.cooldowns[k]! >= 0)) throw bad(s, `${c.name} 的冷却 ${k} 为 ${c.cooldowns[k]}`)
     for (const k in c.charges) if (!(c.charges[k]!.spent >= 0)) throw bad(s, `${c.name} 的充能 ${k} 用掉 ${c.charges[k]!.spent} 次`)
   }
-  if (!(s.switchCd >= 0)) throw bad(s, `切人冷却为 ${s.switchCd}`)
+  for (const c of s.chars) if (!(c.switchCd >= 0)) throw bad(s, `${c.name} 的切人冷却为 ${c.switchCd}`)
   for (const b of s.buffs) {
     if (b.remaining !== 'inf' && !(b.remaining > 0)) throw bad(s, `buff ${b.defId} 的剩余时间 ${b.remaining} 应已移除`)
     if (!(b.stacks >= 1)) throw bad(s, `buff ${b.defId} 的层数 ${b.stacks}`)
