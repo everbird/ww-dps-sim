@@ -115,6 +115,7 @@ export default [
   defineWeapon({ name: '行进序曲', passives: [], resourceEffects: [concertoOnSkill('行进序曲')] }),
   defineWeapon({ name: '奇幻变奏', passives: [], resourceEffects: [concertoOnSkill('奇幻变奏')] }),
   defineWeapon({ name: '异响空灵', passives: [], resourceEffects: [concertoOnSkill('异响空灵')] }),   // 莫宁（爱琳莫）
+  defineWeapon({ name: '华彩乐段', passives: [], resourceEffects: [concertoOnSkill('华彩乐段')] }),   // 莫特斐（景莫守）
   defineWeapon({
     name: '永远的启明星',                    // 爱弥斯
     passives: [
@@ -148,7 +149,7 @@ export default [
   }),
 ]
 
-/** 协奏按阶 8 / 10 / 12 / 14 / 16：xlsx 武器表只有 1 阶的文本"回复8点"（没有各阶数值），各阶按 nanoka 3.7（武器 21020024、21050024 的 param） */
+/** 协奏按阶 8 / 10 / 12 / 14 / 16：xlsx 武器表只有 1 阶的文本"回复8点"（没有各阶数值），各阶按 nanoka 3.7（武器 21020024、21050024 的 param；华彩乐段 21030024 同一被动） */
 function concertoOnSkill(weapon: string): ResourceEffectInput {
   return {
     id: `${weapon}.协奏`, source: '施放共鸣技能时，回复8点协奏能量，每20秒可触发1次。',

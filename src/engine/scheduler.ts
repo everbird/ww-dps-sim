@@ -279,6 +279,11 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
         if (up && cur!.localFrame < up.from) return { go: false, code: 'airborne', reason: `等 ${cur!.id} 跳起（第 ${up.from} 帧），${s.chars[c.to].name} 切进来才在空中` }
         throw fail(s, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
       }
+      // 切人后第一下是地面出场技：切进来的人自己在后台的动作要走完才算出场技入场（TD-09 §3.5 的 busy）。会走完的，切人等它
+      // （2026-10-25 景莫守：景燃 A4 脱手退场后不久切回来打出场技阳A2，BV1VJYL6HEuQ）
+      const busy = s.chars[c.to].action
+      if (first?.entrySkill && busy && !busy.ended)
+        return { go: false, code: 'entryBusy', reason: `等 ${s.chars[c.to].name} 在后台的 ${busy.id} 走完，切进来才是出场技` }
       return afterInput(s, opts, 0)
     }
     case 'act': {

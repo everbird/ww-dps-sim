@@ -37,6 +37,25 @@ const sets: EchoSetModule[] = [
   }),
 
   defineEchoSet({
+    name: '高天共奏之曲',                   // 莫特斐（Evariste 账号）。协同攻击 = 莫特斐的加强音（协同-加强音），现有角色只有他穿这套
+    pieces: {
+      2: [{ id: '高天共奏之曲.2', source: '共鸣效率提升10%', zone: 'energyRegen', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [
+        {
+          id: '高天共奏之曲.5', source: '当前角色协同攻击造成的伤害提升80%',
+          zone: 'DamageChange', value: 0.8, filter: { judgments: ['协同-加强音'] }, target: 'self', duration: 'inf', trigger: 'always',
+        },
+        {
+          // "且暴击时"按每发都触发：加强音每 0.38 秒一发、4 秒内十来发，几乎总有一发暴击（期望模式不分暴击，总设计 T4）
+          id: '高天共奏之曲.5攻击', source: '协同攻击命中敌人且暴击时，队伍中登场角色攻击力提升20%，持续4秒。',
+          zone: 'atkPct', value: 0.2, target: 'onField', duration: 240,
+          trigger: { on: 'judgmentSettle', where: { judgments: ['协同-加强音'] } },
+        },
+      ],
+    },
+  }),
+
+  defineEchoSet({
     name: '隐世回光',                       // 维里奈
     pieces: {
       2: [{ id: '隐世回光.2', source: '治疗效果提升10%', zone: 'healBonus', value: 0.1, target: 'self', duration: 'inf', trigger: 'always' }],
