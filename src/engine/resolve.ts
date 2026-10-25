@@ -217,7 +217,7 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   const common = def.commonBlock ? data.commonActions[def.commonBlock] ?? {} : {}
   const actions: Record<ActionId, ActionDef> = { ...common, ...forChain(def.actions, chain), ...echoActions }
   return {
-    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, stats: { hp: 0, atk: 0, def: 0, energyRegen: 0 }, actions, aliases },
+    member: { slot, def, chain, weapon: { def: weapon, rank }, echoes, panel, stats: { hp: 0, atk: 0, def: 0, energyRegen: 0, tunabilityRate: 0 }, actions, aliases },
     buffs, effects,
   }
 }
@@ -230,6 +230,7 @@ export function staticStats(m: ResolvedMember, buffs: readonly RegisteredBuff[])
   return {
     hp: compose(m.panel.hp, 'hpPct', 'hpFlat'), atk: compose(m.panel.atk, 'atkPct', 'atkFlat'), def: compose(m.panel.def, 'defPct', 'defFlat'),
     energyRegen: snap9(m.panel.energyRegen + sum('energyRegen')),
+    tunabilityRate: snap9(m.panel.tunabilityRate + sum('tunabilityRate')),
   }
 }
 const reaches = (b: RegisteredBuff, slot: Slot): boolean =>

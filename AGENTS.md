@@ -73,7 +73,7 @@ docs/               设计文档
 
 ```bash
 pnpm install
-pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
+pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
                                              # --strict 名单有未连上的伤害判定时退出码 1
                                              # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
@@ -120,7 +120,7 @@ pnpm trace scenarios/m0-video.yaml          # 调试表（TD-11 §6）：某一�
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
-**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人 --nanoka 3.7 && pnpm check:data`。
+**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯 --nanoka 3.7 && pnpm check:data`。
 
 ## 约定
 
@@ -152,3 +152,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 14. 补位后面接变奏切人、buff 覆盖率（2026-10-25，docs/jys-videos.md §6）：补位后面紧接 `switch <角色> 变奏`、切出者协奏没满、补的那一下还有判定没出手时，切人等它出手（等待代码 `settled`；原来同一帧切掉，最后一下补位总是白打，用例 td09）；`buffUptime` 到期当帧又挂上的从上一段的终点接着算（原来那一帧算两次，整局不断的计时 buff 覆盖率超过 1，用例 summary）。要并回的：TD-09 §3.2（补位）、TD-10 §2（覆盖率）。
 15. 写了"不能切人"、比全局时停早的动作（2026-10-25，docs/jys-videos.md §6.3，修订差异第 3 条）：守岸人大招"第178F前不能切人"、全局时停 207 帧，视频 A 逐帧量出约 180 帧就切人、计时器接着走。现在写了的切人锁比全局时停早结束时，过了锁就能切；切人时切出者登记的时停、全局时停一起结束（推断出来的锁不算）。开关 `rules.switchEndsStop`（缺省 true，false 是原来的做法），假设 `switch-ends-stop`，用例 td09；影响很小（jys-team 69,088 → 69,125，其余场景 DPS 不变）。要并回的：TD-02（Rules 的键）、TD-04 §3.3、TD-05 §2（全局时停与切人锁）、总设计 §13（假设）。
 16. 偏移 / 干涉 / 响应（震谐，2026-10-25，docs/alm-confirm.md §2）：敌人的 `shift`（种类、谁挂的、剩余帧）与 `interference`、钩子 `ctx.applyShift`；谐度破坏命中挂着震谐·偏移的目标 → 震谐·干涉 8 秒（`rules.interferenceFrames`，偏移消耗、期间偏谐值不累积），队里有"震谐响应"动作的角色在独立时间线上各出一次响应（`rules.responseCooldown` 8 秒一次）；震谐响应伤害按 TD-03 §6 算（不再记 0）；`enemyState` 多了 `shiftEnd` / `interferenceEnd` / `response`；假设 `resonance-rules`，集谐没建。用例 `tests/resonance.test.ts`。要并回的：TD-06 新 §19（并改 §13、Q13）、TD-03 §6（响应的元素与没有对失谐项）、TD-02（`EnemyRuntime.shift / interference`、`ResonanceKind`、`HookContext.applyShift`、Rules 两个键、`ENEMY_STATE_CHANGES`）、总设计 §13（假设）。
+17. 爱弥斯 · 琳奈 · 莫宁 / 守岸人（2026-10-25，docs/alm-confirm.md）：三人的模块（爱弥斯并入"机兵爱弥斯"块，前缀"机兵·"）、武器、套装、首位声骸，dmg-join；写了"变奏"的切人在切出者协奏没满、手上动作还有判定没出手时等它出手（原来只限补位，差异第 14 条，现在所有动作都等）；`BuffDef.scale` 与 `StaticStats` 多了 `tunabilityRate`（星构寻辉之环）；响应判定按脱手生成。要并回的：TD-08（三人的模块）、TD-09 §3.5（变奏切人等出手）、TD-02（`StaticStats.tunabilityRate`、`scale.stat`）、TD-01 §13（构建出的核心资源槽名、上限与各行对不上，见 alm-confirm Y1）。
