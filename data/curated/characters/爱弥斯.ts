@@ -158,8 +158,11 @@ export default defineCharacter('爱弥斯', {
       // 光翼共奏移除震谐轨迹（"强化E-模态增益"那一刻）：每层 +4% 追加震谐伤害；轨迹无消耗期间不移除
       if (ev.type === 'judgmentSpawn' && ev.char === me && ev.judgment === '强化E-模态增益') {
         const layers = t < v.轨迹至 ? v.轨迹 : 0
-        if (layers > 0) ctx.addBuff('爱弥斯.轨迹增幅', { target: ctx.self, stacks: layers })
-        if (t < v.无消耗至) v.无消耗至 = -1
+        const keep = t < v.无消耗至
+        if (keep && layers > 0) ctx.assume('track-no-consume', `爱弥斯 ${ev.action}：轨迹无消耗，${layers} 层照样加成`)
+        // 开关关掉（rules.trackNoConsume = false）：无消耗的这一次不按层数加成（层数照旧留给下一次）
+        if (layers > 0 && (!keep || ctx.rules.trackNoConsume)) ctx.addBuff('爱弥斯.轨迹增幅', { target: ctx.self, stacks: layers })
+        if (keep) v.无消耗至 = -1
         else { v.轨迹 = 0; v.轨迹至 = -1 }
         return
       }

@@ -232,6 +232,8 @@ export interface Rules {
   interferenceFrames: number
   /** 同一角色对同一目标两次响应至少隔多久（战斗帧；xlsx"赋予目标8秒【…震谐响应冷却】"） */
   responseCooldown: number
+  /** 爱弥斯过载后第一次光翼共奏照样按震谐轨迹加成（不移除层数；缺省 true，假设 track-no-consume）。false：这一次拿不到加成 */
+  trackNoConsume: boolean
   critRateCap: number
   defFactorCap: number
   defFloor: boolean                                 // 减防、无视防御之后的目标防御先取整（TD-03 Q1；缺省不取整，假设 def-no-floor）
@@ -272,6 +274,7 @@ export const DEFAULT_RULES: Rules = {
   breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
   interferenceFrames: 480,                          // 8 秒（假设 resonance-rules）
   responseCooldown: 480,                            // 8 秒（xlsx 三人"震谐响应"行的备注）
+  trackNoConsume: true,                             // 推断（docs/alm-confirm.md Y5）
   critRateCap: 1,
   defFactorCap: 2,                                  // min(2, …)（TD-03 §3.2）
   defFloor: false,                                  // xlsx 多数公式不取整（TD-03 Q1）；true = 物理、谐度破坏公式那样先取整
