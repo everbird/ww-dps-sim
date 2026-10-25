@@ -6,6 +6,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { z } from 'zod'
 import { assembleBlock } from './assemble-action'
+import { checkCoreCaps } from './core-check'
 import { mergeBlockKey, type CharacterModuleDef, type EchoModule } from './define'
 import type { ActionDef } from './gamedata'
 import {
@@ -92,6 +93,14 @@ async function listFlags(name: string): Promise<void> {
   if (cds.length > 0) console.log(`  冷却 / 技能树与 nanoka ${nanoka!.version} 对不上：\n${cds.map(c => `    ${c}`).join('\n')}`)
   // 段数、协奏、大招能量（docs/engine-quality-plan.md P5）：倍率本身和解包对过，这里查连到哪个动作、几下
   const gen = GenCharactersSchema.parse(read('characters.json'))[name]
+  // 核心资源槽：一次加 / 扣的量比上限还大，槽名或上限多半和动作表的列对不上（docs/alm-confirm.md Y1）；按角色模块改过的槽名、上限查
+  if (gen) {
+    const cores = gen.coreResources.map(c => ({
+      slot: c.slot, name: mod?.coreNames?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.name, cap: mod?.coreCaps?.[c.slot as 1 | 2 | 3 | 4 | 5] ?? c.cap,
+    }))
+    const bad = checkCoreCaps(assembled, cores)
+    if (bad.length > 0) console.log(`  核心资源槽：\n${bad.map(c => `    ${c}`).join('\n')}`)
+  }
   const more = [...(gen ? checkEnergyCost(gen.energyCost, nk) : []), ...checkHits(assembled, nk), ...checkConcerto(assembled, mod?.aliases ?? {}, nk)]
   if (more.length > 0) console.log(`  段数 / 协奏 / 大招能量与 nanoka ${nanoka!.version} 对不上：\n${more.map(c => `    ${c}`).join('\n')}`)
 }
