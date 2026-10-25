@@ -248,6 +248,12 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       // 全局时停（大招动画、隐藏 HUD）期间切不了人：物理上按不了，不是推断，开关管不到（2026-10-22，WuwaLAB 的大招都只记 time_stop、no_swap 为 0）
       const stop = last?.def.globalStopUntil
       if (last && stop !== undefined && last.localFrame < stop) return { go: false, code: 'globalStop', reason: `${last.id} 全局时停到第 ${stop} 帧（动画中切不了人）` }
+      // 补位后面接"switch <角色> 变奏"：补的那一下打出去了、协奏还没满，就等它出手再切——补位就是为了这一下的协奏
+      // （TD-09 §3.2；2026-10-25 景尤守 5R18Z：不等的话切人与补位同一 tick，补的普攻还没命中就被切掉，最后一下补位总是白打）
+      const prev = listOf(q)[q.next - 1]
+      if (c.expectIntro && prev?.kind === 'act' && prev.filler && prev.slot === s.onField
+        && s.chars[s.onField].concerto < k.rules.concertoMax && !settled(s, s.onField))
+        return { go: false, code: 'settled', reason: `等补位的 ${s.chars[s.onField].action!.id} 出手（变奏要协奏满）` }
       const lock = last?.def.switchLockUntil
       // 推断出来的锁可以在场景里关掉，量假设的敏感度（options.rules.ultInputLocksSwitch / invincibleLocksSwitch）
       const off = last && ((last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch) || (last.def.switchLockFromInvincible && !k.rules.invincibleLocksSwitch))

@@ -94,3 +94,20 @@ dataDescribe('稳态的误差条 steady.spread、漂移提示 steadyDrift 与自
     expect(c2.warnings.find(w => w.code === 'steadySkip')!.message).toMatch(/^稳态从第 5 轮起：第 2–4 轮还在漂移/)
   }, 120_000)
 })
+
+// 2026-10-25 景尤守轮椅轴：守岸人"星域治疗计时"每 180 帧到期、钩子同一帧再挂上，到期那一帧原来算了两次，整局不断的覆盖率超过 1（checkLog 报出）
+describe('buff 覆盖率 buffUptime', () => {
+  test('到期那一帧整帧算在内；同一帧又挂上的从下一帧接着算，不重复', async () => {
+    const { buffUptime } = await import('../src/engine/summary')
+    const ev = (type: 'buffApply' | 'buffExpire', f: number) =>
+      (type === 'buffApply'
+        ? { type, f, t: f / 60, buff: '甲.计时', target: '甲', stacks: 1, remaining: 180 }
+        : { type, f, t: f / 60, buff: '甲.计时', target: '甲', reason: 'timeout' }) as unknown as import('../src/engine/types').SimEvent
+    // 第 0 帧挂上，第 179、359 帧到期并当帧续上，第 540 帧窗口结束
+    const log = [ev('buffApply', 0), ev('buffExpire', 179), ev('buffApply', 179), ev('buffExpire', 359), ev('buffApply', 359)]
+    expect(buffUptime(log, 0, 540)['甲.计时→甲']).toBe(1)
+    // 到期后隔几帧再挂：中间空着的不算
+    const gap = [ev('buffApply', 0), ev('buffExpire', 179), ev('buffApply', 200)]
+    expect(buffUptime(gap, 0, 300)['甲.计时→甲']).toBe((180 + 100) / 300)
+  })
+})
