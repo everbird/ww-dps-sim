@@ -46,7 +46,7 @@ export interface ResolvedMember {
   chain: Chain
   weapon: { def: WeaponDef; rank: Rank }
   echoes: { def: EchoDef | null; set: string; main: StatValues; subs: StatValues }[]   // 第一个是首位声骸（技能 Q）；
-                                            // def 为 null：不在声骸表里的非首位声骸（只计入词条与套装）
+                                            // def 为 null：不在声骸表里的声骸（只计入词条与套装；首位的就没有声骸技能）
   panel: StaticPanel
   /** 静态面板加常驻 buff 后的属性（生命、攻击、防御取整后的值，共鸣效率是比例）：按属性换算的 buff（BuffDef.scale）与钩子的 ctx.stat 用（假设 stat-scaling-static） */
   stats: StaticStats

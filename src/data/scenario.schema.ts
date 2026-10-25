@@ -104,7 +104,7 @@ export const ScenarioSchema = z.strictObject({
     if ('error' in p) { ctx.addIssue({ code: 'custom', path: [part, i], message: `${where}：${p.error}` }); return }
     if (part === 'rotation') items += p.length
     for (const it of p) {
-      if (it.kind !== 'wait' && !names.includes(it.char))
+      if (it.kind !== 'wait' && it.kind !== 'at' && !names.includes(it.char))
         ctx.addIssue({ code: 'custom', path: [part, i], message: `${where}：${it.char} 不在队伍里` })
     }
   })
@@ -123,12 +123,15 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //   switch <角色>   或  切人 <角色>          切人
 //   switch <角色> 变奏                       切人，并说明这里应是变奏：切出者协奏没满时照常普通切人，记一条警告（轴可能有问题；TD-09 §2.1、§3.5）
 //   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
+//   at <秒>         或  对时 <秒>            等到世界秒（从仿真开始算，含大招动画）：照录像记的轴用它把每段对到视频的时刻；
+//                                            前面的补位 "~" 看它——还没到时间就接着补（2026-10-25 桃渊散录像）
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
   | { kind: 'act'; char: string; action: string; delay: number; force: boolean; optional?: true; filler?: true }
   | { kind: 'switch'; char: string; expectIntro?: true }
   | { kind: 'wait'; frames: number }
+  | { kind: 'at'; seconds: number }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
 export function parseRotationLine(text: string): RotationItem[] | { error: string } {
@@ -147,6 +150,10 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
   if (head === 'wait' || head === '等待') {
     if (tok.length !== 2 || !/^\d+$/.test(tok[1]!)) return { error: `"${s}" 格式不对：应为 ${head} <帧数>` }
     return [{ kind: 'wait', frames: Number(tok[1]) }]
+  }
+  if (head === 'at' || head === '对时') {
+    if (tok.length !== 2 || !/^\d+(\.\d+)?$/.test(tok[1]!)) return { error: `"${s}" 格式不对：应为 ${head} <世界秒>` }
+    return [{ kind: 'at', seconds: Number(tok[1]) }]
   }
   if (tok.length === 1) return { error: `"${s}" 只有角色名：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
   const out: RotationItem[] = []
@@ -189,4 +196,4 @@ export type Command =
   | { kind: 'act'; line: number; item: number; slot: Slot; action: ActionId; delay: Frame; force: boolean; optional?: true; filler?: true }
   | { kind: 'switch'; line: number; item: number; to: Slot; expectIntro?: true }   // expectIntro：写了"变奏"
   | { kind: 'wait'; line: number; item: number; frames: Frame }
-  | { kind: 'at'; line: number; item: number; frame: number }   // 仅测试台：等到世界帧 frame；排轴语法写不出来
+  | { kind: 'at'; line: number; item: number; frame: number }   // 等到世界帧 frame（排轴写 at <世界秒>；测试台直接给帧）

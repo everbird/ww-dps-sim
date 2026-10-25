@@ -55,6 +55,38 @@ const sets: EchoSetModule[] = [
     },
   }),
 
+  // 全 4 星桃渊散（2026-10-25，docs/tys-confirm.md）
+  defineEchoSet({
+    name: '凌冽决断之心',                   // 散华（视频 BV1o7kfBPE6y 的配装）
+    pieces: {
+      2: [{ id: '凌冽决断之心.2', source: '共鸣技能伤害提升12%', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['共鸣技能'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [
+        {
+          id: '凌冽决断之心.5冷凝', source: '施放共鸣技能时，自身冷凝伤害提升22.5%，持续15秒',
+          zone: 'DamageChangeElement', value: 0.225, filter: { elements: ['冷凝'] }, target: 'self', duration: 900,
+          trigger: { on: 'actionStart', where: { actionKinds: ['skill'] } },
+        },
+        {
+          id: '凌冽决断之心.5技能', source: '施放共鸣解放时，自身共鸣技能伤害提升18%，持续5秒，可叠加2层。',
+          zone: 'DamageChangeType', value: 0.18, filter: { tags: ['共鸣技能'] }, target: 'self', maxStacks: 2, duration: 300,
+          trigger: { on: 'actionStart', where: { actionKinds: ['liberation'] } },
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
+    name: '彻空冥雷',                       // 渊武
+    pieces: {
+      2: [{ id: '彻空冥雷.2', source: '导电伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['导电'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [{
+        // "各获得一层……每层各持续15秒"：两层各自计时，这里按同一个 buff 两层、再触发刷新（近似）
+        id: '彻空冥雷.5', source: '使用重击或共鸣技能时，各获得一层导电伤害提升15%的效果，该效果可叠加两层，每层各持续15秒',
+        zone: 'DamageChangeElement', value: 0.15, filter: { elements: ['导电'] }, target: 'self', maxStacks: 2, duration: 900,
+        trigger: { on: 'actionStart', where: { actionKinds: ['heavy', 'skill'] } },
+      }],
+    },
+  }),
+
   defineEchoSet({
     name: '隐世回光',                       // 维里奈
     pieces: {

@@ -168,12 +168,13 @@ dataDescribe('首位声骸（M0 队伍）', () => {
     expect(gd.echoes['无妄者']!.q).toBe('Q·斩击')                               // 组名取公共前缀（斩击1…6）
   })
 
-  test('异相取本体；非首位的声骸不在表里也行（只计入词条与套装）；首位不在表里报错；没装声骸时没有 Q', () => {
+  test('异相取本体；不在表里的声骸只计入词条与套装（首位的另提示、没有 Q，写 Q 报错）；没装声骸时没有 Q', () => {
     const r = resolveTeam(withEchoes(0, ['异相·无妄者', '遁地鼠', '刺玫菇（稚形）']))
     expect([r.team[0].aliases.Q, r.team[0].echoes.map(e => e.def?.key ?? null)]).toEqual(['Q·斩击', ['无妄者', null, null]])
-    let err: unknown
-    try { resolveTeam(withEchoes(0, ['无冠'])) } catch (e) { err = e }
-    expect((err as ResolveError).issues).toEqual(['队伍第 1 位 椿：首位声骸"无冠"不在声骸表里，放不了技能（名字照声骸表 A 列写，如"梦魇·无冠者"）'])
+    const miss = resolveTeam(withEchoes(0, ['无冠']))
+    expect([miss.team[0].aliases.Q, miss.team[0].echoes[0]!.def]).toEqual([undefined, null])
+    expect(miss.warnings).toContain('队伍第 1 位 椿：首位声骸"无冠"不在声骸表里，只算词条与套装，没有声骸技能（名字照声骸表 A 列写，如"梦魇·无冠者"）')
+    expect(() => resolveTeam(withEchoes(0, ['无冠']), 0, ['椿 Q'])).toThrow(ResolveError)
     expect(() => resolveTeam(M0, 0, ['椿 Q'])).toThrow(ResolveError)
   })
 

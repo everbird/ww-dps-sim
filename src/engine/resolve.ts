@@ -163,11 +163,12 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   for (const [k, v] of Object.entries(def.treeStats)) stat('技能树', k as StatKey, v)
   const echoes: ResolvedMember['echoes'] = []
   for (const [i, e] of m.echoes.entries()) {
-    // 首位声骸要放技能，必须在声骸表里；其余几件只计入词条与套装，表里没有（1C 小怪多半不在）也行
+    // 首位声骸要放技能，得在声骸表里；不在的（表里没收的新声骸，如异构武装）只计入词条与套装，没有声骸技能——轴里写 Q 会报错。
+    // 名字写错也走这里，所以提示里带上声骸表的写法（2026-10-25 桃渊散，原来直接报错）
     const edef = echoOf(data, e.name)
     if (!edef && i === 0) {
       const hint = Object.keys(data.echoes).length > 0 ? '名字照声骸表 A 列写，如"梦魇·无冠者"' : '没有 echoes.json，先 pnpm build:data'
-      issues.push(`${where}：首位声骸"${e.name}"不在声骸表里，放不了技能（${hint}）`)
+      warnings.push(`${where}：首位声骸"${e.name}"不在声骸表里，只算词条与套装，没有声骸技能（${hint}）`)
     }
     for (const [k, v] of Object.entries(e.main)) stat('声骸', k as StatKey, v!)
     for (const [k, v] of Object.entries(e.subs)) stat('声骸', k as StatKey, v!)
