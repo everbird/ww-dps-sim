@@ -211,6 +211,24 @@ describe('T09-6 切人（§3.5）', () => {
       // "第114F前霸体、不能切人"：前面先有"霸体、"的也认
       expect(x['强化重击']!.switchLockUntil).toBe(114)
     })
+    test('写了"不能切人"、比全局时停早的：过了那一帧就能切，切人时剩下的时停结束（守岸人大招 178 / 207，2026-10-25 视频 A 逐帧量）', () => {
+      const b = block('守岸人')
+      expect([b['大招']!.switchLockUntil, b['大招']!.globalStopUntil]).toEqual([178, 208])
+      const cmds: Cmd[] = [{ act: 0, action: '大招' }, { switch: 1 }, { act: 1, action: 'A1' }]
+      const on = run([b, b, b], cmds)
+      const sw = eventsOf(on, 'switch')[0]!
+      expect(sw.f).toBe(178)
+      expect(on.s.assumed['switch-ends-stop']?.n).toBe(1)
+      // 切进来的 A1 当帧开始，战斗时钟随即接着走（切人那一 tick 的速率已经算过，晚 1 帧）：时停没把乙冻住
+      const a1 = eventsOf(on, 'actionStart').find(e => e.char === '乙')!
+      expect(a1.f).toBe(178)
+      const after = on.s.log.find(e => e.f >= a1.f + 10)!
+      expect(Math.round((after.t - a1.t) * 60)).toBeGreaterThanOrEqual(after.f - a1.f - 1)
+      // 开关关掉：全局时停整段挡切人（2026-10-22 的做法）
+      const off = run([b, b, b], cmds, { rules: { switchEndsStop: false } })
+      expect(eventsOf(off, 'switch')[0]!.f).toBe(208)
+      expect(eventsOf(off, 'wait').map(e => e.reason)).toContain('大招 全局时停到第 208 帧（动画中切不了人）')
+    })
     test('其余没写帧数的"不能切人"：同"无敌期间不能切人"，没有无敌帧的到动作结束；记 flag noSwitchUnframed（2026-10-21）', () => {
       // 菲比大招"不响应输入，不能切人"，无敌 1 / 218 → 219
       const p = block('菲比')['大招']!

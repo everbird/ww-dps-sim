@@ -10,7 +10,7 @@ export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小'
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
 export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
-  | 'rules.invincibleLocksSwitch' | 'options.inputDelay' | 'options.tuneBreak'
+  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -131,6 +131,14 @@ export const ASSUMPTIONS = [
       + '全局时停（大招动画）本来就挡切人，盖住了的不算（椿 240 帧盖过 239）；现在只有卜灵（全局时停 231 帧之后再挡 7 帧）还碰得到',
     why: '大招出招阶段不能切人是实战体感（2026-10-19），待实机验证；xlsx 有的大招两种都写、帧数不同（仇远 200 / 230、凌阳 210 / 180）',
     adjust: { how: '场景里 options.rules.ultInputLocksSwitch: false 改成不挡；实机验证后改装配规则（src/data/assemble-action.ts）；单个大招在角色模块里写 switchLockUntil 覆盖', path: 'rules.ultInputLocksSwitch', values: [false] },
+  },
+  {
+    id: 'switch-ends-stop', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §3.3，docs/jys-videos.md §6.3',
+    what: '写了"第 n 帧前不能切人"、比全局时停早结束的动作（守岸人大招：178 帧能切、全局时停 207 帧），过了那一帧就能切；'
+      + '切人时切出者这个动作剩下的时停、全局时停一起结束，切进来的人不被冻住、战斗时钟接着走',
+    why: 'xlsx"第178F前不能切人"；视频 A（BV1uXYT6dEiQ）逐帧量：大招开始后约 180 帧（±4）界面回来、尤诺已在场、计时器接着走，比全局时停结束早约 27 帧。'
+      + '只量了守岸人这一个；其余动作两者相差 0–3 帧（谐度破坏、椿 / 维里奈的大招）',
+    adjust: { how: '场景里 options.rules.switchEndsStop: false：全局时停整段挡切人（2026-10-22 的做法）', path: 'rules.switchEndsStop', values: [false] },
   },
   {
     id: 'dilation-rules', topic: '时间', tracked: true, impact: 'small', ref: 'TD-04 §3.3、Q1–Q6',
