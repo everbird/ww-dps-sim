@@ -183,7 +183,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       // （TD-09 §3.2 插队；m0-confirm §10 H1）
       const ij = c.kind === 'act' && actions[c.slot]![c.action]!.comboFrom?.length ? null : opts.interject?.(s)
       if (ij) {
-        const w = evaluateAct(s, opts, ij.slot, ij.def, false, 0, ref, false)
+        const w = evaluateAct(s, k, opts, ij.slot, ij.def, false, 0, ref, false)
         if (!w.go) { hold(s, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref); return true }
         closeSeg(s, ref)
         startAction(s, k, ij.slot, ij.def)
@@ -289,21 +289,21 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       const entry = def.id === 'A1' && s.entry?.slot === c.slot && s.entry.block === null
         ? Object.values(actions[c.slot]!).find(a => a.entrySkill) : undefined
       if (entry) throw fail(s, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
-      return evaluateAct(s, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
+      return evaluateAct(s, k, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
     }
   }
 }
 
 /** 出招此刻能不能开始（§3.2 的检查顺序，前台已查过）；插队的动作（opts.interject）也走这里，input = false：不加操作延迟 */
 function evaluateAct(
-  s: SimState, opts: SchedulerOptions, slot: Slot, def: ActionDef, force: boolean, delay: number, ref: CommandRef, input: boolean,
+  s: SimState, k: Kernel, opts: SchedulerOptions, slot: Slot, def: ActionDef, force: boolean, delay: number, ref: CommandRef, input: boolean,
 ): Verdict {
   const q = s.queue
   const ch = s.chars[slot]
   // 出场技只在普通切人入场后第一个出（用户确认，m0-confirm §11 V10）；不满足就再也等不来，同连段中断直接报错
   if (def.entrySkill && !(s.entry?.slot === slot && s.entry.block === null))
     throw fail(s, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
-  const g = gate(ch, def)
+  const g = gate(ch, def, k.rules.echoInputPriority)
   const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
   if (!g.ok && !onlyStarted) {
     if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
@@ -318,7 +318,10 @@ function evaluateAct(
     q.readyAt ??= s.battleFrames
     if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
   }
-  return input ? afterInput(s, opts, delay) : GO
+  const v = input ? afterInput(s, opts, delay) : GO
+  if (v.go && g.via === 'echoInput')
+    assume(s, 'echo-input-priority', `${ch.name} ${def.id} 打断 ${ch.action!.id}（第 ${Math.floor(ch.action!.localFrame)} 帧）`)
+  return v
 }
 
 const ENTRY_WHY: Record<EntryBlock, string> = {

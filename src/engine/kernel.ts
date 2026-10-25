@@ -350,18 +350,18 @@ export const priorityAt = (def: ActionDef, t: number): number => {
 const inWindow = (def: ActionDef, t: number): boolean => def.cancelWindows.some(w => t >= w.from && t < w.until)
 
 export type GateResult =
-  | { ok: true; via: 'idle' | 'priority' | 'derive' }
+  | { ok: true; via: 'idle' | 'priority' | 'derive' | 'echoInput' }   // echoInput：靠声骸的起手优先级才打断得了（假设 echo-input-priority）
   | { ok: false; wait: true; code: WaitCode; reason: string }
   | { ok: false; wait: false; code: 'comboBroken'; reason: string }   // 等不来：连段已断
 
 /** 动作层面能不能开始（§6.5）。原因按"连段 → 输入锁 → 优先级 / 派生"的顺序报第一个；
  *  "本 tick 已开始过动作"放在最后：只有其余都满足时才报它，等待记录里就不会冒出一帧一帧的它（TD-09 §3.2） */
-export function gate(c: CharRuntime, def: ActionDef): GateResult {
-  const r = gateRules(c, def)
+export function gate(c: CharRuntime, def: ActionDef, echoInput = false): GateResult {
+  const r = gateRules(c, def, echoInput)
   return r.ok && c.startedThisTick ? { ok: false, wait: true, code: 'started', reason: '同一角色一个 tick 只能开始一个动作' } : r
 }
 
-function gateRules(c: CharRuntime, def: ActionDef): GateResult {
+function gateRules(c: CharRuntime, def: ActionDef, echoInput: boolean): GateResult {
   if (def.comboFrom?.length) {
     const last = c.combo
     if (!last || !def.comboFrom.includes(last.id))
@@ -382,6 +382,7 @@ function gateRules(c: CharRuntime, def: ActionDef): GateResult {
   const p = priorityAt(a.def, t)
   const P = priorityAt(def, 0)
   if (P > p) return { ok: true, via: 'priority' }
+  if (echoInput && def.inputPriority !== undefined && def.inputPriority > p) return { ok: true, via: 'echoInput' }
   if (P === p && inWindow(a.def, t)) return { ok: true, via: 'derive' }
   return P < p
     ? { ok: false, wait: true, code: 'priority', reason: `优先级 ${P} 低于 ${a.id} 当前的 ${p}` }

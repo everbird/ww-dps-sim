@@ -10,7 +10,7 @@ export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小'
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
 export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
-  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'options.inputDelay' | 'options.tuneBreak'
+  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.echoInputPriority' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -152,6 +152,14 @@ export const ASSUMPTIONS = [
     why: 'xlsx"第178F前不能切人"；视频 A（BV1uXYT6dEiQ）逐帧量：大招开始后约 180 帧（±4）界面回来、尤诺已在场、计时器接着走，比全局时停结束早约 27 帧。'
       + '只量了守岸人这一个；其余动作两者相差 0–3 帧（谐度破坏、椿 / 维里奈的大招）',
     adjust: { how: '场景里 options.rules.switchEndsStop: false：全局时停整段挡切人（2026-10-22 的做法）', path: 'rules.switchEndsStop', values: [false] },
+  },
+  {
+    id: 'echo-input-priority', topic: '动作', tracked: true, impact: 'large', ref: 'TD-04 §6.1，docs/jys-videos.md §6.4',
+    what: '声骸起手时按角色通用块"召唤声骸 / 变身声骸"行的优先级（5）和当前动作比，能打断重击（4）、多数技能后摇；声骸表各行写的（多为 0）当作放出来之后的。'
+      + '照样要等当前动作的判定都出手（wait-settled）',
+    why: 'xlsx 各体型通用块有"召唤声骸""变身声骸"两行、优先级 5；机制设计 §5.3"声骸技能 Q 打断技能后摇"。视频 A（BV1uXYT6dEiQ）守岸人变奏 → 大招一段 5.59 秒，'
+      + '原来的做法（演绎整段优先级 4、声骸等它结束）仿真 6.67 秒，改后 5.52 秒。只对了这一段',
+    adjust: { how: '场景里 options.rules.echoInputPriority: false：按声骸表的优先级，等当前动作结束或进同级派生窗口（2026-10-25 之前的做法）', path: 'rules.echoInputPriority', values: [false] },
   },
   {
     id: 'dilation-rules', topic: '时间', tracked: true, impact: 'small', ref: 'TD-04 §3.3、Q1–Q6',

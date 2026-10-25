@@ -274,3 +274,21 @@ dataDescribe('T04-14 全量：75 个块 1771 个动作组（20261019 版），�
   })
   test('结算次数 = 寿命内放得下的次数', () => expect(tickMismatch).toBe(0))
 })
+
+// 2026-10-25 声骸起手的优先级（TD-04 §6.1，假设 echo-input-priority，docs/jys-videos.md §6.4）：守岸人演绎（强化重击，整段 4）→ 声骸（表上 1）
+describe('T04-15 声骸起手按通用块"召唤声骸"的优先级（5）比，能打断重击的后摇', () => {
+  const heavy = action({ id: '强化重击', kind: 'heavy', endFrame: 86, priority: [{ fromFrame: 0, value: 4 }], judgments: [judgment({ name: '演绎', spawnFrame: 30 })] })
+  const echo = action({ id: 'Q·爆气', kind: 'echo', endFrame: 100, priority: [{ fromFrame: 0, value: 1 }], inputPriority: 5 })
+  const TEAM: Record<string, ActionDef>[] = [{ 强化重击: heavy, 'Q·爆气': echo }, {}, {}]
+  const cmds = [{ act: 0, action: '强化重击' }, { act: 0, action: 'Q·爆气' }] as const
+  test('缺省：等演绎的判定出手（第 30 帧）后第 31 帧就放，记一笔假设', () => {
+    const r = run(TEAM, [...cmds])
+    expect(r.s.log.filter(e => e.type === 'actionStart').map(e => e.f)).toEqual([0, 31])
+    expect(r.s.assumed['echo-input-priority']?.n).toBe(1)
+  })
+  test('rules.echoInputPriority = false：按表上的 1，等强化重击整段结束（第 86 帧）', () => {
+    const r = run(TEAM, [...cmds], { rules: { echoInputPriority: false } })
+    expect(r.s.log.filter(e => e.type === 'actionStart').map(e => e.f)).toEqual([0, 86])
+    expect(r.s.assumed['echo-input-priority']).toBeUndefined()
+  })
+})
