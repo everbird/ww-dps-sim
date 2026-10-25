@@ -68,5 +68,7 @@ export function argsOf(argv: string[], flags: string[]): { pos: string[]; opt: R
     if (flags.includes(a) && i + 1 < args.length) opt[a.slice(2)] = args[++i]!
     else pos.push(a)
   }
+  // --md 后面要跟输出文件：漏写时下一个场景会被当成输出路径覆盖掉（2026-10-25 scorecard 把 jys-5r18z.yaml 写成了表）
+  if (opt.md !== undefined && !opt.md.endsWith('.md')) throw new Error(`--md 后面要写输出的 .md 文件，收到的是 ${opt.md}`)
   return { pos, opt }
 }
