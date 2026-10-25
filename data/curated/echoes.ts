@@ -169,6 +169,9 @@ const echoes: EchoModule[] = [
       id: '辛吉勒姆.大招', source: '在首位装配该声骸技能时，若装配角色为爱弥斯，则自身共鸣解放伤害加成提升25.00%。',
       zone: 'DamageChangeType', value: 0.25, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 'inf', trigger: 'always',
     }],
+    // 召唤类（脱手）：xlsx 的优先级写 2（与普攻同级），普攻要等召唤物整段（80 帧）放完才接得上；
+    // 用户确认放了声骸机兵 A3 照样接得上（2026-10-25），按其他召唤声骸（海之女、海维夏、万囮牢）写 0：放完立刻能接
+    actionOverrides: { 'Q·A': { priority: [{ fromFrame: 0, value: 0 }] } },
   }),
   defineEcho({
     name: '炉芯机骸',                       // 莫宁的首位

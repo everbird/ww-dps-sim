@@ -24,12 +24,12 @@ export interface Hit { f: number; char: string; judgment: string; tick: number }
 export interface RunResult { s: SimState; hits: Hit[]; outros: { f: number; char: string }[]; frames: number; error?: ScheduleError }
 
 const char = (slot: Slot, name: string): CharRuntime => ({
-  slot, name, action: null, last: null, startedThisTick: false, energy: 0, concerto: 0, core: [0, 0, 0, 0, 0], cooldowns: {}, charges: {}, vars: {},
+  slot, name, action: null, last: null, combo: null, switchCd: 0, startedThisTick: false, energy: 0, concerto: 0, core: [0, 0, 0, 0, 0], cooldowns: {}, charges: {}, vars: {},
 })
 
 export function newState(names: [string, string, string], onField: Slot = 0): SimState {
   return {
-    frame: 0, battleFrames: 0, onField, switchCd: 0,
+    frame: 0, battleFrames: 0, onField,
     chars: [char(0, names[0]), char(1, names[1]), char(2, names[2])],
     judgments: [], tails: [], buffs: [], dilations: [], log: [], nextId: 1,
     enemy: {} as SimState['enemy'],                  // 内核不读敌人状态（TD-06）

@@ -56,7 +56,7 @@ dataDescribe('网页的 Worker', () => {
     const req = { scenario: src('scenarios/m0-video-eq.yaml'), opening: false, width: 2, vary: 0, gen: false }
     const x = await handlers.plan(req)
     expect(x.mode).toBe('rotation')
-    expect(x.result.refRank).toBe(1)
+    expect(x.result.refRank).toBeLessThanOrEqual(2)                      // 2026-10-25 起两段出场技对调高 0.21%（plan.test）
     const y = await handlers.plan({ ...req, opening: true })
     expect(y.mode).toBe('opening')
     expect(y.result.leaves.some(l => l.isRef)).toBe(true)

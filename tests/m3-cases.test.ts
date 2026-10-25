@@ -14,8 +14,11 @@ const bf = (e: { t: number }) => Math.round(e.t * 60)       // 事件的战斗�
 dataDescribe('§11 首批机制用例（M0 队伍）', () => {
   beforeAll(async () => { gd = await loadGameData() })
 
-  test('案例 A 半程切人：切走后后台那半段照常结算并全队回能；第二次切人被 1 秒切人冷却挡住', () => {
-    const out = m0Run(gd, { initial: { onField: 1, energy: 'empty' }, rotation: ['散华 A1 A2 A3 A4', 'switch 维里奈', 'switch 椿'] })
+  test('案例 A 半程切人：切走后后台那半段照常结算并全队回能；切回刚切走的人被 1 秒切人冷却挡住（每人单独计，切给第三人不用等）', () => {
+    const other = m0Run(gd, { initial: { onField: 1, energy: 'empty' }, rotation: ['散华 A1 A2 A3 A4', 'switch 维里奈', 'switch 椿'] })
+    const [o1, o2] = eventsOfLog(other.log, 'switch')
+    expect(o2!.f - o1!.f).toBe(0)                                                  // 椿没被切走过：不用等（2026-10-25 用户更正，不是全局冷却）
+    const out = m0Run(gd, { initial: { onField: 1, energy: 'empty' }, rotation: ['散华 A1 A2 A3 A4', 'switch 维里奈', 'switch 散华'] })
     const [sw1, sw2] = eventsOfLog(out.log, 'switch')
     const a4 = eventsOfLog(out.log, 'actionStart').find(e => e.action === 'A4')!
     expect(sw1!.f).toBe(a4.f)                                                     // A4 一开始就切走

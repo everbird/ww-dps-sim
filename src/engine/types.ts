@@ -91,7 +91,6 @@ export interface SimState {
   frame: number                             // 世界帧
   battleFrames: number                      // 战斗时钟（DPS 分母）
   onField: Slot
-  switchCd: Frame
   chars: [CharRuntime, CharRuntime, CharRuntime]
   judgments: JudgmentRuntime[]              // 场上存活的判定
   tails: TailRuntime[]                      // 脱离动作、按战斗时钟继续的时间线事件（TD-04 §4.4）
@@ -147,7 +146,11 @@ export interface CharRuntime {
   slot: Slot
   name: CharName
   action: ActionRuntime | null              // null = 空闲
-  last: ActionRuntime | null                // 最近一个动作实例（进行中的就是 action）；结束后局部帧照走，供连段窗口判断（TD-04 §6.2）
+  last: ActionRuntime | null                // 最近一个动作实例（进行中的就是 action）；结束后局部帧照走（TD-04 §6.2）
+  /** 连段锚点：连段前置与派生窗口看它。一般就是 last；脱手的（召唤类）声骸不更新它——放声骸不打断连段（2026-10-25 用户确认，爱弥斯的辛吉勒姆） */
+  combo: ActionRuntime | null
+  /** 切人冷却（战斗帧）：被切走后这么久不能再切回来，每人单独计（2026-10-25 用户确认，不是全局） */
+  switchCd: Frame
   startedThisTick: boolean                  // 同一 tick 同一角色最多开始一个动作（TD-04 §1、§6.5）
   energy: number
   concerto: number

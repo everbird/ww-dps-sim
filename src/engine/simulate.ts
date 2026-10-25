@@ -142,7 +142,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
 
 function initialState(r: ResolvedScenario): SimState {
   const chars = r.team.map((m): CharRuntime => ({
-    slot: m.slot, name: m.def.name, action: null, last: null, startedThisTick: false,
+    slot: m.slot, name: m.def.name, action: null, last: null, combo: null, switchCd: 0, startedThisTick: false,
     energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {},
     vars: Object.seal({ ...m.def.vars }),                      // 只能改声明过的状态量，加新键会报错（总设计 §10.1）
   })) as SimState['chars']
@@ -152,7 +152,7 @@ function initialState(r: ResolvedScenario): SimState {
     tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {},
   }
   return {
-    frame: 0, battleFrames: 0, onField: r.initial.onField, switchCd: 0, chars, judgments: [], tails: [], buffs: [],
+    frame: 0, battleFrames: 0, onField: r.initial.onField, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
     outroLinks: [], pendingNextIn: [], lastTrigger: {}, assumed: {}, rng: null, entry: null,
   }

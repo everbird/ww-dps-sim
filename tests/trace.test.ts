@@ -45,9 +45,9 @@ describe('TD-11 分段与逐条', () => {
     expect(rows.map(x => [`${x.line}.${x.item}`, x.label, x.f - span.f, x.frames, x.waits])).toEqual([
       ['1.1', '甲 X', 0, 30, []],
       ['1.2', '甲 X', 30, 30, [{ reason: '等 X 的派生窗口', frames: 30 }]],
-      ['2.1', 'switch 乙', 60, 0, [{ reason: '切人冷却还剩 30 帧', frames: 30 }]],
+      ['2.1', 'switch 乙', 60, 0, [{ reason: '乙 的切人冷却还剩 30 帧', frames: 30 }]],
       ['3.1', '乙 Y', 60, 60, []],
-      ['4.1', 'switch 甲', 120, 0, [{ reason: '切人冷却还剩 60 帧', frames: 60 }]],
+      ['4.1', 'switch 甲', 120, 0, [{ reason: '甲 的切人冷却还剩 60 帧', frames: 60 }]],
     ])
   })
   test('可选指令被跳过也列出来', () => {

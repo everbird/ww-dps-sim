@@ -149,6 +149,7 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   }
   c.action = a
   c.last = a
+  if (!(def.summon && def.kind === 'echo')) c.combo = a               // 脱手的声骸不打断连段
   c.startedThisTick = true
   if (s.entry?.slot === slot && s.entry.block === null)             // 入场后出过招了：不能再出出场技（TD-09 §3.5）
     s.entry.block = def.kind === 'intro' ? 'intro' : 'acted'
@@ -243,6 +244,8 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
     } else if (c.last) {
       c.last.localFrame = snap4(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
     }
+    // 连段锚点不是当前 / 最近动作（中间放了脱手的声骸）：它也照走，派生窗口照旧会过期
+    if (c.combo && c.combo !== c.action && c.combo !== c.last) c.combo.localFrame = snap4(c.combo.localFrame + r)
     for (const tail of s.tails) if (tail.owner === slot && old.has(tail)) advanceTail(tail)
   }
   for (let i = 0; i < s.tails.length; i++) {
@@ -360,7 +363,7 @@ export function gate(c: CharRuntime, def: ActionDef): GateResult {
 
 function gateRules(c: CharRuntime, def: ActionDef): GateResult {
   if (def.comboFrom?.length) {
-    const last = c.last
+    const last = c.combo
     if (!last || !def.comboFrom.includes(last.id))
       return { ok: false, wait: false, code: 'comboBroken', reason: `${def.id} 只能接在 ${def.comboFrom.join(' / ')} 之后` }
     if (!inWindow(last.def, last.localFrame)) {
@@ -419,8 +422,8 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   advanceActions(s, k, rates)                                   // P3
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
-  s.switchCd = Math.max(0, s.switchCd - rates.battle)          // P6 计时器：切人 CD、技能冷却、buff 都按战斗速率
   for (const c of s.chars) {
+    c.switchCd = Math.max(0, c.switchCd - rates.battle)         // P6 计时器：切人 CD（每人单独）、技能冷却、buff 都按战斗速率
     for (const key of Object.keys(c.cooldowns)) {
       let left = c.cooldowns[key]! - rates.battle
       const ch = c.charges[key]

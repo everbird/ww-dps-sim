@@ -159,11 +159,37 @@ dataDescribe('T09-5 wait N 与 +N 按战斗帧：散华', () => {
   })
 })
 
+describe('脱手的声骸不打断连段（2026-10-25 用户确认，爱弥斯的辛吉勒姆）', () => {
+  // 甲：A1（第 10–40 帧可派生）→ A2；Q 是召唤类声骸（优先级 0，召唤物 30 帧后出伤害），D 是普通声骸（不脱手）
+  const 甲: SynthChar = {
+    name: '甲',
+    actions: [
+      action({ id: 'A1', endFrame: 20, cancelWindows: [{ from: 10, until: 40, row: 0 }] }),
+      action({ id: 'A2', endFrame: 20, comboFrom: ['A1'] }),
+      action({ id: 'Q', kind: 'echo', summon: true, endFrame: 40, priority: [{ fromFrame: 0, value: 0 }], judgments: [judgment({ name: 'q', spawnFrame: 30 })] }),
+      action({ id: 'D', kind: 'echo', endFrame: 5, priority: [{ fromFrame: 0, value: 0 }] }),
+    ],
+  }
+  const go = (rot: string[]) => synthRun([甲, idle('乙'), idle('丙')], { rotation: rot })
+  test('A1 → 召唤类声骸 → A2：连段照接；锚点的派生窗口照样会过', () => {
+    const ok = go(['甲 A1 Q A2'])
+    expect(ok.error).toBeUndefined()
+    expect(eventsOfLog(ok.log, 'actionStart').map(e => e.action)).toEqual(['A1', 'Q', 'A2'])
+    expect(eventsOfLog(ok.log, 'hit').some(h => h.judgment === 'q')).toBe(true)      // 召唤物照常出伤害
+    expect(go(['甲 A1 Q', 'wait 60', '甲 A2']).error?.message).toMatch(/派生窗口已过|只能接在/)
+  })
+  test('普通（不脱手）的声骸照旧打断连段', () => {
+    expect(go(['甲 A1 D A2']).error?.message).toMatch(/A2 只能接在 A1 之后/)
+  })
+})
+
 describe('T09-6 切人（§3.5）', () => {
-  test('切人冷却 60 帧', () => {
+  test('切人冷却 60 帧，每人单独计：被切走的人 60 帧内不能切回来，切给别人不用等（2026-10-25 用户更正）', () => {
     const r = run([acts, acts, acts], [{ switch: 1 }, { switch: 0 }])
     expect(eventsOf(r, 'switch').map(e => `${e.to}@${e.f}`)).toEqual(['乙@0', '甲@60'])
     expect(waits(r)).toEqual(['2:switchCd 0+60'])
+    const r2 = run([acts, acts, acts], [{ switch: 1 }, { switch: 2 }, { switch: 0 }])
+    expect(eventsOf(r2, 'switch').map(e => `${e.to}@${e.f}`)).toEqual(['乙@0', '丙@0', '甲@60'])
   })
   dataDescribe('真实数据', () => {
     test('切人不打断动作：A1 同帧切走，A1 在后台第 13 帧照常命中', () => {
@@ -320,10 +346,10 @@ dataDescribe('T09-10 编译 + 运行：M0 队伍（椿 0 链、散华 6 链、�
   })
   test('三人各放一次 E 轮换两轮：切人不打断动作；第 2 轮等散华 E（10 秒）与维里奈 E（12 秒）的冷却', () => {
     const r = go(['散华 E', 'switch 椿', '椿 E', 'switch 维里奈', '维里奈 E', 'switch 散华'], 1, 2)
-    expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([0, 60, 120, 600, 660, 780])
+    expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([0, 0, 60, 600, 600, 720])   // 切人冷却每人单独计：切给另一个人不用等
     expect(eventsOf(r, 'loop').map(e => e.f)).toEqual([0, 600])
-    expect(starts(r)).toEqual(['E@0', 'E1@0', 'E@60', 'E@600', 'E1@600', 'E@780'])
-    expect(eventsOf(r, 'wait').filter(e => e.code === 'cooldown').map(e => `${e.cmd.loop}.${e.cmd.line} ${e.frames}`)).toEqual(['2.1 480', '2.5 120'])
+    expect(starts(r)).toEqual(['E@0', 'E1@0', 'E@0', 'E@600', 'E1@600', 'E@720'])
+    expect(eventsOf(r, 'wait').filter(e => e.code === 'cooldown').map(e => `${e.cmd.loop}.${e.cmd.line} ${e.frames}`)).toEqual(['2.1 540', '2.5 120'])
   })
   test('椿的 E1 / E2 共用 4 秒冷却，E1 后接 E2 要等到第 240 帧；一日花 E3 单独 25 秒，不受 E1 影响', () => {
     const r = go(['椿 E1 E2'], 0)
