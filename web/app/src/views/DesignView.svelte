@@ -1,4 +1,4 @@
-<!-- 视图说明：A–D 四种时间轴视图的理念与优劣，右边是效果（2026-10，web/designs/）；"场景"页运行后也能切换这些视图 -->
+<!-- 视图说明：A–F 几种时间轴视图的理念与优劣，右边是效果（2026-10，web/designs/）；"场景"页运行后也能切换这些视图 -->
 <script lang="ts">
   import { call } from '../api'
   import { DESIGNS } from '../designs'
