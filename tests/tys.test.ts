@@ -75,16 +75,16 @@ dataDescribe('桃渊散', () => {
     expect(r.buffs.filter(b => b.def.id.startsWith('异构武装.')).map(b => b.value)).toEqual([0.12, 0.12])
   })
 
-  test('照录像记的整局（2026-10-26 逐帧重记）：每段（切人）对到视频的时刻，差不到 3.5 秒（仿真里能量不够、自动谐度破坏的全局时停会让段变晚）；叹息古龙血条出现后，仿真的累计伤害到 100 秒前和录像的血条差不到 4%', () => {
+  test('照录像记的整局（2026-10-26 逐帧重记）：每段（切人）对到视频的时刻，差不到 2 秒（录像那时没有谐度破坏，tuneBreak: off）；叹息古龙血条出现后到 75.7 秒（开始偏离之前），仿真的累计伤害和录像的血条差不到 2%', () => {
     const { r, out } = sim(base)
     expect(out.error).toBeUndefined()
     expect(base.purpose).toBe('replay')
     const cmp = compareMarks(traceCommands(out.log, r, 1), base.video!.marks)
     expect(cmp.missing).toEqual([])
-    for (const row of cmp.rows) expect(Math.abs(row.diff)).toBeLessThan(3.5)
+    for (const row of cmp.rows) expect(Math.abs(row.diff)).toBeLessThan(2)
     // 世界秒 = 视频秒 − 10.8（场景开头的记法）；血条第一条是它出现的时刻
     const hp = base.video!.hp!.map(l => l.split(' ').map(Number) as [number, number])
     const dmg = (t: number) => out.log.reduce((n, e) => n + (e.type === 'hit' && e.dmg && e.f >= (hp[0]![0] - 10.8) * 60 && e.f <= (t - 10.8) * 60 ? e.dmg.expected : 0), 0)
-    for (const [t, left] of hp.filter(([t]) => t <= 100.5)) expect(Math.abs(hp[0]![1] - dmg(t) / r.enemy.hp - left)).toBeLessThan(0.04)
+    for (const [t, left] of hp.filter(([t]) => t <= 75.7)) expect(Math.abs(hp[0]![1] - dmg(t) / r.enemy.hp - left)).toBeLessThan(0.02)
   })
 })
