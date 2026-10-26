@@ -163,7 +163,7 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
   for (const [k, v] of Object.entries(def.treeStats)) stat('技能树', k as StatKey, v)
   const echoes: ResolvedMember['echoes'] = []
   for (const [i, e] of m.echoes.entries()) {
-    // 首位声骸要放技能，得在声骸表里；不在的（表里没收的新声骸，如异构武装）只计入词条与套装，没有声骸技能——轴里写 Q 会报错。
+    // 首位声骸要放技能，得在声骸表里（或 data/curated/extra-echoes.json 补了）；不在的只计入词条与套装，没有声骸技能——轴里写 Q 会报错。
     // 名字写错也走这里，所以提示里带上声骸表的写法（2026-10-25 桃渊散，原来直接报错）
     const edef = echoOf(data, e.name)
     if (!edef && i === 0) {

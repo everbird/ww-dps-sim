@@ -1,5 +1,5 @@
 // tests/tys.test.ts —— 桃祈 · 渊武 · 散华（桃渊散，2026-10-25，docs/tys-confirm.md）：渊武的雷柱（锋芒、协同、掀雷、引爆、敛光、雷厉风行）、
-// 桃祈的磐岩护壁与刚柔化势、御反之隙；照录像记的整局（scenarios/tys-video.yaml）每段对得上视频。依赖 data/generated（缺数据时跳过）
+// 桃祈的磐岩护壁与刚柔化势、御反之隙；照录像记的整局（scenarios/tys-video.yaml）每段对得上视频、血条出现后的累计伤害对得上录像。依赖 data/generated（缺数据时跳过）
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -63,14 +63,28 @@ dataDescribe('桃渊散', () => {
     expect(log.some(e => e.type === 'buffApply' && e.buff === '桃祈.护心')).toBe(true)
   })
 
-  test('照录像记的整局：每段（切人）对到视频的时刻，差不到 2 秒；约 102 战斗秒打死（录像约 105 秒）', () => {
+  test('异构武装（声骸表里没有，extra-echoes.json 补的：帧取 WuwaLAB、倍率连 nanoka）：散华 Q 第 50 帧命中 405% 冷凝，首位加成冷凝与共鸣技能各 12%', () => {
+    const { r, out } = sim({ ...base, video: undefined, initial: { onField: 2 }, rotation: ['散华 Q'], options: { repeat: 1, maxFrames: 600 } })
+    expect(out.error).toBeUndefined()
+    const q = out.log.find(e => e.type === 'actionStart' && e.char === '散华' && e.action === 'Q·幻形')!
+    const h = hits(out.log, '幻形-攻击')
+    expect(h).toHaveLength(1)
+    expect(h[0]!.f - q.f).toBe(50)
+    const def = r.team[2]!.actions['Q·幻形']!
+    expect([def.endFrame, def.cooldown, def.judgments[0]!.multiplier]).toEqual([82, 1500, 4.05])
+    expect(r.buffs.filter(b => b.def.id.startsWith('异构武装.')).map(b => b.value)).toEqual([0.12, 0.12])
+  })
+
+  test('照录像记的整局（2026-10-26 逐帧重记）：每段（切人）对到视频的时刻，差不到 2 秒；叹息古龙血条出现后，仿真的累计伤害到 100 秒前和录像的血条差不到 4%', () => {
     const { r, out } = sim(base)
     expect(out.error).toBeUndefined()
+    expect(base.purpose).toBe('replay')
     const cmp = compareMarks(traceCommands(out.log, r, 1), base.video!.marks)
     expect(cmp.missing).toEqual([])
     for (const row of cmp.rows) expect(Math.abs(row.diff)).toBeLessThan(2)
-    const sec = (out.summary.kill.frame ?? out.summary.kill.estimate!) / 60
-    expect(sec).toBeGreaterThan(98)
-    expect(sec).toBeLessThan(106)
+    // 世界秒 = 视频秒 − 10.8（场景开头的记法）；血条第一条是它出现的时刻
+    const hp = base.video!.hp!.map(l => l.split(' ').map(Number) as [number, number])
+    const dmg = (t: number) => out.log.reduce((n, e) => n + (e.type === 'hit' && e.dmg && e.f >= (hp[0]![0] - 10.8) * 60 && e.f <= (t - 10.8) * 60 ? e.dmg.expected : 0), 0)
+    for (const [t, left] of hp.filter(([t]) => t <= 100.5)) expect(Math.abs(hp[0]![1] - dmg(t) / r.enemy.hp - left)).toBeLessThan(0.04)
   })
 })

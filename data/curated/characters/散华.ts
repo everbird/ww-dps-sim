@@ -179,7 +179,7 @@ export default defineCharacter('散华', {
     // 共鸣解放冷却 16 秒（nanoka 3.7）；第 98 帧（派生帧）降到 2、可接重击居合（2026-10-04 用户确认）
     大招: { cooldown: 960, accept: ['priorityChangeGuess'] },
     // A5 的优先级 [2, 4, 2]：备注"第6F～33F不能派生重击"（重击优先级 3）= 第 6 帧升到 4、第 33 帧降回 2
-    // 地面出场技是 A2（xlsx 单列一组）；之后再按 A 接 A3，按景燃、桃祈的出场技推断（2026-10-25 桃渊散录像，待核对）
+    // 地面出场技是 A2（xlsx 单列一组）；之后再按 A 接 A3（2026-10-26 用户确认）
     A3: { comboFrom: ['A2', 'A2-地面出场技'] },
     A5: { priority: [{ fromFrame: 0, value: 2 }, { fromFrame: 6, value: 4 }, { fromFrame: 33, value: 2 }] },
     // 钩子生成的引爆判定所在的组（不设冷却），不会被当成动作放

@@ -108,11 +108,10 @@ export default defineCharacter('渊武', {
         return
       }
       if (ev.type === 'resource' && ev.char === me && ev.resource === 'core1' && ev.value < 100) ctx.vars.掀雷已放 = false
-      // 雷池：登场角色的攻击命中时，雷柱协同攻击（每 1.2 秒一次）。打单体，按登场角色一直在雷池里算
+      // 雷池：登场角色的攻击命中时，雷柱协同攻击（每 1.2 秒一次）。打单体，按登场角色一直在雷池里算——每次命中都能触发（2026-10-26 用户确认）
       if (ev.type === 'hit' && ev.dmg && pillarUp(ctx) && now >= ctx.vars.协同冷却到 && !ev.judgment.startsWith('雷柱')) {
         const onField = ctx.state.chars[ctx.state.onField]!.name
         if (ev.char !== onField) return
-        ctx.assume('module-guess', '渊武：登场角色一直站在雷池里（打单体），每次命中都能触发雷柱协同（1.2 秒一次）')
         ctx.vars.协同冷却到 = now + COORD_CD
         ctx.spawnJudgment('雷柱-协同', { note: `雷池：${ev.char} ${ev.judgment}` })
         return

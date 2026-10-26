@@ -17,7 +17,9 @@
 from __future__ import annotations
 
 import os
+import json
 import re
+from pathlib import Path
 
 from actions import DILATION_TYPES
 from dmg import dmg_view, level_index, rates_of
@@ -180,6 +182,37 @@ def group_id(names: list[str]) -> str:
             return p
     first = names[0]
     return first if (len(names) == 1 or '-' not in first) else first.rsplit('-', 1)[0]
+
+
+def extra_echoes(path: Path, have: set[str], issues: Issues) -> list[dict]:
+    """data/curated/extra-echoes.json：声骸表里没有的声骸（帧取 WuwaLAB，倍率经 dmg-join 连 nanoka），补成与 parse_echo_sheet 同样的结构。
+    行号记 0，打 flag curatedSource；声骸表里已经有了的跳过并提示（表里的为准）"""
+    if not path.exists():
+        return []
+    out = []
+    for key, spec in json.loads(path.read_text('utf-8')).items():
+        if key.startswith('$'):
+            continue
+        if key in have:
+            issues.add('warn', '补充声骸已在声骸表里，用表里的', key)
+            continue
+        groups = []
+        for g in spec['groups']:
+            rows = [{
+                'row': 0, 'name': r['name'], 'kind': 'hit', 'eventSpawned': False, 'spawnFrame': r['spawnFrame'], 'birthFrame': None,
+                'lifeFrames': r.get('lifeFrames'), 'delayFrames': None, 'hitstop': {'self': None, 'enemy': None},
+                'deriveFrame': None, 'deriveDuration': None, 'endFrame': r['endFrame'], 'invincible': None,
+                'priority': r['priority'], 'priorityChange': None, 'parry': None, 'persists': None, 'followHitstop': None,
+                'toughness': r.get('toughness'), 'tunability': None,
+                'gains': {'energy': {'total': r['energy']}, 'concerto': {'total': r['concerto']}, 'core': [None, None, None]},
+                'position': None, 'positionChange': None, 'dilation': None, 'hitTarget': None,
+                'note': r.get('note'), 'noteMerged': False, 'hints': {}, 'nameTags': {}, 'flags': [],
+            } for r in g['rows']]
+            groups.append({'id': g['id'], 'variant': 1, 'stage': None, 'body': None, 'kind': g['kind'],
+                           'cooldown': round(g['cooldown'] * 60), 'next': None, 'rows': rows})
+        out.append({'key': key, 'startRow': 0, 'cost': spec['cost'], 'description': None, 'descCooldown': None, 'nanokaCooldown': None,
+                    'textKind': None, 'ignoredRows': 0, 'groups': groups, 'flags': ['curatedSource']})
+    return out
 
 
 def drop_phantoms(echoes: list[dict]) -> tuple[list[dict], list[tuple[str, bool]]]:

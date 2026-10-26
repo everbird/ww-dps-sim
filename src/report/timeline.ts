@@ -15,12 +15,13 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
   return {
     title: basename(file, extname(file)),
     scenario: file,
+    purpose: sc.purpose,
     data: r.data.version,
     team: r.team.map(m => ({
       name: m.def.name, element: m.def.element, energyCap: m.def.energyCost, chain: m.chain, weapon: m.weapon.def.key, rank: m.weapon.rank,
     })),
     enemy: {
-      id: e.id, level: e.level, tunabilityMax: e.tunabilityMax, whiteBarTough: e.whiteBarTough, paralysisSec: e.paralysisFrames / 60,
+      id: e.id, level: e.level, hp: e.hp, tunabilityMax: e.tunabilityMax, whiteBarTough: e.whiteBarTough, paralysisSec: e.paralysisFrames / 60,
     },
     concertoMax: r.rules.concertoMax,
     rotation: sc.rotation,
@@ -101,6 +102,11 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
       const m = r.team.find(x => x.def.name === char)
       const id = m ? (Object.hasOwn(m.actions, act) ? act : m.aliases[act] ?? null) : null
       return { t: videoSeconds(t), char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null }
+    }),
+    // 录像里敌人的血条：left = 剩余比例；视图 F 拿第一条的时刻起仿真的累计伤害 / 敌人生命对照
+    hp: (sc.video.hp ?? []).map(line => {
+      const [t, left] = line.trim().split(/\s+/) as [string, string]
+      return { t: videoSeconds(t), left: Number(left) }
     }),
   }
 }

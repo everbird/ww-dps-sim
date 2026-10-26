@@ -40,6 +40,9 @@ const Trio = z.tuple([z.number().min(0), z.number().min(0), z.number().min(0)])
 
 export const ScenarioSchema = z.strictObject({
   data: z.string().optional(),                            // 期望的数据版本；与当前数据不符只警告（总设计 T15）
+  // 场景是做什么的（2026-10-26）：rotation = 轴（攻略、教学、配装对比，看 DPS、手速、假设敏感度）；
+  // replay = 录像剖析（照一局实战录像记下来，用时间轴与各种状态看懂这一局；敌人走位、出招不建模，DPS 只作参考，pnpm sensitivity 不跑它）
+  purpose: z.enum(['rotation', 'replay']).default('rotation'),
   team: z.array(MemberSchema).length(3),
   enemy: z.union([
     z.strictObject({ preset: z.string().min(1) }),
@@ -62,6 +65,9 @@ export const ScenarioSchema = z.strictObject({
       z.union([z.number().min(0), z.string().regex(/^(\d+:)?\d+(\.\d+)?$/, '写成"分:秒"（如 1:02.5）或秒数')])),
     // 录像里看到的动作（2026-10-26，视图 F 拿来和仿真对照）："<视频秒> <角色> <动作>"，动作照轴的写法（E、大招、Q、QTE……别名也行）
     events: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+\S+/, '写成"<视频秒> <角色> <动作>"，如 15.0 散华 E')).optional(),
+    // 录像里敌人的血条（2026-10-26，视图 F 拿仿真的累计伤害对照）："<视频秒> <剩余比例>"，如 55.25 0.998；
+    // 第一条是血条出现（开始打这个敌人）的时刻，仿真从那一刻起算伤害（之前打的是别的敌人，如深塔开头的小怪）
+    hp: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+(0|1)(\.\d+)?$/, '写成"<视频秒> <剩余比例>"，如 55.25 0.998')).optional(),
   }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),

@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from echoes import (build_costs, cost_of, drop_phantoms, flag_nanoka_cooldown, group_id, join_echo,  # noqa: E402
+from echoes import (build_costs, cost_of, drop_phantoms, extra_echoes, flag_nanoka_cooldown, group_id, join_echo,  # noqa: E402
                     parse_echo_sheet, text_kind)
 from parse import Issues  # noqa: E402
 
@@ -167,6 +167,31 @@ def dmg_entry(rates, **over):
 def nk_entry(id_, rate5, tough, energy, element=6, rel='攻击'):
     return {'id': id_, 'element': element, 'relatedProperty': rel, 'type': 5, 'rateLv': [rate5 // 2, 0, 0, 0, rate5],
             'energy': energy, 'toughLv': tough, 'weaknessLvl': 0, 'hardnessLv': 10000}
+
+
+class 补充声骸(unittest.TestCase):
+    """data/curated/extra-echoes.json：声骸表里没有的声骸补成同样的结构（2026-10-26 异构武装）"""
+
+    def test_补成声骸表的结构_表里有的跳过(self):
+        import json
+        import tempfile
+        spec = {'$comment': 'x', '甲': {'cost': 4, 'groups': [{'id': '幻形', 'kind': '变身', 'cooldown': 25, 'rows': [
+            {'name': '幻形-攻击', 'spawnFrame': 50, 'endFrame': 82, 'priority': [3], 'toughness': 225, 'energy': 5.62, 'concerto': 0}]}]},
+                '乙': {'cost': 4, 'groups': []}}
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / 'extra-echoes.json'
+            p.write_text(json.dumps(spec, ensure_ascii=False), 'utf-8')
+            issues = Issues()
+            out = extra_echoes(p, {'乙'}, issues)
+            self.assertEqual(extra_echoes(Path(d) / '没有.json', set(), issues), [])
+        self.assertEqual([e['key'] for e in out], ['甲'])
+        e = out[0]
+        self.assertEqual((e['startRow'], e['cost'], e['flags']), (0, 4, ['curatedSource']))
+        g = e['groups'][0]
+        self.assertEqual((g['id'], g['kind'], g['cooldown'], g['variant']), ('幻形', '变身', 1500, 1))
+        r = g['rows'][0]
+        self.assertEqual((r['row'], r['spawnFrame'], r['endFrame'], r['gains']['energy'], r['gains']['concerto']), (0, 50, 82, {'total': 5.62}, {'total': 0}))
+        self.assertEqual(issues.count('warn'), 1)                                  # 乙 已在表里
 
 
 class 倍率连接(unittest.TestCase):
