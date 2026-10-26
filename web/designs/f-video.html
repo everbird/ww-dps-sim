@@ -163,13 +163,41 @@
     return (a.f - a0.f) / 60 - (a.t - a0.t)
   }
   const driftHtml = d => d === null ? '' : Math.abs(d) < 0.05 ? '<span class="d">对齐</span>' : `<span class="${d > 0 ? 'slow' : 'fast'}">仿真${d > 0 ? '慢' : '快'} ${Math.abs(d).toFixed(2)} 秒</span>`
+  /** 入场的切人写了"变奏"、仿真里切出者协奏没满（introMissed）：录像是变奏，仿真按普通切人 */
+  function introMissed(o, k) {
+    const sw = k > 0 ? D.switches[k - 1] : null, al = sw && D.alerts.find(a => a.f === sw.f)
+    if (!al) return ''
+    const m = /([^\s：]+) 协奏 ([\d.]+)，没满/.exec(al.message || '')
+    return `<span class="acts slow">写了变奏，仿真里${m ? ` ${WW.esc(m[1])} 协奏 ${Math.round(+m[2])} ` : '协奏'}没满，按普通切人</span>`
+  }
+  /** 这段前台那个人身上带伤害的计时 buff 盖住了这段的多少；常驻的（技能树、套装 2 件…）不列 */
+  function segBuffs(o) {
+    const len = o.end - o.start, out = []
+    for (const r of D.buffs) {
+      if (r.target !== o.char || !r.damage) continue
+      let n = 0
+      for (const s of r.spans) n += Math.max(0, Math.min(s.end, o.end) - Math.max(s.start, o.start))
+      if (n > 0) out.push({ r, p: n / len })
+    }
+    return out.sort((a, b) => b.p - a.p).map(x => `${x.r.short} ${Math.round(x.p * 100)}%`).join('　')
+  }
+  /** 这段的大招：伤害最大的那一下吃到了哪些计时 buff（常驻的不列） */
+  function ultBuffs(o) {
+    return o.acts.filter(a => a.kind === 'liberation').map(a => {
+      const hs = D.hits.filter(h => h.dmg && h.char === a.char && h.ownerAct === a.id && h.f >= a.start && h.f < a.start + 600)
+      if (!hs.length) return ''
+      const h = hs.reduce((p, q) => (q.dmg.expected > p.dmg.expected ? q : p))
+      const bs = (h.buffs || []).filter(b => !D.always.has(`${b.replace(/×\d+$/, '')}→${a.char}`)).map(b => (b.startsWith(a.char + '.') ? b.slice(a.char.length + 1) : b))
+      return `${WW.esc(a.id)} ${WW.fmt(h.dmg.expected)} 吃到：${WW.esc(bs.join('、') || '—')}`
+    }).filter(Boolean).join('　')
+  }
   function segs() {
     $('segs').innerHTML = SEGS.map((o, k) => {
       const t = V.anchors.length ? vclock(Math.max(0, f2t(o.start))) : `${sec(o.start).toFixed(1)} 秒`
       const evs = EVM.filter(e => e.fv >= o.start && e.fv < o.end)
       const ms0 = WW.metersAt(M, o.i, o.start), ms1 = WW.metersAt(M, o.i, Math.max(o.start, o.end - 1))
       const res = ms0.filter(m => m.key === 'energy' || m.key === 'concerto').map(m => `${m.name} ${Math.round(m.v)}→${Math.round((ms1.find(x => x.key === m.key) || m).v)}`).join('　')
-      return `<li data-k="${k}" style="--c:var(--c${o.i})"><span>${t}　<b>${WW.esc(o.char)}</b>${o.intro ? '（变奏）' : ''}　${((o.end - o.start) / 60).toFixed(1)} 秒　${WW.fmt(o.dmg)}（${(o.dmg / TOTAL * 100).toFixed(1)}%）　${driftHtml(driftAt(o.start))}</span><span class="acts">仿真：${WW.esc(actText(o.acts))}</span>${evs.length ? `<span class="acts">录像：${evs.map(evText).join('　')}</span>` : ''}<span class="acts">${WW.esc(res)}</span></li>`
+      return `<li data-k="${k}" style="--c:var(--c${o.i})"><span>${t}　<b>${WW.esc(o.char)}</b>${o.intro ? '（变奏）' : ''}　${((o.end - o.start) / 60).toFixed(1)} 秒　${WW.fmt(o.dmg)}（${(o.dmg / TOTAL * 100).toFixed(1)}%）　${driftHtml(driftAt(o.start))}</span><span class="acts">仿真：${WW.esc(actText(o.acts))}</span>${evs.length ? `<span class="acts">录像：${evs.map(evText).join('　')}</span>` : ''}${introMissed(o, k)}<span class="acts">${WW.esc(res)}</span>${(b => (b ? `<span class="acts">buff 覆盖：${WW.esc(b)}</span>` : ''))(segBuffs(o))}${(u => (u ? `<span class="acts">${u}</span>` : ''))(ultBuffs(o))}</li>`
     }).join('')
     segCur.k = -2; segCur()
   }
