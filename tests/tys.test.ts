@@ -66,6 +66,7 @@ dataDescribe('桃渊散', () => {
   test('照录像记的整局（2026-10-26 逐帧重记）：每段（切人）对到视频的时刻，差不到 2 秒；叹息古龙血条出现后，仿真的累计伤害到 100 秒前和录像的血条差不到 4%', () => {
     const { r, out } = sim(base)
     expect(out.error).toBeUndefined()
+    expect(base.purpose).toBe('replay')
     const cmp = compareMarks(traceCommands(out.log, r, 1), base.video!.marks)
     expect(cmp.missing).toEqual([])
     for (const row of cmp.rows) expect(Math.abs(row.diff)).toBeLessThan(2)

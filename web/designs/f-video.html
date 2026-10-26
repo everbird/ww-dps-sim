@@ -106,7 +106,9 @@
   const D = M.D, S = M.summary, $ = id => document.getElementById(id)
   const names = M.team.map(t => t.name)
   $('title').textContent = `${names.join(' · ')}　${M.title}`
-  $('kpi').innerHTML = [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  // 录像剖析（purpose: replay）：DPS 只作参考，标出来
+  if (M.purpose === 'replay') $('kpi').title = '录像剖析：敌人走位、出招不建模，DPS 只作参考'
+  $('kpi').innerHTML = (M.purpose === 'replay' ? '<div class="kpi"><span>录像剖析</span>DPS 仅供参考</div>' : '') + [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
   const sec = f => D.clock.secAt(f)
   const clamp = f => Math.max(0, Math.min(D.lastF, f))
   let cursor = 0, playing = false

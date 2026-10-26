@@ -40,6 +40,9 @@ const Trio = z.tuple([z.number().min(0), z.number().min(0), z.number().min(0)])
 
 export const ScenarioSchema = z.strictObject({
   data: z.string().optional(),                            // 期望的数据版本；与当前数据不符只警告（总设计 T15）
+  // 场景是做什么的（2026-10-26）：rotation = 轴（攻略、教学、配装对比，看 DPS、手速、假设敏感度）；
+  // replay = 录像剖析（照一局实战录像记下来，用时间轴与各种状态看懂这一局；敌人走位、出招不建模，DPS 只作参考，pnpm sensitivity 不跑它）
+  purpose: z.enum(['rotation', 'replay']).default('rotation'),
   team: z.array(MemberSchema).length(3),
   enemy: z.union([
     z.strictObject({ preset: z.string().min(1) }),

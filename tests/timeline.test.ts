@@ -78,6 +78,8 @@ describe('时间轴网页', () => {
     const m = timelineModel('scenarios/demo.yaml', sc4, r4, simulate(r4))
     expect(m.video!.hp).toEqual([{ t: 10.5, left: 1 }, { t: 12, left: 0.62 }])
     expect(m.enemy.hp).toBe(r4.enemy.hp)
+    expect(m.purpose).toBe('rotation')                                   // 缺省是轴；录像剖析写 purpose: replay
+    expect(ScenarioSchema.parse({ ...sc, purpose: 'replay' }).purpose).toBe('replay')
     expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 62%'] } })).toThrow(/剩余比例/)
   })
   test('视图 D 的检查器：每人能量、协奏与有变化的核心资源逐帧值（只在变了的帧记），钩子 forte 给的共鸣回路状态变了才记', () => {

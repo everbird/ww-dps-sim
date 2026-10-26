@@ -15,6 +15,7 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
   return {
     title: basename(file, extname(file)),
     scenario: file,
+    purpose: sc.purpose,
     data: r.data.version,
     team: r.team.map(m => ({
       name: m.def.name, element: m.def.element, energyCap: m.def.energyCost, chain: m.chain, weapon: m.weapon.def.key, rank: m.weapon.rank,
