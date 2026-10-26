@@ -81,7 +81,7 @@ dataDescribe('桃渊散', () => {
     expect(base.purpose).toBe('replay')
     // 深塔 28 期左 4 的环境特性：湮灭抗性 −10% 常驻；变奏时给放变奏的那个人暴伤 / 普攻加成 18 秒
     expect(r.buffs.filter(b => b.owner === 'env').map(b => b.def.id)).toEqual(['深塔28左4.湮灭抗性', '深塔28左4.变奏暴伤', '深塔28左4.变奏普攻'])
-    const intro = out.log.find(e => e.type === 'switch' && e.intro)!
+    const intro = out.log.find((e): e is Extract<SimEvent, { type: 'switch' }> => e.type === 'switch' && e.intro)!
     expect(out.log.some(e => e.type === 'buffApply' && e.buff === '深塔28左4.变奏暴伤' && e.f === intro.f && e.target === intro.to)).toBe(true)
     const cmp = compareMarks(traceCommands(out.log, r, 1), base.video!.marks)
     expect(cmp.missing).toEqual([])
