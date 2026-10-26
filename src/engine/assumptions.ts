@@ -234,6 +234,12 @@ export const ASSUMPTIONS = [
     adjust: { how: '改 src/engine/resolve.ts 的 staticStats（加上某个触发 buff 的满层值）或在钩子的 modifyHit 里实时算' },
   },
   {
+    id: 'env-final-class', topic: '公式', tracked: false, impact: 'unknown', ref: 'data/curated/env-buffs.ts、docs/tower-20261026.md',
+    what: '深塔环境特性里没写类别的"伤害最终提升"按 0 类最终伤害（FinalDamage0）：同一场景里几条之间相加，与别的类别相乘',
+    why: '面板原文不写类别；不带类别的"全伤害加深"按 0 类（TD-03 §2），照此类推。分开相乘的话，几条叠在一起时会高一些',
+    adjust: { how: '改 env-buffs.ts 里那几条的 zone（如 FinalDamage1、FinalDamage2…）后重跑' },
+  },
+  {
     id: 'steady-window', topic: '口径', tracked: false, impact: 'none', ref: 'TD-10 §2',
     what: '稳态 DPS 取完整的轮：第 2 轮到倒数第 2 轮（只有 2 轮时取第 2 轮）；第 2 轮起还在漂移时，从之后各轮都在 ±1% 以内的那一轮起（steadySkip）',
     why: '第 1 轮受开局资源影响；开局多出来的资源有时要好几轮才用完（心队 C2 到第 5 轮）；最后一轮没有下一轮起手的边界，偏高',

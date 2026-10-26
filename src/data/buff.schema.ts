@@ -49,6 +49,7 @@ export const TriggerFilterSchema = z.strictObject({
   effect: z.enum(EFFECT_NAMES).optional(),
   resource: z.enum(RESOURCE_KINDS).optional(),
   ownerHas: z.string().min(1).optional(),         // 持有者身上有这个 buff 时才触发（无常凶鹭"幻形后 15 秒内若施放延奏…"，2026-10-04）
+  afterBattle: z.number().int().min(0).optional(), // 战斗进行到这一帧（战斗帧）以后才触发：深塔环境特性"战斗开始60秒后…"（2026-10-26）
 })
 export type TriggerFilter = z.output<typeof TriggerFilterSchema>
 

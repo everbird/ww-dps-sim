@@ -75,7 +75,7 @@ function handle(sim: Sim, s: SimState, ev: SimEvent): void {
     for (const reg of sim.r.buffs) {
       if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
-      if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks)
+      if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks, occ.by)
     }
     for (const e of sim.r.effects) {                  // 已按共鸣链过滤、按谐振阶取值（resolve）
       const occ = firing(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs)
@@ -127,6 +127,7 @@ function matches(s: SimState, on: TriggerSpec['on'], where: TriggerFilter | unde
     && (where.ownerHas === undefined || (owner !== 'env' && s.buffs.some(b => b.defId === where.ownerHas && b.owner === owner && b.target === owner)))
     && (where.enemyState === undefined || where.enemyState === o.enemyState)
     && (where.effect === undefined || where.effect === o.effect)
+    && (where.afterBattle === undefined || s.battleFrames >= where.afterBattle)
 }
 
 /** 这条定义被这批触发点中的哪一个触发（数组写法任一满足即可，一条事件只触发一次）；内置冷却按（持有者, 定义）记在 lastTrigger（§4.4） */
