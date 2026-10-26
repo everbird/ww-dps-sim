@@ -60,7 +60,7 @@ describe('时间轴网页', () => {
     expect(m.video).toEqual({
       loop: 1, missing: [7],
       marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0, at: 10 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60, at: 11 }],
-      events: [],
+      events: [], hp: [],
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
   })
@@ -71,6 +71,14 @@ describe('时间轴网页', () => {
       { t: 10.5, char: '甲', label: 'X', action: 'X' }, { t: 11, char: '甲', label: 'Y', action: null }, { t: 12, char: '丁', label: 'X', action: null },
     ])
     expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['甲 X'] } })).toThrow(/视频秒/)
+  })
+  test('录像里敌人的血条（video.hp，视图 F 对照累计伤害）："<视频秒> <剩余比例>"；模型带上敌人生命', () => {
+    const sc4 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62'] } })
+    const r4 = resolveScenario(sc4, data)
+    const m = timelineModel('scenarios/demo.yaml', sc4, r4, simulate(r4))
+    expect(m.video!.hp).toEqual([{ t: 10.5, left: 1 }, { t: 12, left: 0.62 }])
+    expect(m.enemy.hp).toBe(r4.enemy.hp)
+    expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 62%'] } })).toThrow(/剩余比例/)
   })
   test('视图 D 的检查器：每人能量、协奏与有变化的核心资源逐帧值（只在变了的帧记），钩子 forte 给的共鸣回路状态变了才记', () => {
     const 丁: SynthChar = {
