@@ -47,7 +47,9 @@ export function applyBuff(s: SimState, reg: RegisteredBuff, target: Slot | 'enem
 
 /** 触发或钩子施加（TD-07 §3、§4.5）：按作用对象落到具体单位。nextIn 知道去处（由延奏触发）就直接给，
  *  否则挂起到下一次切入（同一条再次触发时按叠层规则累加层数，持续时间仍从切入那一刻算） */
-export function applyTriggered(s: SimState, reg: RegisteredBuff, nextIn?: Slot, stacks = reg.def.stackGain): void {
+/** by：触发它的事件是谁发出的。环境特性（持有者 env）写"自身"（target self）的，给触发的那个人（"角色附加电磁效应时，自身…"，2026-10-26） */
+export function applyTriggered(s: SimState, reg: RegisteredBuff, nextIn?: Slot, stacks = reg.def.stackGain, by?: Slot): void {
+  if (reg.owner === 'env' && reg.def.target === 'self' && by !== undefined) { applyBuff(s, reg, by, stacks); return }
   if (reg.def.target === 'nextIn' && nextIn === undefined) {
     const p = s.pendingNextIn.find(x => x.owner === reg.owner && x.defId === reg.def.id)
     if (p) p.stacks = Math.min(reg.def.maxStacks, p.stacks + stacks)
