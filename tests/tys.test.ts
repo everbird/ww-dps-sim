@@ -30,7 +30,7 @@ dataDescribe('桃渊散', () => {
     base = parse(readFileSync(new URL('../scenarios/tys-video.yaml', import.meta.url), 'utf8'))
   }, 60_000)
 
-  test('渊武：E 第 18 帧立雷柱，每秒 +6 锋芒；登场角色的命中给雷柱协同（1.2 秒一次）；锋芒满 100 放一次掀雷', () => {
+  test('渊武：E 第 18 帧立雷柱，每秒 +6 锋芒；登场角色的命中给雷柱协同（1.2 秒一次）；锋芒满 100 放掀雷、锋芒清空', () => {
     const log = run(['渊武 E A1 A2 A3 A4 A5 A1 A2 A3 A4 A5 A1 A2 A3 A4 A5 A1 A2 A3 A4 A5'])
     const summon = log.find(e => e.type === 'judgmentSpawn' && e.judgment === '雷柱-召唤')!
     expect(summon.f).toBe(18)
@@ -39,7 +39,10 @@ dataDescribe('桃渊散', () => {
     for (let k = 1; k < coord.length; k++) expect(coord[k]! - coord[k - 1]!).toBeGreaterThanOrEqual(72)
     const full = log.filter(e => e.type === 'resource' && e.char === '渊武' && e.resource === 'core1' && e.value >= 100)
     expect(full.length).toBeGreaterThan(0)
-    expect(hits(log, '雷柱-充能完毕')).toHaveLength(1)            // 满了之后不再重复放
+    // 掀雷放完锋芒清空（推断，2026-10-26 录像里渊武离场时锋芒都没满），之后重新攒、满了再放
+    const xl = hits(log, '雷柱-充能完毕')
+    expect(xl.length).toBeGreaterThan(0)
+    expect(log.some(e => e.type === 'resource' && e.char === '渊武' && e.resource === 'core1' && e.value === 0 && e.delta === -100 && e.f <= xl[0]!.f)).toBe(true)
   })
 
   test('渊武：万壑雷要 100 锋芒，引爆雷柱、进雷厉风行（普攻换强化版）；切走时锋芒没满会自动留雷柱（敛光）', () => {

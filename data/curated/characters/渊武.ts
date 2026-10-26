@@ -21,6 +21,7 @@ function plant(ctx: Ctx, note: string): void {
   ctx.vars.掀雷已放 = false
   ctx.removeBuff('渊武.雷柱计时')
   ctx.addBuff('渊武.雷柱计时')
+  if (ctx.chain >= 6) ctx.addBuff('渊武.共鸣链6')   // 立柱当下就有雷池
 }
 /** 万壑雷、大招：引爆场上的雷柱 */
 function detonate(ctx: Ctx, why: string): void {
@@ -82,6 +83,7 @@ export default defineCharacter('渊武', {
         ctx.vars.掀雷已放 = false
         ctx.removeBuff('渊武.雷柱计时')
         ctx.addBuff('渊武.雷柱计时')
+        if (ctx.chain >= 6) ctx.addBuff('渊武.共鸣链6')   // 立柱当下就有雷池
         return
       }
       if (ev.type === 'actionStart' && ev.char === me) {
@@ -97,14 +99,18 @@ export default defineCharacter('渊武', {
       if (ev.type === 'buffExpire' && ev.buff === '渊武.雷柱计时' && ev.target === me && ev.reason === 'timeout') {
         if (!pillarUp(ctx)) return
         if (!thunder(ctx)) ctx.addResource('core1', 6, ctx.self, '雷柱每秒 +6 锋芒')
-        if (ctx.chain >= 6) ctx.addBuff('渊武.共鸣链6', { target: ctx.state.onField })
+        // 6 链"处于雷柱范围内时，全队获得 3 秒 32% 防御"：登场角色在雷池里（同协同的前提），全队都给——渊武在后台时雷柱的伤害也按防御算
+        if (ctx.chain >= 6) ctx.addBuff('渊武.共鸣链6')
         ctx.addBuff('渊武.雷柱计时')
         return
       }
-      // 锋芒充满：雷柱放一次掀雷（"雷柱-充能完毕"，连 P1 版；固有1 另加 50% 防御，见 modifyHit）
+      // 锋芒充满：雷柱放一次掀雷（"雷柱-充能完毕"，连 P1 版；固有1 另加 50% 防御，见 modifyHit），放完锋芒清空（推断）
       if (ev.type === 'resource' && ev.char === me && ev.resource === 'core1' && ev.value >= 100 && pillarUp(ctx) && !ctx.vars.掀雷已放) {
         ctx.vars.掀雷已放 = true
         ctx.spawnJudgment('雷柱-充能完毕', { note: '锋芒充满：掀雷' })
+        // 掀雷用掉锋芒（推断，2026-10-26 桃渊散录像：渊武每次离场时锋芒都没满，敛光每次都留柱；按这个算，105.3 桃祈大招跳字 49205 / 仿真 49192）
+        ctx.assume('module-guess', '渊武：掀雷放完锋芒清空（原文只写"锋芒充满时施放掀雷"；不清空的话锋芒一直 100，敛光不再留柱）')
+        ctx.addResource('core1', -100, ctx.self, '掀雷用掉锋芒（推断）')
         return
       }
       if (ev.type === 'resource' && ev.char === me && ev.resource === 'core1' && ev.value < 100) ctx.vars.掀雷已放 = false
@@ -120,9 +126,10 @@ export default defineCharacter('渊武', {
       if (ev.type === 'switch' && ev.from === me && rage(ctx) < 100) plant(ctx, '敛光：切走时锋芒没满，自动留下雷柱')
     },
     modifyHit(ctx, hit) {
-      // 固有1：掀雷附加当前防御 50% 的额外伤害；3 链：雷柱协同附加当前防御 20%（面板按装配时的静态值，假设 stat-scaling-static）
-      if (hit.judgment.name === '雷柱-充能完毕') hit.extraFlat += 0.5 * ctx.stat('def')
-      if (hit.judgment.name === '雷柱-协同' && ctx.chain >= 3) hit.extraFlat += 0.2 * ctx.stat('def')
+      // 固有1：掀雷附加当前防御 50% 的额外伤害；3 链：雷柱协同附加当前防御 20%。这两个判定本来就按防御算（RelatedProperty 10），
+      // 附加的部分加在倍率上，结算时用当前防御（含 6 链、护心等战斗中的防御提升；2026-10-26 原来用装配时的静态防御）
+      if (hit.judgment.name === '雷柱-充能完毕') hit.multiplier += 0.5
+      if (hit.judgment.name === '雷柱-协同' && ctx.chain >= 3) hit.multiplier += 0.2
     },
     forte(ctx) {
       return [pillarUp(ctx) ? `雷柱 ${((ctx.vars.雷柱到 - ctx.state.battleFrames) / 60).toFixed(1)} 秒` : '', thunder(ctx) ? '雷厉风行' : ''].filter(Boolean).join(' · ')
