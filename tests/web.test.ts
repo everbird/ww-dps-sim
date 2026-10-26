@@ -63,8 +63,8 @@ dataDescribe('网页的 Worker', () => {
     expect(y.result.leaves.some(l => l.isRef)).toBe(true)
     await expect(handlers.plan({ ...req, scenario: { name: 'x.yaml', text: src('scenarios/m0-video-eq.yaml').text + 'search:\n  routines: [心 E]\n' } })).rejects.toThrow(/不在队伍里/)
   }, 120000)
-  test('设计备选 A–E 都能生成：共用脚本内联、数据带上 buff 的给予者', async () => {
-    for (const file of ['a-lanes.html', 'b-volumes.html', 'c-ledger.html', 'd-lens.html', 'e-player.html']) {
+  test('设计备选 A–F 都能生成：共用脚本内联、数据带上 buff 的给予者', async () => {
+    for (const file of ['a-lanes.html', 'b-volumes.html', 'c-ledger.html', 'd-lens.html', 'e-player.html', 'f-video.html']) {
       const { html } = await handlers.design({ scenario: src('scenarios/m0-team.yaml'), file })
       expect(html).toContain('window.WW')
       expect(html).not.toContain('/*@shared*/')

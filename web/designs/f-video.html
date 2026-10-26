@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>时间轴 · F 对视频</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+SC:wght@400;500;700&display=swap">
+<style>
+  /* F 对视频（2026-10-25，原型）：录像为主。左边大块放视频，下面一条整局的时间轴（谁在场、各人的动作、每秒伤害、锚点）和"此刻"；
+     右边是分段（每次上场一行：打了什么、伤害、比视频快慢）与锚点。视频播放时光标跟着走，点时间轴或分段时视频跳过去。
+     锚点 = "视频里这一刻就是仿真的这一帧"（场景的 video.marks，或在这里打点），两点之间按直线插值。单一暗色主题，同 D、E */
+  :root {
+    color-scheme: dark;
+    --bg: #0c0f14; --panel: #12161d; --panel2: #171c25; --ink: #e6e9ef; --muted: #9aa3b4; --faint: #677084; --rule: #252c38; --grid: #1a2029;
+    --wait: #e8a94c; --cursor: #f2f4f8; --slow: #e8a94c; --fast: #52c6a5;
+    --el-havoc: #d86aa4; --el-glacio: #5fa9ea; --el-spectro: #dcb94b; --el-fusion: #ec7e55; --el-electro: #a584f2; --el-aero: #52c6a5; --el-physical: #9aa3b7;
+    --sans: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.5 var(--sans); }
+  .top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 26px; padding: 10px 16px 8px; border-bottom: 1px solid var(--rule); }
+  .top h1 { margin: 0; font-size: 17px; font-weight: 500; }
+  .kpi { font: 500 15px var(--mono); }
+  .kpi span { font: 12px var(--sans); color: var(--muted); margin-right: 6px; }
+  .main { display: grid; grid-template-columns: minmax(0, 1fr) min(420px, 34vw); gap: 0; }
+  .left { padding: 12px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+  .right { border-left: 1px solid var(--rule); background: var(--panel); padding: 12px 14px; display: grid; gap: 10px; align-content: start; min-width: 0; max-height: calc(100vh - 50px); overflow: auto; position: sticky; top: 0; }
+  @media (max-width: 900px) { .main { grid-template-columns: 1fr; } .right { border-left: 0; border-top: 1px solid var(--rule); max-height: none; position: static; } }
+  h2 { margin: 0; font-size: 13px; font-weight: 500; color: var(--muted); }
+  .vbox { position: relative; background: #000; border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+  .vbox video { width: 100%; height: 100%; display: block; }
+  .nov { position: absolute; inset: 0; display: grid; place-content: center; gap: 8px; text-align: center; color: var(--muted); padding: 16px; }
+  .ctl { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .ctl button, .ctl select, .vbtn, .right button { font: inherit; font-size: 12.5px; color: var(--ink); background: var(--panel2); border: 1px solid var(--rule); border-radius: 4px; padding: 3px 10px; cursor: pointer; }
+  .ctl button:hover, .vbtn:hover, .right button:hover { border-color: var(--muted); }
+  .ctl .clock { font: 12.5px var(--mono); color: var(--muted); margin-left: auto; }
+  .ctl .clock b { color: var(--ink); font-weight: 500; }
+  .strip { background: var(--panel); border: 1px solid var(--rule); border-radius: 6px; padding: 6px 8px; }
+  .strip svg { display: block; width: 100%; cursor: crosshair; touch-action: none; }
+  .strip text { font: 11px var(--sans); fill: var(--muted); }
+  .now { display: grid; gap: 8px; }
+  .now .row { display: grid; grid-template-columns: 7em minmax(0, 1fr) 11em; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 6px; background: var(--panel); border-left: 3px solid var(--c); }
+  .now .row.on { background: var(--panel2); }
+  .now .who b { display: block; }
+  .now .who em { font-style: normal; font-size: 11.5px; color: var(--muted); }
+  .now .act { font: 13px var(--mono); min-width: 0; }
+  .now .act small { display: block; font: 11.5px var(--sans); color: var(--muted); overflow-wrap: anywhere; }
+  .bars { display: grid; gap: 3px; font: 11px var(--mono); color: var(--muted); }
+  .bars i { display: block; height: 5px; background: var(--grid); border-radius: 3px; overflow: hidden; }
+  .bars u { display: block; height: 100%; background: var(--c); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px 6px; font-size: 12px; }
+  .chips span { padding: 0 7px; border: 1px solid var(--rule); border-radius: 10px; color: var(--muted); white-space: nowrap; }
+  .hits { font: 12px var(--mono); color: var(--muted); display: grid; gap: 1px; }
+  .hits b { color: var(--ink); font-weight: 500; }
+  .segs { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+  .segs li { font: 12px var(--mono); padding: 4px 8px; border-radius: 4px; border: 1px solid transparent; border-left: 3px solid var(--c); cursor: pointer; display: grid; gap: 1px; }
+  .segs li:hover { border-color: var(--rule); border-left-color: var(--c); }
+  .segs li.cur { background: var(--panel2); border-color: var(--muted); border-left-color: var(--c); }
+  .segs .acts { color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
+  .slow { color: var(--slow); } .fast { color: var(--fast); } .d { color: var(--muted); }
+  .anchors { margin: 0; padding-left: 20px; display: grid; gap: 3px; font: 12px var(--mono); }
+  .anchors button { padding: 0 6px; margin-left: 4px; }
+  pre { font: 11.5px var(--mono); background: var(--bg); border: 1px solid var(--rule); border-radius: 4px; padding: 6px 8px; overflow-x: auto; margin: 4px 0 0; }
+  .note { color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="top"><h1 id="title"></h1><div id="kpi" style="display:flex;gap:22px;flex-wrap:wrap"></div></div>
+<div class="main">
+  <section class="left">
+    <div class="vbox">
+      <video id="vel" playsinline preload="metadata"></video>
+      <div class="nov" id="nov"><div>还没打开视频</div><label class="vbtn">打开本地视频<input type="file" accept="video/*" id="vfile" hidden></label><div class="note" id="vsrc"></div></div>
+    </div>
+    <div class="ctl">
+      <button type="button" id="play" aria-label="播放 / 暂停（空格）">▶ 播放</button>
+      <select id="speed" aria-label="播放速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option></select>
+      <button type="button" id="back" aria-label="后退一帧（,）">◀ 1/60</button><button type="button" id="fwd" aria-label="前进一帧（.）">1/60 ▶</button>
+      <select id="vmap" aria-label="映射方式"><option value="stretch">逐点拉伸</option><option value="offset">只按第一个锚点（看快慢）</option></select>
+      <label class="vbtn">换视频<input type="file" accept="video/*" id="vfile2" hidden></label>
+      <span class="clock" id="clock"></span>
+    </div>
+    <div class="strip"><svg id="strip" aria-label="整局时间轴：点一下或拖动跳过去"></svg></div>
+    <div class="now" id="now"></div>
+  </section>
+  <aside class="right">
+    <h2>分段：每次上场一行（点一行跳过去）</h2>
+    <ol class="segs" id="segs"></ol>
+    <details>
+      <summary>锚点（视频 ↔ 仿真）</summary>
+      <div class="ctl" style="margin-top:6px"><button type="button" id="mark">打点：视频此刻 = 光标这一帧</button><button type="button" id="clear">清空</button></div>
+      <p class="note">场景写了 video.marks 时打开就有锚点。自己打点：把视频停在某个动作刚出手的画面，时间轴点到同一个动作开始的那一帧，再点"打点"。</p>
+      <ol class="anchors" id="anchors"></ol>
+      <details><summary>导出成场景的 video.marks</summary><pre id="yaml"></pre></details>
+    </details>
+  </aside>
+</div>
+<script id="timeline-data" type="application/json">null</script>
+<script>/*@shared*/</script>
+<script>
+(() => {
+  const M = WW.load(); if (!M) return
+  WW.paint(M)
+  const D = M.D, S = M.summary, $ = id => document.getElementById(id)
+  const names = M.team.map(t => t.name)
+  $('title').textContent = `${names.join(' · ')}　${M.title}`
+  $('kpi').innerHTML = [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  const sec = f => D.clock.secAt(f)
+  const clamp = f => Math.max(0, Math.min(D.lastF, f))
+  let cursor = 0, playing = false
+
+  // ---- 锚点：视频秒 t ↔ 世界帧 f（视频按真实时间录，对应仿真的世界帧，大招动画也在里面） ----
+  const VKEY = 'ww-f-video:' + names.join('·') + '|' + M.title
+  const V = { anchors: [], src: null, map: 'stretch' }
+  try { const j = JSON.parse(localStorage.getItem(VKEY) || 'null'); if (j && Array.isArray(j.anchors)) { V.anchors = j.anchors; V.map = j.map || 'stretch' } } catch {}
+  if (!V.anchors.length && M.video && M.video.marks) V.anchors = M.video.marks.filter(m => m.at !== undefined).map(m => ({ t: m.at, f: m.f }))
+  const vsave = () => { try { localStorage.setItem(VKEY, JSON.stringify({ anchors: V.anchors, map: V.map })) } catch {} }
+  const sorted = () => [...V.anchors].sort((a, b) => a.t - b.t)
+  const t2f = t => WW.videoMap(V.anchors, V.map).t2f(t)
+  const f2t = f => WW.videoMap(V.anchors, V.map).f2t(f)
+  const vclock = t => { const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}` }
+
+  // ---- 分段：每次上场（切人到切人） ----
+  const SEGS = D.onField.map((o, k) => {
+    const sw = k > 0 ? D.switches[k - 1] : null
+    const acts = D.actions.filter(a => a.char === o.char && a.start >= o.start && a.start < o.end && a.kind !== 'outro')
+    const dmg = D.hits.reduce((n, h) => n + (h.dmg && h.f >= o.start && h.f < o.end ? h.dmg.expected : 0), 0)
+    return { ...o, intro: !!(sw && sw.intro), acts, dmg }
+  }).filter(o => o.end > o.start)
+  const TOTAL = SEGS.reduce((n, o) => n + o.dmg, 0) || 1
+  /** 连着的同一个动作压成"×n"，一行放得下 */
+  function actText(acts) {
+    const out = []
+    for (const a of acts) { const last = out[out.length - 1]; if (last && last.n === a.id) last.k++; else out.push({ n: a.id, k: 1 }) }
+    return out.map(x => (x.k > 1 ? `${x.n}×${x.k}` : x.n)).join(' ')
+  }
+  /** 这段开头有锚点时：仿真比视频快 / 慢多少（按第一个锚点 60 帧一秒推算，同 pnpm trace 的"对照视频"） */
+  function driftAt(f) {
+    const A = sorted(), a0 = A[0], a = A.find(x => x.f === f)
+    if (!a || !a0 || a === a0) return null
+    return (a.f - a0.f) / 60 - (a.t - a0.t)
+  }
+  const driftHtml = d => d === null ? '' : Math.abs(d) < 0.05 ? '<span class="d">对齐</span>' : `<span class="${d > 0 ? 'slow' : 'fast'}">仿真${d > 0 ? '慢' : '快'} ${Math.abs(d).toFixed(2)} 秒</span>`
+  function segs() {
+    $('segs').innerHTML = SEGS.map((o, k) => {
+      const t = V.anchors.length ? vclock(Math.max(0, f2t(o.start))) : `${sec(o.start).toFixed(1)} 秒`
+      return `<li data-k="${k}" style="--c:var(--c${o.i})"><span>${t}　<b>${WW.esc(o.char)}</b>${o.intro ? '（变奏）' : ''}　${((o.end - o.start) / 60).toFixed(1)} 秒　${WW.fmt(o.dmg)}（${(o.dmg / TOTAL * 100).toFixed(1)}%）　${driftHtml(driftAt(o.start))}</span><span class="acts">${WW.esc(actText(o.acts))}</span></li>`
+    }).join('')
+    segCur.k = -2; segCur()
+  }
+  function segCur() {
+    const k = SEGS.findIndex(o => cursor >= o.start && cursor < o.end)
+    if (k === segCur.k) return
+    segCur.k = k
+    for (const li of $('segs').children) li.classList.toggle('cur', +li.dataset.k === k)
+    const cur = $('segs').children[k]; if (cur) cur.scrollIntoView({ block: 'nearest' })
+  }
+  $('segs').addEventListener('click', e => { const li = e.target.closest('li'); if (li) seek(SEGS[+li.dataset.k].start) })
+
+  // ---- 整局时间轴：在场段、各人的动作、每秒伤害、锚点、光标 ----
+  const SV = $('strip'), PAD = 6, ROW = 9, H_SEG = 14, H_DPS = 34
+  const H = H_SEG + 6 + names.length * (ROW + 3) + 6 + H_DPS + 14
+  const perSec = []
+  for (const h of D.hits) if (h.dmg) { const k = Math.floor(h.f / 60); perSec[k] = (perSec[k] || 0) + h.dmg.expected }
+  const maxSec = Math.max(1, ...perSec.filter(Boolean))
+  let W = 800
+  const x = f => PAD + (f / Math.max(1, D.lastF)) * (W - 2 * PAD)
+  const fOfX = px => clamp(Math.round((px - PAD) / (W - 2 * PAD) * D.lastF))
+  function strip() {
+    W = Math.max(320, SV.clientWidth || SV.parentElement.clientWidth - 16)
+    SV.setAttribute('viewBox', `0 0 ${W} ${H}`); SV.setAttribute('height', H)
+    const out = []
+    for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="0" width="${Math.max(1, x(o.end) - x(o.start))}" height="${H_SEG}" style="fill:var(--c${o.i})" opacity="0.85"><title>${WW.esc(o.char)} ${sec(o.start).toFixed(1)}–${sec(o.end).toFixed(1)} 战斗秒</title></rect>`)
+    names.forEach((n, i) => {
+      const y = H_SEG + 6 + i * (ROW + 3)
+      for (const a of D.actions) if (a.i === i && a.end !== null) out.push(`<rect x="${x(a.start)}" y="${y}" width="${Math.max(1, x(a.end) - x(a.start) - 0.5)}" height="${ROW}" style="fill:var(--c${i})" opacity="${a.kind === 'liberation' ? 1 : a.kind === 'skill' || a.kind === 'intro' || a.kind === 'echo' ? 0.75 : 0.4}"><title>${WW.esc(`${n} ${a.id}`)}</title></rect>`)
+    })
+    const yD = H_SEG + 6 + names.length * (ROW + 3) + 6
+    perSec.forEach((v, k) => { if (v) { const h = H_DPS * v / maxSec; out.push(`<rect x="${x(k * 60)}" y="${yD + H_DPS - h}" width="${Math.max(1, x((k + 1) * 60) - x(k * 60) - 0.5)}" height="${h}" style="fill:var(--faint)"><title>第 ${k} 秒附近 ${WW.fmt(v)}</title></rect>`) } })
+    for (const a of V.anchors) out.push(`<path d="M${x(a.f)} ${H - 12} l5 5 l-5 5 l-5 -5 z" style="fill:var(--wait)"><title>锚点：视频 ${vclock(a.t)} ↔ 第 ${a.f} 帧</title></path>`)
+    out.push(`<text x="${PAD}" y="${yD + 10}">每秒伤害</text>`)
+    out.push(`<line id="cur" x1="${x(cursor)}" x2="${x(cursor)}" y1="0" y2="${H}" style="stroke:var(--cursor)" stroke-width="1.5"/>`)
+    SV.innerHTML = out.join('')
+  }
+  const moveCur = () => { const l = $('cur'); if (l) { l.setAttribute('x1', x(cursor)); l.setAttribute('x2', x(cursor)) } }
+  let drag = false
+  SV.addEventListener('pointerdown', e => { drag = true; SV.setPointerCapture(e.pointerId); seek(fOfX(e.clientX - SV.getBoundingClientRect().left)) })
+  SV.addEventListener('pointermove', e => { if (drag) seek(fOfX(e.clientX - SV.getBoundingClientRect().left)) })
+  SV.addEventListener('pointerup', () => { drag = false })
+
+  // ---- 此刻：每人在做什么、能量与协奏、共鸣回路、冷却；前台的人身上的 buff；最近几下伤害 ----
+  function now() {
+    const g = Math.round(cursor)
+    const on = D.onField.find(o => o.start <= g && g < o.end)
+    const rows = M.team.map((t, i) => {
+      const a = D.actions.find(a => a.i === i && a.start <= g && (a.end === null || g < a.end))
+      const ms = WW.metersAt(M, i, g)
+      const bars = ms.slice(0, 3).map(m => `<span>${WW.esc(m.name)} ${Math.round(m.v)}${m.cap ? ` / ${m.cap}` : ''}</span><i><u style="width:${m.cap ? Math.min(100, 100 * m.v / m.cap) : 0}%"></u></i>`).join('')
+      const cds = WW.cooldownsAt(M, t.name, g).filter(c => c.left > 0).map(c => `${c.name} ${(c.left / 60).toFixed(1)}`).join('　')
+      const forte = WW.forteAt(M, t.name, g)
+      return `<div class="row${on && on.i === i ? ' on' : ''}" style="--c:var(--c${i})"><div class="who"><b>${WW.esc(t.name)}</b><em>${on && on.i === i ? '前台' : '后台'}</em></div>`
+        + `<div class="act">${a ? `${WW.esc(a.id)} <span class="d">第 ${g - a.start} 帧</span>` : '<span class="d">—</span>'}<small>${[forte, cds && `冷却 ${cds}`].filter(Boolean).map(WW.esc).join('　')}</small></div><div class="bars">${bars}</div></div>`
+    }).join('')
+    let buffs = ''
+    if (on) {
+      const list = D.buffs.filter(r => r.target === on.char).flatMap(r => r.spans.filter(s => s.start <= g && g < s.end).map(s => ({ r, s })))
+      buffs = `<div class="chips">${list.map(({ r, s }) => { const eff = WW.buffEffect(M, r.buff, s.stacks || 1); return `<span title="${WW.esc(eff || '')}">${WW.esc(r.short)}${s.stacks > 1 ? `×${s.stacks}` : ''}${eff ? ` · ${WW.esc(eff)}` : ''}</span>` }).join('') || '<span>没有 buff</span>'}</div>`
+    }
+    const recent = D.hits.filter(h => h.dmg && h.f <= g && h.f > g - 90).slice(-5).reverse()
+    const hits = recent.length ? `<div class="hits">${recent.map(h => `<span>${sec(h.f).toFixed(2)}s　${WW.esc(h.char)} ${WW.esc(h.judgment)}　<b>${WW.fmt(h.dmg.expected)}</b></span>`).join('')}</div>` : ''
+    $('now').innerHTML = rows + (on ? `<h2>${WW.esc(on.char)} 身上的 buff</h2>${buffs}` : '') + (hits ? `<h2>最近 1.5 秒的伤害</h2>${hits}` : '')
+    $('clock').innerHTML = `${V.src ? `视频 <b>${vclock(VEL.currentTime || 0)}</b>　` : ''}第 <b>${g}</b> 帧 · <b>${sec(g).toFixed(2)}</b> 战斗秒${V.anchors.length ? `　↔ 视频 ${vclock(Math.max(0, f2t(g)))}` : ''}`
+  }
+
+  // ---- 跳转与播放：有视频时视频是主，光标跟着视频；没有视频时按世界时间走 ----
+  const VEL = $('vel')
+  function render() { moveCur(); now(); segCur() }
+  function seek(f) {
+    cursor = clamp(f)
+    if (V.src) { VEL.currentTime = Math.max(0, f2t(cursor)) }
+    render()
+  }
+  function tick() {
+    if (V.src) { if (VEL.paused) return; cursor = clamp(t2f(VEL.currentTime)); render(); (VEL.requestVideoFrameCallback ? VEL.requestVideoFrameCallback(tick) : requestAnimationFrame(tick)); return }
+    if (!playing) return
+    const t = performance.now(), dt = (t - tick.t) / 1000 * 60 * +$('speed').value; tick.t = t
+    cursor = clamp(cursor + dt); render()
+    if (cursor >= D.lastF) { playing = false; $('play').textContent = '▶ 播放'; return }
+    requestAnimationFrame(tick)
+  }
+  function toggle() {
+    if (V.src) { if (VEL.paused) VEL.play(); else VEL.pause(); return }
+    playing = !playing; $('play').textContent = playing ? '⏸ 暂停' : '▶ 播放'
+    if (playing) { tick.t = performance.now(); requestAnimationFrame(tick) }
+  }
+  $('play').addEventListener('click', toggle)
+  $('speed').addEventListener('change', () => { VEL.playbackRate = +$('speed').value })
+  const step = d => { if (V.src) { VEL.pause(); VEL.currentTime = Math.max(0, VEL.currentTime + d / 60) } else seek(cursor + d) }
+  $('back').addEventListener('click', () => step(-1))
+  $('fwd').addEventListener('click', () => step(1))
+  VEL.addEventListener('play', () => { $('play').textContent = '⏸ 暂停'; tick() })
+  VEL.addEventListener('pause', () => { $('play').textContent = '▶ 播放'; cursor = clamp(t2f(VEL.currentTime)); render() })
+  VEL.addEventListener('seeked', () => { if (VEL.paused) { cursor = clamp(t2f(VEL.currentTime)); render() } })
+  VEL.addEventListener('loadedmetadata', () => { $('nov').hidden = true; VEL.controls = true; seek(cursor) })
+  function openFile(e) {
+    const file = e.target.files && e.target.files[0]; if (!file) return
+    if (V.src && V.src.startsWith('blob:')) URL.revokeObjectURL(V.src)
+    V.src = URL.createObjectURL(file); VEL.src = V.src; $('vsrc').textContent = file.name
+  }
+  $('vfile').addEventListener('change', openFile)
+  $('vfile2').addEventListener('change', openFile)
+  // 场景 video.url：能直接放的媒体文件就用它；B 站等网页拿不到逐帧的播放时刻，只给链接
+  if (M.video && M.video.url) {
+    const u = M.video.url
+    if (/\.(mp4|webm|m4v|mov)(\?|$)/i.test(u)) { V.src = u; VEL.src = u }
+    else $('vsrc').innerHTML = `场景里的视频：<a href="${WW.esc(u)}" target="_blank" rel="noopener" style="color:var(--muted)">链接</a>（网页上的视频不能联动，下载后打开本地文件）`
+  }
+  $('vmap').value = V.map
+  $('vmap').addEventListener('change', () => { V.map = $('vmap').value; vsave(); seek(cursor); segs() })
+  addEventListener('keydown', e => {
+    if (e.target.closest('input, select, textarea')) return
+    if (e.key === ' ') { e.preventDefault(); toggle() }
+    else if (e.key === ',') step(-1)
+    else if (e.key === '.') step(1)
+    else if (e.key === 'ArrowLeft') seek(cursor - 60)
+    else if (e.key === 'ArrowRight') seek(cursor + 60)
+  })
+
+  // ---- 锚点：打点、删、导出 video.marks（能落到某一行开头的） ----
+  function cmdStartAt(f) {
+    const rows = [...D.actions.filter(a => a.cmd).map(a => ({ f: a.start, cmd: a.cmd })), ...D.switches.filter(s => s.cmd).map(s => ({ f: s.f, cmd: s.cmd }))]
+    const hit = rows.find(r => r.f === f); if (!hit) return null
+    const first = Math.min(...rows.filter(r => r.cmd.line === hit.cmd.line && r.cmd.loop === hit.cmd.loop).map(r => r.f))
+    return first === f ? hit.cmd : null
+  }
+  function anchors() {
+    const A = sorted()
+    $('anchors').innerHTML = A.map((a, i) => `<li>${vclock(a.t)} ↔ ${a.f} 帧　${driftHtml(i === 0 ? null : (a.f - A[0].f) / 60 - (a.t - A[0].t))}<button type="button" data-i="${i}" data-act="go">跳</button><button type="button" data-i="${i}" data-act="del" aria-label="删除">×</button></li>`).join('')
+    const byLoop = new Map()
+    for (const a of A) { const c = cmdStartAt(a.f); if (!c) continue; if (!byLoop.has(c.loop)) byLoop.set(c.loop, []); byLoop.get(c.loop).push([c.line, a.t]) }
+    if (!byLoop.size) { $('yaml').textContent = '# 没有落在某一行开头的锚点'; return }
+    const [loop, rows] = [...byLoop].sort((p, q) => q[1].length - p[1].length)[0]
+    $('yaml').textContent = ['video:', ...(M.video && M.video.url ? [`  url: ${M.video.url}`] : []), `  loop: ${loop}`, `  marks: { ${rows.map(([l, t]) => `${l}: ${+t.toFixed(2)}`).join(', ')} }`].join('\n')
+  }
+  $('anchors').addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return
+    const A = sorted(), a = A[+b.dataset.i]
+    if (b.dataset.act === 'go') seek(a.f)
+    else { V.anchors = A.filter(x => x !== a); vsave(); refresh() }
+  })
+  $('mark').addEventListener('click', () => {
+    if (!V.src) return
+    const a = { t: Math.round(VEL.currentTime * 1000) / 1000, f: Math.round(cursor) }
+    const A = [...V.anchors.filter(x => Math.abs(x.t - a.t) > 1e-3 && x.f !== a.f), a].sort((p, q) => p.t - q.t)
+    if (A.some((p, i) => i > 0 && p.f <= A[i - 1].f)) return
+    V.anchors = A; vsave(); refresh()
+  })
+  $('clear').addEventListener('click', () => { V.anchors = []; vsave(); refresh() })
+
+  function refresh() { strip(); segs(); anchors(); render() }
+  addEventListener('resize', () => { strip() })
+  refresh()
+})()
+</script>
+</body>
+</html>

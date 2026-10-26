@@ -1,6 +1,6 @@
-// src/cli/timeline.ts —— pnpm timeline <场景.yaml> [--view a|b|c|d] [--out <文件.html>] [--fragment]：跑一个场景，把结果嵌进
+// src/cli/timeline.ts —— pnpm timeline <场景.yaml> [--view a|b|c|d|e|f] [--out <文件.html>] [--fragment]：跑一个场景，把结果嵌进
 // web/timeline.html（原版，含调试表），写成能直接用浏览器打开的时间轴网页（M6 第一步，TD-10 §5）。--fragment 不加 <!doctype> 与 <head>，
-// 给要再包一层的地方用（只对原版）。--view 改用视图 A–D 的模板（web/designs/，TD-12 §2.1），缺省写到 out/<场景名>.<视图>.html。
+// 给要再包一层的地方用（只对原版）。--view 改用视图 A–F 的模板（web/designs/，TD-12 §2.1），缺省写到 out/<场景名>.<视图>.html。
 // 退出码：0 成功；1 场景有错或运行期报错（网页照样写出，日志保留到出错为止）；2 用法错误。
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
