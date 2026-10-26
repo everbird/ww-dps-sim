@@ -80,7 +80,7 @@ export const GenDmgSchema = z.strictObject({
 })
 
 export const GenRowSchema = z.strictObject({
-  row: int().positive(),
+  row: int().min(0),                        // xlsx 行号；0 = 不是从 xlsx 来的（extra-echoes.json 补的声骸）
   name: z.string().min(1),
   kind: z.enum(['hit', 'gain', 'dilation', 'marker']),
   eventSpawned: z.boolean(),
@@ -211,7 +211,7 @@ export const GenEchoGroupSchema = z.strictObject({
 
 export const GenEchoSchema = z.strictObject({
   key: z.string().min(1),                   // 声骸名（A 列）
-  startRow: int().positive(),
+  startRow: int().min(0),                   // 0 = 声骸表里没有，data/curated/extra-echoes.json 补的（flag curatedSource）
   cost: nullable(z.union([z.literal(1), z.literal(3), z.literal(4)])),   // 来自 `索引` 页，缺失时 curated 补
   description: nullable(z.string()),        // 技能说明原文（X 列）
   descCooldown: nullable(int().min(0)),     // 技能说明里"技能冷却：n秒"（帧）；与「冷却」列不同时打 cooldownText
@@ -219,7 +219,7 @@ export const GenEchoSchema = z.strictObject({
   textKind: nullable(z.enum(['召唤', '变身'])),   // 说明里先出现的"召唤"（脱手）/"幻形"（变身，不脱手）；与「类型」列不同时打 kindText
   ignoredRows: int().min(0),
   groups: z.array(GenEchoGroupSchema).min(1),
-  flags: z.array(z.string()),               // cooldownText、cooldownNanoka、charges（"可使用次数"）、stagesGuess、costMissing、kindText
+  flags: z.array(z.string()),               // cooldownText、cooldownNanoka、charges（"可使用次数"）、stagesGuess、costMissing、kindText、curatedSource
 }).superRefine((e, ctx) => {
   // 组名在声骸内唯一（体型分组同名、体型不同）
   const seen = new Set<string>()

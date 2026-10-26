@@ -181,6 +181,16 @@ const echoes: EchoModule[] = [
     ],
   }),
   defineEcho({
+    name: '异构武装',                       // 散华的首位（桃渊散录像 BV1o7kfBPE6y）；声骸表里没有，extra-echoes.json 补的（帧取 WuwaLAB）
+    mainSlotBuffs: [
+      { id: '异构武装.冷凝', source: '在首位装配该声骸技能时，自身获得12.00%冷凝伤害加成提升，12.00%共鸣技能伤害加成提升。', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['冷凝'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '异构武装.共鸣技能', source: '在首位装配该声骸技能时，……12.00%共鸣技能伤害加成提升。', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['共鸣技能'] }, target: 'self', duration: 'inf', trigger: 'always' },
+    ],
+    // 一下近战命中：存在帧、命中后留不留都不影响（只打一下）
+    actionOverrides: { 'Q·幻形': { accept: ['noLife', 'persistsGuess'] } },
+    // "装配角色施放共鸣解放时，可持续提升「强袭功率」，升满时重置冷却、可放强化版"：每次大招加多少没有来源，没建
+  }),
+  defineEcho({
     name: '赫卡忒',                         // 莫特斐的首位（Evariste 账号，景莫守 jms-5r18z.yaml）
     // 协同攻击：现有角色里只有莫特斐的加强音（协同-加强音，1 / 5 链的额外加强音同名）
     mainSlotBuffs: [{

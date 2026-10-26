@@ -30,7 +30,7 @@ from tune_break import build_tune_break  # noqa: E402
 from effects import build_effects  # noqa: E402
 from versions import pick_xlsx  # noqa: E402
 from base_cols import BaseCols  # noqa: E402
-from echoes import build_costs, drop_phantoms, flag_nanoka_cooldown, join_echo, parse_echo_sheet  # noqa: E402
+from echoes import build_costs, drop_phantoms, extra_echoes, flag_nanoka_cooldown, join_echo, parse_echo_sheet  # noqa: E402
 from enemies import build_enemies, rage_index  # noqa: E402
 import golden  # noqa: E402
 import nanoka  # noqa: E402
@@ -132,6 +132,8 @@ def main() -> int:
     echoes, phantoms = drop_phantoms(parse_echo_sheet(
         list(ws.iter_rows(min_row=1, max_col=34, values_only=True)),
         list(wbf['声骸'].iter_rows(min_row=1, max_col=34, values_only=True)), merged_map(ws), costs, issues))
+    # 声骸表里没有的（data/curated/extra-echoes.json：帧取 WuwaLAB，倍率经 dmg-join 连 nanoka；2026-10-26 异构武装）
+    echoes += extra_echoes(Path(args.curated) / 'extra-echoes.json', {e['key'] for e in echoes}, issues)
 
     # nanoka：技能冷却、技能文本与声骸数据（m0-confirm §5）。取不到只提示，不阻断；声骸倍率沿用上次 nanoka.json 里的
     out = Path(args.out)
@@ -150,6 +152,8 @@ def main() -> int:
     for e in echoes:
         join_echo(e, dmg, dmg_join, nk_echoes.get(e['key']), issues, echo_gaps)
         flag_nanoka_cooldown(e, nk_echoes.get(e['key']))
+        if 'curatedSource' in e['flags'] and nk_echoes.get(e['key']):
+            e['description'] = nk_echoes[e['key']].get('desc')                # 说明取 nanoka（声骸表没有这一格）
 
     # §5.1 公式定义原文
     formula_ref = {}

@@ -1,0 +1,27 @@
+{
+  "$comment": "声骸表（xlsx「声骸」页）里没有的声骸（TD-01 §8；2026-10-26 起）。构建时补进 echoes.json，打 flag curatedSource，行号记 0。帧取 WuwaLAB 的声骸数据（api.wuwalab.com/api/app/echoes/<slug>：total_frames → 结束帧，hits[].frame → 生成帧），倍率由 dmg-join.json 连到 nanoka 的伤害条目，说明与冷却取 nanoka。xlsx 有、WuwaLAB 也有的声骸对过：梦魇·无冠者 生成 11 / 11、结束 39 / 41，梦魇·云闪之鳞 生成 54（弹道）/ 59（命中）、结束 83 / 92。没有来源的列（如优先级）照同类声骸写，写在 note 里。",
+  "异构武装": {
+    "cost": 4,
+    "source": "WuwaLAB sentryconstruct（帧，2026-10-26 取）；nanoka 3.7 声骸 6000083（倍率、说明、冷却）",
+    "nanokaId": 6000083,
+    "groups": [
+      {
+        "id": "幻形",
+        "kind": "变身",
+        "cooldown": 25,
+        "rows": [
+          {
+            "name": "幻形-攻击",
+            "spawnFrame": 50,
+            "endFrame": 82,
+            "priority": [3],
+            "toughness": 225,
+            "energy": 5.62,
+            "concerto": 0,
+            "note": "WuwaLAB：total_frames 82、earliest_frame_cancel 50、命中第 50 帧、能量 5.62、协奏 0。削韧 225 取 nanoka（削韧等级 22500）；优先级 3 照梦魇·云闪之鳞（同为 4C 变身、倍率 405%）。强化版（强袭功率升满后，190 帧、第 111 帧命中）没建"
+          }
+        ]
+      }
+    ]
+  }
+}

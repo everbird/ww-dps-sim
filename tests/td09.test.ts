@@ -583,6 +583,20 @@ describe('出场技要普通切人入场后第一个出', () => {
     expect(go3(['switch 乙', '乙 E A1', 'switch 甲']).error).toBeUndefined()
     expect(go3(['switch 乙 变奏', '乙 A1', 'switch 甲'], 100).error).toBeUndefined()
   })
+  // 2026-10-26 照录像记的轴：录像里是变奏入场、仿真里协奏没满成了普通切人（或反过来），写成可选的出场技两种都跑得通
+  test('写成可选的出场技（A2-地面出场技?）：普通切人入场照常出；变奏入场、入场后已出过招时跳过（skip，原因 entry），不报错', () => {
+    const 乙3: SynthChar = { ...乙, actions: [...乙.actions, action({ id: 'A1', endFrame: 20 })] }
+    const go3 = (rotation: string[], concerto = 0) => synthRun([idle('甲'), 乙3, idle('丙')], { initial: { onField: 0, concerto: [concerto, 0, 0] }, rotation, options: { repeat: 1 } })
+    const acts = (r: ReturnType<typeof go3>) => eventsOfLog(r.log, 'actionStart').map(e => e.action)
+    const normal = go3(['switch 乙', '乙 A2-地面出场技? A1', 'switch 甲'])
+    expect(normal.error).toBeUndefined()
+    expect(acts(normal)).toEqual(['A2-地面出场技', 'A1'])
+    const intro = go3(['switch 乙', '乙 A2-地面出场技? A1', 'switch 甲'], 100)
+    expect(intro.error).toBeUndefined()
+    expect(acts(intro)).toEqual(['QTE', 'A1'])
+    expect(eventsOfLog(intro.log, 'skip').map(e => [e.code, e.reason])).toEqual([['entry', 'A2-地面出场技 是出场技，这次是变奏入场']])
+    expect(acts(go3(['switch 乙', '乙 E A2-地面出场技?', 'switch 甲']))).toEqual(['E'])
+  })
 })
 
 // 空中入场（TD-09 §3.5，用户 2026-10-21：雷主 E 跳起时切卜灵，卜灵在空中打 A 攒蓝符）：切进来的第一下是一开始就在空中的攻击，

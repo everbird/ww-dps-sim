@@ -63,6 +63,18 @@ dataDescribe('桃渊散', () => {
     expect(log.some(e => e.type === 'buffApply' && e.buff === '桃祈.护心')).toBe(true)
   })
 
+  test('异构武装（声骸表里没有，extra-echoes.json 补的：帧取 WuwaLAB、倍率连 nanoka）：散华 Q 第 50 帧命中 405% 冷凝，首位加成冷凝与共鸣技能各 12%', () => {
+    const { r, out } = sim({ ...base, video: undefined, initial: { onField: 2 }, rotation: ['散华 Q'], options: { repeat: 1, maxFrames: 600 } })
+    expect(out.error).toBeUndefined()
+    const q = out.log.find(e => e.type === 'actionStart' && e.char === '散华' && e.action === 'Q·幻形')!
+    const h = hits(out.log, '幻形-攻击')
+    expect(h).toHaveLength(1)
+    expect(h[0]!.f - q.f).toBe(50)
+    const def = r.team[2]!.actions['Q·幻形']!
+    expect([def.endFrame, def.cooldown, def.judgments[0]!.multiplier]).toEqual([82, 1500, 4.05])
+    expect(r.buffs.filter(b => b.def.id.startsWith('异构武装.')).map(b => b.value)).toEqual([0.12, 0.12])
+  })
+
   test('照录像记的整局（2026-10-26 逐帧重记）：每段（切人）对到视频的时刻，差不到 2 秒；叹息古龙血条出现后，仿真的累计伤害到 100 秒前和录像的血条差不到 4%', () => {
     const { r, out } = sim(base)
     expect(out.error).toBeUndefined()

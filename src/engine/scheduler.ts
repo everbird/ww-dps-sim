@@ -164,7 +164,9 @@ const GO: Verdict = { go: true }
 /** 写轴的人要求的等待与操作延迟：不计入 maxWait，汇总的 waits 也不列 */
 export const INTENDED: readonly WaitCode[] = ['delay', 'wait', 'at', 'input']
 /** 可选指令遇到这几种"状态条件"不满足时跳过；门（优先级、输入锁、派生）与"等出手"照常等 */
-const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook']
+// entry：写成可选的出场技（A2-地面出场技?），这次是变奏 / 空中 / 后台没走完入场时跳过，不报错（2026-10-26 照录像记的轴：
+// 录像里是变奏入场、仿真里协奏差一点没满成了普通切人，或者反过来；按 A 在游戏里也是看入场方式出不同的招）
+const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook', 'entry']
 
 /** 返回 P2 用的 schedule(s)：执行队首起能执行的指令（一个 tick 可以执行多条），返回"还有没有没执行完的指令" */
 export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions): (s: SimState) => boolean {
@@ -298,6 +300,8 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       const entry = def.id === 'A1' && s.entry?.slot === c.slot && s.entry.block === null
         ? Object.values(actions[c.slot]!).find(a => a.entrySkill) : undefined
       if (entry) throw fail(s, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
+      if (c.optional && def.entrySkill && !(s.entry?.slot === c.slot && s.entry.block === null))
+        return { go: false, code: 'entry', reason: `${def.id} 是出场技，${entryWhy(s, c.slot)}` }
       return evaluateAct(s, k, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
     }
   }
