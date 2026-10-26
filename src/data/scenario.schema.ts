@@ -60,6 +60,8 @@ export const ScenarioSchema = z.strictObject({
     loop: z.number().int().min(0).default(2),            // 对照哪一轮：0 是启动轴
     marks: z.record(z.string().regex(/^\d+$/, '键是第几条（数字）'),
       z.union([z.number().min(0), z.string().regex(/^(\d+:)?\d+(\.\d+)?$/, '写成"分:秒"（如 1:02.5）或秒数')])),
+    // 录像里看到的动作（2026-10-26，视图 F 拿来和仿真对照）："<视频秒> <角色> <动作>"，动作照轴的写法（E、大招、Q、QTE……别名也行）
+    events: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+\S+/, '写成"<视频秒> <角色> <动作>"，如 15.0 散华 E')).optional(),
   }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),

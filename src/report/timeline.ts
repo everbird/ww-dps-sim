@@ -95,6 +95,13 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
     loop: sc.video.loop, missing: cmp.missing,
     // at：视频里的绝对时刻（秒），视图 E 拿它当锚点把视频和时间轴对上
     marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60, at: videoSeconds(sc.video!.marks[String(x.line)]!) })),
+    // 录像里看到的动作：动作按角色的别名换成动作 ID（换不了的 action 为 null，视图里标"仿真里没有"）
+    events: (sc.video.events ?? []).map(line => {
+      const [t, char, act] = line.trim().split(/\s+/) as [string, string, string]
+      const m = r.team.find(x => x.def.name === char)
+      const id = m ? (Object.hasOwn(m.actions, act) ? act : m.aliases[act] ?? null) : null
+      return { t: videoSeconds(t), char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null }
+    }),
   }
 }
 

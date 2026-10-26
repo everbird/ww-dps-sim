@@ -60,8 +60,17 @@ describe('时间轴网页', () => {
     expect(m.video).toEqual({
       loop: 1, missing: [7],
       marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0, at: 10 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60, at: 11 }],
+      events: [],
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
+  })
+  test('录像里看到的动作（video.events，视图 F 对照用）：时刻按"分:秒"或秒数，动作换成动作 ID，换不了的为 null', () => {
+    const sc3 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['10.5 甲 X', '0:11 甲 Y', '12 丁 X'] } })
+    const r3 = resolveScenario(sc3, data)
+    expect(timelineModel('scenarios/demo.yaml', sc3, r3, simulate(r3)).video!.events).toEqual([
+      { t: 10.5, char: '甲', label: 'X', action: 'X' }, { t: 11, char: '甲', label: 'Y', action: null }, { t: 12, char: '丁', label: 'X', action: null },
+    ])
+    expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['甲 X'] } })).toThrow(/视频秒/)
   })
   test('视图 D 的检查器：每人能量、协奏与有变化的核心资源逐帧值（只在变了的帧记），钩子 forte 给的共鸣回路状态变了才记', () => {
     const 丁: SynthChar = {

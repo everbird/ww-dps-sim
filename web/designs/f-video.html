@@ -122,6 +122,24 @@
   const f2t = f => WW.videoMap(V.anchors, V.map).f2t(f)
   const vclock = t => { const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}` }
 
+  // ---- 录像里看到的动作（场景 video.events）：按锚点换成世界帧，找仿真里同一个人同一个动作离得最近的（前后 5 秒内） ----
+  const EVS = (M.video && M.video.events) || []
+  let EVM = []
+  function matchEvents() {
+    EVM = EVS.map(e => {
+      const fv = Math.round(t2f(e.t)), i = names.indexOf(e.char)
+      let best = null
+      if (e.action) for (const a of D.actions) if (a.char === e.char && a.id === e.action && Math.abs(a.start - fv) <= 300 && (best === null || Math.abs(a.start - fv) < Math.abs(best - fv))) best = a.start
+      return { ...e, i, fv, sim: best }
+    })
+  }
+  /** 仿真比录像早 / 晚多少（世界秒，按锚点换算）；对不上的说明原因 */
+  const evNote = e => e.action === null ? '仿真里没有这个动作' : e.sim === null ? '仿真里前后 5 秒内没放' : Math.abs(e.sim - e.fv) < 6 ? '对齐' : `仿真${e.sim > e.fv ? '晚' : '早'} ${(Math.abs(e.sim - e.fv) / 60).toFixed(1)} 秒`
+  const evText = e => {
+    const n = evNote(e), cls = e.action === null || e.sim === null ? 'slow' : Math.abs(e.sim - e.fv) < 6 ? 'd' : e.sim > e.fv ? 'slow' : 'fast'
+    return `${WW.esc(e.label)} ${vclock(e.t)}<span class="${cls}">（${WW.esc(n)}）</span>`
+  }
+
   // ---- 分段：每次上场（切人到切人） ----
   const SEGS = D.onField.map((o, k) => {
     const sw = k > 0 ? D.switches[k - 1] : null
@@ -146,7 +164,10 @@
   function segs() {
     $('segs').innerHTML = SEGS.map((o, k) => {
       const t = V.anchors.length ? vclock(Math.max(0, f2t(o.start))) : `${sec(o.start).toFixed(1)} 秒`
-      return `<li data-k="${k}" style="--c:var(--c${o.i})"><span>${t}　<b>${WW.esc(o.char)}</b>${o.intro ? '（变奏）' : ''}　${((o.end - o.start) / 60).toFixed(1)} 秒　${WW.fmt(o.dmg)}（${(o.dmg / TOTAL * 100).toFixed(1)}%）　${driftHtml(driftAt(o.start))}</span><span class="acts">${WW.esc(actText(o.acts))}</span></li>`
+      const evs = EVM.filter(e => e.fv >= o.start && e.fv < o.end)
+      const ms0 = WW.metersAt(M, o.i, o.start), ms1 = WW.metersAt(M, o.i, Math.max(o.start, o.end - 1))
+      const res = ms0.filter(m => m.key === 'energy' || m.key === 'concerto').map(m => `${m.name} ${Math.round(m.v)}→${Math.round((ms1.find(x => x.key === m.key) || m).v)}`).join('　')
+      return `<li data-k="${k}" style="--c:var(--c${o.i})"><span>${t}　<b>${WW.esc(o.char)}</b>${o.intro ? '（变奏）' : ''}　${((o.end - o.start) / 60).toFixed(1)} 秒　${WW.fmt(o.dmg)}（${(o.dmg / TOTAL * 100).toFixed(1)}%）　${driftHtml(driftAt(o.start))}</span><span class="acts">仿真：${WW.esc(actText(o.acts))}</span>${evs.length ? `<span class="acts">录像：${evs.map(evText).join('　')}</span>` : ''}<span class="acts">${WW.esc(res)}</span></li>`
     }).join('')
     segCur.k = -2; segCur()
   }
@@ -160,8 +181,9 @@
   $('segs').addEventListener('click', e => { const li = e.target.closest('li'); if (li) seek(SEGS[+li.dataset.k].start) })
 
   // ---- 整局时间轴：在场段、各人的动作、每秒伤害、锚点、光标 ----
-  const SV = $('strip'), PAD = 6, ROW = 9, H_SEG = 14, H_DPS = 34
-  const H = H_SEG + 6 + names.length * (ROW + 3) + 6 + H_DPS + 14
+  const SV = $('strip'), PAD = 6, ROW = 9, H_EV = 10, H_SEG = 14, H_DPS = 34
+  const TOP = EVS.length ? H_EV + 3 : 0
+  const H = TOP + H_SEG + 6 + names.length * (ROW + 3) + 6 + H_DPS + 14
   const perSec = []
   for (const h of D.hits) if (h.dmg) { const k = Math.floor(h.f / 60); perSec[k] = (perSec[k] || 0) + h.dmg.expected }
   const maxSec = Math.max(1, ...perSec.filter(Boolean))
@@ -172,12 +194,13 @@
     W = Math.max(320, SV.clientWidth || SV.parentElement.clientWidth - 16)
     SV.setAttribute('viewBox', `0 0 ${W} ${H}`); SV.setAttribute('height', H)
     const out = []
-    for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="0" width="${Math.max(1, x(o.end) - x(o.start))}" height="${H_SEG}" style="fill:var(--c${o.i})" opacity="0.85"><title>${WW.esc(o.char)} ${sec(o.start).toFixed(1)}–${sec(o.end).toFixed(1)} 战斗秒</title></rect>`)
+    for (const e of EVM) out.push(`<path d="M${x(e.fv) - 4} 0 h8 l-4 ${H_EV - 2} z" style="fill:var(--c${e.i})"${e.sim === null ? ' opacity="0.45"' : ''}><title>${WW.esc(`录像 ${vclock(e.t)} ${e.char} ${e.label}`)}：${WW.esc(evNote(e))}</title></path>`)
+    for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="${TOP}" width="${Math.max(1, x(o.end) - x(o.start))}" height="${H_SEG}" style="fill:var(--c${o.i})" opacity="0.85"><title>${WW.esc(o.char)} ${sec(o.start).toFixed(1)}–${sec(o.end).toFixed(1)} 战斗秒</title></rect>`)
     names.forEach((n, i) => {
-      const y = H_SEG + 6 + i * (ROW + 3)
+      const y = TOP + H_SEG + 6 + i * (ROW + 3)
       for (const a of D.actions) if (a.i === i && a.end !== null) out.push(`<rect x="${x(a.start)}" y="${y}" width="${Math.max(1, x(a.end) - x(a.start) - 0.5)}" height="${ROW}" style="fill:var(--c${i})" opacity="${a.kind === 'liberation' ? 1 : a.kind === 'skill' || a.kind === 'intro' || a.kind === 'echo' ? 0.75 : 0.4}"><title>${WW.esc(`${n} ${a.id}`)}</title></rect>`)
     })
-    const yD = H_SEG + 6 + names.length * (ROW + 3) + 6
+    const yD = TOP + H_SEG + 6 + names.length * (ROW + 3) + 6
     perSec.forEach((v, k) => { if (v) { const h = H_DPS * v / maxSec; out.push(`<rect x="${x(k * 60)}" y="${yD + H_DPS - h}" width="${Math.max(1, x((k + 1) * 60) - x(k * 60) - 0.5)}" height="${h}" style="fill:var(--faint)"><title>第 ${k} 秒附近 ${WW.fmt(v)}</title></rect>`) } })
     for (const a of V.anchors) out.push(`<path d="M${x(a.f)} ${H - 12} l5 5 l-5 5 l-5 -5 z" style="fill:var(--wait)"><title>锚点：视频 ${vclock(a.t)} ↔ 第 ${a.f} 帧</title></path>`)
     out.push(`<text x="${PAD}" y="${yD + 10}">每秒伤害</text>`)
@@ -299,7 +322,7 @@
   })
   $('clear').addEventListener('click', () => { V.anchors = []; vsave(); refresh() })
 
-  function refresh() { strip(); segs(); anchors(); render() }
+  function refresh() { matchEvents(); strip(); segs(); anchors(); render() }
   addEventListener('resize', () => { strip() })
   refresh()
 })()
