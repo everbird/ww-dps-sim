@@ -191,6 +191,24 @@ const sets: EchoSetModule[] = [
     },
   }),
   defineEchoSet({
+    name: '斑驳粉饰之沫',                   // 达妮娅（2026-10-26，docs/tower-20261026.md）
+    pieces: {
+      2: [{ id: '斑驳粉饰之沫.2', source: '热熔伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [
+        {
+          id: '斑驳粉饰之沫.5', source: '角色为敌人添加【聚爆效应】时，自身获得下述效果：热熔伤害提升10%，持续15秒。持续期间内施放延奏技能后，下一个变奏技能登场的角色热熔伤害提升25%，持续15秒。',
+          zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['热熔'] }, target: 'self', duration: 900,
+          trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '聚爆效应' } },
+        },
+        {
+          id: '斑驳粉饰之沫.5延奏', source: '角色为敌人添加【聚爆效应】时，自身获得下述效果：热熔伤害提升10%，持续15秒。持续期间内施放延奏技能后，下一个变奏技能登场的角色热熔伤害提升25%，持续15秒。',
+          zone: 'DamageChangeElement', value: 0.25, filter: { elements: ['热熔'] }, target: 'nextIn', duration: 900,
+          trigger: { on: 'outro', where: { ownerHas: '斑驳粉饰之沫.5' } },
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
     name: '逆光跃彩之约',                   // 琳奈
     pieces: {
       2: [{ id: '逆光跃彩之约.2', source: '衍射伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['衍射'] }, target: 'self', duration: 'inf', trigger: 'always' }],

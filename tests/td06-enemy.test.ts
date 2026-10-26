@@ -179,7 +179,7 @@ describe('T06-11 白条', () => {
 
 // 异常效应（§18）：规则同 data/curated/effects.ts 的电磁效应（常规 10 层、电磁爆发 10 层、15 秒、5 秒一结算、结算后移除 50%）
 const 电磁: EffectDef = {
-  name: '电磁效应', element: '导电', source: 't', multipliers: [], maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300, decay: 0.5,
+  name: '电磁效应', element: '导电', source: 't', multipliers: [], maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300, decay: 0.5, settleAtMax: null,
 }
 /** 甲的 E 第 10 帧命中、附加 4 层电磁效应，30 帧结束；乙的钩子在甲每次命中后以乙的名义附加 1 层 */
 function runEffects(rotation: string[], withRule = true): SimResult {
@@ -231,6 +231,36 @@ describe('T06-13 异常效应的层数（§18）', () => {
     const r = runEffects(['甲 E', '甲 E'], false)
     expect(applied(r)).toEqual([])
     expect(eventsOfLog(r.log, 'warning').filter(w => w.code === 'effect')).toHaveLength(1)
+  })
+})
+
+// 到上限即结算（聚爆效应，2026-10-26，docs/tower-20261026.md）：甲的 E 每次附加 4 层，第 3 次加到 10 层当场结算、清层；结算冷却里到上限不结算
+describe('T06-13b 到上限即结算的异常效应（聚爆效应）', () => {
+  const 聚爆: EffectDef = {
+    name: '聚爆效应', element: '热熔', source: 't', multipliers: Array.from({ length: 10 }, (_, i) => i + 1), maxStacks: 10, burstMax: 0,
+    duration: 900, tickInterval: null, decay: 0, settleAtMax: 12,
+  }
+  const run = (rotation: string[], cd = 12): SimResult => {
+    const 甲e: SynthChar = {
+      name: '甲', actions: [action({ id: 'E', kind: 'skill', endFrame: 30, judgments: [judgment({ name: 'e', spawnFrame: 10, applies: { effect: '聚爆效应', stacks: 4 } })] })],
+    }
+    const data = synthData([甲e, idle('乙'), idle('丙')])
+    data.effects = { 聚爆效应: { ...聚爆, settleAtMax: cd } }
+    data.abnormalBaseByLevel = Array.from({ length: 100 }, (_, i) => (i === 89 ? 3674 : 0))
+    return simulate(resolveScenario(ScenarioSchema.parse({
+      team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
+    }), data))
+  }
+  test('加到上限当场按上限层数结算一次，记在加到上限的人名下，然后清层；之后从 0 重新叠', () => {
+    const r = run(Array(4).fill('甲 E') as string[])
+    expect(eventsOfLog(r.log, 'effectTick').map(e => [e.f, e.effect, e.stacks, e.left, e.source])).toEqual([[70, '聚爆效应', 10, 0, '甲']])
+    expect(eventsOfLog(r.log, 'hit').filter(h => h.effect).map(h => [h.f, h.judgment])).toEqual([[70, '引爆']])
+    expect(applied(r).map(x => [x[0], x[3]])).toEqual([[10, 4], [40, 8], [70, 10], [100, 4]])
+    expect(r.summary.assumptions.map(a => a.id)).toContain('effect-settle-clear')
+  })
+  test('结算冷却里又加到上限：不结算，层数留着，冷却过了下一次附加才结算', () => {
+    const r = run(Array(7).fill('甲 E') as string[], 100)   // 第 160 帧加到 10 层时还在冷却（到 170），第 190 帧那次才结算
+    expect(eventsOfLog(r.log, 'effectTick').map(e => [e.f, e.stacks])).toEqual([[70, 10], [190, 10]])
   })
 })
 

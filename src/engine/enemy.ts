@@ -187,6 +187,17 @@ export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName,
     type: 'enemyState', change: 'effectApplied', detail: why, by: who, effect, added, stacks: x.stacks,
     ...(def.burstMax > 0 ? { burstAdded, burst: x.burst } : {}),
   })
+  // 到上限即结算（聚爆效应"达到上限层数时结算1次对应层数异常倍率…结算冷却0.2秒"）：按上限层数的倍率记在加到上限的人名下，然后清掉全部层数
+  //（原文没写结算后层数怎样；达妮娅 6 链"本次引爆…且不移除聚爆效应层数"反推平常会移除，假设 effect-settle-clear）
+  if (def.settleAtMax !== null && x.stacks >= def.maxStacks && s.battleFrames >= (s.enemy.settledAt[effect] ?? -Infinity) + def.settleAtMax) {
+    s.enemy.settledAt[effect] = s.battleFrames
+    assume(s, 'effect-settle-clear', `${effect} 到上限结算后清层`)
+    const stacksNow = x.stacks
+    const damage = effectHit(sim, s, by, effect, multOf(def, stacksNow), '引爆')
+    delete s.enemy.effects[effect]
+    log(s, { type: 'effectTick', effect, stacks: stacksNow, left: 0, damage, source: who })
+    log(s, { type: 'enemyState', change: 'effectConsumed', detail: '到上限引爆', by: who, effect, stacks: 0, burst: 0 })
+  }
 }
 
 /** 第 k 层的倍率（effects.json 的逐层倍率；k 超出表的按最后一层，0 层或没有表为 0） */

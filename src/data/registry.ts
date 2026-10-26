@@ -113,7 +113,7 @@ function tuneBreakTable(t: GenTuneBreak | undefined): GameData['tuneBreak'] {
 function effectDef(e: EffectModule, gen: GenEffectsFile | undefined): EffectDef {
   return {
     name: e.name, element: e.element, source: e.source, multipliers: gen?.effects.find(x => x.name === e.name)?.multipliers ?? [],
-    maxStacks: e.maxStacks, burstMax: e.burstMax ?? 0, duration: e.duration, tickInterval: e.tickInterval, decay: e.decay ?? 0,
+    maxStacks: e.maxStacks, burstMax: e.burstMax ?? 0, duration: e.duration, tickInterval: e.tickInterval, decay: e.decay ?? 0, settleAtMax: e.settleAtMax ?? null,
   }
 }
 

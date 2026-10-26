@@ -236,6 +236,8 @@ export interface EnemyRuntime {
   effects: Partial<Record<EffectName, EffectRuntime>>
   /** 响应的冷却：角色 → 到这个战斗帧（不含）之前不再响应（"同一目标每8秒仅可受到1次该伤害"） */
   responseCd: Partial<Record<CharName, number>>
+  /** 到上限即结算的异常效应（聚爆效应）上一次结算的战斗帧（结算冷却） */
+  settledAt: Partial<Record<EffectName, number>>
 }
 
 /** 偏移 / 干涉的种类（TD-06 §19）：现在只建了震谐 */

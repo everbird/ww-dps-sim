@@ -208,6 +208,7 @@ export interface EffectDef {
   duration: Frame                                   // 每次附加刷新的持续时间（全部层数共用一个计时）
   tickInterval: Frame | null                        // 结算周期
   decay: number                                     // 每次结算后移除当前层数的比例（0 = 不减；角色模块的 effectRules 可让它不减）
+  settleAtMax: Frame | null                         // 到上限即结算并清层（聚爆效应），值是结算冷却；null = 没有
   debuff?: BuffDef                                  // 如虚湮减防
 }
 
