@@ -9,7 +9,7 @@ import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import {
-  applyEffect, applyShift, canTuneBreak, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
+  applyEffect, applyShift, canTuneBreak, forceDisharmony, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
@@ -112,6 +112,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
+    enemyCommand: st => forceDisharmony(sim, st),
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     interject: st => {
       if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null

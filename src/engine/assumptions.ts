@@ -200,6 +200,12 @@ export const ASSUMPTIONS = [
     adjust: { how: '场景里 options.tuneBreak: manual（只放轴里写的）或 off（不放）', path: 'options.tuneBreak', values: ['off'] },
   },
   {
+    id: 'forced-disharmony', topic: '敌人', tracked: true, impact: 'small', ref: 'docs/tower-20261026.md 中 3、TD-09 §2',
+    what: '录像剖析的轴里写"敌人 失谐"时，仿真的那一个敌人此刻直接失谐（偏谐值满、谐度破坏按钮亮 5 秒），接着手写的谐度破坏照录像的时刻放；它清空偏谐值、起谐破冷却，伤害也算在这一个敌人上',
+    why: '多敌人的段里谐度破坏打的是仿真没建的小怪（中 3 视频 28.6、95.7 秒，boss 98 秒才出来），仿真只建 boss 一只、偏谐值不会在那一刻满；照录像的时刻放才能让后面的段对得上',
+    adjust: { how: '轴里去掉"敌人 失谐"与那次谐度破坏' },
+  },
+  {
     id: 'tunability-base', topic: '敌人', tracked: true, impact: 'small', ref: 'TD-01 Q17',
     what: '角色的偏谐效率、谐破增幅的基础值是推定的',
     why: 'xlsx 没有明确的列',

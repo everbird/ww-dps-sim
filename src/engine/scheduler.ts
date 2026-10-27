@@ -80,6 +80,7 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
       const item = j + 1
       if (it.kind === 'wait') { commands.push({ kind: 'wait', line, item, frames: it.frames }); return }
       if (it.kind === 'at') { commands.push({ kind: 'at', line, item, frame: Math.round(it.seconds * 60) }); return }
+      if (it.kind === 'enemy') { commands.push({ kind: 'enemy', line, item, state: it.state }); return }
       const slot = slotOf.get(it.char)
       if (slot === undefined) {
         issues.push({ line, item, message: `${it.char} 不在队伍里（队伍：${team.map(m => m.name).join('、')}）` })
@@ -145,6 +146,8 @@ export interface SchedulerOptions {
   onSwitch?(s: SimState, k: Kernel, from: Slot, to: Slot, cmd: CommandRef): void
   /** TD-06 §13.4：要插在队首指令之前的动作（目标失谐时前台角色的谐度破坏）；why 写进等待原因。缺省不插 */
   interject?(s: SimState): { slot: Slot; def: ActionDef; why: string } | null
+  /** 轴里写的"敌人 失谐"（录像剖析：谐度破坏打的是仿真没建的小怪）。缺省什么也不做 */
+  enemyCommand?(s: SimState, state: 'disharmony'): void
   /** 操作延迟（总设计 T4）：队首指令第一次全部合法时问一次，再晚这么多帧执行。只加在决策点（切人、不是连段后续的出招），
    *  插队的动作不算。缺省 0。
    *  期望模式是 options.inputDelay；抽样模式在这里加随机抖动——这是调度器里唯一的随机注入点 */
@@ -247,6 +250,8 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
     case 'at':
       if (!roundHasAction(q)) beginLoop(s)
       return s.frame >= c.frame ? GO : { go: false, code: 'at', reason: `等到第 ${c.frame} 帧` }
+    case 'enemy':
+      return GO
     case 'switch': {
       if (c.to === s.onField) throw fail(s, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
       // 切人冷却每人单独计：被切走的人一段时间内不能再切回来（2026-10-25 用户确认；视频 A 里尤诺 → 景燃 → 守岸人两次切人只隔约 18 帧）
@@ -378,6 +383,7 @@ function stateVerdict(s: SimState, opts: SchedulerOptions, slot: Slot, def: Acti
 function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions, c: Command, ref: CommandRef): void {
   switch (c.kind) {
     case 'wait': case 'at': return                                   // 等完就算执行完
+    case 'enemy': opts.enemyCommand?.(s, c.state); return            // 敌人 失谐（录像剖析）：改敌人状态由 simulate 做
     case 'switch': {
       beginLoop(s)
       const from = s.onField

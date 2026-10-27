@@ -2,7 +2,7 @@
 // 白条与破盾回能、瘫痪与回满、Summary.enemy；异常效应的层数（§18）。人造角色，不依赖生成数据
 import { describe, expect, test } from 'vitest'
 import type { DilationDef, EffectDef, TuneBreakTable } from '../src/data/gamedata'
-import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
+import { parseRotationLine, ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
 import { computeAbnormal, emptyAccumulator } from '../src/engine/formula'
@@ -148,6 +148,18 @@ describe('T06-12 留着谐度破坏：manual + 可选的"谐度破坏?"', () => 
     expect(eventsOfLog(r.log, 'skip').map(e => [e.cmd.line, e.reason])).toEqual([[1, '目标没有失谐']])
     expect(r.summary.skipped).toEqual([{ line: 1, item: 1, loop: 1, reason: '目标没有失谐' }])
     expect(states(r)).toEqual(['disharmony', 'harmonyBreak'])            // 第 4 条失谐，第 5 条那段不再累积，第 6 条放
+  })
+  test('录像剖析的"敌人 失谐"（2026-10-27 中 3）：偏谐值没满也让目标此刻失谐、按钮亮，手写的谐度破坏照放；记假设 forced-disharmony', () => {
+    const r = run({ rotation: ['甲 X', '敌人 失谐', '甲 谐度破坏', '甲 X'], options: { tuneBreak: 'manual' } })
+    expect(r.error).toBeUndefined()
+    expect(eventsOfLog(r.log, 'actionStart').map(e => e.action)).toEqual(['X', '谐度破坏', 'X'])
+    expect(eventsOfLog(r.log, 'enemyState').filter(e => e.change !== 'break' && e.change !== 'breakEnd').map(e => [e.change, e.detail]))
+      .toEqual([['disharmony', '轴里写的（敌人 失谐）'], ['harmonyBreak', '甲 谐度破坏']])
+    expect(r.summary.assumptions.map(a => a.id)).toContain('forced-disharmony')
+    // 不写的话放不出来：等超时
+    expect(run({ rotation: ['甲 X', '甲 谐度破坏'], options: { tuneBreak: 'manual', maxWait: 120 } }).error?.message).toContain('目标没有失谐')
+    expect(parseRotationLine('enemy disharmony')).toEqual([{ kind: 'enemy', state: 'disharmony' }])
+    expect(parseRotationLine('敌人 破盾')).toHaveProperty('error')
   })
 })
 
