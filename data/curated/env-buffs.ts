@@ -17,7 +17,27 @@ const buffs: BuffDefInput[] = [
     id: '深塔28左4.变奏普攻', source: '角色施放变奏技能时，暴击伤害提升20%，普攻伤害加成提升40%，持续18秒，重复触发刷新持续时间。',
     zone: 'DamageChangeType', value: 0.4, filter: { tags: ['普攻'] }, target: 'onField', duration: 1080, trigger: { on: 'intro' },
   },
-  // 深塔 41 期 中 3（2026-10-26 你自己的录像 20261026-深塔-中3-心雷卜.mp4 开头的"环境特性"面板；敌人与数据里的 41塔中3 对得上，docs/tower-20261026.md）
+  // 深塔 41 期 中 1、中 2（深境之塔第 1、2 层，两层相同；2026-10-26 照 nanoka 的深塔数据 static.nanoka.cc/ww/3.7/zh/tower/41.json，
+  // 录像开头的面板没展开）。没写类别的伤害加成按普通的伤害加成
+  {
+    id: '深塔41中1.抗性降', source: '敌方导电抗性和热熔抗性降低10%，衍射抗性和冷凝抗性提升10%。',
+    zone: 'TargetElementResistant', value: -0.1, filter: { elements: ['导电', '热熔'] }, target: 'team', duration: 'inf', trigger: 'always',
+  },
+  {
+    id: '深塔41中1.抗性升', source: '敌方导电抗性和热熔抗性降低10%，衍射抗性和冷凝抗性提升10%。',
+    zone: 'TargetElementResistant', value: 0.1, filter: { elements: ['衍射', '冷凝'] }, target: 'team', duration: 'inf', trigger: 'always',
+  },
+  {
+    id: '深塔41中1.加成', source: '导电和热熔伤害加成提升30%。角色附加异常效应时，暴击伤害提升25%，持续20秒。',
+    zone: 'DamageChangeElement', value: 0.3, filter: { elements: ['导电', '热熔'] }, target: 'team', duration: 'inf', trigger: 'always',
+  },
+  {
+    // "角色附加异常效应时……"：给附加的那个人（env 的 self 给触发者）
+    id: '深塔41中1.异常暴伤', source: '导电和热熔伤害加成提升30%。角色附加异常效应时，暴击伤害提升25%，持续20秒。',
+    zone: 'critDamage', value: 0.25, target: 'self', duration: 1200,
+    trigger: { on: 'enemyState', where: { by: 'team', enemyState: 'effectApplied' } },
+  },
+  // 深塔 41 期 中 3（2026-10-26 你自己的录像 20261026-深塔-中3-心雷卜.mp4 开头的"环境特性"面板，与 nanoka 41 期深境之塔第 3 层一致；docs/tower-20261026.md）
   // 面板上的"最终提升"没写类别，按 0 类最终伤害（FinalDamage0，同"全伤害加深"不带类别 = 0 类）：三条之间相加（假设 env-final-class）
   {
     // "攻击命中时会使敌人受到伤害最终提升…每经过5秒该效果值提升5%"：60 秒后队里有人命中就加一层，5 秒内置冷却，12 层封顶（60%）
