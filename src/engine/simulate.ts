@@ -238,7 +238,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   if (d.target === 'enemy' && (e.preset.tunabilityMax > 0 || e.preset.whiteBarTough > 0))
     (s.log[hitIndex] as HitEvent).enemy = { tunability: e.tunability, whiteBar: e.whiteBar }
   if (d.applies && d.target === 'enemy') {                        // 命中后附加异常效应（TD-06 §18）
-    applyEffect(sim, s, j.owner, d.applies.effect, d.applies.stacks, `${m.def.name} ${d.name}`)
+    applyEffect(sim, s, j.owner, d.applies.effect, d.applies.stacks, `${m.def.name} ${d.name}`, d.summon === true)
     if (link) sim.bus.chain.set(s.log.length - 1, link)
   }
   drain(sim, s)

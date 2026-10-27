@@ -222,8 +222,9 @@ export default defineCharacter('卜灵', {
       // 切人锁不用写：xlsx 只写了"第238F前不响应输入"，装配按大招出招阶段不能切人取 238（假设 ult-no-switch）；
       // 开阵在第 236 帧，大招后马上变奏的那一下正好算进雷法
       judgments: {
-        '大招-冲击波': { applies: { effect: '电磁效应', stacks: 2 } },    // "命中后赋予目标2层电磁效应"
-        '大招-C5异常': { applies: { effect: '电磁效应', stacks: 6 } },    // 共鸣链5"生成五雷荡煞阵时……附加6层"
+        // 两段都是五雷荡煞阵（阵）打出的：summon（假设 summon-as-char）
+        '大招-冲击波': { applies: { effect: '电磁效应', stacks: 2 }, summon: true },    // "命中后赋予目标2层电磁效应"
+        '大招-C5异常': { applies: { effect: '电磁效应', stacks: 6 }, summon: true },    // 共鸣链5"生成五雷荡煞阵时……附加6层"
         '大招-开阵前置': { spawns: null },                               // 开阵子弹（0 倍率）不生成：五雷荡煞阵由钩子在开阵前置那一段生成
       },
     },

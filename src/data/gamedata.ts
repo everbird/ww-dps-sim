@@ -135,6 +135,9 @@ export interface JudgmentDef {
   heals?: boolean                                   // 这次结算同时为友方回复生命：结算后记一条 heal 事件（治疗量不建模，角色模块标）
   /** 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"）：动作表只写在备注里，角色模块按原文标（TD-06 §18） */
   applies?: { effect: EffectName; stacks: number }
+  /** 阵、召唤物打出的（不是角色本人出手，如卜灵五雷荡煞阵的冲击波）：伤害、属性、出处照样记在持有者名下；
+   *  "队伍中的角色…附加 / 添加…时"这类条件算不算它看 rules.summonCountsAsChar（假设 summon-as-char，2026-10-27 中 4 录像） */
+  summon?: true
   chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
   /** 这段生成本动作的哪些事件判定（spawnFrame = null）：on 'hit' 第一次结算后立即生成（备注"命中后立即生成X"），
    *  'end' 持续帧走完自然消失时生成（"持续帧结束后自行生成X"）；装配时从备注推得（flag spawnFromNote），模块可写 null 关掉自己生成 */
@@ -260,6 +263,9 @@ export interface Rules {
   /** 声骸起手按 inputPriority（通用块召唤声骸 / 变身声骸行的 5）比优先级，能打断重击、技能的后摇（缺省 true，假设 echo-input-priority）。
    *  false：按声骸表的优先级（多为 0），要等当前动作结束或进同级派生窗口（2026-10-25 之前的做法） */
   echoInputPriority: boolean
+  /** 阵、召唤物（JudgmentDef.summon）附加的异常效应算"队伍中的角色附加"（缺省 true，假设 summon-as-char）：触发"附加…后"的效果、
+   *  心把电磁爆发转成霆心域。false：都不算（电磁爆发留在目标上，下次结算照算） */
+  summonCountsAsChar: boolean
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -295,6 +301,7 @@ export const DEFAULT_RULES: Rules = {
   invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
   switchEndsStop: true,                             // xlsx 写的帧 + 视频 A 逐帧量（docs/jys-videos.md §6.3）
   echoInputPriority: true,                          // xlsx 通用块 + 视频 A 守岸人一段对上（docs/jys-videos.md §6.4）
+  summonCountsAsChar: true,                         // 原文没说阵算不算角色；中 4 录像的踏月归心像是不算（docs/tower-20261026.md 中 4 第 8 条）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,

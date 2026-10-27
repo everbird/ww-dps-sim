@@ -199,7 +199,7 @@ export function enemyTimers(s: SimState, rates: Rates): void {
 /** 为目标附加异常效应（§18）：层数加到常规上限（maxStacks），超出的进额外层（电磁效应的"电磁爆发"，burstMax，到顶不再加）；
  *  每次附加把持续时间刷新为效应表的 duration（全部层数共用一个计时，"重复获得刷新持续时间"）。
  *  到顶了也记 effectApplied：触发"附加…后"的效果（雷主延奏写的是"尝试赋予异常效应后"）。伤害在定时结算时算（effectTicks） */
-export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName, stacks: number, why: string): void {
+export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName, stacks: number, why: string, summon = false): void {
   const def = sim.r.data.effects[effect]
   const who = s.chars[by].name
   if (!def) {
@@ -220,8 +220,9 @@ export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName,
   x.source = by
   log(s, {
     type: 'enemyState', change: 'effectApplied', detail: why, by: who, effect, added, stacks: x.stacks,
-    ...(def.burstMax > 0 ? { burstAdded, burst: x.burst } : {}),
+    ...(def.burstMax > 0 ? { burstAdded, burst: x.burst } : {}), ...(summon ? { summon: true as const } : {}),
   })
+  if (summon) assume(s, 'summon-as-char', `${why}${sim.r.rules.summonCountsAsChar ? '' : '（不算角色附加）'}`)
   // 到上限即结算（聚爆效应"达到上限层数时结算1次对应层数异常倍率…结算冷却0.2秒"）：按上限层数的倍率记在加到上限的人名下，然后清掉全部层数
   //（原文没写结算后层数怎样；达妮娅 6 链"本次引爆…且不移除聚爆效应层数"反推平常会移除，假设 effect-settle-clear）
   if (def.settleAtMax !== null && x.stacks >= def.maxStacks && s.battleFrames >= (s.enemy.settledAt[effect] ?? -Infinity) + def.settleAtMax) {
