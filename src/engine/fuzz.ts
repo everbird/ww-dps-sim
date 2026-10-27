@@ -2,7 +2,7 @@
 // 每条跑完查日志自洽（invariants.ts checkLog）；原轴另查两条变形关系：同样的输入两次结果相同、各项属性加一点伤害不降（时间轴不变）。
 // 跑不通（连段中断、等超时…）是轴的问题，不算；抛异常、invariant 报错、日志不自洽才是引擎的问题
 import { checkLog } from './invariants'
-import { neighbors, parseLines, lineText, type Change, type Line } from './search'
+import { neighborIter, parseLines, lineText, type Change, type Line } from './search'
 import { compileRotation, type CompileMember } from './scheduler'
 import { simulate } from './simulate'
 import type { HitEvent, ResolvedScenario, SimResult } from './types'
@@ -45,13 +45,20 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
   // 变体：挪动任一动作、去掉任一动作、对调相邻两个；另按连段整块挪动、去掉、对调（2026-10-24：单个挪多半把连段拆断，跑不通）
   const lines = parseLines(rotation)
   const acts = [...new Set(lines.flatMap(l => ('items' in l ? l.items.map(i => i.action) : [])))]
-  const single = neighbors(lines, { move: acts, drop: acts, swap: true, has }), block = blockChanges(lines, members)
-  const all = [...single, ...block]
+  // 单个动作的变体按需生成（长轴的候选上百万条，全摊开会把内存用完）：先数一遍，再只取等距选中的那几条
+  const singleOpts = { move: acts, drop: acts, swap: true, has }
+  let nSingle = 0
+  for (const _ of neighborIter(lines, singleOpts)) nSingle++
+  const block = blockChanges(lines, members)
   const seen = new Set<string>()
   // 两类各取一半（等距取，结果可重复）；块变体不够一半时余下的给单个的
-  const even = <T>(xs: readonly T[], k: number) => xs.filter((_, i) => xs.length <= k || Math.floor(i * k / xs.length) !== Math.floor((i - 1) * k / xs.length))
+  const chosen = (len: number, k: number, i: number) => len <= k || Math.floor(i * k / len) !== Math.floor((i - 1) * k / len)
+  const even = <T>(xs: readonly T[], k: number) => xs.filter((_, i) => chosen(xs.length, k, i))
   const nb = Math.min(block.length, Math.floor(n / 2))
-  const picked = [...even(single, n - nb), ...even(block, nb)]
+  const single: Change[] = []
+  let i = 0
+  for (const ch of neighborIter(lines, singleOpts)) if (chosen(nSingle, n - nb, i++)) single.push(ch)
+  const picked = [...single, ...even(block, nb)]
   const rejected: Record<string, number> = {}
   let ran = 0, ok = 0
   for (const ch of picked) {
@@ -69,7 +76,7 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
     if (res.error) { if (res.error.code !== 'invariant') rejected[res.error.code] = (rejected[res.error.code] ?? 0) + 1; continue }
     ok++
   }
-  return { variants: all.length, ran, ok, rejected, problems }
+  return { variants: nSingle + block.length, ran, ok, rejected, problems }
 }
 
 /** 一行里的连段块：后一个动作的连段前置（comboFrom）含前一个的就接成一块（A1 A2 A3 A4），其余各自一块 */
