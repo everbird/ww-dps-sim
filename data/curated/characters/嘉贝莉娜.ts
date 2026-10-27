@@ -109,9 +109,12 @@ export default defineCharacter('嘉贝莉娜', {
             const now = ctx.state.battleFrames
             if (v[key] < 0 || now >= v[key] + CAT_CD) { v[key] = now; ctx.addBuff(`${P}死运既定`) }
           }
-          if (v.恶魔 && ev.gains.core[0]! < 0 && fire(ctx) <= 0) leaveDemon(ctx, '净炼火耗完')
           return
         }
+        case 'resource':
+          // 净炼火耗完退出：命中扣的、恶魔普攻起手扣的（起手即得）都算——原来只看命中，起手扣到 0 的留在恶魔位格里
+          if (ev.char === self && ev.resource === 'core1' && ev.delta < 0 && v.恶魔 && ev.value <= 0) leaveDemon(ctx, '净炼火耗完')
+          return
         case 'buffExpire':
           if (ev.target === self && ev.buff === `${P}恶魔位格` && ev.reason === 'timeout') leaveDemon(ctx, '50 秒到')
           return

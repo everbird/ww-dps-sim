@@ -138,8 +138,8 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     const e3 = starts('嘉贝莉娜').find(e => e.action === 'E3')!
     const on = of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
     const off = of(log, 'buffExpire').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
-    for (const a of starts('嘉贝莉娜').filter(e => e.action.startsWith('恶魔'))) {
-      expect(on.some((f, k) => f <= a.f && a.f < (off[k] ?? Infinity))).toBe(true)
+    for (const a of starts('嘉贝莉娜').filter(e => e.action.startsWith('恶魔'))) {   // 起手扣净炼火扣到 0 的，同一帧退出
+      expect(on.some((f, k) => f <= a.f && a.f <= (off[k] ?? Infinity))).toBe(true)
     }
     expect(of(log, 'buffApply').some(e => e.buff === '嘉贝莉娜.余火' && e.f === e3.f && e.stacks > 0)).toBe(true)
     expect(Math.max(...of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.死运既定').map(e => e.stacks))).toBe(4)
@@ -147,5 +147,44 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     const end = of(log, 'buffExpire').find(e => e.buff === '嘉贝莉娜.恶魔位格')!
     if (end.reason === 'timeout') expect(end.t - e3.t).toBeCloseTo(50, 0)
     else expect(end.t - e3.t).toBeLessThan(50)
+  })
+
+  test('嘉贝莉娜：恶魔普攻起手扣净炼火扣到 0 也退出恶魔位格；三次变奏上场都在阈限（录像里共鸣回路是灰角）', () => {
+    // 原来只在命中扣到 0 时退出，起手扣到 0 的留在恶魔位格里，第二轮上场还是恶魔位格（和录像不符）
+    const ends = of(log, 'buffExpire').filter(e => e.buff === '嘉贝莉娜.恶魔位格')
+    expect(ends.length).toBeGreaterThan(0)
+    for (const end of ends) {
+      expect(end.reason).not.toBe('timeout')
+      const last = of(log, 'resource').filter(e => e.char === '嘉贝莉娜' && e.resource === 'core1' && e.f <= end.f).at(-1)!
+      expect(last.value).toBeLessThanOrEqual(0)
+    }
+    const on = of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
+    const off = ends.map(e => e.f)
+    for (const q of starts('嘉贝莉娜').filter(e => e.action === 'QTE')) {
+      expect(on.some((f, k) => f <= q.f && q.f < (off[k] ?? Infinity))).toBe(false)
+    }
+  })
+})
+
+dataDescribe('三火深塔 41 期中 2 的录像', () => {
+  let log: SimEvent[]
+  let cmp: ReturnType<typeof compareMarks>
+  beforeAll(async () => {
+    const gd = await loadGameData()
+    const sc = parse(readFileSync(new URL('../scenarios/fire-tower2-video.yaml', import.meta.url), 'utf8')) as ScenarioInput
+    const r = resolveScenario(ScenarioSchema.parse(sc), gd)
+    const out = simulate(r)
+    expect(out.error).toBeUndefined()
+    log = out.log
+    cmp = compareMarks(traceCommands(log, r, 1), sc.video!.marks!)
+  })
+
+  test('整局跑得通，9 次切人都出现，和录像差不到 5 秒；嘉贝莉娜放了 3 次恶翼扬升、3 次大招', () => {
+    expect(cmp.missing).toEqual([])
+    expect(cmp.rows.length).toBe(9)
+    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(5)
+    const g = of(log, 'actionStart').filter(e => e.char === '嘉贝莉娜')
+    expect(g.filter(e => e.action === 'E3').length).toBe(3)
+    expect(g.filter(e => e.action === '大招').length).toBe(3)
   })
 })
