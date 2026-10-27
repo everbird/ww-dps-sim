@@ -1,7 +1,7 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, videoSeconds, type HitTrigger } from '../engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type HitTrigger } from '../engine/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>
@@ -104,10 +104,8 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
       return { t: videoSeconds(t), char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null }
     }),
     // 录像里敌人的血条：left = 剩余比例；视图 F 拿第一条的时刻起仿真的累计伤害 / 敌人生命对照
-    hp: (sc.video.hp ?? []).map(line => {
-      const [t, left] = line.trim().split(/\s+/) as [string, string]
-      return { t: videoSeconds(t), left: Number(left) }
-    }),
+    // 换了敌人的（末尾写了敌人预设）另起一段：seg / left0 / hp 是这一段的起点、起点读数、这只的生命
+    hp: hpPoints(sc.video, r),
   }
 }
 

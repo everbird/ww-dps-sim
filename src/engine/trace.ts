@@ -3,6 +3,7 @@
 // 不改仿真；时刻按本轮开始算，世界帧与战斗秒都给（视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
 import { FLAT_STATS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
 import { composeStat } from './formula'
+import type { Scenario } from '../data/scenario.schema'
 import type { ResolvedScenario, SimEvent } from './types'
 import { round, roundTo } from './num'
 import { outroOf } from './switch'
@@ -499,4 +500,22 @@ export function compareMarks(cmds: readonly CommandRow[], marks: Record<string, 
     return row
   })
   return { rows, missing }
+}
+
+/** 录像血条的一个读数：seg 是这只敌人血条出现的视频秒、left0 是那时的读数、hp 是这只的生命（仿真从 seg 起累计伤害 / hp 对照） */
+export interface HpPoint { t: number; left: number; seg: number; left0: number; hp: number; enemy: string }
+
+/** video.hp 逐条：末尾写了敌人预设的一条起是另一只（没写的接着上一只，第一只是场景的敌人） */
+export function hpPoints(video: NonNullable<Scenario['video']>, r: ResolvedScenario): HpPoint[] {
+  let cur = { seg: 0, left0: 1, hp: r.enemy.hp, enemy: r.enemy.id }
+  return (video.hp ?? []).map((line, i) => {
+    const [t, left, preset] = line.trim().split(/\s+/) as [string, string, string | undefined]
+    const p: Pick<HpPoint, 't' | 'left'> = { t: videoSeconds(t), left: Number(left) }
+    if (i === 0 || preset) {
+      const e = preset ? r.data.enemies[preset] : r.enemy
+      if (!e) throw new Error(`video.hp 第 ${i + 1} 条：敌人预设"${preset}"不存在`)
+      cur = { seg: p.t, left0: p.left, hp: e.hp, enemy: e.id }
+    }
+    return { ...p, ...cur }
+  })
 }

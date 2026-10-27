@@ -9,7 +9,7 @@ import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
 import {
-  applyEffect, applyShift, canTuneBreak, forceDisharmony, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
+  applyEffect, applyShift, canTuneBreak, forceDisharmony, freshEnemy, swapEnemy, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
@@ -112,7 +112,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
-    enemyCommand: st => forceDisharmony(sim, st),
+    enemyCommand: (st, c) => (c.state === 'swap' ? swapEnemy(sim, st, c.preset) : forceDisharmony(sim, st)),
     // 能量满 <角色>（录像剖析，假设 forced-energy）：补到大招能量上限，记一条 resource（cause forced）
     fillCommand: (st, slot) => {
       assume(st, 'forced-energy', `${st.chars[slot].name} 第 ${st.frame} 帧`)
@@ -153,11 +153,7 @@ function initialState(r: ResolvedScenario): SimState {
     energy: r.initial.energy[m.slot], concerto: r.initial.concerto[m.slot], core: [...r.initial.core[m.slot]!] as typeof r.initial.core[0], cooldowns: {}, charges: {},
     vars: Object.seal({ ...m.def.vars }),                      // 只能改声明过的状态量，加新键会报错（总设计 §10.1）
   })) as SimState['chars']
-  const e = r.enemy
-  const enemy: EnemyRuntime = {
-    preset: e, whiteBar: e.whiteBarTough, broken: false, paralyzedUntil: 0, poise: e.poise.max, tunability: 0, disharmony: false,
-    tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {}, settledAt: {},
-  }
+  const enemy = freshEnemy(r.enemy)
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, chars, judgments: [], tails: [], buffs: [],
     enemy, dilations: [], queue: newQueue(r.commands, r.options.repeat, r.opening), log: [], nextId: 1,
@@ -203,15 +199,15 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       // 震谐响应（伤害类型 12，含爱弥斯光翼共奏追加的震谐伤害）同一公式：按行上的元素算抗性，没有"目标未失谐"这一项（TD-03 §6、TD-06 §19）
       const tb = draft.tags.includes('谐度破坏')
       const v = computeTuneBreak({
-        base: tuneBase(r.data.tuneBreak, r.rules.charLevel, r.enemy.cost), rate: draft.multiplier, level: r.rules.charLevel,
-        enemy: { def: r.enemy.def, res: r.enemy.res[tb ? '物理' : draft.element] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
+        base: tuneBase(r.data.tuneBreak, r.rules.charLevel, s.enemy.preset.cost), rate: draft.multiplier, level: r.rules.charLevel,
+        enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[tb ? '物理' : draft.element] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
         ...(tb && s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
       }, acc, r.rules)
       dmg = { nonCrit: v, crit: v, expected: v }
     } else {
       const hc = {
         rate: draft.multiplier, attr: d.relatedAttr, extraFlat: draft.extraFlat, level: r.rules.charLevel,
-        enemy: { def: r.enemy.def, res: r.enemy.res[draft.element] },
+        enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[draft.element] },
       }
       const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules)
       if (sim.onHit) rec = { slot: j.owner, index: -1, ctx: hc, view, active, draft: { zones: draft.zones, critOnly: draft.critOnly } }

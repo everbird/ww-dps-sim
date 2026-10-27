@@ -1,7 +1,8 @@
 // tests/td06-enemy.test.ts —— 敌人量表（TD-06 §13）：偏谐值与失谐、谐度破坏（自动插入、对失谐、真空期、手写与关闭）、
 // 白条与破盾回能、瘫痪与回满、Summary.enemy；异常效应的层数（§18）。人造角色，不依赖生成数据
 import { describe, expect, test } from 'vitest'
-import type { DilationDef, EffectDef, TuneBreakTable } from '../src/data/gamedata'
+import { ELEMENTS } from '../src/data/common'
+import type { DilationDef, EffectDef, EnemyPreset, TuneBreakTable } from '../src/data/gamedata'
 import { parseRotationLine, ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
@@ -44,11 +45,17 @@ const 甲: SynthChar = {
 function run(sc: Partial<ScenarioInput>, rate = 1, enemy: Record<string, unknown> = {}): SimResult {
   const data = synthData([甲, idle('乙'), idle('丙')])
   data.tuneBreak = TABLE
+  data.enemies = Object.fromEntries([NEXT, { ...NEXT, id: '测试/三费', cost: 3 as const }].map(e => [e.id, e]))
   data.characters['甲']!.tunabilityRate = rate
   return simulate(resolveScenario(ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })),
     enemy: { custom: { level: 90, tunabilityMax: 100, whiteBar: 1000, paralysisSec: 1, ...enemy } }, ...sc,
   }), data))
+}
+// "敌人 换" 用的下一只：4C、防御与抗性都比场景的自定义敌人高（同等级缺省防御、抗性 0.1）
+const NEXT: EnemyPreset = {
+  id: '测试/下一只', name: '下一只', tag: '测试', cost: 4, level: 90, hp: 1e6, def: 5000, res: Object.fromEntries(ELEMENTS.map(e => [e, 0.5])) as EnemyPreset['res'],
+  whiteBar: { max: 0, recover: 0, reduce: 0 }, whiteBarTough: 0, paralysisFrames: 0, poise: { max: 0, recover: 0, reduce: 0 }, tunabilityMax: 100,
 }
 const X = (n: number) => Array(n).fill('甲 X') as string[]
 const states = (r: SimResult) => eventsOfLog(r.log, 'enemyState').map(e => e.change)
@@ -160,6 +167,19 @@ describe('T06-12 留着谐度破坏：manual + 可选的"谐度破坏?"', () => 
     expect(run({ rotation: ['甲 X', '甲 谐度破坏'], options: { tuneBreak: 'manual', maxWait: 120 } }).error?.message).toContain('目标没有失谐')
     expect(parseRotationLine('enemy disharmony')).toEqual([{ kind: 'enemy', state: 'disharmony' }])
     expect(parseRotationLine('敌人 破盾')).toHaveProperty('error')
+  })
+  test('录像剖析的"敌人 换 <预设>"（2026-10-27 中 4）：此刻换成新敌人，偏谐值从 0 累积、伤害按新敌人的防御与抗性；记假设 enemy-swap', () => {
+    const base = run({ rotation: X(3), options: { tuneBreak: 'manual' } })
+    expect(states(base)).toEqual(['disharmony'])                                  // 40 × 3 → 第 3 下满
+    const r = run({ rotation: ['甲 X', '甲 X', '敌人 换 测试/下一只', '甲 X'], options: { tuneBreak: 'manual' } })
+    expect(r.error).toBeUndefined()
+    expect(eventsOfLog(r.log, 'enemyState').map(e => [e.change, e.detail])).toEqual([['swap', '换成 测试/下一只']])   // 换了以后从 0 起：只到 40
+    const [h1, , h3] = eventsOfLog(r.log, 'hit').map(h => h.dmg!.expected)
+    expect(h3!).toBeLessThan(h1! * 0.6)                                           // 防御 5000、抗性 0.5
+    expect(r.summary.assumptions.map(a => a.id)).toContain('enemy-swap')
+    expect(parseRotationLine('enemy swap 测试/下一只')).toEqual([{ kind: 'enemy', state: 'swap', preset: '测试/下一只' }])
+    expect(() => run({ rotation: ['甲 X', '敌人 换 测试/没有'] })).toThrow('敌人预设"测试/没有"不存在')
+    expect(() => run({ rotation: ['甲 X', '敌人 换 测试/三费'] })).toThrow('COST 3 与场景的敌人（4）不同')
   })
 })
 

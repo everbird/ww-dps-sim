@@ -9,13 +9,14 @@
 import { EFFECT_NAMES, type EffectName, type Slot } from '../data/common'
 import type { ActionDef, EffectDef } from '../data/gamedata'
 import { assume } from './assumptions'
-import { activeFor } from './buffs'
+import { activeFor, bookKey, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { abnormalBase, abnormalHit, accumulate, contributes, type HitView } from './formula'
 import { checkHit } from './invariants'
 import { log, SLOTS, spawnJudgment } from './kernel'
 import { grant } from './resources'
-import type { JudgmentRuntime, Rates, ResonanceKind, SimState } from './types'
+import type { EnemyPreset } from '../data/gamedata'
+import type { EnemyRuntime, JudgmentRuntime, Rates, ResonanceKind, SimState } from './types'
 
 /** 角色的谐度破坏动作，ID 为"谐度破坏"的排第一。椿另有盛绽版（组名"谐度破坏-时停"，结束帧与派生窗口不同）：
  *  哪个能放由角色钩子 canStart 按形态判断，自动插的时候挑钩子允许的那个（m0-confirm §10 H5） */
@@ -56,6 +57,24 @@ export function forceDisharmony(sim: Sim, s: SimState): void {
   }
   const button = sim.r.tuneBreakTiming.buttonFrames
   if (button !== null) e.tuneButtonUntil = s.battleFrames + button
+}
+
+/** 一只新敌人的量表：白条满、偏谐值 0、身上没有异常效应 */
+export function freshEnemy(p: EnemyPreset): EnemyRuntime {
+  return {
+    preset: p, whiteBar: p.whiteBarTough, broken: false, paralyzedUntil: 0, poise: p.poise.max, tunability: 0, disharmony: false,
+    tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {}, settledAt: {},
+  }
+}
+
+/** 轴里写的"敌人 换 <预设>"（录像剖析，假设 enemy-swap）：此刻换成一只新敌人。量表、异常效应、响应冷却从头来，
+ *  挂在敌人身上的 buff（常驻的除外）去掉；在路上的判定照常打新敌人。上一只多打的伤害（打死之后的溢出）仍记在日志里 */
+export function swapEnemy(sim: Sim, s: SimState, preset: string): void {
+  const p = sim.r.data.enemies[preset]!
+  assume(s, 'enemy-swap', `第 ${s.frame} 帧换成 ${p.name}`)
+  for (const b of s.buffs) if (b.target === 'enemy' && sim.book.get(bookKey(b.owner, b.defId))?.def.trigger !== 'always') removeBuff(s, b, 'removed')
+  s.enemy = freshEnemy(p)
+  log(s, { type: 'enemyState', change: 'swap', detail: `换成 ${p.id}` })
 }
 
 /** 谐度破坏动作开始时：目标失谐就由它消耗这次失谐（它的各段伤害按对失谐算，TD-03 §6） */
@@ -230,7 +249,7 @@ function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multipli
   const active = activeFor(s, sim.book, by)
   const { value, factors } = abnormalHit({
     base: abnormalBase(r.data.abnormalBaseByLevel, r.rules.charLevel), multiplier, level: r.rules.charLevel,
-    enemy: { def: r.enemy.def, res: r.enemy.res[def.element] },
+    enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[def.element] },
   }, accumulate(view, active), r.rules)
   const dmg = { nonCrit: value, crit: value, expected: value }
   checkHit(s, dmg, s.chars[by].name, `${effect} ${judgment}`)
