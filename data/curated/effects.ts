@@ -10,6 +10,12 @@ const effects: EffectModule[] = [
       + '处于无敌状态时不生效。',
     maxStacks: 10, burstMax: 10, duration: 900, tickInterval: 300, decay: 0.5,
   }),
+  defineEffect({
+    name: '聚爆效应', element: '热熔',
+    source: 'nanoka 3.7 / effects.json（20261019 版「异常伤害」行的说明）：每层持续15秒，重复获得刷新持续时间，常规上限10层，'
+      + '达到上限层数时结算1次对应层数异常倍率，半径3米，结算冷却0.2秒。处于无敌状态时不结算。',
+    maxStacks: 10, duration: 900, tickInterval: null, settleAtMax: 12,
+  }),
 ]
 
 export default effects

@@ -149,7 +149,7 @@ function initialState(r: ResolvedScenario): SimState {
   const e = r.enemy
   const enemy: EnemyRuntime = {
     preset: e, whiteBar: e.whiteBarTough, broken: false, paralyzedUntil: 0, poise: e.poise.max, tunability: 0, disharmony: false,
-    tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {},
+    tunabilityLockedUntil: 0, tuneButtonUntil: 0, effects: {}, responseCd: {}, settledAt: {},
   }
   return {
     frame: 0, battleFrames: 0, onField: r.initial.onField, chars, judgments: [], tails: [], buffs: [],

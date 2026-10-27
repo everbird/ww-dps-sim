@@ -100,6 +100,8 @@ export interface EffectModule {
   duration: Frame                           // 每次附加刷新的持续时间
   tickInterval: Frame | null                // 结算周期
   decay?: number                            // 每次结算后移除当前层数的比例（电磁效应"移除当前层数50%"= 0.5）；缺省 0
+  /** 层数加到常规上限时立即结算一次、然后清掉全部层数（聚爆效应"达到上限层数时结算1次"）；值是结算冷却（帧），冷却里到上限不结算 */
+  settleAtMax?: Frame
 }
 export const defineEffect = (m: EffectModule): EffectModule => m
 

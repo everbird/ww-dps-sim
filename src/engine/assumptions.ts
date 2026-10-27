@@ -64,6 +64,11 @@ export const ASSUMPTIONS = [
       + '心在队伍里时添加的电磁爆发当场被消耗成霆心域，碰不到',
   },
   {
+    id: 'effect-settle-clear', topic: '异常效应', tracked: true, impact: 'unknown', ref: 'TD-06 §18、docs/tower-20261026.md',
+    what: '聚爆效应加到上限时按上限层数的倍率结算一次（记在加到上限的人名下），然后清掉全部层数，结算冷却 0.2 秒',
+    why: '原文"达到上限层数时结算1次对应层数异常倍率"没说结算后层数怎样；达妮娅 6 链"本次引爆…且不移除聚爆效应层数"反推平常会移除',
+  },
+  {
     id: 'single-target', topic: '范围', tracked: false, impact: 'none', ref: '总设计 T5',
     what: '单目标；伤害在判定结算的那一刻算，不模拟弹道、距离、站位',
     why: '配装择优主要打单体 boss',
