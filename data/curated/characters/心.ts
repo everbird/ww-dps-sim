@@ -327,8 +327,10 @@ export default defineCharacter('心', {
     // 第一个连上 dmg 的段（大招-异常）技能归类写的是 4（变奏），按组名是共鸣解放
     // 切人锁：备注"无敌期间不能切人"，但 xlsx（20261019 版角色-女 R1385）的无敌持续帧是空的；同组的全局时停与隐藏HUD 都是 254 帧，
     // 按无敌 1 + 254 推断（2026-10-21，xin-confirm Y18；照世·大招 1 + 302、雷主大招 1 + 224 都有数，装配自动算）
+    // 优先级：大招-异常行"优先级改变"写了第 254 帧（= 派生帧），新值却空着（flag priorityValueMissing），原来整段按 10。
+    // 按同组派生帧降到 2 补（照世·E、万阙连衡都是派生帧降到 2）：中 3 录像三轮转相过场起点 → 照世·E 4.8–5.1 秒，按 10 时仿真 5.5 秒
     大招: {
-      kind: 'liberation', cooldown: 1500, switchLockUntil: 255,
+      kind: 'liberation', cooldown: 1500, switchLockUntil: 255, priority: [{ fromFrame: 0, value: 10 }, { fromFrame: 254, value: 2 }],
       judgments: { '大招-异常': { applies: { effect: '电磁效应', stacks: 5 } } },
     },   // 转相冷却 25 秒
     // 步红尘 / 镇红尘：xlsx"第114F前霸体、不能切人，第114F解锁大招"，优先级第 1 帧升到 11、第 114 帧降到 2（两行各写了一半，
@@ -358,11 +360,12 @@ export default defineCharacter('心', {
     [`${P}A3`]: { comboFrom: [`${P}A2`, `${P}重击`, `${P}重击-前置D`] },
     [`${P}E`]: { cooldown: 1200 },                              // 共鸣技能·照世相冷却 20 秒（nanoka 3.7）
     [`${P}强化E`]: { cooldown: 720, judgments: { '强化E-1': { applies: { effect: '电磁效应', stacks: 5 } } } },   // 万阙连衡冷却 12 秒
+    // 强化A4-2 写了第 82 帧（派生帧）优先级改变、值是空的（priorityValueMissing）：整段已经是 2，再降也只影响比 2 还低的动作，照 2 用
+    [`${P}强化A4`]: { accept: ['priorityValueMissing'], judgments: { '强化A4-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}强化A1`]: { judgments: { '强化A1-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}强化A2`]: { judgments: { '强化A2-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}强化A2-闪避反击`]: { judgments: { '强化A2-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}强化A3`]: { judgments: { '强化A3-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
-    [`${P}强化A4`]: { judgments: { '强化A4-赋予1层电磁': { applies: { effect: '电磁效应', stacks: 1 } } } },
     [`${P}增幅强化重击`]: { cooldown: 1440, cooldownGroup: '承天则', judgments: { '增幅强化重击-2': { applies: { effect: '电磁效应', stacks: 5 } } } },
     // 电磁QTE-3："11.42%*4+11.42%*2+39.97%*4"的第二组 2 下（nanoka 3.7），持续 4 帧每 4 帧一次只排得下 1 次
     [`${P}QTE`]: { judgments: { '电磁QTE-异常': { applies: { effect: '电磁效应', stacks: 1 } }, '电磁QTE-3': { ticks: 2, lifeFrames: 5 } } },
