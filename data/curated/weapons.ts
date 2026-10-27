@@ -166,6 +166,66 @@ export default [
       },
     ],
   }),
+  // 三火（嘉贝莉娜 · 达妮娅 · 露帕）的专武（2026-10-26，docs/tower-20261026.md；你说"都是 01"，按专武 1 精，待确认）
+  defineWeapon({
+    name: '赝作的矮星',                      // 达妮娅
+    passives: [
+      { id: '赝作的矮星.攻击', source: '攻击提升12%', zone: 'atkPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        id: '赝作的矮星.解放', source: '附加聚爆效应或集谐·偏移时，共鸣解放伤害加成提升36%，持续5秒。',
+        zone: 'DamageChangeType', value: [0.36, 0.45, 0.54, 0.63, 0.72], filter: { tags: ['共鸣解放'] }, target: 'self', duration: 300,
+        trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '聚爆效应' } },
+      },
+      {
+        // "该角色"= 附加的人；队里只有达妮娅附加聚爆效应，按装备者自己算
+        id: '赝作的矮星.队伍攻击', source: '队伍中的角色附加聚爆效应或集谐·偏移时，该角色攻击提升24%，持续15秒，同名效果之间不可叠加。',
+        zone: 'atkPct', value: [0.24, 0.3, 0.36, 0.42, 0.48], target: 'self', duration: 900,
+        trigger: { on: 'enemyState', where: { enemyState: 'effectApplied', effect: '聚爆效应' } },
+      },
+    ],
+  }),
+  defineWeapon({
+    name: '焰痕',                            // 露帕
+    passives: [
+      { id: '焰痕.攻击', source: '攻击提升12%', zone: 'atkPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        // "造成重击伤害后，延长大招伤害加成提升buff持续时间4秒"没写（buff 不能按事件延长，只少算延长的那几秒）
+        id: '焰痕.大招', source: '施放大招或变奏后，获得持续时间为6秒的24%大招伤害加成提升buff。',
+        zone: 'DamageChangeType', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['共鸣解放'] }, target: 'self', duration: 360,
+        trigger: [{ on: 'actionStart', where: { actionKinds: ['liberation'] } }, { on: 'intro' }],
+      },
+      {
+        id: '焰痕.热熔', source: '造成重击伤害后，全队获得持续时间为30秒的24%热熔伤害加成提升buff。',
+        zone: 'DamageChangeElement', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { elements: ['热熔'] }, target: 'team', duration: 1800,
+        trigger: { on: 'judgmentSettle', where: { tags: ['重击'] } },
+      },
+    ],
+  }),
+  defineWeapon({
+    name: '光影双生',                        // 嘉贝莉娜
+    passives: [
+      { id: '光影双生.攻击', source: '攻击提升12%', zone: 'atkPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
+      {
+        id: '光影双生.重击加深', source: '造成声骸技能伤害时，重击伤害加深24%，持续6秒',
+        zone: 'DamageAmplify0', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['重击'] }, target: 'self', duration: 360,
+        trigger: { on: 'judgmentSettle', where: { tags: ['声骸技能'] } },
+      },
+      {
+        id: '光影双生.声骸加深', source: '造成重击伤害时，声骸技能伤害加深24%，持续6秒',
+        zone: 'DamageAmplify0', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['声骸技能'] }, target: 'self', duration: 360,
+        trigger: { on: 'judgmentSettle', where: { tags: ['重击'] } },
+      },
+      {
+        // "同时拥有以上两种加深效果时"：近似成"已有一种加深时又造成另一种伤害"，持续 6 秒（只看触发时有没有前一种，可能多算一点）
+        id: '光影双生.无视防御', source: '同时拥有以上两种加深效果时，造成伤害时无视目标8%防御',
+        zone: 'RoleIgnoreDefRate', value: [0.08, 0.1, 0.12, 0.14, 0.16], target: 'self', duration: 360,
+        trigger: [
+          { on: 'judgmentSettle', where: { tags: ['重击'], ownerHas: '光影双生.重击加深' } },
+          { on: 'judgmentSettle', where: { tags: ['声骸技能'], ownerHas: '光影双生.声骸加深' } },
+        ],
+      },
+    ],
+  }),
 ]
 
 /** 协奏按阶 8 / 10 / 12 / 14 / 16：xlsx 武器表只有 1 阶的文本"回复8点"（没有各阶数值），各阶按 nanoka 3.7（武器 21020024、21050024 的 param；华彩乐段 21030024 同一被动） */
