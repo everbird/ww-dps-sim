@@ -1,5 +1,6 @@
 // tests/xin-tower3.test.ts —— 心 · 雷主 · 卜灵 深塔 41 期中 3 的录像剖析（scenarios/xin-tower3-video.yaml，2026-10-26，docs/tower-20261026.md）：
-// 第二版（2026-10-27）只照录像读：整局跑得通、前三次切人对上，心的几段在仿真里接得慢；谐度破坏照录像手写；借相切形态。依赖 data/generated（缺数据时跳过）
+// 第二版（2026-10-27）只照录像读：整局跑得通、前三次切人对上，心的几段在仿真里接得慢；谐度破坏照录像手写；借相切形态。
+// 第三版（同日）：镇红尘按跳字往回推起手、E 后转相照录像抢帧、转相第 254 帧降优先级，15 次切人都差不到 2 秒。依赖 data/generated（缺数据时跳过）
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -22,16 +23,15 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     out = simulate(r)
   })
 
-  test('整局跑得通，15 次切人都出现；前三次差不到 0.5 秒，之后心的几段在仿真里接得慢、最多差 7 秒（第二版，只照录像读；谐度破坏照录像手写）', () => {
+  test('整局跑得通，15 次切人都出现，都差不到 2 秒（第三版；最多的 113.1 是第三轮心的能量攒得比录像慢）', () => {
     expect(out.error).toBeUndefined()
     const cmp = compareMarks(traceCommands(out.log, r, 1), sc.video!.marks!)
     expect(cmp.missing).toEqual([])
     expect(cmp.rows.length).toBe(15)
-    for (const x of cmp.rows.slice(0, 3)) expect(Math.abs(x.diff)).toBeLessThan(0.5)
-    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(7)
-    // 前三次的切人类型和录像一致（普通、变奏、变奏）；之后心的几段在仿真里拖长，雷主攒协奏的时间跟着变，类型会和录像不同（文档里记着）
+    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(2)
+    // 切人类型：前 14 次和录像一致；最后一次雷主 → 心录像是普通（协奏环 0.06），仿真里雷主协奏满了（文档里记着）
     const sw = out.log.filter(e => e.type === 'switch')
-    expect(sw.slice(0, 3).map(e => e.type === 'switch' && e.intro)).toEqual([false, true, true])
+    expect(sw.map(e => e.type === 'switch' && e.intro)).toEqual([false, true, true, true, false, true, true, true, false, true, true, true, false, true, true])
   })
 
   test('谐度破坏只放录像里按 B 的四次（tuneBreak: manual）：前两次打的是小怪，轴里先写"敌人 失谐"；雷主第一次差不到 0.5 秒', () => {
@@ -44,6 +44,14 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     expect(forced).toHaveLength(1)                                    // 95.7 那次仿真里目标自己已经失谐了，只把按钮再点亮
     expect(out.summary.assumptions.map(a => a.id)).toContain('forced-disharmony')
     expect(out.summary.assumptions.map(a => a.id)).not.toContain('tune-break-auto')
+  })
+
+  test('心的衔接对上录像（第三版）：第二轮镇红尘 → 声骸 / E → 转相 → 照世·E → 万阙连衡 → 万阙垂天，各差不到 0.3 秒', () => {
+    // 录像（视频秒）：镇红尘起手约 39.67（跳字 41.5 往回推）、声骸 41.9、E 42.0、转相过场 42.5、照世·E 47.4、万阙连衡 49.0、万阙垂天过场 58.4
+    // 转相按 xlsx 整段优先级 10 时照世·E 要等到第 331 帧（约 48.0）；第 254 帧降到 2 以后照世·E 47.4（心模块的覆盖）
+    const at = (action: string) => out.log.find(e => e.type === 'actionStart' && e.char === '心' && e.action === action && e.f / 60 + 11 > 37)!.f / 60 + 11
+    const want: [string, number][] = [['增幅强化重击', 39.67], ['Q·心召唤', 41.9], ['E', 42.0], ['大招', 42.5], ['照世·E', 47.4], ['照世·强化E', 49.0], ['照世·大招', 58.4]]
+    for (const [a, t] of want) expect(Math.abs(at(a) - t), a).toBeLessThan(0.3)
   })
 
   test('借相（心相心生里的共鸣解放）切形态：第四轮镇寰宇后借相回应世相放应世 E，再借相回照世相放万阙垂天', () => {

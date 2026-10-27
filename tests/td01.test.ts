@@ -212,6 +212,13 @@ describe('T01-16 接续写的优先级（2026-10-24）：后一行起始值 = �
       row(2, '空中攻击-落地', { priority: [9, 2], priorityChange: [10], spawnFrame: 4 }),
     ])).toEqual(['0:3', '2:9'])
   })
+  test('写了变化帧、新值空着（心转相"大招-异常"[10] 第 254 帧，2026-10-27）：照已知的值，打 priorityValueMissing；覆盖 priority 视为已处理', () => {
+    const f = file([group('大招', [row(1, '大招-异常', { priority: [10], priorityChange: [254], endFrame: 331 })])])
+    const a = assembleBlock(f)['大招']!
+    expect(a.priority.map(p => `${p.fromFrame}:${p.value}`)).toEqual(['0:10'])
+    expect(a.flags).toContain('priorityValueMissing')
+    expect(assembleBlock(f, { 大招: { priority: [{ fromFrame: 0, value: 10 }, { fromFrame: 254, value: 2 }] } })['大招']!.flags).not.toContain('priorityValueMissing')
+  })
 })
 
 describe('T01-17 覆盖 absorb（并入别组的行）与 air（改写在空中的帧）', () => {

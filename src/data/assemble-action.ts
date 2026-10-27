@@ -310,6 +310,8 @@ function airOf(rows: GenRow[], endFrame: number, flags: Set<string>): ActionDef[
  *  几行接续写的（后一行的起始值 = 前一行的末值，如景燃重击"-1"行 7 → 5、最后一段 5 → 0），先试着串起来（chainedPriority） */
 function assemblePriority(rows: GenRow[], flags: Set<string>, shifted = false): PriorityStep[] {
   const withP = rows.filter(r => r.priority !== null)
+  // 反过来缺的：写了变化帧、新值却空着（心转相"大招-异常"[10] 第 254 帧，2026-10-27），照旧按已知的值，打 flag 让人补
+  if (rows.some(r => r.priorityChange && r.priorityChange.length > (r.priority?.length ?? 0) - 1)) flags.add('priorityValueMissing')
   if (withP.length === 0) { flags.add('noPriority'); return [{ fromFrame: 0, value: 0 }] }
   // 有"下落"行而落地段没后移时，落地行的帧从落地算，串起来帧数对不上意思，不串
   const chained = shifted || !rows.some(r => r.name.includes('下落')) ? chainedPriority(withP, flags) : undefined
@@ -388,7 +390,7 @@ function chainRanges(hits: GenRow[]): Map<GenRow, { range: ChainRange; additive:
 
 /** 覆盖字段 → 视为已处理的 flag（TD-01 §13.4） */
 const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
-  kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'noPriority'],
+  kind: ['kindGuess'], endFrame: ['multiEnd', 'noEnd'], priority: ['priorityChangeGuess', 'priorityChangeMissing', 'priorityValueMissing', 'noPriority'],
   shiftRows: ['multiEnd', 'landingUnshifted'],   // 落地段的结束帧本来就与下落段不同
   cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames', 'noSwitchUnframed'],
   air: ['airGuess'],
