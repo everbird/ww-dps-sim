@@ -136,6 +136,9 @@ export interface JudgmentDef {
   /** 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"）：动作表只写在备注里，角色模块按原文标（TD-06 §18） */
   applies?: { effect: EffectName; stacks: number }
   chainRange?: ChainRange                           // 只在这些共鸣链数下存在；由行名的 C\d 标记推得（TD-01 §13.2）；缺省 = 任何链数
+  /** 这段生成本动作的哪些事件判定（spawnFrame = null）：on 'hit' 第一次结算后立即生成（备注"命中后立即生成X"），
+   *  'end' 持续帧走完自然消失时生成（"持续帧结束后自行生成X"）；装配时从备注推得（flag spawnFromNote），模块可写 null 关掉自己生成 */
+  spawns?: { on: 'hit' | 'end'; judgments: string[] } | null
   flags: string[]
 }
 

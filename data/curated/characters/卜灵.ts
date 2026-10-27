@@ -224,6 +224,7 @@ export default defineCharacter('卜灵', {
       judgments: {
         '大招-冲击波': { applies: { effect: '电磁效应', stacks: 2 } },    // "命中后赋予目标2层电磁效应"
         '大招-C5异常': { applies: { effect: '电磁效应', stacks: 6 } },    // 共鸣链5"生成五雷荡煞阵时……附加6层"
+        '大招-开阵前置': { spawns: null },                               // 开阵子弹（0 倍率）不生成：五雷荡煞阵由钩子在开阵前置那一段生成
       },
     },
   },
