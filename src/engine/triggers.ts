@@ -3,7 +3,7 @@
 // 处理中产生的新事件排到队尾，同一 tick 内处理完；一条事件引出的事件链超过 rules.maxChainDepth 层报错。
 import type { ActionId, ActionKind, DamageTag, EffectName, Element, ResourceKind, Slot } from '../data/common'
 import type { BuffDef, EnemyStateChange, TriggerFilter, TriggerSpec } from '../data/buff.schema'
-import { applyTriggered, bookKey, removeBuff } from './buffs'
+import { applyTriggered, bookKey, extendBuff, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { log } from './kernel'
 import { grant } from './resources'
@@ -76,6 +76,16 @@ function handle(sim: Sim, s: SimState, ev: SimEvent): void {
       if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
       if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks, occ.by)
+    }
+    for (const reg of sim.r.buffs) {                  // 延长（BuffDef.extend）：在施加之后看，同一事件刚施加的实例也能被延长
+      const ext = reg.def.extend
+      if (!ext || !s.buffs.some(b => b.defId === reg.def.id && b.owner === reg.owner)) continue
+      const occ = firing(s, ext.trigger, reg.owner, `${reg.def.id}#extend`, undefined, occs)
+      if (!occ || !extendBuff(s, reg)) continue
+      for (const id of ext.grants ?? []) {
+        const g = sim.book.get(bookKey(reg.owner, id))
+        if (g) applyTriggered(s, g, undefined, g.def.stackGain, occ.by)
+      }
     }
     for (const e of sim.r.effects) {                  // 已按共鸣链过滤、按谐振阶取值（resolve）
       const occ = firing(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs)

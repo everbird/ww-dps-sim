@@ -36,9 +36,9 @@ export function applyBuff(s: SimState, reg: RegisteredBuff, target: Slot | 'enem
   let b = s.buffs.find(x => x.defId === def.id && x.owner === reg.owner && x.target === target)
   if (b) {
     b.stacks = Math.min(def.maxStacks, b.stacks + stacks)
-    if (def.refresh === 'refresh') b.remaining = duration
+    if (def.refresh === 'refresh') { b.remaining = duration; b.extended = 0 }
   } else {
-    b = { id: s.nextId++, defId: def.id, owner: reg.owner, target, stacks: Math.min(def.maxStacks, stacks), remaining: duration, lastTriggerAt: s.battleFrames }
+    b = { id: s.nextId++, defId: def.id, owner: reg.owner, target, stacks: Math.min(def.maxStacks, stacks), remaining: duration, lastTriggerAt: s.battleFrames, extended: 0 }
     s.buffs.push(b)
   }
   log(s, { type: 'buffApply', buff: def.id, target: targetName(s, target), stacks: b.stacks, remaining: b.remaining })
@@ -74,6 +74,21 @@ export function clearOnSwitchOut(s: SimState, book: BuffBook, from: Slot): void 
   for (const b of [...s.buffs]) {
     if (b.target === from && book.get(bookKey(b.owner, b.defId))?.def.onSwitchOut === 'clear') removeBuff(s, b, 'switchOut')
   }
+}
+
+/** 延长（BuffDef.extend）：这个持有者这条定义的、还在的实例各延长一次（到上限的跳过）；有实例延长了返回 true */
+export function extendBuff(s: SimState, reg: RegisteredBuff): boolean {
+  const ext = reg.def.extend
+  if (!ext) return false
+  let done = false
+  for (const b of s.buffs) {
+    if (b.defId !== reg.def.id || b.owner !== reg.owner || b.remaining === 'inf' || b.extended >= ext.max) continue
+    b.remaining += ext.frames
+    b.extended++
+    done = true
+    log(s, { type: 'buffApply', buff: b.defId, target: targetName(s, b.target), stacks: b.stacks, remaining: b.remaining })
+  }
+  return done
 }
 
 export function removeBuff(s: SimState, b: BuffRuntime, reason: 'timeout' | 'switchOut' | 'removed'): void {

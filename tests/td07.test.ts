@@ -135,6 +135,33 @@ describe('TD-07 人造角色', () => {
     expect(at(out.log, 20).filter(x => x.startsWith('+'))).toEqual(['+甲.三层→甲×1 580'])
   })
 
+  test('延长 extend：持续中命中 h 延长 30 帧、最多 1 次，成功延长时施加 grants；重新施加后又能延长（焰痕，2026-10-27）', () => {
+    const 甲: SynthChar = {
+      name: '甲',
+      actions: [
+        X([]),
+        action({ id: 'Y', kind: 'skill', endFrame: 40, judgments: [judgment({ name: 'h', spawnFrame: 10 }), judgment({ name: 'h', spawnFrame: 20 })] }),
+      ],
+      buffs: [
+        buff({
+          id: '甲.大招', duration: 60, trigger: { on: 'actionStart', where: { actions: ['X'] } },
+          extend: { trigger: { on: 'judgmentSettle', where: { judgments: ['h'] } }, frames: 30, max: 1, grants: ['甲.热熔'] },
+        }),
+        buff({ id: '甲.热熔', target: 'team', trigger: 'hook' }),
+      ],
+    }
+    const out = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X', '甲 Y', 'wait 100', '甲 Y', '甲 X', '甲 Y'] })
+    const ev = eventsOfLog(out.log, 'buffApply').map(e => [e.f, e.buff, e.target, e.remaining])
+    // X 第 0–40 帧，Y 第 40 帧起：第 50 帧 h 时还剩 10 帧 → 延长到 40，给全队热熔；第 60 帧 h 不再延长（最多 1 次）；
+    // 第 150、160 帧的 h：已经过期，不延长、不给；第 180 帧再放 X 重新施加，第 230 帧的 h 又能延长
+    expect(ev).toEqual([
+      [0, '甲.大招', '甲', 60],
+      [50, '甲.大招', '甲', 40], [50, '甲.热熔', '甲', 600], [50, '甲.热熔', '乙', 600], [50, '甲.热熔', '丙', 600],
+      [180, '甲.大招', '甲', 60],
+      [230, '甲.大招', '甲', 40], [230, '甲.热熔', '甲', 600], [230, '甲.热熔', '乙', 600], [230, '甲.热熔', '丙', 600],
+    ])
+  })
+
   test('nextIn 由延奏以外的事件触发：挂起到下一次切入，持续时间从切入那一刻算', () => {
     const 甲: SynthChar = {
       name: '甲', actions: [X([])],
