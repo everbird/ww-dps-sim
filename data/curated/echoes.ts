@@ -181,6 +181,20 @@ const echoes: EchoModule[] = [
     ],
   }),
   defineEcho({
+    name: '达妮娅',                         // 共鸣回响·达妮娅：达妮娅的首位（2026-10-26 深塔中 1、中 2，docs/tower-20261026.md）
+    mainSlotBuffs: [
+      {
+        id: '达妮娅声骸.施放', source: '使用声骸技能……在此后15秒内，若自身施放延奏技能，使下一个变奏技能登场的角色热熔伤害加成提升12.00%，持续15秒。',
+        target: 'self', duration: 900, trigger: { on: 'actionStart', where: { actionKinds: ['echo'] } },
+      },
+      {
+        id: '达妮娅声骸.延奏', source: '在此后15秒内，若自身施放延奏技能，使下一个变奏技能登场的角色热熔伤害加成提升12.00%，持续15秒。',
+        zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['热熔'] }, target: 'nextIn', duration: 900,
+        trigger: { on: 'outro', where: { ownerHas: '达妮娅声骸.施放' } },
+      },
+    ],
+  }),
+  defineEcho({
     name: '异构武装',                       // 散华的首位（桃渊散录像 BV1o7kfBPE6y）；声骸表里没有，extra-echoes.json 补的（帧取 WuwaLAB）
     mainSlotBuffs: [
       { id: '异构武装.冷凝', source: '在首位装配该声骸技能时，自身获得12.00%冷凝伤害加成提升，12.00%共鸣技能伤害加成提升。', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['冷凝'] }, target: 'self', duration: 'inf', trigger: 'always' },

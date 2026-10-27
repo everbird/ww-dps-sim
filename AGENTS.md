@@ -78,7 +78,7 @@ docs/               设计文档
 
 ```bash
 pnpm install
-pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐,桃祈,渊武 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
+pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐,桃祈,渊武,达妮娅 --nanoka 3.7   # 读 data/xlsx-versions.json 的 current（核对 sha256）；也可直接传 xlsx 路径；
                                              # --strict 名单有未连上的伤害判定时退出码 1
                                              # 顺带抓 nanoka（缓存在 data/raw/nanoka/，--nanoka off 跳过，--nanoka 3.6 指定版本）
 pnpm check:data                              # 用 zod schema 校验 data/generated/
@@ -125,7 +125,7 @@ pnpm trace scenarios/m0-video.yaml          # 调试表（TD-11 §6）：某一�
 pnpm test -u                                 # 场景汇总快照（tests/scenarios.test.ts）有变化、人工确认无误后更新快照（pnpm 10 会把 `--` 原样传给 vitest，别写成 `-- -u`）
 ```
 
-**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐,桃祈,渊武 --nanoka 3.7 && pnpm check:data`。
+**每次任务结束运行 `pnpm check && pnpm test && pnpm test:py`**；动了构建脚本或数据，再跑 `pnpm build:data -- --strict 椿,散华,维里奈,卜灵,雷主·男,心,照世心,景燃,尤诺,守岸人,莫宁,琳奈,爱弥斯,机兵爱弥斯,莫特斐,桃祈,渊武,达妮娅 --nanoka 3.7 && pnpm check:data`。
 
 ## 约定
 
@@ -173,3 +173,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 30. 渊武的防御相关（2026-10-26，docs/tys-confirm.md §0）：掀雷（固有1 +50% 防御）、3 链协同（+20% 防御）改成加在倍率上（这两个判定本来按防御算），用当前防御，不再用装配时的静态防御；6 链的 32% 防御给全队、立柱当下就给（原来只给前台、立柱 1 秒后才给）；掀雷放完锋芒清空（推断，`module-guess`：录像里渊武离场时锋芒都没满，按此 105.3 桃祈大招跳字 49205 / 仿真 49192）。用例 tys。要并回的：TD-08（渊武）。
 31. 深塔环境特性的两处写法与心雷卜中 3 的录像（2026-10-26，docs/tower-20261026.md）：触发条件 `TriggerFilter.afterBattle`（战斗进行到第几帧以后才触发，"战斗开始60秒后…"）；环境特性（持有者 env）写 target self 的、由事件触发的，给触发的那个人（原来给全队；"角色附加电磁效应时，自身…"）；`env-buffs.ts` 加深塔 41 期中 3 的四条（受伤递增按 60 秒后命中加层、5 秒内置冷却、12 层），没写类别的"最终提升"按 0 类最终伤害（假设 `env-final-class`）；`scenarios/xin-tower3-video.yaml`（录像剖析）。用例 `tests/env-buffs.test.ts`、`tests/xin-tower3.test.ts`。要并回的：TD-02（`TriggerFilter.afterBattle`）、TD-07 §3（场景 buff 的 self 给触发者、41 期中 3）、总设计 §13（假设）。
 32. 聚爆效应与斑驳粉饰之沫（2026-10-26，docs/tower-20261026.md，三火嘉贝莉娜 · 达妮娅 · 露帕的第一步）：异常效应的规则多一种"到上限即结算"（`EffectModule.settleAtMax` / `EffectDef.settleAtMax`，值是结算冷却帧；`EnemyRuntime.settledAt`）：层数加到常规上限时按上限层数的倍率结算一次、记在加到上限的人名下，然后清层（假设 `effect-settle-clear`）；`effects.ts` 加聚爆效应（10 层、15 秒、冷却 0.2 秒）；`echo-sets.ts` 加斑驳粉饰之沫（2 件热熔 +10%；5 件添加聚爆效应后热熔 +10% 15 秒，期间放延奏给下一位变奏登场的人热熔 +25%）。用例 td06-enemy T06-13b。要并回的：TD-06 §18（到上限即结算）、TD-02（`EffectDef.settleAtMax`、`EnemyRuntime.settledAt`）、TD-07（套装）、总设计 §13（假设）。
+33. 达妮娅的模块（2026-10-26，docs/tower-20261026.md，三火第二步）：只写共鸣模态·聚爆、0 链。两种形态（布景"白*"、幻灭"黑*"，白大招切幻灭、黑大招切回）；核心资源按动作表的列改名（槽 1 虚质粒子、槽 2 共形能量、槽 3 黯核上限 3；主表的槽名对不上）；熵变强化两种互斥（幻灭攻击 +30% 12.1 秒，布景每秒 1 点虚质粒子 30.1 秒），期间每 12 秒 1 枚黯核，固有2 蚀刻繁彩全队热熔 +30%；**轴里一律写黑A，有虚质粒子时钩子按强化版算**（xlsx 强化黑* 与黑* 帧数一样：倍率换成强化行的、改成共鸣解放伤害、扣虚质粒子、共形能量加倍），轴里写强化黑A 报错提示；放逐第二段每枚黯核倍率 +150%；聚爆模态按 xlsx 共鸣模态挂层（白 / 黑 QTE、两个大招、蚀域 2 层，A3 / A4 1 层，各技能 2 秒一次）；黑大招生成蚀域（第 157 帧起每 240 帧，30 秒）；延奏给目标聚爆效应伤害加深 60%。dmg-join 连放逐、黑大招的 C0 行；首位声骸共鸣回响·达妮娅；专武赝作的矮星、焰痕、光影双生（按专武 1 精，待确认）；构建的 --strict 名单加了达妮娅。用例 `tests/fire.test.ts`。要并回的：TD-08（达妮娅）、TD-07（三把武器、首位声骸）、TD-01 §13（主表核心资源槽名对不上的又一例）。
