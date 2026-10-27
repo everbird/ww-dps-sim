@@ -19,6 +19,7 @@ export type TriggerEvent = (typeof TRIGGER_EVENTS)[number]
 export const ENEMY_STATE_CHANGES = [
   'break', 'breakEnd', 'poiseBreak', 'disharmony', 'harmonyBreak', 'shift', 'shiftEnd', 'interference', 'interferenceEnd', 'response',
   'effectApplied', 'effectEnd', 'effectConsumed',
+  'swap',                                         // 换了一只敌人（排轴"敌人 换 <预设>"，录像剖析）
 ] as const
 export type EnemyStateChange = (typeof ENEMY_STATE_CHANGES)[number]
 

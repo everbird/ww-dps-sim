@@ -66,8 +66,9 @@ export const ScenarioSchema = z.strictObject({
     // 录像里看到的动作（2026-10-26，视图 F 拿来和仿真对照）："<视频秒> <角色> <动作>"，动作照轴的写法（E、大招、Q、QTE……别名也行）
     events: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+\S+/, '写成"<视频秒> <角色> <动作>"，如 15.0 散华 E')).optional(),
     // 录像里敌人的血条（2026-10-26，视图 F 拿仿真的累计伤害对照）："<视频秒> <剩余比例>"，如 55.25 0.998；
-    // 第一条是血条出现（开始打这个敌人）的时刻，仿真从那一刻起算伤害（之前打的是别的敌人，如深塔开头的小怪）
-    hp: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+(0|1)(\.\d+)?$/, '写成"<视频秒> <剩余比例>"，如 55.25 0.998')).optional(),
+    // 第一条是血条出现（开始打这个敌人）的时刻，仿真从那一刻起算伤害（之前打的是别的敌人，如深塔开头的小怪）；
+    // 末尾写了敌人预设的一条起是另一只敌人的血条（2026-10-27 中 4：异构武装打死后无冠者出来），仿真从这一条起重新累计、按这只的生命折比例
+    hp: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+(0|1)(\.\d+)?(\s+\S+)?$/, '写成"<视频秒> <剩余比例> [敌人预设]"，如 55.25 0.998')).optional(),
   }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
@@ -135,6 +136,8 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //                                            前面的补位 "~" 看它——还没到时间就接着补（2026-10-25 桃渊散录像）
 //   敌人 失谐       或  enemy disharmony     让目标此刻失谐（偏谐值满、谐度破坏按钮亮）：录像剖析里多敌人的段，谐度破坏打的是仿真没建的小怪，
 //                                            照录像手写谐度破坏时先写它（2026-10-27 中 3 录像，假设 forced-disharmony）
+//   敌人 换 <预设>  或  enemy swap <预设>    此刻换成一只新的敌人（enemies.json 的 id，COST 要和场景的敌人相同）：敌人量表、异常效应、
+//                                            挂在敌人身上的 buff 都从头来；录像剖析里深塔一只 boss 打死、下一只出来时写（2026-10-27 中 4 录像，假设 enemy-swap）
 //   能量满 <角色>   或  fill-energy <角色>   这个人的大招能量此刻补满：录像剖析里大招按钮已经亮了、仿真能量还差一点（多敌人的段仿真只建一只，
 //                                            少算了打小怪的能量），照录像按钮亮的时刻写（2026-10-27 中 3 录像，假设 forced-energy）
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
@@ -145,6 +148,7 @@ export type RotationItem =
   | { kind: 'wait'; frames: number }
   | { kind: 'at'; seconds: number }
   | { kind: 'enemy'; state: 'disharmony' }
+  | { kind: 'enemy'; state: 'swap'; preset: string }
   | { kind: 'fill'; char: string; resource: 'energy' }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
@@ -170,7 +174,9 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
     return [{ kind: 'at', seconds: Number(tok[1]) }]
   }
   if (head === '敌人' || head === 'enemy') {
-    if (tok.length !== 2 || (tok[1] !== '失谐' && tok[1] !== 'disharmony')) return { error: `"${s}" 格式不对：应为 敌人 失谐（或 enemy disharmony）` }
+    if (tok.length === 3 && (tok[1] === '换' || tok[1] === 'swap')) return [{ kind: 'enemy', state: 'swap', preset: tok[2]! }]
+    if (tok.length !== 2 || (tok[1] !== '失谐' && tok[1] !== 'disharmony'))
+      return { error: `"${s}" 格式不对：应为 敌人 失谐（enemy disharmony）或 敌人 换 <敌人预设>（enemy swap <预设>）` }
     return [{ kind: 'enemy', state: 'disharmony' }]
   }
   if (head === '能量满' || head === 'fill-energy') {
@@ -220,4 +226,5 @@ export type Command =
   | { kind: 'wait'; line: number; item: number; frames: Frame }
   | { kind: 'at'; line: number; item: number; frame: number }   // 等到世界帧 frame（排轴写 at <世界秒>；测试台直接给帧）
   | { kind: 'enemy'; line: number; item: number; state: 'disharmony' }   // 敌人 失谐：让目标此刻失谐（录像剖析）
+  | { kind: 'enemy'; line: number; item: number; state: 'swap'; preset: string }   // 敌人 换 <预设>：此刻换成一只新敌人（录像剖析：深塔一只打死、下一只出来）
   | { kind: 'fill'; line: number; item: number; slot: Slot; resource: 'energy' }   // 能量满 <角色>：此刻补满大招能量（录像剖析）

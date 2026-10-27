@@ -76,7 +76,15 @@ describe('时间轴网页', () => {
     const sc4 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62'] } })
     const r4 = resolveScenario(sc4, data)
     const m = timelineModel('scenarios/demo.yaml', sc4, r4, simulate(r4))
-    expect(m.video!.hp).toEqual([{ t: 10.5, left: 1 }, { t: 12, left: 0.62 }])
+    const seg = { seg: 10.5, left0: 1, hp: r4.enemy.hp, enemy: r4.enemy.id }
+    expect(m.video!.hp).toEqual([{ t: 10.5, left: 1, ...seg }, { t: 12, left: 0.62, ...seg }])
+    // 末尾写了敌人预设的一条起是另一只敌人的血条（2026-10-27 中 4）：另起一段，按这只的生命折比例
+    const next = { ...r4.enemy, id: '测试/下一只', hp: 2e6 }
+    const sc5 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62', '13 1 测试/下一只', '14 0.9'] } })
+    const r5 = resolveScenario(sc5, { ...data, enemies: { ...data.enemies, [next.id]: next } })
+    expect(timelineModel('scenarios/demo.yaml', sc5, r5, simulate(r5)).video!.hp.map(p => [p.t, p.seg, p.hp, p.enemy]))
+      .toEqual([[10.5, 10.5, r4.enemy.hp, r4.enemy.id], [12, 10.5, r4.enemy.hp, r4.enemy.id], [13, 13, 2e6, '测试/下一只'], [14, 13, 2e6, '测试/下一只']])
+    expect(() => timelineModel('scenarios/demo.yaml', sc5, r4, simulate(r4))).toThrow('敌人预设"测试/下一只"不存在')
     expect(m.enemy.hp).toBe(r4.enemy.hp)
     expect(m.purpose).toBe('rotation')                                   // 缺省是轴；录像剖析写 purpose: replay
     expect(ScenarioSchema.parse({ ...sc, purpose: 'replay' }).purpose).toBe('replay')

@@ -58,7 +58,16 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
       sc.rotation, team.map((m): CompileMember => ({ name: m.def.name, actions: m.actions, aliases: m.aliases })), onField, sc.options.repeat,
       sc.opening,
     )
-    if (compiled.ok) { commands = compiled.commands; opening = compiled.opening }
+    if (compiled.ok) {
+      commands = compiled.commands; opening = compiled.opening
+      // 敌人 换 <预设>：要在敌人表里，COST 与场景的敌人相同（谐破冷却按开局那只的 COST 定，不跟着换）
+      for (const c of [...opening, ...commands]) {
+        if (c.kind !== 'enemy' || c.state !== 'swap') continue
+        const p = data.enemies[c.preset]
+        if (!p) issues.push(`rotation 第 ${c.line} 条：敌人预设"${c.preset}"不存在（enemies.json 的 id）`)
+        else if (p.cost !== enemy.cost) issues.push(`rotation 第 ${c.line} 条：${c.preset} 的 COST ${p.cost} 与场景的敌人（${enemy.cost}）不同，谐破冷却不跟着换，先不支持`)
+      }
+    }
     else {
       const many = (lines: string[], line: number) => { const p = parseRotationLine(lines[line - 1] ?? ''); return Array.isArray(p) && p.length > 1 }
       for (const i of compiled.issues) {

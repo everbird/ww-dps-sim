@@ -212,6 +212,12 @@ export const ASSUMPTIONS = [
     adjust: { how: '轴里去掉"能量满"' },
   },
   {
+    id: 'enemy-swap', topic: '敌人', tracked: true, impact: 'small', ref: 'docs/tower-20261026.md 中 4、TD-09 §2',
+    what: '录像剖析的轴里写"敌人 换 <预设>"时，此刻换成一只新敌人：白条、偏谐值、异常效应、响应冷却从头来，挂在敌人身上的 buff（常驻的除外，如深塔的受伤递增）去掉；在路上的判定打新敌人，上一只打死后溢出的伤害照记',
+    why: '中 4 两只 boss 先后出来（异构武装打死后无冠者出来），两只的等级、防御、导电抗性相同，只有生命、白条不同；录像里第二只的电磁效应、受伤递增都从 0 起',
+    adjust: { how: '轴里去掉"敌人 换"（一直打第一只）' },
+  },
+  {
     id: 'tunability-base', topic: '敌人', tracked: true, impact: 'small', ref: 'TD-01 Q17',
     what: '角色的偏谐效率、谐破增幅的基础值是推定的',
     why: 'xlsx 没有明确的列',

@@ -8,7 +8,7 @@ import { adjusted } from './insight'
 import { compileRotation, type CompileMember } from './scheduler'
 import { lineText, neighborIter, parseLines } from './search'
 import { simulate } from './simulate'
-import { compareMarks, traceCommands, videoSeconds } from './trace'
+import { compareMarks, hpPoints, traceCommands, videoSeconds, type HpPoint } from './trace'
 import type { ResolvedScenario, SimResult } from './types'
 
 type Video = NonNullable<Scenario['video']>
@@ -55,11 +55,10 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video): Fi
 
   let hp: Fit['hp'] = null
   if (video.hp?.length) {
-    const pts = video.hp.map(line => { const [t, left] = line.trim().split(/\s+/) as [string, string]; return [videoSeconds(t), Number(left)] as const })
-    const [t0, left0] = pts[0]!
+    const pts = hpPoints(video, r)
     const dmg = res.log.flatMap(e => (e.type === 'hit' && e.dmg ? [[vsec(e.f), e.dmg.expected] as const] : []))
-    const simLeft = (t: number) => left0 - dmg.reduce((a, [s, d]) => (s >= t0 && s < t ? a + d : a), 0) / r.enemy.hp
-    const err = pts.map(([t, v]) => simLeft(t) - v)
+    const simLeft = (p: HpPoint) => p.left0 - dmg.reduce((a, [s, d]) => (s >= p.seg && s < p.t ? a + d : a), 0) / p.hp
+    const err = pts.map(p => simLeft(p) - p.left)
     hp = { n: err.length, rmse: Math.sqrt(mean(err.map(x => x * x))), end: err.at(-1)! }
   }
   const score = switches.mae + events.mae + FIT_WEIGHTS.typeMiss * typeMiss + FIT_WEIGHTS.unmatched * (events.n - events.matched)
