@@ -181,7 +181,14 @@ const echoes: EchoModule[] = [
     ],
   }),
   defineEcho({
-    name: '荣耀狮像',                       // 露帕、嘉贝莉娜的首位（2026-10-26 深塔中 1、中 2）
+    name: '蚀脊龙',                         // 嘉贝莉娜的首位（2026-10-27 用户说明：3C 蚀脊龙在首位，深塔中 1、中 2）
+    mainSlotBuffs: [
+      { id: '蚀脊龙.热熔', source: '在首位装配该声骸技能时，自身热熔伤害加成提升12.00%，声骸技能伤害加成提升20.00%。', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' },
+      { id: '蚀脊龙.声骸', source: '在首位装配该声骸技能时，……声骸技能伤害加成提升20.00%。', zone: 'DamageChangeType', value: 0.2, filter: { tags: ['声骸技能'] }, target: 'self', duration: 'inf', trigger: 'always' },
+    ],
+  }),
+  defineEcho({
+    name: '荣耀狮像',                       // 露帕的首位（2026-10-26 深塔中 1、中 2）
     mainSlotBuffs: [
       { id: '荣耀狮像.热熔', source: '在首位装配该声骸技能时，自身热熔伤害加成提升12.00%，共鸣解放伤害加成提升12.00%。', zone: 'DamageChangeElement', value: 0.12, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' },
       { id: '荣耀狮像.解放', source: '在首位装配该声骸技能时，……共鸣解放伤害加成提升12.00%。', zone: 'DamageChangeType', value: 0.12, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 'inf', trigger: 'always' },

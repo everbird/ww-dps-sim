@@ -66,12 +66,12 @@ dataDescribe('达妮娅', () => {
     expect(of(log, 'resource').some(e => e.char === '达妮娅' && e.resource === 'core1' && e.delta === -18)).toBe(true)
   })
 
-  test('放逐第二段消耗全部黯核（进入战斗补到 2 枚），倍率每枚 +150%', () => {
+  test('放逐第二段消耗全部黯核（进入战斗补到 2 枚），倍率 ×(1 + 1.5 × 枚数)（中 2 录像，2026-10-27）', () => {
     const log = run(ROT)
     const e2 = of(log, 'hit').find(e => e.judgment === '黑强化E2')!
     const e1 = of(log, 'hit').find(e => e.judgment === '黑强化E1')!
-    // 同一时段攻击相同：第二段的基础伤害 / (112.01% + 2 × 150%) = 第一段的基础伤害 / 34.68%
-    expect(e2.factors!.base / (1.1201 + 3)).toBeCloseTo(e1.factors!.base / 0.3468, 0)
+    // 同一时段攻击相同：第二段的基础伤害 / (112.01% × (1 + 2 × 1.5)) = 第一段的基础伤害 / 34.68%
+    expect(e2.factors!.base / (1.1201 * 4)).toBeCloseTo(e1.factors!.base / 0.3468, 0)
     expect(of(log, 'resource').filter(e => e.resource === 'core3' && e.delta < 0).map(e => e.delta)).toEqual([-2])
   })
 
@@ -211,5 +211,20 @@ dataDescribe('三火深塔 41 期中 2 的录像', () => {
     expect(hit('强化QTE-落地1')[0]!.dmg!.nonCrit).toBe(26205)
     expect(hit('强化QTE-落地2')[0]!.dmg!.nonCrit).toBe(1638)
     expect(hit('大招-伤害')[1]!.dmg!.nonCrit).toBe(35241)
+  })
+
+  test('跳字对上录像（2026-10-27）：嘉贝莉娜首位是蚀脊龙（声骸技能伤害 +20%）、达妮娅的影烁者换过、放逐按比例加倍率', () => {
+    // 视频秒 → 这一刻附近（±0.3 秒）那个角色的这个判定
+    const at = (char: string, j: string, video: number) =>
+      of(log, 'hit').find(e => e.char === char && e.judgment === j && Math.abs(e.f / 60 + 2.5 - video) < 0.3)!.dmg!
+    // 嘉贝莉娜：重击伤害的几下原来就对，声骸技能伤害的几下原来低 6.13%（首位按荣耀狮像算了）
+    expect(at('嘉贝莉娜', '恶魔A3-2', 94.85).crit).toBe(94061)        // 录像 94026
+    expect(at('嘉贝莉娜', '恶魔A4-2', 96.02).crit).toBe(70604)        // 录像 70581（原来 66499）
+    expect(at('嘉贝莉娜', '恶魔A5-2', 97.37).crit).toBe(87263)        // 录像 87229（原来 82189）
+    // 达妮娅：影烁者的暴伤 19.8% → 12.6%
+    expect(at('达妮娅', '黑A1', 74.05).nonCrit).toBe(3082)             // 录像 3081
+    expect(at('达妮娅', '白大招-伤害', 73.53).crit).toBe(64665)        // 录像 64640（原来 65640）
+    expect(at('达妮娅', '白QTE-伤害', 116.87).crit).toBe(12177)        // 录像 12177
+    expect(at('达妮娅', '黑强化E2', 76.97).crit).toBe(100189)          // 录像 100150，3 枚黯核（按加法 91400）
   })
 })
