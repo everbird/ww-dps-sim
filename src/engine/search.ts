@@ -82,31 +82,34 @@ const where = (before: string | undefined, after: string | undefined) =>
   before && after ? `${before} 之后、${after} 之前` : before ? `${before} 之后，末尾` : after ? `开头，${after} 之前` : '只有它'
 
 /** 在 lines 上改一处的全部候选（不去重，不跑仿真）。has(角色, 动作)：这个角色有没有这个动作（插入时只插给有的角色；缺省都算有） */
-export function neighbors(
-  lines: readonly Line[],
-  opts: Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & { has?: (char: string, action: string) => boolean } = {},
-): Change[] {
+export function neighbors(lines: readonly Line[], opts: NeighborOptions = {}): Change[] {
+  return [...neighborIter(lines, opts)]
+}
+
+type NeighborOptions = Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & { has?: (char: string, action: string) => boolean }
+
+/** 同 neighbors，按需一条条给出；改过的轴（lines）在取用时才算（2026-10-27：几千个动作的长轴，候选全摊开会把内存用完，pnpm fuzz 只取其中几十条） */
+export function* neighborIter(lines: readonly Line[], opts: NeighborOptions = {}): Generator<Change> {
   const movable = (a: string) => (opts.move ? opts.move.includes(a) : isEcho(a))
   const droppable = (a: string) => opts.drop?.includes(a) ?? false
-  const out: Change[] = []
-  lines.forEach((line, li) => {
-    if (!isChar(line) || (opts.chars && !opts.chars.includes(line.char))) return
-    line.items.forEach((it, ii) => {
+  for (const [li, line] of lines.entries()) {
+    if (!isChar(line) || (opts.chars && !opts.chars.includes(line.char))) continue
+    for (const [ii, it] of line.items.entries()) {
       const who = `${line.char} ${it.action}`
       if (movable(it.action)) {
-        lines.forEach((target, lj) => {
-          if (!isChar(target) || target.char !== line.char) return
+        for (const [lj, target] of lines.entries()) {
+          if (!isChar(target) || target.char !== line.char) continue
           const rest = lj === li ? line.items.filter((_, k) => k !== ii) : target.items
           for (let p = 0; p <= rest.length; p++) {
             if (lj === li && p === ii) continue                       // 原位
-            out.push({
-              lines: edit(lines, li, ii, { line: lj, at: p }),
+            yield {
+              get lines() { return edit(lines, li, ii, { line: lj, at: p }) },
               desc: `${who}：第 ${li + 1} 条第 ${ii + 1} 个 → 第 ${lj + 1} 条第 ${p + 1} 个（${where(rest[p - 1]?.action, rest[p]?.action)}）`,
-            })
+            }
           }
-        })
+        }
       }
-      if (droppable(it.action)) out.push({ lines: edit(lines, li, ii, null), desc: `去掉 ${who}（第 ${li + 1} 条第 ${ii + 1} 个）` })
+      if (droppable(it.action)) yield { get lines() { return edit(lines, li, ii, null) }, desc: `去掉 ${who}（第 ${li + 1} 条第 ${ii + 1} 个）` }
       // 对调：与同一行的下一个，行末的与紧接着的同一角色那一行的第一个（两行连着，执行起来就是相邻的两个）
       if (opts.swap) {
         const lj = ii + 1 < line.items.length ? li : li + 1
@@ -115,32 +118,38 @@ export function neighbors(
         if (next && isChar(next) && next.char === line.char) {
           const b = next.items[jj]!
           if (!(it.filler && b.filler) && itemText(it) !== itemText(b)) {
-            const swapped: Line[] = lines.map(l => (isChar(l) ? { char: l.char, items: [...l.items] } : l))
-            ;(swapped[li] as { items: Act[] }).items[ii] = b
-            ;(swapped[lj] as { items: Act[] }).items[jj] = it
             const at = lj === li ? `第 ${li + 1} 条第 ${ii + 1}、${ii + 2} 个` : `第 ${li + 1} 条末尾与第 ${lj + 1} 条开头`
-            out.push({ lines: swapped, desc: `${line.char}：对调 ${it.action} 与 ${b.action}（${at}）` })
+            yield {
+              get lines() {
+                const swapped: Line[] = lines.map(l => (isChar(l) ? { char: l.char, items: [...l.items] } : l))
+                ;(swapped[li] as { items: Act[] }).items[ii] = b
+                ;(swapped[lj] as { items: Act[] }).items[jj] = it
+                return swapped
+              },
+              desc: `${line.char}：对调 ${it.action} 与 ${b.action}（${at}）`,
+            }
           }
         }
       }
-    })
-  })
+    }
+  }
   // 插入：每个插入的写法，插进有这个动作的角色的每一行、每个位置
   for (const token of opts.insert ?? []) {
     const proto = insertItem(token)
-    lines.forEach((line, li) => {
-      if (!isChar(line) || (opts.chars && !opts.chars.includes(line.char)) || (opts.has && !opts.has(line.char, proto.action))) return
+    for (const [li, line] of lines.entries()) {
+      if (!isChar(line) || (opts.chars && !opts.chars.includes(line.char)) || (opts.has && !opts.has(line.char, proto.action))) continue
       for (let p = 0; p <= line.items.length; p++) {
-        const next: Line[] = lines.map(l => (isChar(l) ? { char: l.char, items: [...l.items] } : l))
-        ;(next[li] as { items: Act[] }).items.splice(p, 0, { ...proto, char: line.char })
-        out.push({
-          lines: next,
+        yield {
+          get lines() {
+            const next: Line[] = lines.map(l => (isChar(l) ? { char: l.char, items: [...l.items] } : l))
+            ;(next[li] as { items: Act[] }).items.splice(p, 0, { ...proto, char: line.char })
+            return next
+          },
           desc: `插入 ${line.char} ${token}：第 ${li + 1} 条第 ${p + 1} 个（${where(line.items[p - 1]?.action, line.items[p]?.action)}）`,
-        })
+        }
       }
-    })
+    }
   }
-  return out
 }
 
 /** 拿掉第 li 行的第 ii 个条目，放到 to（null = 不放回）；行空了就去掉这一行 */
@@ -207,17 +216,18 @@ export function searchRotation(
   outer: for (let k = 1; k <= rounds; k++) {
     const fresh: { c: Candidate; lines: Line[] }[] = []
     for (const parent of beam) {
-      for (const ch of neighbors(parent.lines, { ...opts, has })) {
-        const key = rotationKey(ch.lines)
+      for (const ch of neighborIter(parent.lines, { ...opts, has })) {
+        const lines = ch.lines                                         // getter：每取一次算一次，取一次存下
+        const key = rotationKey(lines)
         if (seen.has(key)) continue
         seen.add(key)
         if (runs >= maxRuns) { stoppedBy = 'maxRuns'; done = k; break outer }
         tried++
-        const { c } = evaluate(r, members, opening, ch.lines, [...parent.c.steps, ch.desc])
+        const { c } = evaluate(r, members, opening, lines, [...parent.c.steps, ch.desc])
         runs++
         if (c.error) { failures[c.error.code] = (failures[c.error.code] ?? 0) + 1; continue }
         ok.push(c)
-        fresh.push({ c, lines: ch.lines })
+        fresh.push({ c, lines })
       }
     }
     done = k
