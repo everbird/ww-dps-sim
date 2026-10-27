@@ -26,13 +26,12 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
   })
   const vsec = (f: number) => f / 60 + T0
 
-  test('整局跑得通；15 次切人类型都和录像一致，14 次差不到 0.3 秒（第 13 段卜灵的普攻串凑不出山雷颐，185.5 雷主切入晚 1.6 秒）', () => {
+  test('整局跑得通；15 次切人类型都和录像一致、都差不到 0.3 秒（卜灵切走清卦象之后，第 13 段不再晚）', () => {
     expect(out.error).toBeUndefined()
     const cmp = compareMarks(traceCommands(out.log, r, 1), sc.video!.marks)
     expect(cmp.missing).toEqual([])
     expect(cmp.rows).toHaveLength(15)
-    expect(cmp.rows.filter(x => Math.abs(x.diff) < 0.3)).toHaveLength(14)
-    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(2)
+    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(0.3)
     const sw = out.log.filter(e => e.type === 'switch')
     expect(sw.map(e => e.type === 'switch' && e.intro)).toEqual([false, true, true, true, false, true, true, true, false, true, true, true, false, true, true])
   })
@@ -48,6 +47,12 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(fit.hp!.rmse).toBeLessThan(0.03)
     expect(fit.switches.typeMiss).toBe(0)
     expect(fit.events.matched).toBe(fit.events.n)
+  })
+
+  test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"山雷颐（少阳）→ 震为雷（少阴）→ 阴阳相生"再放大招', () => {
+    expect(r.rules.forteKeepOnSwitch).toBe(false)
+    const heavy = out.log.flatMap(e => (e.type === 'actionStart' && e.char === '卜灵' && /^重击/.test(e.action) ? [e.action] : []))
+    expect(heavy).toEqual(['重击', '重击-震震', '重击', '重击-震震', '重击', '重击-震震', '重击', '重击-震震'])
   })
 
   test('谐度破坏照白色跳字写了四次；后两次仿真里无冠者的偏谐值没满，轴里先写"敌人 失谐"', () => {

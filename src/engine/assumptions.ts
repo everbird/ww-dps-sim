@@ -258,9 +258,9 @@ export const ASSUMPTIONS = [
     adjust: { how: '改 src/engine/resolve.ts 的 staticStats（加上某个触发 buff 的满层值）或在钩子的 modifyHit 里实时算' },
   },
   {
-    id: 'env-final-class', topic: '公式', tracked: false, impact: 'unknown', ref: 'data/curated/env-buffs.ts、docs/tower-20261026.md',
+    id: 'env-final-class', topic: '公式', tracked: false, impact: 'small', ref: 'data/curated/env-buffs.ts、docs/tower-20261026.md 中 4',
     what: '深塔环境特性里没写类别的"伤害最终提升"按 0 类最终伤害（FinalDamage0）：同一场景里几条之间相加，与别的类别相乘',
-    why: '面板原文不写类别；不带类别的"全伤害加深"按 0 类（TD-03 §2），照此类推。分开相乘的话，几条叠在一起时会高一些',
+    why: '面板原文不写类别；不带类别的"全伤害加深"按 0 类（TD-03 §2），照此类推。录像证实了 41 期中 3 / 中 4 的三条：心镇红尘第 3、4 轮相对第 1 轮的跳字涨幅，按变奏 15% + 电磁 55% + 受伤递增每层 5% 相加（底数 1.70）折算正好是整数层（中 4 7 层、12 层，中 3 4 层、11 层），分开相乘或底数不是 1.70 都折不出整数',
     adjust: { how: '改 env-buffs.ts 里那几条的 zone（如 FinalDamage1、FinalDamage2…）后重跑' },
   },
   {
