@@ -84,6 +84,13 @@ function onAction(ctx: Ctx, id: string, instance: number): void {
       v.万阙解锁 = true                                        // "第1F解锁大招、移除强化状态"
       ctx.removeBuff('心.统御众机')
       return
+    // 借相（心相心生中的共鸣解放）：在应世相 / 照世相之间切换（2026-10-27 中 3 录像第四轮：镇寰宇后切回应世相放了应世 E，再切回照世相放万阙垂天）
+    case '借相-地面切换岁主': case '借相-空中切换岁主':
+      v.照世 = true
+      return
+    case `${P}借相-地面切换常态`: case `${P}借相-空中切换常态`:
+      v.照世 = false
+      return
     case `${P}大招`:                                         // 万阙垂天：回到应世相，退出心相心生，得照夜明
       v.照世 = false
       v.万阙解锁 = false
@@ -111,6 +118,7 @@ export default defineCharacter('心', {
     E: 'E', R: `${P}大招`, QTE: 'QTE',               // R = 万阙垂天（要满能量）；转相不耗能量，单列
     转相: '大招', 万阙垂天: `${P}大招`, 步红尘: '强化重击', 镇红尘: '增幅强化重击',
     万阙连衡: `${P}强化E`, 临寰宇: `${P}强化重击`, 镇寰宇: `${P}增幅强化重击`,
+    借相到照世: '借相-地面切换岁主', 借相到应世: `${P}借相-地面切换常态`,
   },
   vars: VARS,
   effectRules: { 电磁效应: { keepStacks: true, source: '共鸣模态·电磁：心进入战斗状态时，一定范围内的目标【电磁效应】每次触发时不再减少层数。' } },
@@ -179,6 +187,8 @@ export default defineCharacter('心', {
         case `${P}E`: return c.core[1] < 300 ? true : '照世心满了，共鸣技能是万阙连衡（照世·强化E）'
         case `${P}强化E`: return c.core[1] >= 300 ? true : `万阙连衡要照世心满（${Math.floor(c.core[1])} / 300）`
         case `${P}大招`: return v.万阙解锁 ? true : '万阙垂天要先放临寰宇 / 镇寰宇'
+        case '借相-地面切换岁主': case '借相-空中切换岁主': case `${P}借相-地面切换常态`: case `${P}借相-空中切换常态`:
+          return ctx.buffStacks('心.心相心生') > 0 ? true : '借相只在心相心生里（转相之后）'
       }
       if (COMMAND.has(id)) {
         if (!command) return `${id} 要在统御众机（万阙连衡之后 13 秒）里`
