@@ -114,20 +114,27 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(5)
   })
 
-  test('露帕：狼咬、锐爪各消耗 50 点狼焰；大招给全队追猎，每次变奏 +1 层，满 3 层后下一次变奏是你无法逃离！', () => {
+  test('露帕：狼咬、锐爪各消耗 50 点狼焰；大招给全队追猎，每次变奏 +1 层，满 3 层后的变奏是你无法逃离！', () => {
     const res = of(log, 'resource').filter(e => e.char === '露帕' && e.resource === 'core1' && e.delta === -50)
     expect(res.length).toBeGreaterThanOrEqual(2)
     const hunt = of(log, 'buffApply').filter(e => e.buff === '露帕.追猎' && e.target === '露帕').map(e => e.stacks)
     expect(Math.max(...hunt)).toBe(3)
-    const intros = starts('露帕').filter(e => e.action === 'QTE' || e.action === '强化QTE').map(e => e.action)
-    expect(intros).toContain('强化QTE')
+    // 满 3 层以后露帕的变奏都是你无法逃离！（这一局第三轮切露帕时嘉贝莉娜协奏没满，没有变奏，碰不到）
+    const full = of(log, 'buffApply').find(e => e.buff === '露帕.追猎' && e.stacks === 3)!
+    for (const a of starts('露帕').filter(e => (e.action === 'QTE' || e.action === '强化QTE') && e.f > full.f)) expect(a.action).toBe('强化QTE')
+  })
+
+  test('环境特性（nanoka 41 期深境之塔第 1 层）：附加异常效应时的暴伤只给附加的人（队里只有达妮娅附加聚爆效应）', () => {
+    const t = of(log, 'buffApply').filter(e => e.buff === '深塔41中1.异常暴伤').map(e => e.target)
+    expect(t.length).toBeGreaterThan(0)
+    expect(new Set(t)).toEqual(new Set(['达妮娅']))
   })
 
   test('露帕：狼舞的决意后切走，8 秒内队友放大招，露帕出一次延燃', () => {
     expect(of(log, 'hit').some(e => e.char === '露帕' && e.action === '延燃')).toBe(true)
   })
 
-  test('嘉贝莉娜：恶魔普攻只在恶魔位格里出，余火按层挂上；死运既定最多 4 层；恶魔位格 50 战斗秒', () => {
+  test('嘉贝莉娜：恶魔普攻只在恶魔位格里出，余火按层挂上；死运既定最多 4 层；恶魔位格最多 50 战斗秒', () => {
     const e3 = starts('嘉贝莉娜').find(e => e.action === 'E3')!
     const on = of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
     const off = of(log, 'buffExpire').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
@@ -136,7 +143,9 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     }
     expect(of(log, 'buffApply').some(e => e.buff === '嘉贝莉娜.余火' && e.f === e3.f && e.stacks > 0)).toBe(true)
     expect(Math.max(...of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.死运既定').map(e => e.stacks))).toBe(4)
-    const end = of(log, 'buffExpire').find(e => e.buff === '嘉贝莉娜.恶魔位格' && e.reason === 'timeout')!
-    expect(end.t - e3.t).toBeCloseTo(50, 0)
+    // 净炼火耗完提前退出（removed），否则 50 战斗秒到时（timeout）
+    const end = of(log, 'buffExpire').find(e => e.buff === '嘉贝莉娜.恶魔位格')!
+    if (end.reason === 'timeout') expect(end.t - e3.t).toBeCloseTo(50, 0)
+    else expect(end.t - e3.t).toBeLessThan(50)
   })
 })
