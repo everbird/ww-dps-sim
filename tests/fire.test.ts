@@ -1,11 +1,15 @@
-// tests/fire.test.ts —— 三火（嘉贝莉娜 · 达妮娅 · 露帕，2026-10-26，docs/tower-20261026.md）的角色模块。先写了达妮娅：
-// 两种形态、熵变强化与蚀刻繁彩、虚质粒子下黑A按强化版算、放逐按黯核加倍率、聚爆模态挂层、蚀域。依赖 data/generated（缺数据时跳过）
+// tests/fire.test.ts —— 三火（嘉贝莉娜 · 达妮娅 · 露帕，2026-10-26，docs/tower-20261026.md）的角色模块与中 1 的录像剖析。
+// 达妮娅：两种形态、熵变强化与蚀刻繁彩、虚质粒子下黑A按强化版算、放逐按黯核加倍率、聚爆模态挂层、蚀域；
+// 露帕：狼焰与狼魂、追猎加层与你无法逃离、延燃；嘉贝莉娜：罪火满才进恶魔位格、余火、死运既定、恶魔位格 50 战斗秒。依赖 data/generated（缺数据时跳过）
+import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
+import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
+import { compareMarks, traceCommands } from '../src/engine/trace'
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -87,5 +91,52 @@ dataDescribe('达妮娅', () => {
     expect(fs.length).toBeGreaterThan(3)
     for (let k = 1; k < fs.length; k++) expect(fs[k]! - fs[k - 1]!).toBe(240)
     expect(fs[0]! - black.f).toBeGreaterThanOrEqual(157)
+  })
+})
+
+dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', () => {
+  let log: SimEvent[]
+  let cmp: ReturnType<typeof compareMarks>
+  beforeAll(async () => {
+    const gd = await loadGameData()
+    const sc = parse(readFileSync(new URL('../scenarios/fire-tower1-video.yaml', import.meta.url), 'utf8')) as ScenarioInput
+    const r = resolveScenario(ScenarioSchema.parse(sc), gd)
+    const out = simulate(r)
+    expect(out.error).toBeUndefined()
+    log = out.log
+    cmp = compareMarks(traceCommands(log, r, 1), sc.video!.marks!)
+  })
+  const starts = (char: string) => of(log, 'actionStart').filter(e => e.char === char)
+
+  test('整局跑得通，9 次切人都出现，和录像差不到 5 秒', () => {
+    expect(cmp.missing).toEqual([])
+    expect(cmp.rows.length).toBe(9)
+    for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(5)
+  })
+
+  test('露帕：狼咬、锐爪各消耗 50 点狼焰；大招给全队追猎，每次变奏 +1 层，满 3 层后下一次变奏是你无法逃离！', () => {
+    const res = of(log, 'resource').filter(e => e.char === '露帕' && e.resource === 'core1' && e.delta === -50)
+    expect(res.length).toBeGreaterThanOrEqual(2)
+    const hunt = of(log, 'buffApply').filter(e => e.buff === '露帕.追猎' && e.target === '露帕').map(e => e.stacks)
+    expect(Math.max(...hunt)).toBe(3)
+    const intros = starts('露帕').filter(e => e.action === 'QTE' || e.action === '强化QTE').map(e => e.action)
+    expect(intros).toContain('强化QTE')
+  })
+
+  test('露帕：狼舞的决意后切走，8 秒内队友放大招，露帕出一次延燃', () => {
+    expect(of(log, 'hit').some(e => e.char === '露帕' && e.action === '延燃')).toBe(true)
+  })
+
+  test('嘉贝莉娜：恶魔普攻只在恶魔位格里出，余火按层挂上；死运既定最多 4 层；恶魔位格 50 战斗秒', () => {
+    const e3 = starts('嘉贝莉娜').find(e => e.action === 'E3')!
+    const on = of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
+    const off = of(log, 'buffExpire').filter(e => e.buff === '嘉贝莉娜.恶魔位格').map(e => e.f)
+    for (const a of starts('嘉贝莉娜').filter(e => e.action.startsWith('恶魔'))) {
+      expect(on.some((f, k) => f <= a.f && a.f < (off[k] ?? Infinity))).toBe(true)
+    }
+    expect(of(log, 'buffApply').some(e => e.buff === '嘉贝莉娜.余火' && e.f === e3.f && e.stacks > 0)).toBe(true)
+    expect(Math.max(...of(log, 'buffApply').filter(e => e.buff === '嘉贝莉娜.死运既定').map(e => e.stacks))).toBe(4)
+    const end = of(log, 'buffExpire').find(e => e.buff === '嘉贝莉娜.恶魔位格' && e.reason === 'timeout')!
+    expect(end.t - e3.t).toBeCloseTo(50, 0)
   })
 })

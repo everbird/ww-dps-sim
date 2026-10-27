@@ -191,6 +191,48 @@ const sets: EchoSetModule[] = [
     },
   }),
   defineEchoSet({
+    name: '奔狼燎原之焰',                   // 露帕、嘉贝莉娜（2026-10-26 深塔中 1、中 2）
+    pieces: {
+      2: [{ id: '奔狼燎原之焰.2', source: '热熔伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' }],
+      5: [
+        {
+          id: '奔狼燎原之焰.5队伍', source: '施放共鸣解放时，队伍中角色热熔伤害提升15%，自身共鸣解放伤害提升20%，持续35秒。',
+          zone: 'DamageChangeElement', value: 0.15, filter: { elements: ['热熔'] }, target: 'team', duration: 2100,
+          trigger: { on: 'actionStart', where: { actionKinds: ['liberation'] } },
+        },
+        {
+          id: '奔狼燎原之焰.5解放', source: '施放共鸣解放时，队伍中角色热熔伤害提升15%，自身共鸣解放伤害提升20%，持续35秒。',
+          zone: 'DamageChangeType', value: 0.2, filter: { tags: ['共鸣解放'] }, target: 'self', duration: 2100,
+          trigger: { on: 'actionStart', where: { actionKinds: ['liberation'] } },
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
+    name: '焚羽猎魔之影',                   // 嘉贝莉娜（3 件套）
+    pieces: {
+      3: [
+        {
+          id: '焚羽猎魔之影.重击暴击', source: '角色造成声骸技能伤害时，重击伤害的暴击提升20%，持续6秒；造成重击伤害时，声骸技能伤害的暴击提升20%，持续6秒。同时拥有两种效果时，自身热熔伤害提升16%。',
+          zone: 'critRate', value: 0.2, filter: { tags: ['重击'] }, target: 'self', duration: 360, trigger: { on: 'judgmentSettle', where: { tags: ['声骸技能'] } },
+        },
+        {
+          id: '焚羽猎魔之影.声骸暴击', source: '角色造成声骸技能伤害时，重击伤害的暴击提升20%，持续6秒；造成重击伤害时，声骸技能伤害的暴击提升20%，持续6秒。',
+          zone: 'critRate', value: 0.2, filter: { tags: ['声骸技能'] }, target: 'self', duration: 360, trigger: { on: 'judgmentSettle', where: { tags: ['重击'] } },
+        },
+        {
+          // "同时拥有两种效果时"：近似成"已有一种时又造成另一种伤害"（同光影双生）
+          id: '焚羽猎魔之影.热熔', source: '同时拥有两种效果时，自身热熔伤害提升16%。',
+          zone: 'DamageChangeElement', value: 0.16, filter: { elements: ['热熔'] }, target: 'self', duration: 360,
+          trigger: [
+            { on: 'judgmentSettle', where: { tags: ['重击'], ownerHas: '焚羽猎魔之影.重击暴击' } },
+            { on: 'judgmentSettle', where: { tags: ['声骸技能'], ownerHas: '焚羽猎魔之影.声骸暴击' } },
+          ],
+        },
+      ],
+    },
+  }),
+  defineEchoSet({
     name: '斑驳粉饰之沫',                   // 达妮娅（2026-10-26，docs/tower-20261026.md）
     pieces: {
       2: [{ id: '斑驳粉饰之沫.2', source: '热熔伤害提升10%', zone: 'DamageChangeElement', value: 0.1, filter: { elements: ['热熔'] }, target: 'self', duration: 'inf', trigger: 'always' }],
