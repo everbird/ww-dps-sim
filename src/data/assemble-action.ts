@@ -229,6 +229,7 @@ export function assembleGroup(
       flags: jf,
     }
   })
+  linkSpawns(judgments, hitRows)
   judgments.sort((a, b) => (a.spawnFrame ?? Infinity) - (b.spawnFrame ?? Infinity))
   if (judgments.some(j => j.lifeFrames === -1 && j.spawnFrame !== null && j.spawnFrame >= endFrame!)) flags.add('minusOneAfterEnd')   // 动作停了才出现，永远不会生成（TD-04 §4.3）
 
@@ -392,9 +393,31 @@ const HANDLED: Partial<Record<keyof ActionOverride, string[]>> = {
   cancelWindows: ['deriveMinus1'], outroTriggerFrame: ['noOutroFrame', 'outroRange'], switchLockUntil: ['invincibleNoFrames', 'noSwitchUnframed'],
   air: ['airGuess'],
 }
+/** 备注里写了"命中（后）（立即）生成X""（持续帧）结束后（自行）生成X"的判定：X 是同组的事件生成判定（发生帧为空）时，
+ *  记在 spawns 上，由引擎生成（原来只有角色模块写了钩子的才生成，声骸与没写的都漏掉）。X 要能唯一对上一行（行名就是 X，或包含 X）；
+ *  对不上、没写 X（"自行生成"）的不推断。推断的打 flag spawnFromNote */
+const SPAWN_NOTE: [RegExp, 'hit' | 'end'][] = [[/命中(?:后)?(?:立即)?生成([^，、。；,;]+)/, 'hit'], [/(?:持续帧)?结束后(?:自行)?生成([^，、。；,;]+)/, 'end']]
+function linkSpawns(judgments: JudgmentDef[], rows: GenRow[]): void {
+  const evs = judgments.filter(j => j.spawnFrame === null)
+  rows.forEach((r, i) => {
+    const src = judgments[i]!
+    if (src.spawnFrame === null) return
+    for (const [re, on] of SPAWN_NOTE) {
+      const x = re.exec(r.note ?? '')?.[1]?.trim()
+      if (!x) continue
+      const exact = evs.filter(j => j.name === x)
+      const hit = exact.length ? exact : evs.filter(j => j.name.includes(x))
+      if (hit.length !== 1) continue
+      src.spawns = { on, judgments: [hit[0]!.name] }
+      src.flags.push('spawnFromNote')
+      return
+    }
+  })
+}
+
 const J_HANDLED: Record<string, string[]> = {
   lifeFrames: ['noLife'], ticks: ['ticksGuess', 'ticksCapped'], persistsOnCancel: ['persistsGuess'], multiplier: ['noDmg'],
-  chainRange: ['chainAdditive'], relatedAttr: ['relatedAttrOther'],
+  chainRange: ['chainAdditive'], relatedAttr: ['relatedAttrOther'], spawns: ['spawnFromNote'],
 }
 
 export function applyOverride(def: ActionDef, ov: ActionOverride): ActionDef {

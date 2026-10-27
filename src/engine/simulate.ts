@@ -41,6 +41,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
         payCost(sim, st, slot, a.def); drain(sim, st); castResources(sim, st, slot, a); drain(sim, st)
       },
       castGain: (st, slot, src, i) => { castGainAt(sim, st, slot, src, i); drain(sim, st) },
+      expired: (st, j) => { if (j.def.spawns?.on === 'end') spawnLinked(sim, st, j, '持续帧结束后生成') },
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
       timers: (st, rates) => {
         effectTicks(sim, st, rates)                               // 异常效应定时结算（§18）：到期那一刻赶上的先结算
@@ -239,10 +240,20 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     if (link) sim.bus.chain.set(s.log.length - 1, link)
   }
   drain(sim, s)
+  if (n === 0 && d.spawns?.on === 'hit') spawnLinked(sim, s, j, '命中后生成')
   // 接续动作（TD-08 P10）：本动作的该判定第一次结算后立刻开始，继承指令出处
   const a = s.chars[j.owner].action
   const f = a?.def.followUp
   if (n === 0 && a && f && a.instance === j.actionInstance && f.after === d.name) startAction(s, sim.k, j.owner, m.actions[f.action]!, a.cmd)
+}
+
+/** 判定的 spawns（备注"命中后立即生成X""持续帧结束后生成X"）：在同一动作实例里生成那些事件判定，跟着来源判定脱不脱手 */
+function spawnLinked(sim: Sim, s: SimState, j: JudgmentRuntime, why: string): void {
+  const a = sim.r.team[j.owner]!.actions[j.action]
+  for (const name of j.def.spawns!.judgments) {
+    const def = a?.judgments.find(x => x.name === name)
+    if (def) spawnJudgment(s, j.owner, j.action, j.actionInstance, def, j.detached, `${j.def.name} ${why}`)
+  }
 }
 
 // ---------------------------------------------------------------------------

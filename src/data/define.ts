@@ -44,7 +44,8 @@ export type JudgmentOverride = Partial<Pick<JudgmentDef,
   'element' | 'relatedAttr' |               // 元素、相关属性：倍率连不上、手写 multiplier 时一并写（声骸按技能说明）
   'heals' |                                 // 这段同时治疗（动作表没有治疗判定，触发"提供治疗时"的效果用）
   'coreOncePerAction' |                     // 核心资源每个动作实例只发一次：改多次结算后，施放时才给 / 扣的核心资源不跟着乘
-  'applies'>>                               // 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"，TD-06 §18）
+  'applies' |                               // 每次结算为目标附加几层异常效应（"命中后赋予目标n层电磁效应"，TD-06 §18）
+  'spawns'>>                                // 生成哪些事件判定（备注推得的不对时改写；null = 钩子自己生成）
 
 export interface CharacterModule<V extends HookVars = HookVars> {
   weaponType: WeaponType                    // xlsx 没有，必填（TD-01 Q18）

@@ -20,6 +20,7 @@ export interface KernelHooks {
   castGain?(s: SimState, slot: Slot, src: EventSource, index: number): void      // atFrame > 0 的施放资源（TD-06 §7）
   outroTrigger?(s: SimState, slot: Slot, src: EventSource): void                  // TD-05
   timers?(s: SimState, rates: Rates): void                                        // P6 的 buff 计时（TD-07）
+  expired?(s: SimState, j: JudgmentRuntime): void                                 // 判定持续帧走完自然消失（被取消移除的不算）
 }
 export interface Kernel { rules: Rules; hooks: KernelHooks }
 /** 时间线事件的来源：进行中的动作，或脱离动作的尾部（ActionRuntime、TailRuntime 都符合） */
@@ -336,7 +337,9 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
     settleQueue = null
   }
   for (const j of s.judgments) j.age = snap4(j.age + judgmentRate(j, rates))
-  s.judgments = s.judgments.filter(j => j.def.lifeFrames === -1 || j.age < (j.def.delayFrames ?? 0) + j.def.lifeFrames)
+  const gone = s.judgments.filter(j => j.def.lifeFrames !== -1 && j.age >= (j.def.delayFrames ?? 0) + j.def.lifeFrames)
+  s.judgments = s.judgments.filter(j => !gone.includes(j))
+  for (const j of gone) k.hooks.expired?.(s, j)                   // 到期生成的判定下一个 tick 起结算
 }
 
 // ---------------------------------------------------------------------------

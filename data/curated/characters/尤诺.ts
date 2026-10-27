@@ -115,6 +115,9 @@ export default defineCharacter('尤诺', {
     // 越限的弦引：初始 2 次、10 秒回 1 次（按次数充能）；强化版消耗灵性，共用次数。爆炸2 在爆炸1 之后 28 帧
     E3: { cooldown: 600, cooldownGroup: '越限的弦引', charges: 2, judgments: { 'E3-爆炸2': { delayFrames: 28 } } },
     强化E3: { cooldown: 600, cooldownGroup: '越限的弦引', charges: 2, judgments: { '强化E3-爆炸2': { delayFrames: 28 } }, accept: ['priorityChangeGuess'] },
+    // 箭矢命中生成爆炸由钩子做（explode：弓A2 三支箭、E3 两次爆炸都要特殊处理），不用装配从备注推的 spawns
+    弓A1: { judgments: { '弓A1-箭矢': { spawns: null } } },
+    弓A3: { judgments: { '弓A3-箭矢1': { spawns: null }, '弓A3-箭矢2': { spawns: null } } },
     // 至臻的完满：协奏满时的重击（xlsx 类别空着），满月领域 25 秒最多一次
     至臻完满: { kind: 'heavy', cooldown: 1500 },
     QTE: { judgments: { 'QTE-1': { ticks: 7, lifeFrames: 25 } }, accept: ['priorityChangeGuess'] },   // "每4F一次，最多7次"（nanoka"15.91%*7"）

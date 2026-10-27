@@ -149,6 +149,17 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     else expect(end.t - e3.t).toBeLessThan(50)
   })
 
+  test('事件生成的判定（备注推出的 spawns）：露帕破敌的 E3-伤害（投枪命中后，协奏 20）、嘉贝莉娜迫近的 E1-爆炸（踢命中后）；9 次切人都是变奏', () => {
+    const n = (char: string, action: string) => starts(char).filter(e => e.action === action).length
+    const hits = (char: string, j: string) => of(log, 'hit').filter(e => e.char === char && e.judgment === j)
+    expect(n('露帕', 'E3')).toBeGreaterThan(0)
+    expect(hits('露帕', 'E3-伤害').length).toBe(n('露帕', 'E3'))
+    expect(hits('露帕', 'E3-伤害').every(e => e.gains.concerto === 20)).toBe(true)
+    expect(hits('嘉贝莉娜', 'E1-爆炸').length).toBe(n('嘉贝莉娜', 'E1'))
+    // 录像里每次切人前协奏环都满了（原来少了破敌的 20 点，露帕 → 达妮娅是普通切人）
+    expect(of(log, 'switch').filter(e => !e.intro).length).toBe(1)   // 只有开局切露帕
+  })
+
   test('嘉贝莉娜：恶魔普攻起手扣净炼火扣到 0 也退出恶魔位格；三次变奏上场都在阈限（录像里共鸣回路是灰角）', () => {
     // 原来只在命中扣到 0 时退出，起手扣到 0 的留在恶魔位格里，第二轮上场还是恶魔位格（和录像不符）
     const ends = of(log, 'buffExpire').filter(e => e.buff === '嘉贝莉娜.恶魔位格')
