@@ -24,8 +24,9 @@ dataDescribe('录像剖析的贴合度', () => {
     expect(f.events.n).toBe(sc.video!.events!.length)
     expect(f.events.matched).toBe(f.events.n)
     expect(f.hp?.n).toBe(sc.video!.hp!.length)
-    expect(f.hp!.rmse).toBeLessThan(0.08)                          // 第三版（心的衔接对上录像后）约 5%，第二版 15.5%
-    expect(f.switches.max).toBeLessThan(2)
+    expect(f.hp!.rmse).toBeLessThan(0.03)                          // 第四版约 1.8%（第三版约 5%、第二版 15.5%，血条时间读错了）
+    expect(f.switches.max).toBeLessThan(0.5)
+    expect(f.switches.typeMiss).toBe(0)
     expect(f.score).toBeCloseTo(f.switches.mae + f.events.mae + FIT_WEIGHTS.typeMiss * f.switches.typeMiss
       + FIT_WEIGHTS.unmatched * (f.events.n - f.events.matched) + FIT_WEIGHTS.hpPct * f.hp!.rmse * 100, 9)
   })

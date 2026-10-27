@@ -88,6 +88,7 @@ function compileLines(lines: string[], team: CompileMember[]): { commands: Comma
         return
       }
       if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot, ...(it.expectIntro ? { expectIntro: true } : {}) }); return }
+      if (it.kind === 'fill') { commands.push({ kind: 'fill', line, item, slot, resource: it.resource }); return }
       const m = team[slot]!
       const id = Object.hasOwn(m.actions, it.action) ? it.action : Object.hasOwn(m.aliases, it.action) ? m.aliases[it.action] : undefined
       const def = id !== undefined && Object.hasOwn(m.actions, id) ? m.actions[id] : undefined
@@ -148,6 +149,8 @@ export interface SchedulerOptions {
   interject?(s: SimState): { slot: Slot; def: ActionDef; why: string } | null
   /** 轴里写的"敌人 失谐"（录像剖析：谐度破坏打的是仿真没建的小怪）。缺省什么也不做 */
   enemyCommand?(s: SimState, state: 'disharmony'): void
+  /** 轴里写的"能量满 <角色>"（录像剖析：按钮已经亮了、仿真能量还差一点）。缺省什么也不做 */
+  fillCommand?(s: SimState, slot: Slot, resource: 'energy'): void
   /** 操作延迟（总设计 T4）：队首指令第一次全部合法时问一次，再晚这么多帧执行。只加在决策点（切人、不是连段后续的出招），
    *  插队的动作不算。缺省 0。
    *  期望模式是 options.inputDelay；抽样模式在这里加随机抖动——这是调度器里唯一的随机注入点 */
@@ -250,7 +253,7 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
     case 'at':
       if (!roundHasAction(q)) beginLoop(s)
       return s.frame >= c.frame ? GO : { go: false, code: 'at', reason: `等到第 ${c.frame} 帧` }
-    case 'enemy':
+    case 'enemy': case 'fill':
       return GO
     case 'switch': {
       if (c.to === s.onField) throw fail(s, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
@@ -384,6 +387,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
   switch (c.kind) {
     case 'wait': case 'at': return                                   // 等完就算执行完
     case 'enemy': opts.enemyCommand?.(s, c.state); return            // 敌人 失谐（录像剖析）：改敌人状态由 simulate 做
+    case 'fill': opts.fillCommand?.(s, c.slot, c.resource); return    // 能量满（录像剖析）：同上
     case 'switch': {
       beginLoop(s)
       const from = s.onField

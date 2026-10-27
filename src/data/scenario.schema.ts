@@ -135,6 +135,8 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //                                            前面的补位 "~" 看它——还没到时间就接着补（2026-10-25 桃渊散录像）
 //   敌人 失谐       或  enemy disharmony     让目标此刻失谐（偏谐值满、谐度破坏按钮亮）：录像剖析里多敌人的段，谐度破坏打的是仿真没建的小怪，
 //                                            照录像手写谐度破坏时先写它（2026-10-27 中 3 录像，假设 forced-disharmony）
+//   能量满 <角色>   或  fill-energy <角色>   这个人的大招能量此刻补满：录像剖析里大招按钮已经亮了、仿真能量还差一点（多敌人的段仿真只建一只，
+//                                            少算了打小怪的能量），照录像按钮亮的时刻写（2026-10-27 中 3 录像，假设 forced-energy）
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
@@ -143,6 +145,7 @@ export type RotationItem =
   | { kind: 'wait'; frames: number }
   | { kind: 'at'; seconds: number }
   | { kind: 'enemy'; state: 'disharmony' }
+  | { kind: 'fill'; char: string; resource: 'energy' }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
 export function parseRotationLine(text: string): RotationItem[] | { error: string } {
@@ -169,6 +172,10 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
   if (head === '敌人' || head === 'enemy') {
     if (tok.length !== 2 || (tok[1] !== '失谐' && tok[1] !== 'disharmony')) return { error: `"${s}" 格式不对：应为 敌人 失谐（或 enemy disharmony）` }
     return [{ kind: 'enemy', state: 'disharmony' }]
+  }
+  if (head === '能量满' || head === 'fill-energy') {
+    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色>` }
+    return [{ kind: 'fill', char: tok[1]!, resource: 'energy' }]
   }
   if (tok.length === 1) return { error: `"${s}" 只有角色名：格式为 <角色> <动作> [+N]、switch <角色> 或 wait <帧数>` }
   const out: RotationItem[] = []
@@ -213,3 +220,4 @@ export type Command =
   | { kind: 'wait'; line: number; item: number; frames: Frame }
   | { kind: 'at'; line: number; item: number; frame: number }   // 等到世界帧 frame（排轴写 at <世界秒>；测试台直接给帧）
   | { kind: 'enemy'; line: number; item: number; state: 'disharmony' }   // 敌人 失谐：让目标此刻失谐（录像剖析）
+  | { kind: 'fill'; line: number; item: number; slot: Slot; resource: 'energy' }   // 能量满 <角色>：此刻补满大招能量（录像剖析）
