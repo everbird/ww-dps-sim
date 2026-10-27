@@ -121,7 +121,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
   const baseLoop = loopFrames(base)
   const name = (slot: Slot) => r.team[slot]!.def.name
   for (const c of tightFrames > 0 ? r.commands : []) {                // tight: 0 = 不跑这一节
-    if (c.kind === 'wait' || c.kind === 'at') continue
+    if (c.kind === 'wait' || c.kind === 'at' || c.kind === 'enemy') continue
     if (c.kind === 'act' && r.team[c.slot]!.actions[c.action]?.comboFrom?.length) continue
     const what = c.kind === 'switch' ? `switch ${name(c.to)}${c.expectIntro ? ' 变奏' : ''}` : `${name(c.slot)} ${c.action}${c.filler ? '~' : ''}`
     const res = run({ ...r, options: { ...r.options, inputDelayAt: { [`${c.line}.${c.item}`]: tightFrames } } })

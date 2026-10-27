@@ -42,6 +42,22 @@ export function canTuneBreak(sim: Sim, s: SimState): true | string {
   return true
 }
 
+/** 轴里写的"敌人 失谐"（录像剖析，假设 forced-disharmony）：目标此刻失谐、谐度破坏按钮亮（不管谐破冷却）；已经失谐的只把按钮再点亮 */
+export function forceDisharmony(sim: Sim, s: SimState): void {
+  const e = s.enemy
+  const p = e.preset
+  if (p.tunabilityMax <= 0) return
+  assume(s, 'forced-disharmony', `第 ${s.frame} 帧`)
+  if (!e.disharmony) {
+    e.tunability = p.tunabilityMax
+    e.disharmony = true
+    delete e.tuneBreakBy
+    log(s, { type: 'enemyState', change: 'disharmony', detail: '轴里写的（敌人 失谐）' })
+  }
+  const button = sim.r.tuneBreakTiming.buttonFrames
+  if (button !== null) e.tuneButtonUntil = s.battleFrames + button
+}
+
 /** 谐度破坏动作开始时：目标失谐就由它消耗这次失谐（它的各段伤害按对失谐算，TD-03 §6） */
 export function onTuneBreakStart(s: SimState, def: ActionDef, instance: number): void {
   if (def.kind === 'tuneBreak' && s.enemy.disharmony) s.enemy.tuneBreakBy = instance

@@ -25,6 +25,7 @@
     "assumptions": "tsx src/cli/assumptions.ts",
     "conformance": "tsx src/cli/conformance.ts",
     "fuzz": "tsx src/cli/fuzz.ts",
+    "fit": "tsx src/cli/fit.ts",
     "calibrate": "tsx src/cli/calibrate.ts",
     "sensitivity": "tsx src/cli/sensitivity.ts",
     "scorecard": "tsx src/cli/scorecard.ts",

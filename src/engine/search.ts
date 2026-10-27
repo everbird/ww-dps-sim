@@ -86,7 +86,10 @@ export function neighbors(lines: readonly Line[], opts: NeighborOptions = {}): C
   return [...neighborIter(lines, opts)]
 }
 
-type NeighborOptions = Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & { has?: (char: string, action: string) => boolean }
+type NeighborOptions = Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & {
+  has?: (char: string, action: string) => boolean
+  near?: number                             // 挪动只挪到前后这么多行之内（录像剖析的贴合度，src/engine/fit.ts）；缺省不限
+}
 
 /** 同 neighbors，按需一条条给出；改过的轴（lines）在取用时才算（2026-10-27：几千个动作的长轴，候选全摊开会把内存用完，pnpm fuzz 只取其中几十条） */
 export function* neighborIter(lines: readonly Line[], opts: NeighborOptions = {}): Generator<Change> {
@@ -98,7 +101,7 @@ export function* neighborIter(lines: readonly Line[], opts: NeighborOptions = {}
       const who = `${line.char} ${it.action}`
       if (movable(it.action)) {
         for (const [lj, target] of lines.entries()) {
-          if (!isChar(target) || target.char !== line.char) continue
+          if (!isChar(target) || target.char !== line.char || (opts.near !== undefined && Math.abs(lj - li) > opts.near)) continue
           const rest = lj === li ? line.items.filter((_, k) => k !== ii) : target.items
           for (let p = 0; p <= rest.length; p++) {
             if (lj === li && p === ii) continue                       // 原位
