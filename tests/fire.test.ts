@@ -198,4 +198,18 @@ dataDescribe('三火深塔 41 期中 2 的录像', () => {
     expect(g.filter(e => e.action === 'E3').length).toBe(3)
     expect(g.filter(e => e.action === '大招').length).toBe(3)
   })
+
+  test('跳字对上录像（2026-10-27）：焰痕的大招加成被重击延长 1 次，只在延长成功时给全队热熔 +24%', () => {
+    const hit = (j: string) => of(log, 'hit').filter(e => e.char === '露帕' && e.judgment === j)
+    // 狼舞的决意·极最后一下：两次都在大招后 6 秒以外，靠狼咬延长的 4 秒吃到 24%（录像 19482，不延长 18154）
+    expect(hit('强化E4-6').slice(1).map(e => e.dmg!.nonCrit)).toEqual([19490, 19490])
+    // 破敌（第二轮，视频 59.7）：上一次的热熔 +24% 已过期、这一轮还没延长（录像 9606；原来每次重击都给时 10507）
+    const e3 = hit('E3-伤害')[1]!
+    expect(e3.buffs).not.toContain('焰痕.热熔')
+    expect(e3.dmg!.nonCrit).toBe(9610)
+    // 没有焰痕、追猎的几下（强化QTE 第 1 帧解除追猎）：录像 26194 / 1638 / 35226
+    expect(hit('强化QTE-落地1')[0]!.dmg!.nonCrit).toBe(26205)
+    expect(hit('强化QTE-落地2')[0]!.dmg!.nonCrit).toBe(1638)
+    expect(hit('大招-伤害')[1]!.dmg!.nonCrit).toBe(35241)
+  })
 })

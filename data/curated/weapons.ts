@@ -189,15 +189,17 @@ export default [
     passives: [
       { id: '焰痕.攻击', source: '攻击提升12%', zone: 'atkPct', value: [0.12, 0.15, 0.18, 0.21, 0.24], target: 'self', duration: 'inf', trigger: 'always' },
       {
-        // "造成重击伤害后，延长大招伤害加成提升buff持续时间4秒"没写（buff 不能按事件延长，只少算延长的那几秒）
-        id: '焰痕.大招', source: '施放大招或变奏后，获得持续时间为6秒的24%大招伤害加成提升buff。',
+        // 原文取 nanoka 3.7（xlsx 拆成三句、没写"最多可延长1次"和"成功延长效果时"）。2026-10-27 中 2 录像：两次狼舞的决意·极
+        // 都在大招后 6 秒以外、吃到了这 24%（跳字 19482，没延长时仿真 18154）
+        id: '焰痕.大招', source: '施放变奏技能或共鸣解放时，共鸣解放伤害提升24%，持续6秒；造成重击伤害时，该效果延长4秒，最多可延长1次。',
         zone: 'DamageChangeType', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { tags: ['共鸣解放'] }, target: 'self', duration: 360,
         trigger: [{ on: 'actionStart', where: { actionKinds: ['liberation'] } }, { on: 'intro' }],
+        extend: { trigger: { on: 'judgmentSettle', where: { tags: ['重击'] } }, frames: 240, max: 1, grants: ['焰痕.热熔'] },
       },
       {
-        id: '焰痕.热熔', source: '造成重击伤害后，全队获得持续时间为30秒的24%热熔伤害加成提升buff。',
+        id: '焰痕.热熔', source: '成功延长效果时，使队伍中的角色热熔伤害加成提升24%，持续30秒，同名效果之间不可叠加。',
         zone: 'DamageChangeElement', value: [0.24, 0.3, 0.36, 0.42, 0.48], filter: { elements: ['热熔'] }, target: 'team', duration: 1800,
-        trigger: { on: 'judgmentSettle', where: { tags: ['重击'] } },
+        trigger: 'hook',                        // 由焰痕.大招的 extend.grants 施加
       },
     ],
   }),

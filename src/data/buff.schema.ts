@@ -76,11 +76,19 @@ export const BuffDefSchema = z.strictObject({
   onSwitchOut: z.enum(['persist', 'clear']).default('persist'),      // 原文明写才 clear（机制设计 6.1）
   refresh: z.enum(['refresh', 'keep']).default('refresh'),           // 再触发时是否刷新持续时间
   icd: z.number().int().min(1).optional(),                           // 触发内置冷却（"每秒可获得一层"= 60）
-  trigger: z.union([z.literal('always'), z.literal('hook'), Triggers]),   // 'hook'：只由角色钩子施加（标记型状态，TD-08 §3.2）
+  trigger: z.union([z.literal('always'), z.literal('hook'), Triggers]),   // 'hook'：只由角色钩子施加（标记型状态，TD-08 §3.2），或由别的 buff 的 extend.grants 施加
   consume: z.strictObject({                                          // "下次 X…"：被 X 用掉（TD-07 §6）
     on: z.enum(TRIGGER_EVENTS),
     where: TriggerFilterSchema.optional(),
     stacks: z.union([z.number().int().min(1), z.literal('all')]).default('all'),
+  }).optional(),
+  /** 持续中再满足 trigger 时延长 frames（每次施加后最多 max 次，重新施加时重数），成功延长时施加 grants 里的 buff（同一持有者的，
+   *  一般写 trigger: 'hook'）：焰痕"造成重击伤害时，该效果延长4秒，最多可延长1次。成功延长效果时，使队伍中的角色热熔伤害加成提升…"（2026-10-27） */
+  extend: z.strictObject({
+    trigger: Triggers,
+    frames: z.number().int().min(1),
+    max: z.number().int().min(1),
+    grants: nonEmpty(z.string().min(1)).optional(),
   }).optional(),
   requires: Requires.optional(),                                     // 共鸣链门槛
   ownerOnField: z.literal(true).optional(),                          // 给的人在前台时才算（"若装备者处于前台"，玉阙玄华第 4 条）
@@ -103,6 +111,8 @@ export const BuffDefSchema = z.strictObject({
     ctx.addIssue({ code: 'custom', path: ['duration'], message: "常驻 buff（trigger: 'always'）的 duration 必须是 'inf'" })
   if (b.scale && b.value === undefined)
     ctx.addIssue({ code: 'custom', path: ['scale'], message: '按属性换算（scale）要写乘区与每份的数值' })
+  if (b.extend && b.duration === 'inf')
+    ctx.addIssue({ code: 'custom', path: ['extend'], message: "常驻 buff（duration 'inf'）不能延长" })
   if (b.stackGain > b.maxStacks)
     ctx.addIssue({ code: 'custom', path: ['stackGain'], message: 'stackGain 不能大于 maxStacks' })
 })

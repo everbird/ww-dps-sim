@@ -215,6 +215,7 @@ export interface BuffRuntime {
   stacks: number
   remaining: number | 'inf'                 // 战斗帧
   lastTriggerAt: number                     // 战斗帧，用于 icd
+  extended: number                          // 这次施加以来延长了几次（BuffDef.extend，重新施加时清零）
 }
 
 export interface EnemyRuntime {
