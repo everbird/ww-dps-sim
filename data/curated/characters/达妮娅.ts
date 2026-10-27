@@ -33,7 +33,7 @@ const ENHANCED: Record<string, { mult: number; cost: number }> = {
 
 const VARS = {
   幻灭: false,              // 现在是幻灭之形（否则布景之形）
-  放逐黯核: 0,              // 这一次放逐第二段消耗了几枚黯核（倍率每枚 +150%）
+  放逐黯核: 0,              // 这一次放逐第二段消耗了几枚黯核（倍率 ×(1 + 1.5 × 枚数)）
   强化本下: false,          // modifyHit 判定这一下按强化算，hit 事件里扣虚质粒子、补共形能量
   蚀域至: -1,               // 蚀域消失的战斗帧；-1 = 没有
   冷却白QTE: -1, 冷却黑QTE: -1, 冷却白大招: -1, 冷却黑大招: -1, 冷却蚀域: -1,
@@ -190,8 +190,9 @@ export default defineCharacter('达妮娅', {
         hit.multiplier = e.mult
         hit.tags = ['共鸣解放']
       }
-      // 放逐第二段：每消耗 1 枚黯核，伤害倍率提升 150%
-      if (hit.judgment.name === '黑强化E2' && ctx.vars.放逐黯核 > 0) hit.multiplier += 1.5 * ctx.vars.放逐黯核
+      // 放逐第二段：每消耗 1 枚黯核，伤害倍率提升 150%——按原倍率的比例（×(1 + 1.5n)），不是加 150 个百分点：
+      // 2026-10-27 中 2 录像 3 枚时暴击跳字 100150，按比例算 100189 / 按加法算 91400（6 链写的是"倍率增加1200%"，措辞不同）
+      if (hit.judgment.name === '黑强化E2' && ctx.vars.放逐黯核 > 0) hit.multiplier *= 1 + 1.5 * ctx.vars.放逐黯核
     },
     forte(ctx) {
       const v = ctx.vars
