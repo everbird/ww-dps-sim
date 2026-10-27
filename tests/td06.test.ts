@@ -3,6 +3,7 @@
 import { beforeAll, describe, expect, test } from 'vitest'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
+import { parseRotationLine, ScenarioSchema } from '../src/data/scenario.schema'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { at, finalResources, m0Run } from './helpers/m0'
 import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
@@ -158,5 +159,18 @@ describe('TD-06 人造角色', () => {
     }
     const out = synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X'] })
     expect(eventsOfLog(out.log, 'resource').map(e => [e.cause, e.delta])).toEqual([['甲.定值', 10], ['甲.乘效率', 15]])
+  })
+
+  test('录像剖析的"能量满 <角色>"（2026-10-27 中 3）：大招能量此刻补满（差多少补多少，cause forced），后面的大招不用等；记假设 forced-energy', () => {
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'X', endFrame: 10 }), action({ id: 'R', kind: 'liberation', endFrame: 10, energyCost: 100 })] }
+    const out = synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X', '能量满 甲', '甲 R'] })
+    expect(out.error).toBeUndefined()
+    expect(eventsOfLog(out.log, 'resource').map(e => [e.char, e.cause, e.delta, e.value])).toEqual([['甲', 'forced', 100, 100], ['甲', 'cost', -100, 0]])
+    expect(out.summary.assumptions.map(a => a.id)).toContain('forced-energy')
+    // 不写的话等能量：超时
+    expect(synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X', '甲 R'], options: { maxWait: 60 } }).error?.code).toBe('timeout')
+    expect(parseRotationLine('fill-energy 甲')).toEqual([{ kind: 'fill', char: '甲', resource: 'energy' }])
+    expect(parseRotationLine('能量满')).toHaveProperty('error')
+    expect(() => ScenarioSchema.parse({ team: [{ char: '甲', weapon: { name: 'w' } }], enemy: { custom: { level: 90 } }, rotation: ['能量满 丁'] })).toThrow('丁 不在队伍里')
   })
 })

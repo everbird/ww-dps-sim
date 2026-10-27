@@ -113,6 +113,11 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
     enemyCommand: st => forceDisharmony(sim, st),
+    // 能量满 <角色>（录像剖析，假设 forced-energy）：补到大招能量上限，记一条 resource（cause forced）
+    fillCommand: (st, slot) => {
+      assume(st, 'forced-energy', `${st.chars[slot].name} 第 ${st.frame} 帧`)
+      grant(sim, st, slot, 'energy', r.team[slot]!.def.energyCost - st.chars[slot].energy, 'forced')
+    },
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     interject: st => {
       if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null

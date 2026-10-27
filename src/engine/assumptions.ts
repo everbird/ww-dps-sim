@@ -206,6 +206,12 @@ export const ASSUMPTIONS = [
     adjust: { how: '轴里去掉"敌人 失谐"与那次谐度破坏' },
   },
   {
+    id: 'forced-energy', topic: '资源', tracked: true, impact: 'small', ref: 'docs/tower-20261026.md 中 3、TD-09 §2',
+    what: '录像剖析的轴里写"能量满 <角色>"时，这个人的大招能量此刻补满（差多少补多少），之后的大招照录像的时刻放',
+    why: '中 3 第三轮心的万阙垂天：录像里镇寰宇过场一结束（视频 107.4）按钮就亮了，仿真那时还差约 6 点（109.4 才满）；差在打小怪的多敌人段（仿真只建 boss 一只）。第四轮打 boss，录像 158.25 秒能量圈约 95%、仿真 97%，对得上',
+    adjust: { how: '轴里去掉"能量满"' },
+  },
+  {
     id: 'tunability-base', topic: '敌人', tracked: true, impact: 'small', ref: 'TD-01 Q17',
     what: '角色的偏谐效率、谐破增幅的基础值是推定的',
     why: 'xlsx 没有明确的列',
