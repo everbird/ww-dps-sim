@@ -38,12 +38,12 @@ dataDescribe('套路卡：M0 视频轴 EQ 版（§6.2 ③）', () => {
 
   test('入场方式、铺垫、出口相同时，队里每轮的时长与单独量的一样（差 0）', () => {
     const erz = card('散华 E R 重击居合')
-    expect(erz.team.filter(t => t.loop >= 1).map(t => [t.entry, t.m.secs.toFixed(2), t.match! < 1e-6])).toEqual(Array(4).fill(['intro', '2.17', true]))
+    expect(erz.team.filter(t => t.loop >= 1).map(t => [t.entry, t.m.secs.toFixed(2), t.match! < 1e-6])).toEqual(Array(4).fill(['intro', '2.02', true]))   // 2026-10-28 大招过场里的自身顿帧不拖慢（hitstop-in-global-stop）：2.17 → 2.02
     const intro = erz.rows.find(r => !r.setup && r.entry === 'intro' && r.exit === 'switch')!
-    expect(intro.m!.secs).toBeCloseTo(2.17, 2)
+    expect(intro.m!.secs).toBeCloseTo(2.02, 2)
     // 普通切入少了变奏的时间（散华约 1.05 秒），协奏少一份变奏的量
     const plain = erz.rows.find(r => !r.setup && r.entry === 'switch' && r.exit === 'switch')!
-    expect(plain.m!.secs).toBeCloseTo(1.12, 2)
+    expect(plain.m!.secs).toBeCloseTo(0.97, 2)                       // 2026-10-28 前 1.12（同上）
     expect(card('椿 盛绽·A1 盛绽·A2 盛绽·A3 盛绽·A4 盛绽·A1 E2').team.every(t => t.match! < 1e-6 && t.m.secs.toFixed(2) === '5.48')).toBe(true)
     expect(card('维里奈 A3-地面出场技 A4 A5 E Q').team.every(t => t.entry === 'switch' && t.match! < 1e-6)).toBe(true)
   })
@@ -73,13 +73,14 @@ dataDescribe('套路卡：心 · 雷主 · 卜灵（§6.2 ③）', () => {
     for (const t of c!.team.filter(t => t.loop >= 2)) expect(t.m.skipped).toBeGreaterThanOrEqual(10)
   })
 
-  test('卜灵雷山小过震为雷 QR：队里与铺垫后接着打的一样（2.15 秒）', () => {
+  test('卜灵雷山小过震为雷 QR：队里与铺垫后接着打的一样（1.85 秒）', () => {
     const [c] = measureCards(sc, data, { lines: ['卜灵 雷山小过 震为雷 Q R'] }).cards
     // 有几轮这段中间自动插了谐度破坏（全局时停，战斗秒不走），差 0.1～0.2 秒；其余各轮都对得上。
-    // 2026-10-25 声骸起手能打断震为雷的后摇（echo-input-priority）：3.47 → 2.15 秒
+    // 2026-10-25 声骸起手能打断震为雷的后摇（echo-input-priority）：3.47 → 2.15 秒；
+    // 2026-10-28 大招过场里的自身顿帧不拖慢（hitstop-in-global-stop）→ 1.85 秒，10 轮里有 4 轮插了谐度破坏（差 0.22 秒）
     const team = c!.team.filter(t => t.loop >= 1)
-    expect(team.filter(t => t.match !== null && t.match < 0.05).length).toBeGreaterThanOrEqual(team.length - 3)
-    expect(c!.rows.find(r => r.setup && r.entry === 'field' && r.exit === 'self')!.m!.secs).toBeCloseTo(2.15, 2)
+    expect(team.filter(t => t.match !== null && t.match < 0.05).length).toBeGreaterThanOrEqual(team.length - 4)
+    expect(c!.rows.find(r => r.setup && r.entry === 'field' && r.exit === 'self')!.m!.secs).toBeCloseTo(1.85, 2)
   })
 
   test('切走太早会被标出来：把雷主大招的切人锁去掉（模拟 2026-10-21 之前的漏读），标 switchAtStart；有锁时不标', () => {

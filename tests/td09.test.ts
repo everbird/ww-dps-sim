@@ -230,9 +230,10 @@ describe('T09-6 切人（§3.5）', () => {
     test('大招没写"不能切人"：椿"第239F前不响应输入"也挡切人，但全局时停（240 帧）先挡住，不再记 ult-no-switch；卜灵全局时停 231 帧之后仍按不响应输入挡到 238，记一次；写了的照写的（仇远 200 早于不响应输入 230，卜灵变奏 60 早于 70）', () => {
       const c = block('椿')
       const r = run([c, c, c], [{ act: 0, action: '大招' }, { switch: 1 }], { names: ['椿', '乙', '丙'] })
-      // 全局时停（大招动画）期间切不了人（2026-10-22）：局部第 241 帧在世界第 244 帧（大招自己的攻击顿帧），战斗时钟只走了 4 帧（时停前的第 0 帧、时停后的几帧）
-      expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([244])
-      expect(eventsOf(r, 'wait').map(e => [e.code, e.reason, e.frames, e.battleFrames])).toEqual([['globalStop', '大招 全局时停到第 241 帧（动画中切不了人）', 244, 4]])
+      // 全局时停（大招动画）期间切不了人（2026-10-22）：局部第 241 帧在世界第 241 帧（大招自己的攻击顿帧落在全局时停里、不拖慢，假设 hitstop-in-global-stop；
+      // 2026-10-28 之前是第 244 帧），战斗时钟只走了 2 帧（时停前的第 0 帧、时停结束那一帧）
+      expect(eventsOf(r, 'switch').map(e => e.f)).toEqual([241])
+      expect(eventsOf(r, 'wait').map(e => [e.code, e.reason, e.frames, e.battleFrames])).toEqual([['globalStop', '大招 全局时停到第 241 帧（动画中切不了人）', 241, 2]])
       expect(r.s.assumed['ult-no-switch']).toBeUndefined()
       expect([c['大招']!.switchLockUntil, c['大招']!.switchLockFromInput, c['大招']!.globalStopUntil]).toEqual([239, true, 241])
       const bl = block('卜灵')

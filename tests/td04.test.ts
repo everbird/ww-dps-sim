@@ -176,7 +176,13 @@ dataDescribe('T04-9 全局时停：散华 大招（局部帧 1 登记，敌 / �
   test('战斗时钟停 90 帧；时停中的判定照常在发生帧结算', () => {
     const r = run(TEAM, [{ act: 0, action: '大招' }])
     expect(brief(r.hits)).toEqual(['大招-伤害@72'])
-    expect(r.frames).toBe(130)                      // 结束帧 121，另被自身顿帧（0.2 倍速 11 帧）拖后 9 帧
+    expect(r.frames).toBe(121)                      // 结束帧 121：第 72 帧命中落在全局时停里，自身顿帧不拖慢（假设 hitstop-in-global-stop）
+    expect(r.s.battleFrames).toBe(31)               // 121 − 90
+    expect(r.s.assumed['hitstop-in-global-stop']?.n).toBe(1)
+  })
+  test('rules.hitstopInGlobalStop = true：自身顿帧（0.2 倍速 11 帧）照样拖后 9 帧（2026-10-28 之前的做法）', () => {
+    const r = run(TEAM, [{ act: 0, action: '大招' }], { rules: { hitstopInGlobalStop: true } })
+    expect(r.frames).toBe(130)
     expect(r.s.battleFrames).toBe(40)               // 130 − 90
   })
   test('切人不打断：乙 E 转入后台后被冻结 90 帧，第 109 帧才命中', () => {

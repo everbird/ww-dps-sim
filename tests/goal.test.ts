@@ -45,11 +45,11 @@ const load = (f: string, goal?: Scenario['goal']) => {
 dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）', () => {
   beforeAll(async () => { gd = await loadGameData() })
 
-  test('打死 1 倍血：累计伤害到敌人生命的那一下，第 25.5 战斗秒（启动轴刚打完）', () => {
+  test('打死 1 倍血：累计伤害到敌人生命的那一下，第 25.1 战斗秒（启动轴刚打完）', () => {
     const res = simulate(load('xin-team-r5.yaml'))
     const { kill } = res.summary
     expect(kill.hp).toBe(1_321_958)
-    expect((kill.frame! / 60).toFixed(1)).toBe('25.5')              // 2026-10-25 切人冷却改成每人单独计：29.1 → 28.6；声骸起手能打断后摇（echo-input-priority）→ 26.8；2026-10-27 转相第 254 帧降优先级 → 25.5
+    expect((kill.frame! / 60).toFixed(1)).toBe('25.1')              // 2026-10-25 切人冷却改成每人单独计：29.1 → 28.6；声骸起手能打断后摇（echo-input-priority）→ 26.8；2026-10-27 转相第 254 帧降优先级 → 25.5；2026-10-28 大招过场里的自身顿帧不拖慢 → 25.1
     const hits = res.log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null)
     const before = hits.filter(h => battleFrameOf(h) < kill.frame!).reduce((x, h) => x + hitValue(h), 0)
     expect(before).toBeLessThan(kill.hp)
@@ -68,7 +68,7 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     expect(basisOf(simulate(load('xin-team-r5.yaml'))).dps).toBeLessThan(basisOf(simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml'))).dps)
   }, 60_000)
 
-  test('前 25 秒：窗口内命中之和；两条轴启动轴相同，一样', () => {   // 启动轴 25.5 秒打完（2026-10-27 转相变短前是 30 秒内）
+  test('前 25 秒：窗口内命中之和；两条轴启动轴相同，一样', () => {   // 启动轴 25.1 秒打完（2026-10-27 转相变短前是 30 秒内）
     const a = simulate(load('xin-team-r5.yaml', { window: 25 }))
     const hits = a.log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null && battleFrameOf(e) < 1500)
     expect(a.summary.goal!.damage).toBeCloseTo(hits.reduce((x, h) => x + hitValue(h), 0), 6)

@@ -23,15 +23,15 @@ dataDescribe('网页的 Worker', () => {
     const run = await handlers.run({ scenario: src('scenarios/m0-team.yaml') })
     // 2026-10-19 大招"不响应输入"挡切人（假设 ult-no-switch）后 31,023 → 30,242；2026-10-20 散华重击爆裂先按住半秒（m0-confirm §13 P1、P5）后 → 29,735
     // 2026-10-22 椿 E2 补上落地段后 29,735 → 28,170；2026-10-24 维里奈 E 第一段、强化空中A3 改成 3 下后（docs/engine-quality-plan.md §5）
-    // 2026-10-25 声骸起手能打断后摇（假设 echo-input-priority）后 28,197 → 29,877
-    expect(Math.round(run.steady!)).toBe(29877)
+    // 2026-10-25 声骸起手能打断后摇（假设 echo-input-priority）后 28,197 → 29,877；2026-10-28 大招过场里的自身顿帧不拖慢（假设 hitstop-in-global-stop）→ 30,123
+    expect(Math.round(run.steady!)).toBe(30123)
     expect(run.html.startsWith('<!doctype html>')).toBe(true)
     const cmp = await handlers.compare({ base: src('scenarios/m0-team.yaml'), other: src('scenarios/m0-team.yaml') })
     expect(cmp.delta).toBe(0)
     const opt = await handlers.optimize({
       scenario: src('scenarios/m0-team.yaml'), inventory: src('inventory/m0-equipped.yaml'), char: '椿', top: 1, keep: 8, set: null, includeTeam: false,
     })
-    expect(Math.round(opt.builds[0]!.dps!)).toBe(29877)
+    expect(Math.round(opt.builds[0]!.dps!)).toBe(30123)
     expect(opt.yaml).toContain('梦魇·无冠者')
     await expect(handlers.run({ scenario: { name: 'x.yaml', text: 'team: 1' } })).rejects.toThrow(/x\.yaml/)
   }, 60000)

@@ -62,13 +62,13 @@ dataDescribe('M2 单人仿真', () => {
 
     // 窗口（战斗帧）：大招第 230 帧出手。A5 第 229 帧命中登记的自身顿帧（0.05 倍速 11 帧）挂在散华身上，取消 A5 不撤
     // （TD-04 §3.3，只有极限闪避的减速随取消撤掉），所以大招第 230–240 帧只走 0.55 帧；第 241 帧走过局部第 1 帧，
-    // 登记 90 帧全局时停，第 242–331 帧战斗时钟停走；第 312 帧走过局部第 72 帧出伤，随后自身顿帧 0.2 倍速 11 帧，
-    // 局部到第 324 帧才 74.75，再走 47 帧到 121.75 ≥ 结束帧 121 → 第 371 帧结束，战斗帧 371 − 90 = 281
+    // 登记 90 帧全局时停，第 242–331 帧战斗时钟停走；第 312 帧走过局部第 72 帧出伤，这一下的自身顿帧落在全局时停里、不拖慢
+    // （假设 hitstop-in-global-stop；2026-10-28 之前多拖 9 帧、战斗帧 281），再走 50 帧到 121.75 ≥ 结束帧 121 → 第 362 帧结束，战斗帧 362 − 90 = 272
     const total = rates.map((x, i) => hand(x, crit[i])).reduce((a, h) => a + h.expected, 0)
     expect(out.log.filter(e => e.type === 'hit').map(e => e.f).at(-1)).toBe(312)
-    expect(out.summary.windowFrames).toBe(281)
+    expect(out.summary.windowFrames).toBe(272)
     expect(out.summary.totalDamage).toBeCloseTo(total, 9)
-    expect(out.summary.dps).toBeCloseTo(total / (281 / 60), 9)
+    expect(out.summary.dps).toBeCloseTo(total / (272 / 60), 9)
     expect(out.summary.overflowDamage).toBe(0)
     expect(out.summary.byChar['散华']!.share).toBe(1)
   })

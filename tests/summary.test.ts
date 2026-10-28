@@ -58,8 +58,10 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
     const { resolveScenario } = await import('../src/engine/resolve')
     const { simulate } = await import('../src/engine/simulate')
     const data = await loadGameData()
+    // 按 2026-10-28 之前的自身顿帧跑（hitstop-in-global-stop 关掉）：现在的做法下心队 4 轮的谐度破坏次数一样，测不到提示
     const run = (file: string, repeat?: number) => {
       const raw = parse(readFileSync(file, 'utf8'))
+      raw.options.rules = { ...raw.options.rules, hitstopInGlobalStop: true }
       if (repeat) raw.options.repeat = repeat
       return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary.warnings.filter(w => w.code === 'steadyPhase')
     }
@@ -87,8 +89,10 @@ dataDescribe('稳态的误差条 steady.spread、漂移提示 steadyDrift 与自
       if (rules) raw.options.rules = { ...raw.options.rules, ...rules }
       return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary
     }
-    // C2 按 2026-10-25 之前的声骸优先级跑（echo-input-priority 关掉）：现在的做法下 C2 一轮短了、能量够，不再漂移，测不到跳过
-    const base = run('xin-team-r5.yaml'), c2 = run('xin-team-r5-心共鸣效率.yaml', { echoInputPriority: false })
+    // C2 按 2026-10-25 之前的声骸优先级跑（echo-input-priority 关掉）：现在的做法下 C2 一轮短了、能量够，不再漂移，测不到跳过；
+    // 两条都按 2026-10-28 之前的自身顿帧跑（hitstop-in-global-stop 关掉）：现在的做法下原轴的误差条约 1.8%
+    const old = { hitstopInGlobalStop: true }
+    const base = run('xin-team-r5.yaml', old), c2 = run('xin-team-r5-心共鸣效率.yaml', { ...old, echoInputPriority: false })
     expect(base.steady!.from).toBe(2)
     expect(base.steady!.spread).toBeGreaterThan(0)
     expect(base.steady!.spread).toBeLessThan(0.01)
