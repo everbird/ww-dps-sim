@@ -42,7 +42,12 @@ dataDescribe('假设的开关', () => {
     expect(waits(on.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(true)
     expect(waits(off.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(false)
     expect(off.summary.assumptions.map(a => a.id)).not.toContain('ult-no-switch')
-    expect(off.summary.windowFrames).toBeLessThan(on.summary.windowFrames)
+    // 卜灵第一次大招之后的那次切人提前（整段窗口长短会被后面的连锁变化盖过，2026-10-28 起只比这一次）
+    const after = (log: typeof on.log) => {
+      const ult = log.find(e => e.type === 'actionStart' && e.char === '卜灵' && e.action === '大招')!
+      return log.find(e => e.type === 'switch' && e.f > ult.f)!.f
+    }
+    expect(after(off.log)).toBeLessThan(after(on.log))
   }, 60_000)
 
   test('invincibleLocksSwitch = false：雷主强化E（无敌推出来的第 123 帧锁）放完就能切；万阙垂天仍被全局时停（大招动画）挡住', () => {

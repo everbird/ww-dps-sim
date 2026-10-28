@@ -10,7 +10,7 @@ export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小'
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
 export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
-  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.echoInputPriority' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'rules.summonCountsAsChar' | 'options.inputDelay' | 'options.tuneBreak'
+  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.hitstopInGlobalStop' | 'rules.echoInputPriority' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'rules.summonCountsAsChar' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -150,6 +150,13 @@ export const ASSUMPTIONS = [
     what: '爱弥斯过载后的"轨迹无消耗"：下一次光翼共奏不移除震谐轨迹、照样按层数加成（所以循环里两次光翼共奏都吃满轨迹）',
     why: 'xlsx 特殊能量行"状态期间，施放强化E不会移除目标持有的震谐轨迹"；"照样按层数加成"是推断（原文只说不移除），与攻略"2 个强化技能都吃满处决倍率"一致，没实测',
     adjust: { how: '场景里 options.rules.trackNoConsume: false：过载后第一次光翼共奏也拿不到轨迹加成（第二次照常吃满）', path: 'rules.trackNoConsume', values: [false] },
+  },
+  {
+    id: 'hitstop-in-global-stop', topic: '时间', tracked: true, impact: 'medium', ref: 'TD-04 §3.3，docs/tower-20261026.md 中 4 第 10 条',
+    what: '战斗时钟被全局时停停住时（大招过场），新命中的攻击顿帧（自己、队友那一侧）不作用在角色身上，大招的"第 n 帧前不响应输入"等局部帧不被拉长',
+    why: '中 4 录像逐帧量：卜灵大招起手到切雷主 247 / 254 / 240 / 249 帧；仿真把第 187 帧那一下的 18 帧顿帧算进去后要 254 帧，第 3 轮只用了 240 帧。'
+      + '隐藏 HUD 的长度和 xlsx「隐藏HUD」行一致（216 帧），也没被拉长。只量了卜灵这一个大招',
+    adjust: { how: '场景里 options.rules.hitstopInGlobalStop: true：照样拖慢（2026-10-28 之前的做法）', path: 'rules.hitstopInGlobalStop', values: [true] },
   },
   {
     id: 'switch-ends-stop', topic: '切人', tracked: true, impact: 'small', ref: 'TD-05 §2、TD-04 §3.3，docs/jys-videos.md §6.3',

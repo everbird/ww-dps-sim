@@ -52,10 +52,13 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(fit.concerto!.rmse).toBeLessThan(0.11)
   })
 
-  test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"山雷颐（少阳）→ 震为雷（少阴）→ 阴阳相生"再放大招', () => {
+  test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"少阳 → 震为雷（少阴）→ 阴阳相生"再放大招；第 4 段空中入场，先震后艮是雷山小过', () => {
     expect(r.rules.forteKeepOnSwitch).toBe(false)
     const heavy = out.log.flatMap(e => (e.type === 'actionStart' && e.char === '卜灵' && /^重击/.test(e.action) ? [e.action] : []))
-    expect(heavy).toEqual(['重击', '重击-震震', '重击', '重击-震震', '重击', '重击-震震', '重击', '重击-震震'])
+    expect(heavy).toEqual(['重击', '重击-震震', '重击', '重击-震震', '重击', '重击-震震', '重击-震艮前置', '重击-震震'])
+    // 视频 175.5 雷主 E（雷引）离地时切卜灵，第一下是空中攻击（TD-09 §3.5 空中入场）
+    const sw = out.log.findIndex(e => e.type === 'switch' && e.to === '卜灵' && Math.abs(vsec(e.f) - 175.5) < 0.1)
+    expect(out.log.slice(sw).find(e => e.type === 'actionStart')).toMatchObject({ char: '卜灵', action: '空中攻击' })
   })
 
   test('谐度破坏照白色跳字写了四次；后两次仿真里无冠者的偏谐值没满，轴里先写"敌人 失谐"', () => {
@@ -89,12 +92,12 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     const gd = await loadGameData()
     const off = simulate(resolveScenario({ ...sc, options: { ...sc.options, rules: { ...sc.options.rules, summonCountsAsChar: false } } }, gd))
     expect(off.error).toBeUndefined()
-    // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 54348、36232
+    // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 42271、36232（2026-10-28 卜灵大招按逐帧量的时刻写之后，原来 54348）
     const [a, b] = tread(out), [c, d] = tread(off)
     expect(Math.round(a!)).toBe(126811)
     expect(Math.round(b!)).toBe(72464)
-    expect(c! / 62476).toBeGreaterThan(0.8)
-    expect(c! / 62476).toBeLessThan(1)
+    expect(c! / 62476).toBeGreaterThan(0.6)
+    expect(c! / 62476).toBeLessThan(0.8)
     expect(d! / 32596).toBeGreaterThan(1)
     expect(d! / 32596).toBeLessThan(1.2)
   })

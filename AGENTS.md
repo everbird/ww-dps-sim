@@ -51,6 +51,7 @@
 | `assumption-sensitivity.md` | 假设敏感度矩阵（`pnpm sensitivity --md` 生成，末尾有手写的读法）：每个开关翻过来各场景变多少、哪些对照的结论会变 |
 | `engine-quality-plan.md` | 引擎准确性计划（2026-10-22 起，功能先冻结）：现状、教训、P1–P6（不变量检查、假设敏感度、量法、校准、数据层）与进度 |
 | `replay-retro.md` | 录像剖析复盘（2026-10-28，深塔 41 期中 1–4）：匹配度、差在哪、管用 / 不管用的办法、对引擎的帮助；三种材料的分工（训练场对照实验定机制、实战录像找硬错与复核、教学轴定打法）；下一阶段与"引擎调稳定"的标准 |
+| `okww-axis-notes.md` | 社区项目 okww-axis（ok-ww 做轴的 skill）与"跑轴记录"插件能借的东西：HUD 隐藏 = 大招起手、空中入场、读 HUD 的框、按键记录的格式（以后录训练场实验）；只借格式与事实，不抄 AGPL 代码 |
 | `verify-guide.md` | 进游戏验证手册：每项的账号、操作、看什么、交什么、答案改变什么；时间不够时先做哪几项；回答模板 |
 
 确需推翻某个取舍时：先改总设计并记入附录 C，再改代码。
@@ -192,3 +193,4 @@ M0 时记下的 5 处已并回 TD-01 v0.1.3 与总设计 v0.1.4；M1–M3 记下
 46. 中 4 两局对照的第二轮（2026-10-27，docs/tower-20261026.md 中 4）：假设 `env-final-class` 有了录像依据（心镇红尘第 3、4 轮相对第 1 轮的跳字涨幅按"变奏 + 电磁 + 受伤递增"相加、底数 1.70 折算正好是整数层），影响由"未知"改为"小"；`xin-tower4-video.yaml` 照录像写 `rules.forteKeepOnSwitch: false`（卜灵每段切入、切走时卦象都是空的），15 次切人最多差 0.22 秒。跳字线索补全（心开场单人对得上、有队友 buff 时应世相低约 8% 且分伤害类型、踏月归心录像只有仿真一半左右），引擎没改。要并回的：总设计 §13（假设 env-final-class 的依据）。
 47. 阵、召唤物的判定标记（2026-10-27 用户问"阵打出的伤害怎样算合适"，docs/tower-20261026.md 中 4 第 8 条）：伤害、属性、出处仍记在持有者名下，不另设非角色的出伤者；`JudgmentDef.summon`（`JudgmentOverride` 可写）标出阵 / 召唤物打出的判定，卜灵五雷荡煞阵的冲击波与 `大招-C5异常` 标了；异常效应附加事件 `enemyState effectApplied` 带 `summon`；开关 `rules.summonCountsAsChar`（缺省 true 照旧）：false 时阵附加的不触发"附加…后"的 buff（`triggers.ts`），心的固有1、霆霓、霆心域也不算（电磁爆发留在目标上）；假设 `summon-as-char`（影响未知）。三处踏月归心的录像读数和两种读法都对不齐，缺省不改。用例 xin-tower4。要并回的：TD-02（`JudgmentDef.summon`、`JudgmentOverride`、Rules 的键、`SimEvent` enemyState 的 `summon`）、TD-06 §18（阵附加的异常效应）、TD-07（触发与 summon）、TD-08（卜灵、心）、总设计 §13（假设）。
 48. 录像剖析的协奏环（2026-10-28，docs/tower-20261026.md 中 4 第 9 条）：场景的 video 多一个 `concerto`，一条"<视频秒> <角色> <比例>"；贴合度 `Fit.concerto`（n、rmse、仿真减录像的 mean），score 多一项每 1% 记 0.1 秒（`FIT_WEIGHTS.concertoPct`），仿真值取 `resourceTracks(gainSteps(…))` 那一刻的协奏 / 上限；`pnpm fit` 打印这一项。中 3、中 4 两个录像场景加了读数（115、133 个点）。读出来卜灵每段中间仿真偏高，几种读法都没能同时对上，引擎没改。用例 fit、xin-tower4。要并回的：TD-02（`video.concerto`、`Fit`）、TD-10 §6（贴合度的四项）、TD-11 §6。
+49. 大招过场里的自身顿帧、中 4 大招起手钉到一帧（2026-10-28，docs/tower-20261026.md 中 4 第 10 条，docs/okww-axis-notes.md）：`registerDilation` 在战斗时钟被全局时停停住时，新命中的攻击顿帧（self / ally 侧）不登记，大招的"第 n 帧前不响应输入"等局部帧不被拉长；开关 `rules.hitstopInGlobalStop`（缺省 false，true 是原来的做法），假设 `hitstop-in-global-stop`（影响"中"）。依据：中 4 录像卜灵大招起手到切雷主 247 / 254 / 240 / 249 帧，仿真原来 254。`xin-tower4-video.yaml` 的 20 处大招类时刻改成 HUD 消失的第一帧 − 1 帧（隐藏长度与 xlsx「隐藏HUD」行一致），第 4 段卜灵空中入场写 `卜灵 空中攻击` → 雷山小过。中 4 贴合度 2.51 → 2.34；教学轴 xin-team +2.0%、r5 系列 +1.2%～+2.1%、M0 +0.8%（结论文档里的数是改之前的）。用例 T04-9、M2-2、T09-6、xin-tower4 等。要并回的：TD-04 §3.3（攻击顿帧与全局时停）、TD-02（Rules 的键）、总设计 §13（假设）。

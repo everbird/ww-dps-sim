@@ -96,9 +96,15 @@ export function registerDilation(
 ): void {
   const sides = [['self', def.self], ['enemy', def.enemy], ['ally', def.ally]] as const
   assume(s, 'dilation-rules', def.type)                          // 作用范围按 rules.dilation（TD-04 §3.3）
+  // 大招过场（全局时停停住战斗时钟）里命中的攻击顿帧不作用在角色身上（假设 hitstop-in-global-stop）；整条略过，过场快结束时命中的也一样（简化）
+  const inStop = !rules.hitstopInGlobalStop && s.dilations.some(d => rules.dilation[d.type].stopsBattleClock)
   for (const [side, w] of sides) {
     if (!w || w.duration <= 0 || (side === 'self' && !withSelf)) continue
     const hitstop = rules.dilation[def.type].hitstopSides.includes(side)
+    if (hitstop && side !== 'enemy' && inStop) {
+      assume(s, 'hitstop-in-global-stop', `${def.type} ${side}（${w.duration} 帧）落在全局时停里，不拖慢角色`)
+      continue
+    }
     const targets: (Slot | 'enemy')[] = side === 'self' ? [source] : side === 'enemy' ? ['enemy'] : SLOTS.filter(x => x !== source)
     for (const target of targets) {
       if (hitstop) s.dilations = s.dilations.filter(d => !(d.target === target && d.hitstop))

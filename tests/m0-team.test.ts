@@ -87,10 +87,11 @@ dataDescribe('M0 三人的钩子', () => {
     const one = core1(['散华 E', 'wait 330'])
     expect([one.name, one.cap, one.steps]).toEqual(['透视', 2, [[0, 0], [19, 1], [318, 0]]])
     const full = core1(['散华 E', '散华 R', '散华 重击居合', 'wait 400'])
-    expect(full.steps).toEqual([[0, 0], [19, 1], [20, 2], [183, 0]])      // 重击爆裂先按住半秒（T08-散华-6），第一段在第 183 帧
+    // 重击爆裂先按住半秒（T08-散华-6），第一段在第 174 帧（大招的自身顿帧落在全局时停里、不拖慢，假设 hitstop-in-global-stop；之前是 183）
+    expect(full.steps).toEqual([[0, 0], [19, 1], [20, 2], [174, 0]])
     expect(full.timers).toEqual([
       [19, '+', '散华.透视·一'], [20, '+', '散华.透视·二'], [20, '+', '散华.透视·一'],
-      [183, '-removed', '散华.透视·一'], [183, '-removed', '散华.透视·二'],
+      [174, '-removed', '散华.透视·一'], [174, '-removed', '散华.透视·二'],
     ])
   })
 

@@ -73,7 +73,7 @@ dataDescribe('结论（M0 代表轴）', () => {
     const dps = x.tolerance.map(t => t.dps!)
     expect(dps[1]!).toBeLessThan(dps[0]!)
     expect(dps[2]!).toBeLessThan(dps[1]!)
-    expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'switch-no-lock', 'forte-keep-on-switch', 'switch-ends-stop', 'echo-input-priority', 'tune-break-auto'])   // 椿大招的全局时停盖过了 ult-no-switch（2026-10-22）；谐度破坏 89 帧能切、时停到 92，切人时清掉剩下的（2026-10-25）
+    expect(x.sensitivity.map(s => s.id)).toEqual(['earliest-frame', 'switch-no-lock', 'forte-keep-on-switch', 'hitstop-in-global-stop', 'switch-ends-stop', 'echo-input-priority', 'tune-break-auto'])   // 椿大招的全局时停盖过了 ult-no-switch（2026-10-22）；谐度破坏 89 帧能切、时停到 92，切人时清掉剩下的（2026-10-25）；大招过场里的自身顿帧（2026-10-28）
     expect(x.notHit).toEqual(['def-no-floor', 'effect-tick', 'effect-owner', 'ult-no-switch', 'resonance-rules', 'track-no-consume', 'summon-as-char'])    // M0 没有减防、没有异常效应、没有阵：翻了也一样，不跑
     for (const w of x.waits) expect(w.share).toBeGreaterThan(0)
   }, 60_000)   // 敏感度要跑好几遍：全量并发时会超过缺省的 5 秒（docs/engine-acceptance-2026-10-22.md P3）

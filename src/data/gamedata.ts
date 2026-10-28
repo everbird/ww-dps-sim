@@ -260,6 +260,9 @@ export interface Rules {
   /** 写了"第 n 帧前不能切人"、比全局时停早结束的（守岸人大招 178 / 207），过了那一帧就能切；切人时切出者这个动作剩下的
    *  时停、全局时停一起结束（缺省 true，假设 switch-ends-stop）。false：全局时停整段挡切人（2026-10-22 的做法） */
   switchEndsStop: boolean
+  /** 战斗时钟被全局时停停住时（大招过场），新命中的攻击顿帧不作用在角色身上（缺省 false，假设 hitstop-in-global-stop；
+   *  中 4 录像卜灵大招第 187 帧命中、18 帧顿帧，切人仍在约 240 帧，docs/tower-20261026.md）。true：照样拖慢自己的局部帧（2026-10-28 之前的做法） */
+  hitstopInGlobalStop: boolean
   /** 声骸起手按 inputPriority（通用块召唤声骸 / 变身声骸行的 5）比优先级，能打断重击、技能的后摇（缺省 true，假设 echo-input-priority）。
    *  false：按声骸表的优先级（多为 0），要等当前动作结束或进同级派生窗口（2026-10-25 之前的做法） */
   echoInputPriority: boolean
@@ -300,6 +303,7 @@ export const DEFAULT_RULES: Rules = {
   ultInputLocksSwitch: true,                        // 实战体感，未实测（verify-guide B7、C5）
   invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
   switchEndsStop: true,                             // xlsx 写的帧 + 视频 A 逐帧量（docs/jys-videos.md §6.3）
+  hitstopInGlobalStop: false,                       // 中 4 录像卜灵大招后切人的帧数（docs/tower-20261026.md 中 4 第 10 条）
   echoInputPriority: true,                          // xlsx 通用块 + 视频 A 守岸人一段对上（docs/jys-videos.md §6.4）
   summonCountsAsChar: true,                         // 原文没说阵算不算角色；中 4 录像的踏月归心像是不算（docs/tower-20261026.md 中 4 第 8 条）
   highResThreshold: 0.8,                            // 总设计附录 A-5
