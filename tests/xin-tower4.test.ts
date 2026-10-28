@@ -47,6 +47,9 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(fit.hp!.rmse).toBeLessThan(0.03)
     expect(fit.switches.typeMiss).toBe(0)
     expect(fit.events.matched).toBe(fit.events.n)
+    // 协奏环（2026-10-28）：133 个点，均方根差约 9.8%，仿真平均高约 5.6%（卜灵段中间给得早）
+    expect(fit.concerto!.n).toBe(133)
+    expect(fit.concerto!.rmse).toBeLessThan(0.11)
   })
 
   test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"山雷颐（少阳）→ 震为雷（少阴）→ 阴阳相生"再放大招', () => {

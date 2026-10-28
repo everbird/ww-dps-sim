@@ -18,7 +18,7 @@ dataDescribe('录像剖析的贴合度', () => {
     r = resolveScenario(sc, await loadGameData())
   })
 
-  test('中 3：切人、录像动作、血条三项都算上；score 按权重折成秒', () => {
+  test('中 3：切人、录像动作、血条、协奏环四项都算上；score 按权重折成秒', () => {
     const f = replayFit(r, simulate(r), sc.video!)
     expect(f.switches.n).toBe(15)
     expect(f.events.n).toBe(sc.video!.events!.length)
@@ -27,8 +27,13 @@ dataDescribe('录像剖析的贴合度', () => {
     expect(f.hp!.rmse).toBeLessThan(0.03)                          // 第四版约 1.8%（第三版约 5%、第二版 15.5%，血条时间读错了）
     expect(f.switches.max).toBeLessThan(0.5)
     expect(f.switches.typeMiss).toBe(0)
+    // 协奏环（2026-10-28）：前台角色的协奏 / 上限，约 11%；仿真整体偏高（卜灵段中间给得早，心约高 5%）
+    expect(f.concerto?.n).toBe(sc.video!.concerto!.length)
+    expect(f.concerto!.rmse).toBeLessThan(0.13)
+    expect(f.concerto!.mean).toBeGreaterThan(0)
     expect(f.score).toBeCloseTo(f.switches.mae + f.events.mae + FIT_WEIGHTS.typeMiss * f.switches.typeMiss
-      + FIT_WEIGHTS.unmatched * (f.events.n - f.events.matched) + FIT_WEIGHTS.hpPct * f.hp!.rmse * 100, 9)
+      + FIT_WEIGHTS.unmatched * (f.events.n - f.events.matched) + FIT_WEIGHTS.hpPct * f.hp!.rmse * 100
+      + FIT_WEIGHTS.concertoPct * f.concerto!.rmse * 100, 9)
   })
 
   test('切人晚了贴合度变差：开头多等 2 秒，切人平均差变大', () => {
