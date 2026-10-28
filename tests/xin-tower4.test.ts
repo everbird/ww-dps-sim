@@ -52,6 +52,19 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(fit.concerto!.rmse).toBeLessThan(0.11)
   })
 
+  test('回路条上的应世心（video.core，2026-10-28）：均方根差不到 6%；开打、镇红尘之后到 E 都没打普攻，借相回应世只打一下 A1，第四次变奏入场约 70（原来带进去 39，入场就满）', () => {
+    const fit = replayFit(r, out, sc.video!)
+    expect(fit.core!.n).toBe(sc.video!.core!.length)
+    expect(fit.core!.rmse).toBeLessThan(0.06)
+    const qte = out.log.filter(e => e.type === 'resource' && e.char === '心' && e.resource === 'core1' && e.cause === 'cast' && e.delta === 60)   // 变奏入场 +60
+    expect(qte).toHaveLength(4)
+    const after = qte.map(e => (e.type === 'resource' ? e.value : 0))
+    expect(after[3]).toBeGreaterThan(60)
+    expect(after[3]).toBeLessThan(80)
+    const bad = { ...sc.video!, core: ['33.0 心 照世心力 0.5'] }
+    expect(() => replayFit(r, out, bad)).toThrow(/没有这项资源/)
+  })
+
   test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"少阳 → 震为雷（少阴）→ 阴阳相生"再放大招；第 4 段空中入场，先震后艮是雷山小过', () => {
     expect(r.rules.forteKeepOnSwitch).toBe(false)
     const heavy = out.log.flatMap(e => (e.type === 'actionStart' && e.char === '卜灵' && /^重击/.test(e.action) ? [e.action] : []))
