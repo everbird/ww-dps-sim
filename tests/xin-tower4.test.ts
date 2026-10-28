@@ -76,4 +76,23 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(z1.buffs).not.toContain('无归的谬误.攻击')
     expect(z2.v / z1.v).toBeGreaterThan(1.04)
   })
+
+  test('阵打出的判定带 summon（卜灵冲击波）：缺省算"角色附加"；rules.summonCountsAsChar = false 时不触发、心不转霆心域，踏月归心小一半多（假设 summon-as-char）', async () => {
+    const applied = out.log.filter(e => e.type === 'enemyState' && e.change === 'effectApplied')
+    expect(applied.some(e => e.type === 'enemyState' && e.summon && e.detail === '卜灵 大招-冲击波')).toBe(true)
+    expect(applied.some(e => e.type === 'enemyState' && e.summon && e.by !== '卜灵')).toBe(false)
+    expect(out.summary.assumptions.map(a => a.id)).toContain('summon-as-char')
+    const tread = (res: SimResult) => res.log.flatMap(e => (e.type === 'hit' && e.judgment === '踏月归心·电磁效应' ? [e.dmg!.expected] : []))
+    const gd = await loadGameData()
+    const off = simulate(resolveScenario({ ...sc, options: { ...sc.options, rules: { ...sc.options.rules, summonCountsAsChar: false } } }, gd))
+    expect(off.error).toBeUndefined()
+    // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 54348、36232
+    const [a, b] = tread(out), [c, d] = tread(off)
+    expect(Math.round(a!)).toBe(126811)
+    expect(Math.round(b!)).toBe(72464)
+    expect(c! / 62476).toBeGreaterThan(0.8)
+    expect(c! / 62476).toBeLessThan(1)
+    expect(d! / 32596).toBeGreaterThan(1)
+    expect(d! / 32596).toBeLessThan(1.2)
+  })
 })

@@ -10,7 +10,7 @@ export const IMPACT_NAME: Record<Impact, string> = { none: '无', tiny: '极小'
 
 /** 敏感度分析能自动翻的开关（场景里的写法相同：options.rules.defFloor、options.inputDelay…） */
 export type AdjustPath = 'rules.defFloor' | 'rules.effectTickReset' | 'rules.effectOwner' | 'rules.forteKeepOnSwitch' | 'rules.ultInputLocksSwitch'
-  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.echoInputPriority' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'options.inputDelay' | 'options.tuneBreak'
+  | 'rules.invincibleLocksSwitch' | 'rules.switchEndsStop' | 'rules.echoInputPriority' | 'rules.interferenceFrames' | 'rules.trackNoConsume' | 'rules.summonCountsAsChar' | 'options.inputDelay' | 'options.tuneBreak'
 
 export interface Assumption {
   readonly id: string
@@ -210,6 +210,12 @@ export const ASSUMPTIONS = [
     what: '录像剖析的轴里写"能量满 <角色>"时，这个人的大招能量此刻补满（差多少补多少），之后的大招照录像的时刻放',
     why: '中 3 第三轮心的万阙垂天：录像里镇寰宇过场一结束（视频 107.4）按钮就亮了，仿真那时还差约 6 点（109.4 才满）；差在打小怪的多敌人段（仿真只建 boss 一只）。第四轮打 boss，录像 158.25 秒能量圈约 95%、仿真 97%，对得上',
     adjust: { how: '轴里去掉"能量满"' },
+  },
+  {
+    id: 'summon-as-char', topic: '异常效应', tracked: true, impact: 'medium', ref: 'docs/tower-20261026.md 中 4 第 8 条',
+    what: '阵、召唤物打出的判定（JudgmentDef.summon，现在只有卜灵五雷荡煞阵的冲击波与生成时那一下）附加的异常效应，算"队伍中的角色附加"：触发"附加…后"的效果，心把它溢出的电磁爆发转成霆心域；伤害、属性照样记在持有者名下',
+    why: '原文"队伍中的角色为目标添加【电磁爆发】后…心获得霆心域"没说阵算不算角色。中 4 录像两次踏月归心（62476、32596）只有仿真（霆心域 21、12 层）的一半左右，去掉冲击波给的那部分（11、6 层）离录像最近；中 3 那一次（169499）介于两种之间。翻过来心队稳态约 −6%（xin-team −5.6%、r5 −6.2%、轮椅 −5.9%）',
+    adjust: { how: '场景里 options.rules.summonCountsAsChar: false：阵附加的都不算角色附加（不触发、心不转霆心域，电磁爆发留在目标上）', path: 'rules.summonCountsAsChar', values: [false] },
   },
   {
     id: 'enemy-swap', topic: '敌人', tracked: true, impact: 'small', ref: 'docs/tower-20261026.md 中 4、TD-09 §2',

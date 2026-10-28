@@ -321,6 +321,7 @@ export type SimEvent =
   | (EventBase & {
     type: 'enemyState'; change: EnemyStateChange; detail?: string
     by?: CharName; effect?: EffectName; added?: number; stacks?: number; burstAdded?: number; burst?: number
+    summon?: true                           // effectApplied：阵、召唤物附加的（JudgmentDef.summon）
   })
   // 异常效应定时结算了一次（TD-06 §18）：stacks、burst 是结算时的层数，left 是结算后剩下的层数（电磁爆发清零）；
   // 伤害另记一条 hit（effect 字段），这里的 damage 只是抄一份，汇总不算它；source 是记在谁名下

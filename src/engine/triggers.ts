@@ -113,7 +113,9 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     case 'switch': return [{ on: 'switchOut', by: slot(ev.from) }, { on: 'switchIn', by: slot(ev.to) }]
     case 'resourceFull': return [{ on: 'resourceFull', by: slot(ev.char), resource: ev.resource }]
     // 敌人状态：记了发出者的才能触发（附加异常效应，TD-06 §18）；破盾、失谐等还没记谁造成的
+    // 阵、召唤物附加的不算"角色附加"时（rules.summonCountsAsChar = false，假设 summon-as-char）不触发
     case 'enemyState':
+      if (ev.summon && !sim.r.rules.summonCountsAsChar) return []
       return ev.by !== undefined ? [{ on: 'enemyState', by: slot(ev.by), enemyState: ev.change, ...(ev.effect ? { effect: ev.effect } : {}) }] : []
     default: return []
   }
