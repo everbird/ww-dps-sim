@@ -92,12 +92,12 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     const gd = await loadGameData()
     const off = simulate(resolveScenario({ ...sc, options: { ...sc.options, rules: { ...sc.options.rules, summonCountsAsChar: false } } }, gd))
     expect(off.error).toBeUndefined()
-    // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 42271、36232（2026-10-28 卜灵大招按逐帧量的时刻写之后，原来 54348）
+    // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 54348、36232（2026-10-28 卜灵大招按逐帧量的时刻写之后一度是 42271；同日钉住的动作写 ! 之后回到 54348——第一次的值看卜灵冲击波和心 E 的先后，差几帧就变）
     const [a, b] = tread(out), [c, d] = tread(off)
     expect(Math.round(a!)).toBe(126811)
     expect(Math.round(b!)).toBe(72464)
     expect(c! / 62476).toBeGreaterThan(0.6)
-    expect(c! / 62476).toBeLessThan(0.8)
+    expect(c! / 62476).toBeLessThan(0.9)
     expect(d! / 32596).toBeGreaterThan(1)
     expect(d! / 32596).toBeLessThan(1.2)
   })
