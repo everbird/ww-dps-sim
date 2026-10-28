@@ -69,6 +69,8 @@ export const ScenarioSchema = z.strictObject({
     // 第一条是血条出现（开始打这个敌人）的时刻，仿真从那一刻起算伤害（之前打的是别的敌人，如深塔开头的小怪）；
     // 末尾写了敌人预设的一条起是另一只敌人的血条（2026-10-27 中 4：异构武装打死后无冠者出来），仿真从这一条起重新累计、按这只的生命折比例
     hp: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+(0|1)(\.\d+)?(\s+\S+)?$/, '写成"<视频秒> <剩余比例> [敌人预设]"，如 55.25 0.998')).optional(),
+    // 录像里前台角色的协奏环（2026-10-28）："<视频秒> <角色> <比例>"，比例 = 协奏 / 上限；贴合度拿仿真同一角色、同一时刻的协奏比
+    concerto: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+(0|1)(\.\d+)?$/, '写成"<视频秒> <角色> <比例>"，如 31.0 心 0.11')).optional(),
   }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
