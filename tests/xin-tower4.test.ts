@@ -65,6 +65,15 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(() => replayFit(r, out, bad)).toThrow(/没有这项资源/)
   })
 
+  test('变奏入场放完声骸不补普攻（2026-10-29，回路条在电磁QTE-3 落下之前不涨）：第一轮 E 在视频 31.3 起手，原来补的 A1 让它晚 0.1 秒；回路条均方根差不到 4%', () => {
+    const fit = replayFit(r, out, sc.video!)
+    expect(fit.core!.rmse).toBeLessThan(0.04)
+    const e = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'E' && vsec(x.f) > 30)!
+    expect(Math.abs(vsec(e.f) - 31.3)).toBeLessThan(0.02)
+    const firstA1 = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'A1' && vsec(x.f) > 30)!
+    expect(vsec(firstA1.f)).toBeGreaterThan(31.4)             // 第一轮声骸 → E 之间没有 A1
+  })
+
   test('卜灵的卦象：录像每段切入时是空的（forteKeepOnSwitch: false），每段都是"少阳 → 震为雷（少阴）→ 阴阳相生"再放大招；第 4 段空中入场，先震后艮是雷山小过', () => {
     expect(r.rules.forteKeepOnSwitch).toBe(false)
     const heavy = out.log.flatMap(e => (e.type === 'actionStart' && e.char === '卜灵' && /^重击/.test(e.action) ? [e.action] : []))
