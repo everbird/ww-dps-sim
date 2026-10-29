@@ -14,15 +14,17 @@ import type { ResolvedScenario, SimResult } from './types'
 type Video = NonNullable<Scenario['video']>
 
 /** 贴合度的各项；score 折成"秒"：切人、录像动作的平均差（秒）+ 切人类型对不上每次 2 秒 + 录像动作在仿真里找不到每个 5 秒 + 血条均方根差每 1% 记 0.5 秒
- *  + 协奏环均方根差每 1% 记 0.1 秒（读环比读血条粗，权重低一些；mean 是仿真减录像的平均，看整体偏高还是偏低） */
+ *  + 协奏环均方根差每 1% 记 0.1 秒（读环比读血条粗，权重低一些；mean 是仿真减录像的平均，看整体偏高还是偏低）
+ *  + 回路条上的核心资源（video.core）均方根差每 1% 记 0.1 秒（同协奏环） */
 export interface Fit {
   switches: { n: number; mae: number; max: number; typeMiss: number }
   events: { n: number; matched: number; mae: number }
   hp: { n: number; rmse: number; end: number } | null
   concerto: { n: number; rmse: number; mean: number } | null
+  core: { n: number; rmse: number; mean: number } | null
   score: number
 }
-export const FIT_WEIGHTS = { typeMiss: 2, unmatched: 5, hpPct: 0.5, concertoPct: 0.1 } as const
+export const FIT_WEIGHTS = { typeMiss: 2, unmatched: 5, hpPct: 0.5, concertoPct: 0.1, corePct: 0.1 } as const
 
 /** 录像动作在仿真里找最近的同名动作，离得超过这么多秒算没找到 */
 const EVENT_WINDOW = 10
@@ -63,25 +65,35 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video): Fi
     const err = pts.map(p => simLeft(p) - p.left)
     hp = { n: err.length, rmse: Math.sqrt(mean(err.map(x => x * x))), end: err.at(-1)! }
   }
-  let concerto: Fit['concerto'] = null
-  if (video.concerto?.length) {
-    // 仿真每人协奏的逐步值（pnpm trace 的资源轨道），取视频秒对应的世界帧那一刻
-    const tracks = resourceTracks(gainSteps(res.log, r), r)
-    const cap = r.rules.concertoMax
-    const err = video.concerto.map((line, i) => {
-      const [t, char, v] = line.trim().split(/\s+/) as [string, string, string]
-      const steps = tracks.find(x => x.char === char)?.tracks.find(x => x.key === 'concerto')?.steps
-      if (!steps) throw new Error(`video.concerto 第 ${i + 1} 条：${char} 不在队伍里`)
-      const f = f0 + (videoSeconds(t) - v0) * 60
-      let sim = 0
-      for (const [ff, vv] of steps) { if (ff > f) break; sim = vv }
-      return sim / cap - Number(v)
-    })
-    concerto = { n: err.length, rmse: Math.sqrt(mean(err.map(x => x * x))), mean: mean(err) }
+  // 仿真每人资源的逐步值（pnpm trace 的资源轨道），取视频秒对应的世界帧那一刻，按上限折成比例
+  const tracks = video.concerto?.length || video.core?.length ? resourceTracks(gainSteps(res.log, r), r) : []
+  const ratioAt = (t: string, char: string, pick: (x: { key: string; name: string }) => boolean, what: string) => {
+    const tr = tracks.find(x => x.char === char)?.tracks.find(pick)
+    if (!tr) throw new Error(`${what}：${char} 不在队伍里，或没有这项资源`)
+    const f = f0 + (videoSeconds(t) - v0) * 60
+    let sim = 0
+    for (const [ff, vv] of tr.steps) { if (ff > f) break; sim = vv }
+    const cap = tr.key === 'concerto' ? r.rules.concertoMax : tr.cap
+    if (!cap) throw new Error(`${what}：${tr.name} 没有上限，折不成比例`)
+    return sim / cap
   }
+  const stat = (err: number[]) => ({ n: err.length, rmse: Math.sqrt(mean(err.map(x => x * x))), mean: mean(err) })
+  const concerto: Fit['concerto'] = video.concerto?.length
+    ? stat(video.concerto.map((line, i) => {
+      const [t, char, v] = line.trim().split(/\s+/) as [string, string, string]
+      return ratioAt(t, char, x => x.key === 'concerto', `video.concerto 第 ${i + 1} 条`) - Number(v)
+    }))
+    : null
+  const core: Fit['core'] = video.core?.length
+    ? stat(video.core.map((line, i) => {
+      const [t, char, name, v] = line.trim().split(/\s+/) as [string, string, string, string]
+      return ratioAt(t, char, x => x.key.startsWith('core') && x.name === name, `video.core 第 ${i + 1} 条（${name}）`) - Number(v)
+    }))
+    : null
   const score = switches.mae + events.mae + FIT_WEIGHTS.typeMiss * typeMiss + FIT_WEIGHTS.unmatched * (events.n - events.matched)
     + (hp ? FIT_WEIGHTS.hpPct * hp.rmse * 100 : 0) + (concerto ? FIT_WEIGHTS.concertoPct * concerto.rmse * 100 : 0)
-  return { switches, events, hp, concerto, score }
+    + (core ? FIT_WEIGHTS.corePct * core.rmse * 100 : 0)
+  return { switches, events, hp, concerto, core, score }
 }
 
 const mean = (xs: readonly number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)

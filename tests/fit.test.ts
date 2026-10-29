@@ -18,7 +18,7 @@ dataDescribe('录像剖析的贴合度', () => {
     r = resolveScenario(sc, await loadGameData())
   })
 
-  test('中 3：切人、录像动作、血条、协奏环四项都算上；score 按权重折成秒', () => {
+  test('中 3：切人、录像动作、血条、协奏环、回路条资源五项都算上；score 按权重折成秒', () => {
     const f = replayFit(r, simulate(r), sc.video!)
     expect(f.switches.n).toBe(15)
     expect(f.events.n).toBe(sc.video!.events!.length)
@@ -31,9 +31,13 @@ dataDescribe('录像剖析的贴合度', () => {
     expect(f.concerto?.n).toBe(sc.video!.concerto!.length)
     expect(f.concerto!.rmse).toBeLessThan(0.13)
     expect(f.concerto!.mean).toBeGreaterThan(0)
+    // 回路条上的应世心（video.core，2026-10-28）：约 9%；仿真整体偏高（变奏入场后的那一下 +12 来得比回路条早）
+    expect(f.core?.n).toBe(sc.video!.core!.length)
+    expect(f.core!.rmse).toBeLessThan(0.11)
+    expect(f.core!.mean).toBeGreaterThan(0)
     expect(f.score).toBeCloseTo(f.switches.mae + f.events.mae + FIT_WEIGHTS.typeMiss * f.switches.typeMiss
       + FIT_WEIGHTS.unmatched * (f.events.n - f.events.matched) + FIT_WEIGHTS.hpPct * f.hp!.rmse * 100
-      + FIT_WEIGHTS.concertoPct * f.concerto!.rmse * 100, 9)
+      + FIT_WEIGHTS.concertoPct * f.concerto!.rmse * 100 + FIT_WEIGHTS.corePct * f.core!.rmse * 100, 9)
   })
 
   test('切人晚了贴合度变差：开头多等 2 秒，切人平均差变大', () => {
