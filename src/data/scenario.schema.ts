@@ -71,6 +71,9 @@ export const ScenarioSchema = z.strictObject({
     hp: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+(0|1)(\.\d+)?(\s+\S+)?$/, '写成"<视频秒> <剩余比例> [敌人预设]"，如 55.25 0.998')).optional(),
     // 录像里前台角色的协奏环（2026-10-28）："<视频秒> <角色> <比例>"，比例 = 协奏 / 上限；贴合度拿仿真同一角色、同一时刻的协奏比
     concerto: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+(0|1)(\.\d+)?$/, '写成"<视频秒> <角色> <比例>"，如 31.0 心 0.11')).optional(),
+    // 录像里前台角色共鸣回路条上的核心资源（2026-10-28，心的应世心）："<视频秒> <角色> <资源名> <比例>"，比例 = 读数 / 上限；
+    // 资源名照角色模块的核心资源名（coreResources），贴合度拿仿真同一角色、同一时刻的值比
+    core: z.array(z.string().regex(/^(\d+:)?\d+(\.\d+)?\s+\S+\s+\S+\s+(0|1)(\.\d+)?$/, '写成"<视频秒> <角色> <资源名> <比例>"，如 33.0 心 应世心 0.84')).optional(),
   }).optional(),
   // 启动轴：只跑一次（第 0 轮），之后 rotation 循环 options.repeat 轮；语法同 rotation（TD-09 §3.7）
   opening: z.array(z.string().nullable().transform(v => v ?? '')).default([]),
