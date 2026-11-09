@@ -1,9 +1,9 @@
 # 总体评审：逐帧仿真引擎的底座定位、代码体检与校准收敛路线（Antigravity）
 
-日期：2026-11-09（v3：通读 Claude、Codex 总体评审及三组 `vs` 对比文档后，吸收各方洞见并修正更新）  
+日期：2026-11-09（v5：完成 `docs/codex-debate.md` 与 `docs/claude-debate.md` 第 1 轮跨 Agent 逐项复核与实跑验证后同步更新）  
 作者：Antigravity  
 状态：架构与代码深度评审、思路规划（不涉及代码修改）  
-关联讨论：剩余需三方深入辩论与对齐的议题见 [`docs/antigravity-debate.md`](antigravity-debate.md)  
+关联讨论：跨 Agent 辩论与收敛记录见 [`docs/antigravity-debate.md`](antigravity-debate.md)、[`docs/codex-debate.md`](codex-debate.md) 与 [`docs/claude-debate.md`](claude-debate.md)  
 审阅覆盖范围：
 - **引擎内核与分析全量代码**：[`src/engine/types.ts`](../src/engine/types.ts)、[`resolve.ts`](../src/engine/resolve.ts)、[`simulate.ts`](../src/engine/simulate.ts)、[`kernel.ts`](../src/engine/kernel.ts)、[`scheduler.ts`](../src/engine/scheduler.ts)、[`switch.ts`](../src/engine/switch.ts)、[`resources.ts`](../src/engine/resources.ts)、[`triggers.ts`](../src/engine/triggers.ts)、[`buffs.ts`](../src/engine/buffs.ts)、[`enemy.ts`](../src/engine/enemy.ts)、[`formula.ts`](../src/engine/formula.ts)、[`summary.ts`](../src/engine/summary.ts)、[`analysis.ts`](../src/engine/analysis.ts)、[`trace.ts`](../src/engine/trace.ts)、[`insight.ts`](../src/engine/insight.ts)、[`sensitivity.ts`](../src/engine/sensitivity.ts)、[`fit.ts`](../src/engine/fit.ts)、[`calibration.ts`](../src/engine/calibration.ts)、[`invariants.ts`](../src/engine/invariants.ts)、[`assumptions.ts`](../src/engine/assumptions.ts)
 - **数据装配、校验与手写模块**：[`src/data/registry.ts`](../src/data/registry.ts)、[`assemble-action.ts`](../src/data/assemble-action.ts)、[`scenario.schema.ts`](../src/data/scenario.schema.ts)、[`calibration.schema.ts`](../src/data/calibration.schema.ts)、[`nanoka-check.ts`](../src/data/nanoka-check.ts)、[`wuwalab-check.ts`](../src/data/wuwalab-check.ts)、[`src/report/timeline.ts`](../src/report/timeline.ts)、[`data/curated/`](../data/curated/)
@@ -65,7 +65,7 @@
 
 ### 2.1 现有底座必须保留的五大核心资产
 
-1. **三层纯函数架构与零副作用内核**（[`registry.ts`](../src/data/registry.ts) → [`resolve.ts`](../src/engine/resolve.ts) → [`simulate.ts`](../src/engine/simulate.ts)）：[`src/engine/`](../src/engine/) 100% 纯内存计算；角色逻辑抽离在 `GameData.hooks`，运行时可变状态显式声明在 `CharState.vars`（总设计 §10.1）。
+1. **三层纯函数架构与零副作用内核**（[`registry.ts`](../src/data/registry.ts) → [`resolve.ts`](../src/engine/resolve.ts) → [`simulate.ts`](../src/engine/simulate.ts)）：[`src/engine/`](../src/engine/) 100% 纯内存计算；角色逻辑抽离在 `GameData.hooks`，运行时可变状态显式声明在 `CharRuntime.vars`（[`types.ts`](../src/engine/types.ts#L106)，总设计 §10.1）。
 2. **七相位 Tick 循环与三时钟速率表**（[`src/engine/kernel.ts`](../src/engine/kernel.ts#L101-L132) `computeRates` & [`tick`](../src/engine/kernel.ts#L426-L450)）：世界帧（`s.frame`）、战斗帧（`s.battleFrames`，`stopsBattleClock` 期间为 `0`）、角色局部帧（`act.localFrame`，`snap4` 吸附）解耦清晰。
 3. **经过 Golden 扰动验证的纯数学公式层**（[`src/engine/formula.ts`](../src/engine/formula.ts)）：3418 条乘区夹具逐位对拍通过，单人无 Buff 裸跳字与实机误差 `< 0.05%`。
 4. **逐帧与日志级不变量护栏**（[`src/engine/invariants.ts`](../src/engine/invariants.ts) `checkTick` / `checkLog`）。
@@ -78,17 +78,17 @@
 以下将我们独立发现的 5 个代码级症结，与 Claude、Codex 在审查中定位的互补缺陷汇总为完整体检表：
 
 #### 症结一（输入与调度层反噬）：录像剖析的“凑帧黑魔法”污染了排轴语法与核心调度器
-- **代码位置**：[`scenarios/xin-tower4-video.yaml`](../scenarios/xin-tower4-video.yaml#L52-L123)、[`src/engine/scheduler.ts`](../src/engine/scheduler.ts#L53-L125)（`fillerTarget`、`forceCancel`、`fillCommand`）、[`src/data/scenario.schema.ts`](../src/data/scenario.schema.ts#L156-L250)。
+- **代码位置**：[`scenarios/xin-tower4-video.yaml`](../scenarios/xin-tower4-video.yaml#L52-L123)、[`src/engine/scheduler.ts`](../src/engine/scheduler.ts#L53-L345)（`fillerTarget`、`settled`、`evaluateAct`、`fillCommand`）、[`src/data/scenario.schema.ts`](../src/data/scenario.schema.ts#L156-L250)。
 - **代码级根因剖析**：
   1. 在 [`xin-tower4-video.yaml`](../scenarios/xin-tower4-video.yaml#L88-L103) 中，几乎每个 `at <秒>` 前后都被迫塞了 12 下 `A1~ A2~ A3~ A4~`，并在技能后加 `!`（如 `心 镇红尘!`、`心 转相!`）。
-  2. 原因在于 [`scheduler.ts`](../src/engine/scheduler.ts#L53-L64) 的 `fillerTarget()` 只检查**紧邻的下一条非补位指令**（`at 32.20`）当前帧满不满足。只要世界时间还差 1–2 帧没到 `32.20` 秒，调度器就会启动下一记补位普攻 `A3~`；这记 `A3~` 一旦启动，其动作优先级就会挡住 2 帧后到达的 `镇红尘`，逼着写轴人给几乎所有技能加上 `!`（触发 `forceCancel` 强行打断正在打的补位普攻）！
+  2. 原因在于 [`scheduler.ts`](../src/engine/scheduler.ts#L53-L64) 的 `fillerTarget()` 只检查**紧邻的下一条非补位指令**（如 `at 32.20` 或 `心 镇红尘!`）当前帧满不满足。只要世界时间还差 1–2 帧没到 `32.20` 秒（或 `at` 之后资源差一点未满足），调度器就会启动下一记补位普攻 `A3~`；这记 `A3~` 一旦启动，默认的“等就绪”（[`scheduler.ts#L335`](../src/engine/scheduler.ts#L335) `if (!force && !settled(s, slot))`，等补位那一下判定出手；此外高优先级动作如 `E` 也会在优先级门槛上挡住低优先级声骸 `Q`）就会挡住紧随其后的 `镇红尘` 等钉帧动作，逼着写轴人给几乎所有技能加上 `!`（令 `force = true` 跳过 `settled` 等待，在 `startAction` 中直接打断未打完的补位普攻）！
   3. **更致命的副作用**：这塞进去的 12 下假补位在引擎里是真实结算的，凭空生成了录像里根本不存在的**核心回路、协奏值和共鸣能量**（见 [replay-retro.md](replay-retro.md#L54)），反过来逼着你去录像里逐帧 OCR 读回路条（`video.core`）来反推删掉哪几下 `A~`！同时，`能量满`、`敌人 失谐`、`敌人 换` 等外部状态干预直接混入了玩家排轴指令。
 
 #### 症结二（因果追溯层断裂）：事后线性扫描猜出处（`walkOwners`）在多 Buff 到期与 BFS 队列交错时会错归
-- **代码位置**：[`src/engine/trace.ts`](../src/engine/trace.ts#L233-L293)（`walkOwners`）、[`src/engine/triggers.ts`](../src/engine/triggers.ts#L29-L55)（`drain`、`s.bus.chain`）。
+- **代码位置**：[`src/engine/trace.ts`](../src/engine/trace.ts#L233-L293)（`walkOwners`）、[`src/engine/triggers.ts`](../src/engine/triggers.ts#L29-L55)（`drain`、`s.bus.chain`）、[`src/engine/buffs.ts`](../src/engine/buffs.ts#L247-L270)（`tickBuffs`）。
 - **代码级根因剖析**：
   - `SimEvent` 在生成时未记录直接因果父节点。`walkOwners` 在跑完后对 `res.log` 做单遍线性扫描，只用单个可变变量 `let anchor` 猜归属。
-  - 这在两种情况下会张冠李戴：① **同帧多 Buff 到期**（[`kernel.ts#L442`](../src/engine/kernel.ts#L442) `tickBuffs` 先把同帧所有 `buffEnd` 推入日志再统一 `drain`，后面的 `buffEnd` 覆盖 `anchor`）；② **BFS 队列交错**（`drain` 是先进先出队列，同相位先入队的 $E_1, E_2$ 中，$E_1$ 触发的子事件 $C_1$ 排在 $E_2$ 后面，线性扫描扫过 $E_2$ 后把 $C_1$ 错认成 $E_2$ 的产物）。
+  - 这在两种情况下会张冠李戴：① **同帧多 Buff 到期**（[`buffs.ts`](../src/engine/buffs.ts#L247-L270) 的 `tickBuffs`——由 [`simulate.ts`](../src/engine/simulate.ts) 的 `timers` 在 P6 调用——先把同帧所有到期 Buff 的 `buffExpire` 推入日志再统一 `drain`，后面的 `buffExpire` 覆盖 `anchor`）；② **BFS 队列交错**（`drain` 是先进先出队列，同相位先入队的 $E_1, E_2$ 中，$E_1$ 触发的子事件 $C_1$ 排在 $E_2$ 后面，线性扫描扫过 $E_2$ 后把 $C_1$ 错认成 $E_2$ 的产物）。
   - 同时（吸收 Claude §4.3 #8）：当预期 Buff **未触发**时，[`triggers.ts`](../src/engine/triggers.ts) 的 `matches()` 检查失败后不留任何记录，无法回答“为什么某条加成没生效”。
 
 #### 症结三（状态与资源层割裂）：资源变动双轨制与缺少明确帧边界的 `stateAt(frame)`
@@ -103,24 +103,24 @@
   - `calibration.schema.ts` 注释与 `points.yaml` 说明将 `kind: loop` 定义为**世界秒（含时停、顿帧）**（因为训练场打桩没有深塔倒计时，只能按视频秒表量世界秒）；
   - 但 `calibration.ts` 的 `simValue` 返回的是 `roundTo(span.endT - span.t, 100)`（扣除大招时停的**战斗秒**），而 TD-11 §1.2 与 `summary.ts` 分轮统计又习惯按战斗秒算“一轮几秒”。
   - 心队一轮有 4 个大招/转相动画（约 13 秒全局时停），战斗秒 `30.57s` 对应世界秒约 `43.5s`。如果不把 `loop` 显式拆成 `loopWorld`（`(span.endF - span.f) / 60`）与 `loopBattle`（`span.endT - span.t`），量尺就会差出 13 秒。
-  - 此外（吸收 Codex R06）：`calibration.ts` 核对跳字时自动在“非暴击”与“暴击”中挑离实测最近的一支，这只能找相容解释，应在观测 schema 中显式声明是否暴击。
+  - 此外（吸收 Codex R06 与 `CD-06` 共识）：`calibration.ts` 核对跳字时自动在“非暴击”与“暴击”中挑离实测最近的一支；应在观测 schema 中支持 `crit | nonCrit | unknown`（缺省为 `unknown`，未确认暴击状态时同时列出两支残差，绝不默认填成 `crit`）。
 
-#### 症结五（拟合工具缺陷，结合本评审症结五与 Codex R03）：`fit.ts` 评分混杂、漏跳字、非一对一匹配且全失配得 0 分
-- **代码位置**：[`src/engine/fit.ts`](../src/engine/fit.ts#L50-L138)。
+#### 症结五（拟合工具缺陷，结合本评审症结五与 Codex R03 / `CD-06`）：`fit.ts` 秒当量加权和掩盖冲突、漏跳字、非一对一匹配且全失配得 0 分
+- **代码位置**：[`src/engine/fit.ts`](../src/engine/fit.ts#L25-L196)。
 - **四重缺陷汇总**：
-  1. **漏算单下跳字（`video.hits`）且多量纲直接相加**：`scoreOf(d)` 把切人秒差、切人类型错、过场秒差、血条 `hp.rmse`、协奏/回路 `rmse` 直接相加，完全没把 `video.hits` 算进贴合度，导致心直接伤害 `-8%` 与踏月归心 `+100%` 在累计血条上互相抵消。
+  1. **漏算单下跳字（`video.hits`）且加权总分掩盖通道冲突**：`replayFit` 通过 `FIT_WEIGHTS` 将切人秒差、切人类型错（每次 2 秒）、过场秒差、血条 `hp.rmse`、协奏/回路 `rmse` 折成秒当量相加，但未纳入单下跳字，且标量总分允许用血条改善抵消定性冲突（如把变奏切入变成普通切入），也导致心直接伤害 `-8%` 与踏月归心 `+100%` 在累计血条上互相抵消。
   2. **“改剧本动作”与“翻机制开关”混排**：`fitVariants` 把 `flipsOf()`（翻全局规则）与 `neighborIter()`（随机删/挪/换动作）放在同一个总分榜里排序，删一下补位带来的时间平移直接掩盖了机制开关信号。
-  3. **动作匹配缺少一对一约束（Codex R03）**：在 10 秒窗口内找最近同名动作时，两条录像观测可重复匹配同一次仿真动作，导致漏放动作却显示 `matched: 2`。
+  3. **动作匹配缺少同通道局部保序的一对一约束（Codex R03 / `CD-06`）**：在 10 秒窗口内找最近同名动作时，两条录像观测可重复匹配同一次仿真动作，导致漏放动作却显示 `matched: 2`（应改为同角色、同动作/同通道局部保序的一对一匹配，跨角色如后台召唤物与前台动作允许交错）。
   4. **全锚点失配返回 `score: 0`（Codex R03）**：当传入的 `marks` 全部失配、没有任何有效比较项时，`replayFit` 返回 `0` 分，把“无数据可比”包装成了“0 误差完美贴合”。
 
-#### 症结六（假设与开关体系缺陷，吸收 Claude §4.3 #1–5）：开关覆盖不全、粒度捆绑与触碰定义混用
+#### 症结六（假设与开关体系缺陷，吸收 Claude §4.3 #1–5 与 `CD-05`）：开关覆盖不全、粒度捆绑与触碰定义混用
 - **代码位置**：[`src/engine/assumptions.ts`](../src/engine/assumptions.ts)、[`src/data/gamedata.ts`](../src/data/gamedata.ts)（`Rules`）、各角色模块。
 - **五处具体差距**：
-  1. **仅 35% 假设可自动翻转**：假设表 40 条中只有 14 条有 `adjust.path`，其余 26 条需改代码才能测试另一读法。
-  2. **`module-guess` 大杂烩**：12 个角色模块的 17 处完全不同的机制推断（卜灵阵何时生成、守岸人星域升阶、渊武锋芒清空等）共用同一个 `module-guess` ID，无法单独翻转和追溯。
-  3. **`rules.forteKeepOnSwitch` 一刀切捆绑**：同时控制心的照世相（验证手册 B1）和卜灵的卦象（B2），两项实测结果可能一保一清（如中 4 录像里卜灵需设为 `false`），却只能绑在一起翻。
-  4. **“碰到（touched）”混用两种粒度**：`ult-no-switch` 等是“开关真的改变了本次调度决定才记”，而 `dilation-rules`、`wait-settled` 等是“代码一经过就记（仅代表上界）”。
-  5. **仅汇总到整局**：只记整局触碰次数，无法回答“第 $k$ 下跳字或某次切人具体依赖哪几条未证实规则”。
+  1. **仅 35% 假设可自动翻转，且 22 条正式假设中有 6 条未挂 `ruleKey`**：假设表 40 条中只有 14 条有 `adjust.path`；`assumptions.ts` 中 `echo-cd-zero`、`burst-release`、`tunability-base`、`white-bar`、`resonance-rules`、`module-guess` 未挂 `ruleKey`，导致 `pnpm sensitivity` 完全测不到它们，容易把“尚未写出可切换候选（未测）”误读为“不敏感”。
+  2. **`module-guess` 大杂烩**：12 个角色模块的 16 条机制推断（17 次调用，其中莫宁两处记录同一条起手进入观测推断）共用同一个 `module-guess` ID，无法单独翻转和追溯。
+  3. **`rules.forteKeepOnSwitch` 一刀切捆绑**：同时控制心的照世相（验证手册 B1）和卜灵的卦象（B2），两项实测结果可能一保一清（如中 4 录像里卜灵需设为 `false`，同时把心的照世相也改成了切走清空），却只能绑在一起翻。
+  4. **“碰到（touched）”混用两种粒度**：`ult-no-switch`、`wait-settled` 等是“实际发生该等待或阻挡才记”，而 `dilation-rules`、`crit-expected` 等是“代码一经过就记（未区分局部读取与局部改变判定）”。
+  5. **仅汇总到整局**：只记整局触碰次数，缺少局部决策观察（`rulesRead / rulesDecisive`）与单次命中的来源/窗口余量诊断。
 
 #### 症结七（汇总与对比边界缺陷，吸收 Codex R09、R10、R11）：同名 Buff 丢提供者、击杀拆分漏致死一击、截断/外推状态丢失
 - **代码位置**：[`src/engine/buffs.ts`](../src/engine/buffs.ts)、[`src/engine/summary.ts`](../src/engine/summary.ts)、[`src/engine/analysis.ts`](../src/engine/analysis.ts)、[`src/report/timeline.ts`](../src/report/timeline.ts)。
@@ -146,7 +146,7 @@ flowchart TB
 
     subgraph Base["逐帧仿真底座（的执行器 + 共享规则层）"]
         ModeA["🚀 模式一：教学轴自由推演模式 (Free-Running)<br/>纯确定性剧本（一能按就按 / 显式 +N / 显式取消）<br/>禁用 ~ / ? / 自动谐破，严格暴露卡帧、缺能、断轴"]
-        ModeB["⚓ 模式二：视频锚定观测模式 (Trace-Anchored)<br/>真实观测动作 + 空转等待 (hold) + 状态同步锚点 (sync)<br/>隔离外力与内核，在锚点处对齐状态并输出带 [conditioned] 标记的 syncResidual"]
+        ModeB["⚓ 模式二：视频锚定观测模式 (Trace-Anchored)<br/>三类区间 (observedAction / hold / unobserved) + 状态同步锚点 (sync)<br/>隔离外力与内核，在锚点处对齐状态并输出带 [conditioned] 标记的 syncResidual"]
         Kernel["⚙️ 原子确定性执行器 (Tick / 3-Clock / Formula / Buff / Resource)<br/>帧边界状态查询 stateAt(f) · 零干扰因果链 causedBy · 触发诊断 whyNot"]
     end
 
@@ -161,17 +161,17 @@ flowchart TB
 - **适用场景**：分析给定教学轴、计算配装边际收益、评估共鸣效率门槛与操作容错。
 - **严格确定性契约**：
   1. **“一能按就按”的精确定义**：同时满足 ① 动作层面合法（优先级、派生窗口、连段前置、输入锁）；② 状态条件满足（冷却、资源、角色 `canStart`）；③ 当前动作已就绪（`settled`，打断不丢判定/资源/延奏；显式写 `!` 则跳过就绪按最早合法帧取消）。
-  2. **显式化调度器的 3 种“按意图等待”**：① 写 `变奏` 切人但切出者协奏未满时等手上动作判定出手；② 切入首招为空中攻击时等切出者跳起（`airborne`）；③ 切入首招为地面出场技时等切入者后台动作走完（`entryBusy`）。这三项保留在规格中，并在输出中明确标注“此处由调度器按意图推导等待时机”。
-  3. **禁用不确定与替轴做主的语法**：教学轴模式下**禁用补位 `~`、可选 `?` 和自动谐度破坏**（谐度破坏必须按轴写明的位置释放，消除“晚按 6 帧因为自动谐破换了时机反而 DPS 变高”的伪象）。
-  4. **补齐取消方式与转写映射**：支持在轴里写明取消方式（闪避/跳跃/大招/声骸/谐度破坏取消），并保留每一行指令对回“原文按键记号（如 `zaaa处决`）及转写读法”的机器可读映射。
+  2. **显式化调度器的 3 种“按意图等待”并统一失败口径（吸收 `CD-01` 共识）**：① 写 `变奏` 切人但切出者协奏未满时等手上动作判定出手；② 切入首招为空中攻击时等切出者跳起（`airborne`）；③ 切入首招为地面出场技时等切入者后台动作走完（`entryBusy`）。在严格教学轴入口中，若等待结束后协奏仍不满 100（当前 `scheduler.ts:395-417` 仅记 `introMissed` 警告并静默退化为普通切人），必须与 `airEntry`、`entrySkill` 一样**作为“意图未满足”失败返回**（附差额与已执行范围），绝不把退化后的普通切人当成原教学轴成立。
+  3. **在入口校验层禁用替轴做主的策略（区分“引擎确定性”与“严格教学轴操作约定”）**：引擎本身对任意输入均确定；教学轴模式在入口层**禁用补位 `~`、可选 `?` 和自动谐度破坏**（底层复用同一执行器），消除“晚按 6 帧因为自动谐破换了时机反而 DPS 变高”的伪象。
+  4. **补齐取消方式与转写映射**：默认声明取消方式（由模型求合法窗口，`!` 仅代表跳过 `settled` 等待而不代表闪避/跳跃动作本身），并将原文按键记号（如 `zaaa处决`）转写映射留在输入层。
 
-### 3.2 模式二：视频锚定观测模式（Trace-Anchored —— 彻底告别 `A1~ A2~ A3~ A4~` 凑帧地狱）
+### 3.2 模式二：视频锚定观测模式（Trace-Anchored —— 区分三类区间与无副作用同步）
 
-- **核心洞察**：结合深塔或全息视频理解某个时间点的看点时，需要的是局部窗口内的干净状态，以及录像与当前模型之间的真实残差，而不是靠塞满 `A1~ A2~ A3~ A4~` 假普攻去硬凑时间。
-- **外力与核心严格隔离的三大机制**：
-  1. **空转等待（Time Hold / Idle Gap）**：当上一个观测动作打完、距离下一个观测动作 `at 32.20` 还有空当（走位/躲技能/发呆）时，调度器直接空转等待，**不打假补位普攻污染回路与能量，更不会在 `32.20` 秒前 2 帧启动普攻卡死后续技能（彻底干掉满屏的 `!` 强断）**。
-  2. **显式状态同步原语（`sync` Checkpoints）**：将 `能量满`、`敌人 失谐`、`敌人 换` 以及“视频确认变奏切人/开大但仿真差一点协奏/能量”统一收口为外部状态同步原语，与玩家操作指令分开。
-  3. **一等公民的残差账单（`syncResidual`）与条件标记（`conditioned`）**：每次外部同步在日志中生成 `syncResidual`（如 `[27.25s 锚点同步] 观测：变奏切心 | 仿真协奏 88.0 → 外部补齐 +12.0`），并将此后受影响的下游结果标记为 `conditioned: true`（遵循 Codex/Claude 共识：**绝不用被外部强制指定的同一个量反过来宣称模型自主预测正确**；而残差本身直接指出哪一段缺了资源或机制）。
+- **核心洞察**：结合深塔或全息视频理解某个时间点的看点时，需要的是在明确外部条件下继续推演并记录残差，而不是靠塞满 `A1~ A2~ A3~ A4~` 假普攻去硬凑时间。
+- **外力与核心严格隔离的三大机制（吸收 `CD-03` 共识）**：
+  1. **区分三类录像区间（`observedAction | hold | unobserved`）**：确认没有新按键的区间用已知空闲等待（不打假补位普攻污染回路与能量；闪避、跳跃算输入不算空闲）；画面遮挡或连段次数未读清的区间标为 `unobserved`（可分别报告不同候选填法的结果，不伪装成已确认空转）。
+  2. **缺省不发业务触发的显式状态同步原语（`sync` Checkpoints）**：将 `能量满`、`敌人 失谐`、或切人前锚定协奏统一为状态同步原语。**缺省只修改状态数值、不向 `s.log` 发射业务级 `resource` / `resourceFull` 触发事件**，并在锚定记录中显式列出 `{ simBefore, anchoredTo, residual, skippedTriggers }`（避免在错误的同步时刻偷偷触发满资源 Buff 污染因果链；确需触发时显式指定）。
+  3. **一等公民的残差账单（`syncResidual`）与条件标记（`basis: 'conditioned'`）**：首次状态干预起保守标记下游结果为 `conditioned`（有条件推演），承认同步只对齐当前时刻数值而不能恢复历史何时满资源或未观测的内部冷却，绝不用被外部强制指定的同一个量反过来宣称模型自证。
 
 ---
 
@@ -246,74 +246,83 @@ flowchart TD
     end
 ```
 
-### 5.1 实例验证：用心队第 1 轮跳字比值的“三级台阶”展示二维收敛
+### 5.1 实例验证：心队第 1 轮跳字比值的“两因子拆解”与实跑战斗帧新发现（`CD-07`）
 
-在 [`docs/tower-20261026.md`](tower-20261026.md#L216-L233) 中，心第 1 轮跳字（录像暴击 ÷ 仿真暴击）呈现出一组极其规律的数字：
+在 [`docs/tower-20261026.md`](tower-20261026.md#L216-L233) 中，心第 1 轮跳字（录像暴击 ÷ 仿真暴击）呈现出一组极具规律的数字：
 - **开场单人（3.9–4.5s）**：`心召唤-6` 录像 `8444` vs 仿真 `8448`（**`0.9995`**）→ 单人静态条件下面板与基础公式吻合。
 - **第 1 轮应世相（31–37s）**：
-  - `心召唤-1~6`、`电磁 QTE-3`（仿真增伤底数 `3.195`）：比值恒为 **`1.0829 ~ 1.0830`**
-  - `应世 E-1~4`、`E-落地`、`镇红尘`（仿真增伤底数 `3.766`）：比值恒为 **`1.0768 ~ 1.0770`**
+  - `心召唤-1~6`、`电磁 QTE-3`（仿真增伤底数 `3.195`）：`22061 / 20373 = 1.08285`
+  - `应世 E-1~4`、`E-落地`、`镇红尘`（仿真增伤底数 `3.766`）：`288240 / 267644 = 1.07695`
 - **第 1 轮照世相（转相之后）**：
-  - `照世·E-2`（43.6s，仿真增伤底数 `3.766`）：比值降为 **`1.031`**
-  - `镇寰宇`（51.5s，仿真增伤底数 `3.266`）：比值降为 **`1.036`**
-  - `万阙垂天`（58.2s，仿真增伤底数 `3.016`）：比值降为 **`1.000`**（`298012` vs `298137`）
+  - `照世·E-2`（43.6s，仿真增伤底数 `3.766`）：`49516 / 48007 = 1.03143`
+  - `镇寰宇`（51.5s，2026-10-27 第一版表记仿真 `195198`、增伤底数 `3.266`）：`202284 / 195198 = 1.03630`
+  - `万阙垂天`（58.2s，仿真 `298137`、增伤底数 `3.016`）：`298012 / 298137 = 0.99958`
 
-**候选假设与可区分预测**：
-1. 为什么在应世相内部，`QTE/声骸`（`+8.30%`）与 `E/镇红尘`（`+7.70%`）比值不同？因为 `E/镇红尘` 多了 `卜灵.6链`（`+50%` 共鸣技能加成），增伤区基数更大（`3.766` vs `3.195`），说明至少有一项差异位于**加算池（增伤区或攻击百分比区）**。
-2. 为什么从应世相（31–37s）到照世相（43.6–51.5s），两类技能的比值**同步回落了约 `4.4%`**（$1.0770 / 1.031 = 1.0446$，$1.0830 / 1.036 = 1.0453$），而在同一页第 2 条中已算出 **`+10% 攻击力` 对心造成的伤害提升恰好就是 `4.4%`**？随后在 `51.5s ~ 58.2s` 之间又回落了最后的 **`3.5%`** 归零？
-3. 这给出了一个极清晰的可证伪预测：所谓“8% 偏差”很可能是**两条不同到期时间/不同乘区的 Buff 叠加**（一条约 `+4.4%` 在转相期间变化，一条约 `+3.5%` 在 51.5–58.2s 消失）。进训练场在“心刚变奏入场”、“放完镇红尘”、“刚转相完”三个时刻**按 ESC 查看局内面板攻击力与伤害加成**，即可直接检验该候选解释。
+**候选拆解、实跑核查与可证伪预测（综合三方复算与本轮实跑新发现）**：
+1. **“共同乘数 $m \approx 1.04393$ + 增伤 $b \approx 0.11913$”优先候选**：
+   - 联立应世相两类伤害方程解得 $m = 1.04393$、$b = 0.11913$（约 `+12%` 增伤）。当转相后共同乘数 $m$ 消失、仅剩 $b$ 时，对 `照世·E-2` 的预测比值为 $1 + 0.11913 / 3.766 = 1.03163$（实录 `1.03143`），对 `镇寰宇`（底数 `3.266` 时）的预测比值为 $1 + 0.11913 / 3.266 = 1.03648$（实录 `1.03630`），两处仅差万分之二。
+2. **$m$ 与 B10（全队攻击叠加）必须分开验证（采纳 Claude 指正）**：
+   - 实跑当前 `xin-tower4-video.yaml` 确认：心在第 1 轮各次命中时，仿真里**已经挂着 `雷主·男.超负荷`（`+10% atkPct`）与 `隐世回光.5`（`+15% atkPct`）**。因此 $m$ 是游戏比仿真多出的一项乘数，而 B10（第 2 轮卜灵放 `无归的谬误` 全队攻击 `+10%`）是仿真比游戏高 4.4%，两者方向相反，必须分开排查（先从已有录像读同时段队友跳字比值区分 $m$ 是心专属还是全队/目标乘区，再在靶场看心入场后 vs 转相后的面板）。
+3. **本轮实跑当前代码发现的关键时序事实（锁定 $b \approx 0.12$ 的三个精确候选）**：
+   - 在当前代码（`bebd9f8`，2026-10-28 第五版对齐 HUD 消失帧后）实跑 `xin-tower4-video.yaml` 时，`镜影流电之瞬.5延奏`（`+0.25` 导电加成，持续 `900` 战斗帧 = 15.0 秒，于 `f=1635, bf=1180f` 变奏切心时挂上）在 **`f=2819`（`bf=2080f`）到期**，比 `f=2948`（`bf=2098f`）的镇寰宇**早了仅 18 个战斗帧（0.30 秒）**，导致当前代码跑出的镇寰宇暴击其实是 `180,256`（`bonus = 3.016`），而非 10-27 旧表里的 `195,198`（`bonus = 3.266`）。
+   - 更关键的是：从 `镇寰宇`（`f=2948, bf=2098f`）经过 `照世·谐度破坏` 到 `万阙垂天`（`f=3305, bf=2100f`），虽然世界时间过了 `5.95` 秒，但因三段连续处于全局时停过场中，**战斗时间总共只走了 `2` 帧（`0.033` 战斗秒）**！
+   - 为什么录像里 $b \approx 0.12$ 与 `镜影流电之瞬.5延奏`（`+0.25`）在镇寰宇时都在，而在仅隔 2 个战斗帧的万阙垂天时却一起消失了？这直接给出三个可立即检验的候选：
+     - **候选 B-1（同源 15 秒入场加成 / 雷主首位 3C 绝息魄假说）**：$b = 0.12$ 与 `镜影流电之瞬.5延奏` 一样是在 `switch 心 变奏` 时触发、持续 15.0 战斗秒（`900f`）的加成，因此在 `bf ≈ 2080f` 附近与 `镜影流电之瞬.5延奏` 同帧到期！查 [`scenarios/xin-tower4-video.yaml:28-29`](../scenarios/xin-tower4-video.yaml#L28-L29)，雷主第 2 件声骸恰为 **3C `绝息魄`**（首位效果：放声骸后 15s 内延奏使下一位变奏登场角色 **`+12.00%` 导电伤害加成，持续 15 秒**，冷却同样是 20 秒）。直接回看录像 14.5s 雷主按 Q 召唤的模型/图标即可零成本验证！
+     - **候选 B-2（万阙垂天起手退出 `心相心生` 时移除）**：`万阙垂天` 在 `f=3065` 起手时调用 `ctx.removeBuff('心.心相心生')`，若 $b$ 绑定在 `心相心生` 上则会在此刻消失。
+     - **候选 B-3（世界时钟计时）**：该加成在游戏内不随大招时停暂停，在 6 秒过场动画中按世界时间到期。
 
 ---
 
-## 6. 面向应用与 AI Agent 的底座接口契约（综合三方设计）
+## 6. 面向应用与 AI Agent 的底座接口契约（综合 `CD-02`、`CD-04`、`CD-06` 共识）
 
 为了确保观察过程绝不改变执行结果（Codex R05），并让 AI Agent 无需解析网页或猜单位，底座对外暴露以下结构化纯函数契约：
 
 | 接口能力 | 核心契约与实现边界 |
 |---|---|
-| **1. 零干扰运行时因果与依赖**<br/>`SimEvent.causedBy` & `dependencies` | 在 [`triggers.ts`](../src/engine/triggers.ts#L39) 与 [`kernel.ts`](../src/engine/kernel.ts) 推入日志时，直接在既有 `SimEvent` 上挂载只读属性 `causedBy?: number`（父事件索引）与 `actionInstance?: number`（**不往 `s.log` 插入新事件，保证 `drain`、钩子与 RNG 100% 零干扰**）；输出同时区分“全部输入规则快照”与“本次实际起作用的依赖清单”。 |
-| **2. 明确相位边界的状态查询**<br/>`stateAt(scenario, frame, phase)` | 默认统一定义为**世界帧 `f` 开始、P1 之前**的完整执行状态（初始化完成后的首个 Tick 起点记为 `S[0]`）。第一版采用**从初态确定性重算至目标边界并返回深拷贝快照**（包含动作局部进度、飞行中判定、带提供者实例 ID 的 Buff、资源、内部冷却与当时刻合成面板），避免展示轨道（P6）的信息损失。 |
-| **3. 阻塞拆解与未触发诊断**<br/>`explainWait` & `whyNot` | `explainWait(res, cmdIdx)` 按帧拆解动作等待原因（区分游戏限制 / 调度策略 / 外部给定条件）；`whyNot(state, buffOrActionId)` 作为只读查询函数，返回当前时刻某动作不可执行或某 Buff 触发条件未满足的具体原因（如前置状态已于 3 秒前到期）。 |
-| **4. 观测比对与锚定推演**<br/>`compareObservations` & `simulateAnchored` | 先做一对一动作实例匹配并显式报告缺失/歧义与完成度（禁止全失配返回 0 分，禁止吞掉截断/外推警告）；在锚定模式下支持 `hold` 空转等待与 `sync` 状态同步，输出带 `conditioned` 标记的 `syncResidual` 残差表。 |
+| **1. 四层规则输出与零干扰因果链**<br/>（`CD-02` & `CD-04`） | ① **因果字段与零干扰验收条件**：保留 `Link.root` 根因归属，新增 `drain` 直接父事件下标 `parentEventId` 与非 `drain` 相位来源（`P3 spawn / P6 expire`）；资源账本在 `add()` 旁路或只读视图统一，不向 `s.log` 额外发业务事件（**验收条件**：剥离新增诊断元数据后，业务事件序列、状态、报错、RNG 消耗与汇总数值完全相同；`pnpm conformance` 快照结构变更显式版本化）。<br/>② **四项分离（不宣称包含关系）**：**完整输入配置**、**执行观察记录**（`rulesRead / rulesDecisive` 局部判断）、**事件来源与数值输入**（含单次命中距在场/刚到期 Buff 边界的帧余量 `buffWindowMargin`）、**指定反事实比较**（区分运行内句柄与跨运行匹配状态：`对应明确 | 新增或消失 | 歧义 | 未分析`）。 |
+| **2. 明确相位边界的状态查询**<br/>`stateAt(scenario, frame)` | 统一定义为**世界帧 `f` 开始、P1 之前**的完整执行状态（初始化完成后的首个 Tick 起点记为 `S[0]`）。第一版采用**从初态确定性重算至目标边界并返回深拷贝快照**（包含动作局部进度、飞行中判定、带提供者实例 ID 的 Buff、资源、内部冷却与当时刻合成面板）。 |
+| **3. 三类无副作用未触发诊断**<br/>（`CD-04`） | 拆分为三个显式只读接口：① `canActionExecuteAt(state, slot, action)`（当前动作能否执行及阻塞原因）、② `whyDidEventNotTrigger(eventId, effectId)`（历史事件在实际发生点为何未触发某效果，不写 `lastTrigger`）、③ `wouldHypotheticalEventTrigger(state, fakeEvent, effectId)`（隔离状态下的假想事件触发检查）。 |
+| **4. 观测比对与锚定推演**<br/>`compareObservations` & `simulateAnchored` | 先按**同角色、同动作/同通道局部保序**做一对一匹配，固定观测分母，显式报告缺失/歧义、定性冲突与完成度（禁止零有效观测返回 0 分，禁止吞掉截断/外推状态）；锚定模式缺省只改值不发业务触发，输出带 `conditioned` 标记的 `syncResidual` 与 `skippedTriggers`。 |
 
 ---
 
-## 7. 务实的推进路线图（融合纯软件修尺子与首包打包实验）
+## 7. 务实的推进路线图与双维验收标准（融合 `CD-08` 共识）
 
-吸收 Claude 的“规则台账 + 15 分钟打包实验”与 Codex 的“P0 修软件边界 Bug”，我们将第一阶段任务组织为**软件修尺子与靶场打包实验并行推进**的四个批次（关于串行 vs 并行的讨论见 [`docs/antigravity-debate.md`](antigravity-debate.md) DEBATE-01）：
+我们将第一阶段的验收标准拆分为两个正交维度：**① 执行器与观察工具能力验收（纯软件）** 与 **② 指定代表轴与用途下的机制基线验收（有条件交付 vs 暂缓精确结论）**，并按互不阻塞的四批推进：
 
-### 批次一（P0，纯软件 1–2 小时）：修好量尺、汇总边界与开关耦合
-1. **修校准时钟（R01）**：在校准 schema 中显式区分 `loopWorld`（世界秒 `(endF - f) / 60`）与 `loopBattle`（战斗秒 `endT - t`），跳字校准显式注明暴击分支（R06）。
+### 批次一（P0，纯软件修尺子与台账整理）：修好量尺、汇总边界与开关耦合
+1. **修校准时钟与暴击分支（R01、R06、`CD-06`）**：校准 schema 显式区分 `world | battle | loop` 时钟（旧 `loop` 保持兼容），`hit` 校准点暴击分支支持 `crit | nonCrit | unknown`（缺省 `unknown`）。
 2. **修汇总与对比的误导性 Bug（R03、R09、R10、R11）**：
    - `buffApply`/`buffExpire` 与 `buffUptime` 保留 `(defId, owner, target)` 实例身份（R09）；
    - 修复 `goal: kill` 下 `dpsBreakdown` 右开区间漏掉致死一击的问题（R10）；
    - 将 `maxFrames` 截断与 `goalNotReached` 外推状态传递到 `Basis`、`compareRuns` 与搜索（R11）；
-   - 修复 `fit.ts` 全锚点失配得 0 分与同名动作重复匹配（R03），加入 `video.hits` 跳字误差，并将“翻转规则（`flipsOf`）”与“改剧本动作（`neighborIter`）”分榜展示。
-3. **解耦捆绑开关与盘点既有证据**：将 `forteKeepOnSwitch` 按角色/资源拆开，将 `module-guess` 拆为独立命名假设；把 `fire.test.ts`（三火跳字）与历史已证实的规则整理入账，区分“已采用 / 有旁证 / 已实测支持”。
+   - 修复 `fit.ts` 零有效观测得 0 分与同名动作重复匹配（改为同角色/同通道局部保序一对一匹配，固定观测分母），加入 `video.hits` 跳字通道，并将规则候选与改轴变体分表展示。
+3. **建立四块式规则证据台账与解耦开关（`CD-05`）**：按“规则身份 / 候选解释（含 `implemented: boolean` 标明未实现开关的候选）/ 证据条目（含条件与是否参与选型）/ 当前结论”扩展台账；拆开心与卜灵的切人状态保留开关，拆解 `module-guess` 的 16 条具名推断；盘点既有录像证据（含回看中 4 录像 14.5s 雷主声骸与同时段队友跳字）。
 
-### 批次二（P1，进游戏 15 分钟）：执行首包高价值打包实验（止血定案）
-- 一次进训练场集中完成 **6 项短实验（约 15–20 分钟，只录屏与截 ESC 面板）**：
-  - **B1 & B2**：心照世相、卜灵卦象切人是否保留；
-  - **A1 & C1**：散华/椿基础校准点与切人锁验证；
-  - **B11**：卜灵五雷荡煞阵冲击波在心后台时是否给心叠霆心域（定案 `summonCountsAsChar`，影响心队绝对伤害约 6%）；
-  - **B10+（新增）**：心在雷主超负荷 + 卜灵无归的谬误下的局内 ESC 面板攻击力，以及心刚变奏入场 / 镇红尘 / 转相后的 ESC 面板对比（一次性定案“无归的谬误叠加”与“应世相 8% 两级台阶”）。
-- 实验结果当场写入回归测试与规则台账。
+### 批次二（P1，按账号分包的靶场受控实验）：并行定案代表轴关键命题
+- 按账号条件分两包执行（预先写清控制条件，计入换号、重置、录屏与读数入账成本）：
+  - **`everbird` 账号包**：`A1`（心面板与开场 AAA 公式锚点）、`B1 & B2`（心照世相、卜灵卦象切人保留）、`B7`（大招不响应输入是否挡切人）、`B10`（无 / 仅超负荷 A / 仅无归的谬误 B / A+B 四态面板对照，与 $m$ 的入场 vs 转相面板核查分开进行）、`B11`（严格保持验证手册**心留在后台**的原条件，记录开阵前基线层数，测五雷荡煞阵冲击波是否叠霆心域）；
+  - **`Evariste` 账号包**：`C1`（椿烬华蔓舞后是否自动出第 4 段）、`C4`（出场技条件）、`C5`（大招后切人锁）。
 
-### 批次三（P2，筑基）：零干扰因果链、教学轴确定性模式与状态查询
-1. **落地零干扰运行时因果链**：在 `SimEvent` 上挂载只读 `causedBy` 与实际起作用的规则依赖清单。
-2. **落地教学轴确定性模式**：对教学轴禁用 `~`、`?` 与自动谐破，补齐显式取消语法与按键转写映射。
-3. **落地 `stateAt(f)` 与 `whyNot`**：基于 P1 前边界确定性重算提供完整状态快照与未触发诊断。
+### 批次三（P2，筑基）：严格教学轴入口、零干扰因果链与状态/未触发查询
+1. **落地严格教学轴入口（`CD-01`）**：编译期禁用 `~`、`?` 与 `tuneBreak: auto`，运行时将 `introMissed` 统一为“意图未满足”失败；以 [`scenarios/m0-video-eq.yaml`](../scenarios/m0-video-eq.yaml)（补齐照录像手写的谐度破坏位置）作为首条代表性教学轴（交付“最早合法帧下稳态 25.00 战斗秒卡大招冷却”的有条件结论，暂缓依赖 C1 与 `burst-release` 的精确帧/DPS 结论），并保留心队卜灵协奏时机作为未解多候选案例。
+2. **落地零干扰因果链与四层规则输出（`CD-02`、`CD-04`）**：记录 `parentEventId`、非 `drain` 相位来源、`add()` 资源旁路视图以及单次命中的 `buffWindowMargin`。
+3. **落地 `stateAt(f)` 与三类 `whyNot` 接口（`CD-04`）**：基于 P1 前边界确定性重算提供深拷贝状态快照与三类无副作用未触发诊断。
 
-### 批次四（P3，赋能视频应用）：锚定观测模式（`hold` + `syncResidual`）与目录切分
-1. **提供视频锚定观测能力**：支持空转等待与状态同步锚点，淘汰录像场景里的 `A1~ A2~ A3~ A4~` + `!` 凑帧写法，自动输出 `syncResidual` 残差清单。
-2. **切清代码目录边界**：将 `src/engine/` 下的上层分析模块逐步迁出或明确划分为 `src/analysis/`，固化约 2,400 行执行器内核的稳定契约。
+### 批次四（P3，赋能视频应用）：锚定观测模式（`hold` + `sync`）与目录边界切分
+1. **提供视频锚定观测能力（`CD-03`）**：支持 `observedAction | hold | unobserved` 区间表达与缺省不发业务触发的 `sync` 状态同步，输出带 `conditioned` 标记的 `syncResidual` 与 `skippedTriggers`。
+2. **切清代码目录边界**：将 `src/engine/` 下的上层分析模块与约 2,400 行执行器内核在架构契约上切开。
 
 ---
 
 ## 修订记录
 - **2026-11-08 v1**：基于与用户的初步讨论及核心文档整理概念框架。
 - **2026-11-08 v2**：在未读取其他 Agent 评审的前提下，完成全仓源码与文档独立深潜，新增 5 项代码级症结与心 8% 伤害悬案的阶梯比值拆解。
-- **2026-11-09 v3**：阅读 Claude、Codex 总体评审及三组 `vs` 对比文档后更新：
-  1. 吸收 Claude 的“底座四层范围划分”、“`src/engine/` 内核与分析模块切分”、“`assumptions.ts` 5 处结构缺陷剖析”、“教学轴禁用 `~`/`?`/自动谐破及补齐取消/转写层”、“未触发条件诊断 `whyNot`”与“15 分钟打包实验”；
-  2. 吸收 Codex 的“三层问题划分（实现/模型/适用性）”、“帧内相位边界（P1 前）与从初态重算的 `stateAt`（修正 v2 的轨道拼装设想）”、“诊断不干扰 `s.log` 原则（R05）”、“R03/R09/R10/R11 四项具体代码 Bug”与“区分已采用/有旁证/已实测”；
-  3. 修正 v2 中关于“动作帧数三方吻合免测”和“敏感度 < 0.5% 永远不测”的过度绝对化表述，融合“顺时间因果初筛”与“四级靶场隔离漏斗”。
+- **2026-11-09 v3**：阅读 Claude、Codex 总体评审及三组 `vs` 对比文档后更新。
+- **2026-11-09 v4**：完成 [`docs/codex-debate.md`](codex-debate.md)（`CD-01` ～ `CD-08`）跨 Agent 复核后更新：
+  1. 确认 `CD-01`、`CD-02`、`CD-04`、`CD-06` 四项三方共识（严格教学轴 `introMissed` 升级为意图未满足失败、四层规则输出分离并补充单次命中 `buffWindowMargin`、`whyNot` 拆为三类只读签名、`hit` 暴击分支缺省 `unknown` 与同通道局部保序一对一匹配）；
+  2. 吸收 `CD-03`、`CD-05`、`CD-08` 共识（`sync` 缺省不发业务触发并列 `skippedTriggers`、台账登记未实现运行时开关的替代候选、双维验收与按 `everbird / Evariste` 账号分包实验）；
+  3. 在 §5.1（`CD-07`）更正“把 $m$ 与 B10 合并”的旧说法，并补充实跑当前代码发现的 `bf = 2080f / 2098f / 2100f` 战斗帧冻结事实与 $b \approx 0.12$ 的三个精确候选（含雷主首位 3C 绝息魄假说）。
+- **2026-11-09 v5**：完成 [`docs/claude-debate.md`](claude-debate.md)（`CL-01` ～ `CL-05`）跨 Agent 复核后更新：
+  1. 采纳 `CL-04` §2 对本评审的 5 项代码级校准（修正症结一 `A~ -> 镇红尘!` 的阻塞机制为 `scheduler.ts:335` 默认等就绪 `!force && !settled(s, slot)` 而非普攻起手优先级，统一 `CharRuntime.vars` / `buffExpire` / `buffs.ts tickBuffs` / `fit.ts replayFit` 等符号引用，将因果埋点零干扰表述为显式验收条件）；
+  2. 确认 `CL-02` 与 `CL-05` 达成三方共识（`done`），`CL-01` 与 `CD-05` 合流；在 `CL-03` 确认三类录像区间（`observedAction | hold | unobserved`）共识的同时，基于 `scheduler.ts` 与 `xin-tower4-video.yaml` 实码分析说明为何不应修改补位 `~` 在 `at` 前的停止条件。
