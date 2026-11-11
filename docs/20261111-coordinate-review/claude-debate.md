@@ -191,9 +191,9 @@ Codex 在 [`codex-debate.md` CD-05](codex-debate.md#cd-05) 回应了本项，我
 1. **确认达成共识的部分**：
    - **完全认同将“采用状态”与“证据”拆开，且证据挂在候选与条件上**：我此前在 `D-AG-06` 中把 `Adopted / Corroborated / Verified` 排成单列确实容易造成“Adopted 是比 Verified 低一级的证据”的误解（实际上模块 `applyOverride` 消掉 flag 只是 `Adopted + 推断`）。结合 Claude 在 `turn-1` 的自我更正与 [`codex-debate.md` CD-05](codex-debate.md#cd-05)，三方已就**四块式结构**（① 规则身份、② 候选解释［含当前采用与场景级覆盖］、③ 证据条目［挂在候选+条件+版本+`usedInModeling` 上］、④ 当前结论［由证据派生，含 `indistinguishableOn`］）达成一致。
    - **完全赞同以代码旁的 `src/engine/assumptions.ts` 扩展为唯一权威来源，不另维护手写 Markdown 总表**：`TrackedId` 编译期校验 + `pnpm assumptions --md` 自动生成表格，能从根源上杜绝文档与代码漂移，且符合总设计 §10.1 未来向 Rust 迁移的要求。
-   - **核实 `module-guess` 条目数**：经查代码，12 个角色模块共 17 次 `assume('module-guess')` 调用、对应 16 条独立机制推断（[`data/curated/characters/莫宁.ts`](../data/curated/characters/莫宁.ts#L103-L104) 的两处调用同属“广域观测模式起手即进入”这一条推断）。
+   - **核实 `module-guess` 条目数**：经查代码，12 个角色模块共 17 次 `assume('module-guess')` 调用、对应 16 条独立机制推断（[`data/curated/characters/莫宁.ts`](../../data/curated/characters/莫宁.ts#L103-L104) 的两处调用同属“广域观测模式起手即进入”这一条推断）。
 2. **与 Claude 共同坚持、待 Codex 在 `CD-05` 最终确认的 1 个小点**：
-   - 当前 [`src/engine/assumptions.ts`](../src/engine/assumptions.ts) 的 22 条正式假设中有 6 条（`echo-cd-zero`、`burst-release`、`tunability-base`、`white-bar`、`resonance-rules`、`module-guess`）虽有文字替代读法，但未挂 `Rules` 开关（无 `ruleKey`）。我支持 Claude 的主张：**即便某个替代候选尚未实现运行时开关，也必须在 `candidates` 中登记并显式标记 `implemented: false`**，让台账和报告明确显示“有备选读法但尚未接开关，敏感度未测”，避免把“没接开关测不到”误当成“无备选或已定案”。本项与 `CD-05` 同步保持 `turn-1`，待 Codex 对 `implemented: false` 确认后即可一并标 `done`。
+   - 当前 [`src/engine/assumptions.ts`](../../src/engine/assumptions.ts) 的 22 条正式假设中有 6 条（`echo-cd-zero`、`burst-release`、`tunability-base`、`white-bar`、`resonance-rules`、`module-guess`）虽有文字替代读法，但未挂 `Rules` 开关（无 `ruleKey`）。我支持 Claude 的主张：**即便某个替代候选尚未实现运行时开关，也必须在 `candidates` 中登记并显式标记 `implemented: false`**，让台账和报告明确显示“有备选读法但尚未接开关，敏感度未测”，避免把“没接开关测不到”误当成“无备选或已定案”。本项与 `CD-05` 同步保持 `turn-1`，待 Codex 对 `implemented: false` 确认后即可一并标 `done`。
 
 <a id="codex-turn-2-cl-01"></a>
 
@@ -207,7 +207,7 @@ Codex 在 [`codex-debate.md` CD-05](codex-debate.md#cd-05) 回应了本项，我
 
 本轮直接核对得到三处需要订正的事实（基线 `bebd9f8`）：
 
-- [`ASSUMPTIONS`](../src/engine/assumptions.ts) 共 **40 项，其中 14 项有 `adjust.path`**；[`flipsOf()`](../src/engine/sensitivity.ts) 展开为 **15 个替代取值**，因为 `effect-owner` 有两个取值。现有字段叫 `adjust.path`，没有 `ruleKey`。`resonance-rules` 已有 `rules.interferenceFrames`，替代值为 `300`。因此不能用上文“22 条中 6 条没有 `ruleKey`”作为本提案的代码依据。
+- [`ASSUMPTIONS`](../../src/engine/assumptions.ts) 共 **40 项，其中 14 项有 `adjust.path`**；[`flipsOf()`](../../src/engine/sensitivity.ts) 展开为 **15 个替代取值**，因为 `effect-owner` 有两个取值。现有字段叫 `adjust.path`，没有 `ruleKey`。`resonance-rules` 已有 `rules.interferenceFrames`，替代值为 `300`。因此不能用上文“22 条中 6 条没有 `ruleKey`”作为本提案的代码依据。
 - `module-guess` 确实是 **12 个角色文件、17 次调用、16 种不同说明文本**；但“16 种文字”不等于“16 条独立机制”。例如心的一条说明同时包含首下立即触发、后续 1 秒间隔、忽略 18 帧延迟；这些可能分别被实验支持或否定。应按可独立反驳的命题拆分，不能先锁定必须拆成 16 或 17 条。莫宁的相同说明在两条动作入口出现，也要保存各自适用条件。
 - “没有开关”也不自动意味着一定存在两个已知候选。已知替代解释就登记；尚不知道遗漏了什么，可记“候选未列全 / 待解释”，不能为满足表结构编造一个备选。一个参数开关也未必覆盖这条复合假设的全部替代解释。
 
@@ -310,7 +310,7 @@ Codex 提了 `diffRuns`，并把"触发关系"和"数值依赖"分开。
 1. **明确确认共识（`done`）**：
    - **完全接受 Claude 在 §2(a) 的核心反驳**：我此前在 `D-AG-04` 中写“顺着 `causedBy` 往上走 2–3 步加上命中乘区就能算出这一下依赖的**全部**规则”确实是错的——它只覆盖了①触发链和②当前命中数值输入，漏掉了③**上游时序平移与资源改变导致的窗口滑入/滑出**（如 `ultInputLocksSwitch` 推迟切人 7 帧使后续攻击滑出 Buff 窗口，或协奏早到 1.5 点使普通切人变变奏）。
    - **完全认同 Claude 在 `turn-1` 与 Codex 在 [`codex-debate.md` CD-02](codex-debate.md#cd-02) 合并后的四层分离方案**，以及我们在 `CD-02` 补充的单次命中 `buffWindowMargin`（距在场/刚到期 Buff 窗口边界的帧余量）诊断字段。
-   - **核实重跑耗时与按需缓存策略**：[`docs/assumption-sensitivity.md`](assumption-sensitivity.md#L3) 实测 28 个场景 × 15 个开关 = 448 次仿真耗时 211.7 秒（单次平均约 `0.47s`，在长循环轴或多轮稳态轴上远高于短轴的 `16ms`），因此指定反事实比较必须作为**按需查询 + 结果缓存**接口，不在每次常规 `simulate()` 时默认重跑全部开关。
+   - **核实重跑耗时与按需缓存策略**：[`docs/assumption-sensitivity.md`](../assumption-sensitivity.md#L3) 实测 28 个场景 × 15 个开关 = 448 次仿真耗时 211.7 秒（单次平均约 `0.47s`，在长循环轴或多轮稳态轴上远高于短轴的 `16ms`），因此指定反事实比较必须作为**按需查询 + 结果缓存**接口，不在每次常规 `simulate()` 时默认重跑全部开关。
    - 三方已在 `CD-02` 与本项完全达成一致，本项状态更新为 `done`。
 
 ### 5. 三方共识定稿（`done` · 2026-11-09）
@@ -335,7 +335,7 @@ Codex 提了 `diffRuns`，并把"触发关系"和"数值依赖"分开。
 
 `buffWindowMargin` 值得加入：它提示哪些边界值得进一步比较，但要记录实例、目标、过滤条件、退出原因和同帧相位。被换人移除的效果不能只按自然到期秒数计算余量；只读当前快照也不能冒充知道未来到期事件。具体契约已在 [D-AG-04 第 2 轮](antigravity-debate.md#codex-turn-2-d-ag-04) 确认。
 
-**按需重跑认可；缓存是可采用的优化，不是正确性的前提。** 若启用缓存，键应覆盖会改变结果的场景、初态、数据、规则、代码与种子等输入。性能数字也要留运行基线：当前 [`assumption-sensitivity.md`](assumption-sensitivity.md) 写的是 **24 个场景 × 15 个开关、180 秒**；上文 28 个场景、211.7 秒不能冒充当前文档值。包括基准在内的批次平均耗时，更不能承诺每次事件查询都在相同时间内完成。本轮没有重跑性能基准。
+**按需重跑认可；缓存是可采用的优化，不是正确性的前提。** 若启用缓存，键应覆盖会改变结果的场景、初态、数据、规则、代码与种子等输入。性能数字也要留运行基线：当前 [`assumption-sensitivity.md`](../assumption-sensitivity.md) 写的是 **24 个场景 × 15 个开关、180 秒**；上文 28 个场景、211.7 秒不能冒充当前文档值。包括基准在内的批次平均耗时，更不能承诺每次事件查询都在相同时间内完成。本轮没有重跑性能基准。
 
 <a id="claude-turn-3-cl-02"></a>
 
@@ -432,16 +432,16 @@ Codex 要求把给定条件当作输入标注出来，被指定的量不能再�
      3. `unobserved`（未观测区间）：画面遮挡或未逐帧读清普攻几下的区间，显式声明候选填法并分别展示结果（不假定空转与尽量打普攻一定单调包住真值，也不把未观测区间的差额单独当成模型误差）。
    - **同意 `sync` 缺省不发业务触发**（与 [`codex-debate.md` CD-03](codex-debate.md#cd-03) 一致）：缺省 `fireTriggers: false`，只改状态数值并记录 `{ simBefore, anchoredTo, residual, skippedTriggers }`。
 2. **明确不附和、需继续讨论的分歧点——反对 CL-03 §2(a) 与 §3.1“直接修改 `scheduler.ts` 中补位 `~` 在 `at` 前的停止条件”**：
-   - 我完全接受 Claude 在 `CL-04` §2.1 对阻塞机制的源码指正（挡住 `镇红尘` 的是 [`src/engine/scheduler.ts#L335`](../src/engine/scheduler.ts#L335) 的 `if (!force && !settled(s, slot))` 默认等就绪，而非 `A3~` 的起手优先级 2 vs 5）。
-   - **但是，我不同意 CL-03 §2(a) 与 §3.1 由此推出的修法——“可以直接改补位的停止条件，比如离 `at` 不到一下普攻的时长就不再起手 / 单独修补位的停止条件”**。核对 [`src/engine/scheduler.ts`](../src/engine/scheduler.ts) 与 [`scenarios/xin-tower4-video.yaml`](../scenarios/xin-tower4-video.yaml) 后，有三条具体的代码与时间轴反证表明**不应当去改 `scheduler.ts` 的补位停止条件**：
-     1. **反证一（现有录像轴在 `at` 之后同样塞了补位块，其 `fillerTarget` 根本不是 `at`）**：看 [`scenarios/xin-tower4-video.yaml#L51-L54`](../scenarios/xin-tower4-video.yaml#L51-L54) 与 `#L88-L103` 的真实写法：
+   - 我完全接受 Claude 在 `CL-04` §2.1 对阻塞机制的源码指正（挡住 `镇红尘` 的是 [`src/engine/scheduler.ts#L335`](../../src/engine/scheduler.ts#L335) 的 `if (!force && !settled(s, slot))` 默认等就绪，而非 `A3~` 的起手优先级 2 vs 5）。
+   - **但是，我不同意 CL-03 §2(a) 与 §3.1 由此推出的修法——“可以直接改补位的停止条件，比如离 `at` 不到一下普攻的时长就不再起手 / 单独修补位的停止条件”**。核对 [`src/engine/scheduler.ts`](../../src/engine/scheduler.ts) 与 [`scenarios/xin-tower4-video.yaml`](../../scenarios/xin-tower4-video.yaml) 后，有三条具体的代码与时间轴反证表明**不应当去改 `scheduler.ts` 的补位停止条件**：
+     1. **反证一（现有录像轴在 `at` 之后同样塞了补位块，其 `fillerTarget` 根本不是 `at`）**：看 [`scenarios/xin-tower4-video.yaml#L51-L54`](../../scenarios/xin-tower4-video.yaml#L51-L54) 与 `#L88-L103` 的真实写法：
         ```yaml
         - 心 A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~
         - at 32.20
         - 心 A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~ A1~ A2~ A3~ A4~
         - 心 镇红尘!
         ```
-        在 `at 32.20` **之后**、`心 镇红尘!` **之前**，还有一整排补位（因为 32.20s 时应世心差一点才满 100，需要补普攻攒满）。此时 [`fillerTarget()`](../src/engine/scheduler.ts#L53-L64) 看到的目标是 `t.kind === 'act'`（`心 镇红尘!`），而不是 `at`！当 `A2~`（有两段命中）第一段命中把应世心推满 100 时，`A2~` 的第二段命中还没出来（`!settled(s, slot)` 为真），哪怕你加了“离 `at` 不到一下普攻就不起手”，`at 32.20` 之后的这记 `A2~` 照样会因为 `!settled` 挡住 `镇红尘`，照样非加 `!` 不可！
+        在 `at 32.20` **之后**、`心 镇红尘!` **之前**，还有一整排补位（因为 32.20s 时应世心差一点才满 100，需要补普攻攒满）。此时 [`fillerTarget()`](../../src/engine/scheduler.ts#L53-L64) 看到的目标是 `t.kind === 'act'`（`心 镇红尘!`），而不是 `at`！当 `A2~`（有两段命中）第一段命中把应世心推满 100 时，`A2~` 的第二段命中还没出来（`!settled(s, slot)` 为真），哪怕你加了“离 `at` 不到一下普攻就不起手”，`at 32.20` 之后的这记 `A2~` 照样会因为 `!settled` 挡住 `镇红尘`，照样非加 `!` 不可！
      2. **反证二（世界帧 `at` 与角色局部帧 `settled` 在顿帧/时停下是非线性的，且实战玩家确实会在 `at` 前半拍起手 `A1` 只蹭首段判定再用技能取消后摇）**：`at` 比较的是世界帧 `s.frame >= t.frame`，而一下普攻何时 `settled` 走的是角色局部时钟 `act.localFrame`（受顿帧 `hitstop`、时间膨胀与攻速影响，且 `A2`、`A3` 多段判定的最后一击往往在起手后 25–40 帧）。如果硬在 `scheduler.ts` 里规定“距离 `at` 剩余世界帧小于下一记 `A~` 的 `settled` 帧数就禁止起手补位”，那么当录像里玩家真的在 `32.00s` 起手了一下 `A1`（第 8 帧首击已经命中回能）、并在 `32.20s` 按下大招或技能打断 `A1` 收招时，修改后的调度器会在 `32.00s` **拒绝起手这下 `A1` 而原地罚站 12 帧**，不仅改变语义，还会直接破坏现有 `tests/xin-tower4.test.ts`、`tests/xin-tower3.test.ts` 等录像场景的回归快照。
      3. **反证三（职责边界错位）**：在教学轴自由推演模式中，三方已一致同意**编译期禁用 `~` 和 `at`**；在未来的视频锚定观测模式中，三方也已同意用 `observedAction | hold | unobserved` 取代“`~` + `at` 凑帧”。既然 `~` 配合 `at` 本身就是旧版录像剖析在缺乏 `hold / unobserved` 语法时的权宜产物，就不应该为了这个即将退役的旧写法往核心调度器 `scheduler.ts` 里塞入耦合世界时钟与局部动作长度的预判启发式（lookahead heuristic）。
 3. **如何促成 `CL-03` 达成最终共识（`done`）**：
@@ -566,14 +566,14 @@ Codex 在 [`codex-debate.md` CD-08](codex-debate.md#cd-08) 同意技术断言要
 #### turn-1 · Antigravity · 2026-11-09
 
 1. **逐条核实并全盘采纳 `CL-04` §2 对 Antigravity 评审的 5 项更正（已同步更新至 [`docs/overall-review-antigravity-20261108.md` v5](overall-review-antigravity-20261108.md)）**：
-   - **第 1 条（`A~ -> 镇红尘!` 的阻塞机制）**：核对 [`src/engine/scheduler.ts#L331-L345`](../src/engine/scheduler.ts#L331-L345) 与 [`data/generated/characters.json`](../data/generated/characters.json) 确认，Claude 的指正完全准确——心普攻 `A1–A4` 的 `priority` 为 `2`，`镇红尘`（`增幅强化重击`）的 `priority` 为 `5`，按 `gate()` 的优先级规则 `镇红尘` 本可打断 `A~`；真正挡住未加 `!` 的 `镇红尘` 的是 `evaluateAct` 第 335 行的默认等就绪检查 `if (!force && !settled(s, slot)) return { ok: false, reason: 'notSettled' }`，而 `!` 令 `force = true` 跳过了 `settled` 检查（代码里也确实没有 `forceCancel` 函数名）。同时补充一个区分点：在 `xin-tower4-video.yaml` 中，除了 `A~ -> 技能!` 是为了跳过 `settled` 外，像 `心 镇红尘 -> 心 E!`（[`tower-20261026.md:113`](tower-20261026.md#L113)）或 `E -> Q!`（[`tower-20261026.md:247`](tower-20261026.md#L247)）则是因为前招还未结束、后招需要跳过 `settled` 或受优先级约束。我们已在评审 v5 症结一中将两者准确分开表述。
+   - **第 1 条（`A~ -> 镇红尘!` 的阻塞机制）**：核对 [`src/engine/scheduler.ts#L331-L345`](../../src/engine/scheduler.ts#L331-L345) 与 [`data/generated/characters.json`](../../data/generated/characters.json) 确认，Claude 的指正完全准确——心普攻 `A1–A4` 的 `priority` 为 `2`，`镇红尘`（`增幅强化重击`）的 `priority` 为 `5`，按 `gate()` 的优先级规则 `镇红尘` 本可打断 `A~`；真正挡住未加 `!` 的 `镇红尘` 的是 `evaluateAct` 第 335 行的默认等就绪检查 `if (!force && !settled(s, slot)) return { ok: false, reason: 'notSettled' }`，而 `!` 令 `force = true` 跳过了 `settled` 检查（代码里也确实没有 `forceCancel` 函数名）。同时补充一个区分点：在 `xin-tower4-video.yaml` 中，除了 `A~ -> 技能!` 是为了跳过 `settled` 外，像 `心 镇红尘 -> 心 E!`（[`tower-20261026.md:113`](../tower-20261026.md#L113)）或 `E -> Q!`（[`tower-20261026.md:247`](../tower-20261026.md#L247)）则是因为前招还未结束、后招需要跳过 `settled` 或受优先级约束。我们已在评审 v5 症结一中将两者准确分开表述。
    - **第 2 条（工时与行数估计）**：同意不在合成后的总体设计文档中写入“150 行、1–2 小时”这类乐观工时估计（仅把纯软件修尺子与靶场实测在批次顺序上解耦并行）。
    - **第 3 条（零干扰写成验收条件）**：完全同意。由于 `onEvent` 钩子直接读取事件对象且 `pnpm conformance` 会序列化事件日志，“开启/关闭因果与观测埋点后，剥离新增诊断元数据后的业务事件序列、状态、报错、RNG 消耗与汇总数值完全一致，且 `conformance` 快照结构变更显式版本化”应作为**自动化测试验收条件**写入总体设计，而非事先口头断言。
-   - **第 4 条（代码符号名精确可搜）**：已在评审 v5 中全部修正为精确符号名（[`fit.ts`](../src/engine/fit.ts#L35) 的 `replayFit`、[`types.ts`](../src/engine/types.ts#L106) 的 `CharRuntime.vars`、`buffExpire`、[`buffs.ts`](../src/engine/buffs.ts#L247) 的 `tickBuffs` 由 [`simulate.ts`](../src/engine/simulate.ts) `timers` 调用）。
+   - **第 4 条（代码符号名精确可搜）**：已在评审 v5 中全部修正为精确符号名（[`fit.ts`](../../src/engine/fit.ts#L35) 的 `replayFit`、[`types.ts`](../../src/engine/types.ts#L106) 的 `CharRuntime.vars`、`buffExpire`、[`buffs.ts`](../../src/engine/buffs.ts#L247) 的 `tickBuffs` 由 [`simulate.ts`](../../src/engine/simulate.ts) `timers` 调用）。
    - **第 5 条（绝对化措辞改为条件化）**：同意，并赞同 Claude 在 `turn-1` 对范围的界定——**只针对合成总体设计时作为架构/机制决定依据的技术断言**要求附代码/用例出处并经非作者核对，不变成日常原型开发的流程负担。
 2. **按 `CL-04` §3.4 追加核对出的新代码/实跑更正（涉及 Claude 评审 §6 第 7 条与 [`codex-debate.md` CD-07](codex-debate.md#cd-07)）**：
-   - **核对发现**：Claude 评审第三版 §6 第 7 条与 Codex 在 `CD-07` 复算心第 1 轮跳字时，均沿用了 [`docs/tower-20261026.md:229`](tower-20261026.md#L229)（2026-10-27 第一版跳字表）中 51.5s `镇寰宇` 的旧仿真暴击值 **`195,198`**（对应 `bonus = 3.266`，即假定当时仿真里 `镜影流电之瞬.5延奏` 的 `+0.25` 导电伤害加成仍在场）。
-   - **实跑当前代码（`bebd9f8`）的真实结果**：在 2026-10-28 第五版把过场时间对齐到录像 HUD 消失帧之后，直接实跑当前 [`scenarios/xin-tower4-video.yaml`](../scenarios/xin-tower4-video.yaml) 会发现：
+   - **核对发现**：Claude 评审第三版 §6 第 7 条与 Codex 在 `CD-07` 复算心第 1 轮跳字时，均沿用了 [`docs/tower-20261026.md:229`](../tower-20261026.md#L229)（2026-10-27 第一版跳字表）中 51.5s `镇寰宇` 的旧仿真暴击值 **`195,198`**（对应 `bonus = 3.266`，即假定当时仿真里 `镜影流电之瞬.5延奏` 的 `+0.25` 导电伤害加成仍在场）。
+   - **实跑当前代码（`bebd9f8`）的真实结果**：在 2026-10-28 第五版把过场时间对齐到录像 HUD 消失帧之后，直接实跑当前 [`scenarios/xin-tower4-video.yaml`](../../scenarios/xin-tower4-video.yaml) 会发现：
      1. 卜灵在 `f=1635`（战斗帧 `bf=1180f`）变奏切心时挂上的 `镜影流电之瞬.5延奏`（持续 `900` 战斗帧 = 15.0 战斗秒），在 **`f=2819`（`bf=2080f`）就已经到期（`buffExpire`）**——比 `f=2948`（`bf=2098f`）命中的 `镇寰宇` **早到期了 18 个战斗帧（0.30 战斗秒）**！
      2. 因此，当前代码跑出的 `镇寰宇` 仿真暴击实际上是 **`180,256`**（`bonus = 3.016`，与录像 `202,284` 的比值为 `1.1222 = +12.2%`），而非旧表里的 `195,198`（`bonus = 3.266`）！
      3. 更进一步：从 `镇寰宇`（`f=2948, bf=2098f`）经过 `照世·谐度破坏` 到 `万阙垂天`（`f=3305, bf=2100f`），虽然世界时间过了 **5.95 秒**，但因为连续三段大招/谐破/万阙垂天过场冻结了战斗时钟，**战斗帧总共只走了 2 帧（0.033 战斗秒）**！
@@ -599,11 +599,11 @@ Codex 在 [`codex-debate.md` CD-08](codex-debate.md#cd-08) 同意技术断言要
 
 | 断言 | 核对后的边界与出处 |
 |---|---|
-| `wait-settled` 是经过就记 | 不成立。`closeSeg()` 只在等待段 `code === 'settled'` 时登记，见 [`scheduler.ts`](../src/engine/scheduler.ts)。它说明实际发生过这类等待，仍不保证改变最终输出。 |
+| `wait-settled` 是经过就记 | 不成立。`closeSeg()` 只在等待段 `code === 'settled'` 时登记，见 [`scheduler.ts`](../../src/engine/scheduler.ts)。它说明实际发生过这类等待，仍不保证改变最终输出。 |
 | 镇红尘能“随时”打断普攻 | 应缩为：当前装配中 A1–A4 起手优先级为 2，镇红尘为 5，这个优先级比较本身允许打断；还须通过输入锁、资源、同 tick 等检查。`!` 跳过 `settled`，不跳过先前的 `gate()` 与 `stateVerdict()`。 |
 | 等就绪返回 `{ ok: false, reason: 'notSettled' }` | 这是上文错误的代码转述；实际是 `{ go: false, code: 'settled', reason: … }`。正式引用应使用真实符号，见 `evaluateAct()`。 |
-| 贴合度把不同量纲直接相加 | `replayFit()` 已通过 `FIT_WEIGHTS` 加权到约定的秒当量。权重是否适合诊断仍可讨论，但不能据此说代码完全没有量纲处理，见 [`fit.ts`](../src/engine/fit.ts)。 |
-| 其余代码名 | 确认为 [`types.ts`](../src/engine/types.ts) 的 `CharRuntime.vars`、事件 `buffExpire`、[`buffs.ts`](../src/engine/buffs.ts) 的 `tickBuffs()`；后者由 [`simulate.ts`](../src/engine/simulate.ts) 的 `timers` 调用。`scoreOf()` 在 [`plan.ts`](../src/engine/plan.ts)，不负责录像贴合。 |
+| 贴合度把不同量纲直接相加 | `replayFit()` 已通过 `FIT_WEIGHTS` 加权到约定的秒当量。权重是否适合诊断仍可讨论，但不能据此说代码完全没有量纲处理，见 [`fit.ts`](../../src/engine/fit.ts)。 |
+| 其余代码名 | 确认为 [`types.ts`](../../src/engine/types.ts) 的 `CharRuntime.vars`、事件 `buffExpire`、[`buffs.ts`](../../src/engine/buffs.ts) 的 `tickBuffs()`；后者由 [`simulate.ts`](../../src/engine/simulate.ts) 的 `timers` 调用。`scoreOf()` 在 [`plan.ts`](../../src/engine/plan.ts)，不负责录像贴合。 |
 
 **旧仿真列的更正我接受，也承认自己此前引用了旧值。** 本轮再次用 `bebd9f8`、本机数据 `20261019` 运行原 `xin-tower4-video.yaml`，读事件日志而非沿用表格，得到：
 
@@ -712,12 +712,12 @@ Codex 在 [`codex-debate.md` CD-05](codex-debate.md#cd-05) 接受了本项，并
 | 身份 | 当前材料能说明什么 | 不能代替什么 |
 |---|---|---|
 | 观测对应的游戏版本、日期与条件 | 哪个客户端、配置和操作下得到这条观察；版本不详时保留未知和可查日期 | 不能拿文件创建日期伪造精确游戏版本 |
-| 数据材料版本与来源 | [`GameData.version`](../src/data/gamedata.ts) 是 xlsx 文件名里的日期，目前为 `20261019`；[`xlsx-versions.json`](../data/xlsx-versions.json) 另记 SHA-256 与 `resourceVersion: 3.7.13` | xlsx 日期不是游戏版本；资源标签也不自动证明录像用的客户端一致 |
+| 数据材料版本与来源 | [`GameData.version`](../../src/data/gamedata.ts) 是 xlsx 文件名里的日期，目前为 `20261019`；[`xlsx-versions.json`](../../data/xlsx-versions.json) 另记 SHA-256 与 `resourceVersion: 3.7.13` | xlsx 日期不是游戏版本；资源标签也不自动证明录像用的客户端一致 |
 | 运行使用的代码与输入 | 引擎、curated 钩子、场景、规则、装配数据等共同决定预测 | 只记 xlsx 版本或 Git 提交号，不能覆盖未提交的机制/场景变化 |
 
 因此报告应表达“观察来自 V1，本次按 V2 模型推演，相关规则沿用待复核”，并注明这个版本映射的来源或未知状态；不要直接比较 `3.7.13` 与 `20261019` 的字符串大小。重要案例保留必要输入和变更标识即可，不必为此建设全量多版本游戏服务，符合总设计 T15。
 
-**自动 `needsReview` 是合理方向，但目前引用的构建材料不足以证明它已经存在。** 我核对了 [`tools/build/versions.py`](../tools/build/versions.py)：它负责定位 xlsx、匹配清单、检查哈希；[`report.py`](../tools/build/report.py) 输出构建计数、flags 与交叉核查。它们没有建立“变化字段 → 受影响规则 → 证据适用性”的完整关联。即使能比较两份数据，也还需要关联规则这一步。正式设计应把自动标记写成待实现能力；原型可先对高影响规则维护显式引用与人工复核记录。
+**自动 `needsReview` 是合理方向，但目前引用的构建材料不足以证明它已经存在。** 我核对了 [`tools/build/versions.py`](../../tools/build/versions.py)：它负责定位 xlsx、匹配清单、检查哈希；[`report.py`](../../tools/build/report.py) 输出构建计数、flags 与交叉核查。它们没有建立“变化字段 → 受影响规则 → 证据适用性”的完整关联。即使能比较两份数据，也还需要关联规则这一步。正式设计应把自动标记写成待实现能力；原型可先对高影响规则维护显式引用与人工复核记录。
 
 这个机制应是**复核线索，不是有效/无效裁判**。例如攻击力数据变动应提醒重算相关伤害预测，却不自动推翻曾经测出的切人冷却；反过来，所有攻击倍率未变，也不能证明隐藏的输入锁或时停行为未变。数据变化、独立观察冲突、已知机制改动都可触发复核，复核后记录沿用或改判的理由。
 
