@@ -653,7 +653,7 @@ TD-04 到 TD-07 就是自己写下的规则，是对游戏的推测。
 - **[`engine-foundation-roadmap.md`](engine-foundation-roadmap.md)**（2026-11-07，11-11 已按共识同步）：
   - 三层可信度（执行实现、数据与机制模型、本次分析）、观测要带条件、差异分步排查，我都同意；
   - 我原来不同意它的顺序：第一批全是工程，回答不了游戏问题，也没处理实测成本。改成两条线并行后（§8），这个分歧就不存在了。
-- **[`rotation-explanation-plan.md`](rotation-explanation-plan.md)**：教学轴解释，是底座之上的应用。
+- **[`rotation-explanation-plan.md`](../rotation-explanation-plan.md)**：教学轴解释，是底座之上的应用。
 - **`engine-quality-plan.md`、`replay-retro.md`**：本文的事实大多出自这两份。
 - **`review-2026-10-22.md`、`engine-acceptance-2026-10-22.md`**：10 月的审查与黑盒验收报告，列的 R1–R7 都已修。它们有一句话和 §3.2 第 1 点、§6 第 3 条是同一个意思（跑通、贴合都不等于机制对）："完整跑通只能说明候选在当前模型里能运行；装配或动作合法性一起出错时，择优和完整仿真会一起认可错误结果"。
 - **总设计**：和总设计冲突的地方以总设计为准，直到上面的合入完成。
