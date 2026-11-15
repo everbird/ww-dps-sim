@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'vitest'
-import { loadScenario } from '../src/cli/format'
 import { CalibrationFileSchema, CalibrationPointSchema, type CalibrationPoint } from '../src/data/calibration.schema'
-import { hasGenerated, loadGameData } from '../src/data/load'
+import { ScenarioSchema } from '../src/data/scenario.schema'
 import { calibrate, simValue } from '../src/engine/calibration'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
 import { loopSpan } from '../src/engine/trace'
+import { action, judgment } from './helpers/kernel-harness'
+import { idle, synthData } from './helpers/synth'
 
 describe('CalibrationSchema（C03-1/C03-2）：clock、branch、gameRange、purpose、condition', () => {
   test('C03-1 & C03-2：缺省值与互斥校验', () => {
@@ -34,15 +35,31 @@ describe('CalibrationSchema（C03-1/C03-2）：clock、branch、gameRange、purp
   })
 })
 
-describe.skipIf(!hasGenerated())('calibrate 时钟、区间与分支语义（DD-03 §3–4）', async () => {
-  const data = await loadGameData()
-  const r = resolveScenario(loadScenario('scenarios/m0-team.yaml'), data)
+describe('calibrate 时钟、区间与分支语义（DD-03 §3–4）', () => {
+  const act = action({
+    id: '大招',
+    kind: 'liberation',
+    endFrame: 90,
+    judgments: [judgment({ name: 'A1', spawnFrame: 10, multiplier: 2 })],
+    dilations: [{ type: '全局时停', anchor: 'action', start: 0, enemy: { rate: 0, duration: 30 } }],
+  })
+  const gd = synthData([{ name: '甲', actions: [act] }, idle('乙'), idle('丙')])
+  const r = resolveScenario(ScenarioSchema.parse({
+    team: [
+      { char: '甲', weapon: { name: '测试武器' } },
+      { char: '乙', weapon: { name: '测试武器' } },
+      { char: '丙', weapon: { name: '测试武器' } },
+    ],
+    enemy: { custom: { level: 90 } },
+    rotation: ['甲 大招'],
+    options: { repeat: 2 },
+  }), gd)
   const log = simulate(r).log
 
   test('C03-1：loop 点显式区分 clock: battle 与 clock: world', () => {
     const span = loopSpan(log, 1)!
     expect(span).toBeDefined()
-    const base = { id: 'loop1', scenario: 'm0-team.yaml', kind: 'loop' as const, loop: 1, game: null, record: 'sim' }
+    const base = { id: 'loop1', scenario: 'synth.yaml', kind: 'loop' as const, loop: 1, game: null, record: 'sim' }
     const pBattle = CalibrationPointSchema.parse({ ...base, clock: 'battle' })
     const pWorld = CalibrationPointSchema.parse({ ...base, clock: 'world' })
 
@@ -50,13 +67,13 @@ describe.skipIf(!hasGenerated())('calibrate 时钟、区间与分支语义（DD-
     const worldSim = simValue(pWorld, r, log) as number[]
     expect(battleSim[0]).toBeCloseTo(span.endT - span.t, 6)
     expect(worldSim[0]).toBeCloseTo((span.endF - span.f) / 60, 6)
-    // m0-team 第一轮含全局时停大招，世界时钟明显大于战斗时钟
+    // 大招含 30F 全局时停，世界时钟明显大于战斗时钟
     expect(worldSim[0]).toBeGreaterThan(battleSim[0]!)
   })
 
   test('C03-3：gameRange 区间内残差为 0，两端按较近端点算相对差', () => {
     const pAtk = CalibrationPointSchema.parse({
-      id: 'atk', scenario: 'm0-team.yaml', kind: 'panel', char: '椿', item: '攻击', game: null, record: 'r',
+      id: 'atk', scenario: 'synth.yaml', kind: 'panel', char: '甲', item: '攻击', game: null, record: 'r',
     })
     const simAtk = (simValue(pAtk, r, log) as number[])[0]!
 
@@ -99,7 +116,7 @@ describe.skipIf(!hasGenerated())('calibrate 时钟、区间与分支语义（DD-
 
   test('C03-4 & C03-4b：hit 分支 crit / nonCrit / unknown', () => {
     const baseHit = {
-      id: 'h', scenario: 'm0-team.yaml', kind: 'hit' as const, char: '椿',
+      id: 'h', scenario: 'synth.yaml', kind: 'hit' as const, char: '甲',
       judgment: 'A1', nth: 1, loop: 1, game: null, record: 'r',
     }
     const sim = simValue(CalibrationPointSchema.parse(baseHit), r, log) as number[]
@@ -163,7 +180,7 @@ describe.skipIf(!hasGenerated())('calibrate 时钟、区间与分支语义（DD-
   test('C03-5 & C03-5b：待测 unassessable、找不到 unmatched、独立验证用途保留', () => {
     const todo = calibrate(
       CalibrationPointSchema.parse({
-        id: 'todo', scenario: 'm0-team.yaml', kind: 'panel', char: '椿', item: '攻击',
+        id: 'todo', scenario: 'synth.yaml', kind: 'panel', char: '甲', item: '攻击',
         game: null, record: 'r', purpose: 'independent_validation',
       }),
       r,
@@ -174,7 +191,7 @@ describe.skipIf(!hasGenerated())('calibrate 时钟、区间与分支语义（DD-
 
     const miss = calibrate(
       CalibrationPointSchema.parse({
-        id: 'miss', scenario: 'm0-team.yaml', kind: 'panel', char: '椿', item: '不存在的项',
+        id: 'miss', scenario: 'synth.yaml', kind: 'panel', char: '甲', item: '不存在的项',
         game: 1000, record: 'r',
       }) as CalibrationPoint,
       r,
