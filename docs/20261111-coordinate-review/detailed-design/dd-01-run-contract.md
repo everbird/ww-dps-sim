@@ -1,7 +1,7 @@
 # DD-01 运行输入、运行身份、完成状态与分层检查
 
 **版本**：v0.3，2026-11-14，Claude。v0.2 按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10：DF-01、DF-02、DF-10 与两条非阻塞意见）；v0.3 按 Codex 第二轮复核加 `loops.roundEnds`（意见文件 §13：DF-25）。
-**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**已实现（2026-11-15）**：验收清单 §6 全部勾上；与本文有出入的两处记在 §6 末尾。
 **阶段**：一。**前置**：无。**被依赖**：DD-02～DD-07 全部。
 
 ## 1. 范围与依据
@@ -419,14 +419,19 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
 
 ## 6. 验收清单
 
-- [ ] `tests/layering.test.ts`、`tests/prepared-run.test.ts`、`tests/run-coverage.test.ts` 全过。
-- [ ] 架构 §2.3 的七条停止路径各有至少一个用例（C01-8、10、11、13、14、15、16），断言了表里的每一列。
-- [ ] 现有测试不改断言就全过；`tests/__snapshots__` 没有变化。
-- [ ] `pnpm conformance` 的输出与基线相比只多 T01-9 列出的那几个键，原有字段逐字节相同。各键在后续工作包里才有内容的，此时是空值或初值。
-- [ ] `pnpm fuzz` 通过。
-- [ ] `pnpm sim` 的终端输出多出 `runId` 与完成状态两行，其余数字不变。
-- [ ] `prepareRun` 的性能数字在预算内，写进了提交说明。
-- [ ] `src/engine/` 没有新的模块级可变状态（`digest.ts` 的 `WeakMap` 缓存是纯函数的记忆化，允许，写注释说明）。
+- [x] `tests/layering.test.ts`、`tests/prepared-run.test.ts`、`tests/run-coverage.test.ts` 全过。
+- [x] 架构 §2.3 的七条停止路径各有至少一个用例（C01-8、10、11、13、14、15、16），断言了表里的每一列。
+- [x] 现有测试不改断言就全过；`tests/__snapshots__` 没有变化。
+- [x] `pnpm conformance` 的输出与基线相比只多 T01-9 列出的那几个键，原有字段逐字节相同。各键在后续工作包里才有内容的，此时是空值或初值。
+- [x] `pnpm fuzz` 通过。
+- [x] `pnpm sim` 的终端输出多出 `runId` 与完成状态两行，其余数字不变。
+- [x] `prepareRun` 的性能数字在预算内，写进了提交说明。
+- [x] `src/engine/` 没有新的模块级可变状态（`digest.ts` 的 `WeakMap` 缓存是纯函数的记忆化，允许，写注释说明）。
+
+实现时与本文的出入（2026-11-15）：
+- C01-12 的第二个变体（"到上限那一帧第一条刚执行完、第二条还没求值过，`handled === event`"）在现在的调度器下到不了：`createScheduler` 在同一个 tick 里接着求值下一条，总会开一段等待。用例改为断言实际行为（`afterFailClose`，上界差 1）；上界的算法（`inFlight ?? cursor`）不靠这一情形。
+- `ResolvedScenario` 加了 `purpose`，`pnpm conformance` 的 input 多这一个键（T01-9 只约束 output，output 符合）。
+- 性能（m0-video-eq，缓存热后）：`prepareRun` 比 `resolveScenario` 多 2.75 ms，是一次运行（143 ms）的 1.92%；首次（含整份 GameData 的摘要）160.7 ms。
 
 ## 7. 要同步的正式文档
 

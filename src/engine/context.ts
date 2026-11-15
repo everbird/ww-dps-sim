@@ -5,6 +5,7 @@ import type { EffectName, Slot } from '../data/common'
 import type { BuffBook } from './buffs'
 import type { ActiveBuff, HitContext, HitView } from './formula'
 import type { Kernel } from './kernel'
+import type { InterventionRecord } from './run-types'
 import type { CharacterHooks, HitDraft, HookContext, ResolvedScenario } from './types'
 
 /** 一次直接伤害结算的输入（不含面板）：换声骸后按新面板重算这一段（TD-13 §3）。index 是日志里那条 hit 事件 */
@@ -33,6 +34,8 @@ export interface Sim {
   bus: EventBus
   onHit?: (rec: HitRecord) => void        // 记下每次直接伤害结算的输入（配装择优的快速重算，TD-13 §3）
   keepStacks: ReadonlySet<EffectName>       // 结算后不减层的效应：队伍里有角色的 effectRules 写了 keepStacks（TD-06 §18）
+  /** 外部干预记录（DD-01 §3.8；架构 §4.1）：录像指令各记一条；一直都有，不进日志的触发队列，随结果带出去 */
+  interventions: InterventionRecord[]
 }
 
 /** 事件队列（TD-07 §5）：日志本身就是队列，cursor 之前的事件都处理过了 */
@@ -42,8 +45,11 @@ export interface EventBus {
   chain: Map<number, Link>                  // 日志下标 → 它在事件链上的位置；没有记录的是链的起点（深度 0）
   current: Link | null                      // 正在处理的事件
   spawned: Map<number, Link>                // 钩子生成的判定 id → 它的结算接在哪条链上（本 tick 有效）
+  /** 正在处理的那条事件的日志下标；处理器全部跑完才清，抛错时保留——cursor 在调处理器之前已经加 1，出错时"处理完的"上界
+   *  是 inFlight ?? cursor（DD-01 §3.5；架构 §2.3） */
+  inFlight: number | null
 }
 /** depth：离起点几层；root：起点事件的日志下标 */
 export interface Link { depth: number; root: number }
 
-export const newBus = (): EventBus => ({ cursor: 0, draining: false, chain: new Map(), current: null, spawned: new Map() })
+export const newBus = (): EventBus => ({ cursor: 0, draining: false, chain: new Map(), current: null, spawned: new Map(), inFlight: null })

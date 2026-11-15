@@ -33,6 +33,7 @@ export function drain(sim: Sim, s: SimState): void {
   try {
     while (bus.cursor < s.log.length) {
       const i = bus.cursor++
+      bus.inFlight = i                                 // 在连锁深度检查之前写：chainDepth 也算"处理这条时出错"（DD-01 §3.5）
       const link = bus.chain.get(i) ?? { depth: 0, root: i }
       bus.chain.delete(i)
       if (link.depth > sim.r.rules.maxChainDepth) {
@@ -48,10 +49,11 @@ export function drain(sim: Sim, s: SimState): void {
       handle(sim, s, s.log[i]!)
       bus.current = null
       for (let x = before; x < s.log.length; x++) bus.chain.set(x, { depth: link.depth + 1, root: link.root })
+      bus.inFlight = null                              // 只在正常处理完后清
     }
   } finally {
     bus.draining = false
-    bus.current = null
+    bus.current = null                                 // inFlight 不在这里清：抛错时要留着
   }
 }
 

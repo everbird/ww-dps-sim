@@ -1,8 +1,10 @@
-// src/engine/simulate.ts —— simulate(ResolvedScenario) → { 事件日志, 汇总 }（总设计 §3.4、§6）
+// src/engine/simulate.ts —— 运行体 execute(ResolvedScenario) 与兼容外壳 simulate（总设计 §3.4、§6；DD-01 §3.6、§3.7）
 // 把内核（TD-04）、调度器（TD-09）、伤害公式（TD-03）、切人（TD-05）、资源与敌人量表（TD-06）、buff 与触发（TD-07）、角色钩子（TD-08）接在一起：
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
+// 新的运行入口是 run.ts 的 prepareRun + runPrepared：它调这里的 execute，再算完成状态与汇总。
 import { EFFECT_NAMES, type ActionId, type DamageTag, type EffectName, type Slot } from '../data/common'
 import type { ActionDef, JudgmentDef } from '../data/gamedata'
+import type { Frame } from '../data/common'
 import { assume } from './assumptions'
 import { roundTo } from './num'
 import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
@@ -15,15 +17,47 @@ import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneB
 import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
-import { createScheduler, newQueue, runLoop, ScheduleError } from './scheduler'
-import { summarize } from './summary'
+import { prepareResolved, runWithFailure } from './run'
+import type { InterventionRecord, TickPhase } from './run-types'
+import { createScheduler, newQueue, runLoop } from './scheduler'
 import { onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
   CharRuntime, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
+/** 兼容外壳（DD-01 §3.7）：还拿着 ResolvedScenario 的调用方用。行为同改之前：调度错误（等不来、超时、帧数上限、连锁过深、
+ *  不变量不成立）记在 error 里；别的异常（钩子里抛错）原样抛出——runPrepared 本身不抛，这里重新抛是为了不让现有的
+ *  try { simulate(r) } catch 悄悄换了语义。
+ *  @deprecated 新代码用 prepareRun + runPrepared，看 completion.status */
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
+  const { res, uncaught } = runWithFailure(prepareResolved(r, opts.sample ? { sample: opts.sample } : {}), opts.onHit ? { onHit: opts.onHit } : {})
+  if (uncaught) throw uncaught.error
+  return res
+}
+
+/** 运行体跑完（或停下）之后留下的东西：状态、运行环境、展示轨道，以及停在哪里的簿记（DD-01 §3.5、§3.6）。完成状态由 run.ts 的 buildCompletion 算 */
+export interface Execution {
+  s: SimState
+  sim: Sim
+  k: Kernel
+  forte: ForteStep[]
+  cooldowns: CooldownStep[]
+  initCompleted: boolean                    // 初始化（常驻 buff、onResolve、首次 drain）走完没有
+  /** 循环正常返回时：怎么退出的、在哪一帧哪个相位；循环里抛错时为 null */
+  loopExit: { why: 'idle' | 'maxFramesInFlight'; worldFrame: Frame; phase: TickPhase } | null
+  postDrainCompleted: boolean               // 循环正常返回后那次 drain 做完没有
+  failure: { error: unknown } | null        // 抛出来的东西（调度错误或别的异常）；没抛错为 null
+}
+
+/** 观察回调（onHit）自己抛的异常：不算这次运行的状态，execute 接住后把原异常抛给调用方（DD-01 §3.4；总览 §6 的 S-04） */
+class ObserverThrow extends Error {
+  readonly thrown: unknown
+  constructor(thrown: unknown) { super('观察回调抛出的异常'); this.thrown = thrown }
+}
+
+/** 运行体：建初始状态与运行环境，初始化 → 逐 tick 循环 → 收尾的 drain。引擎与钩子里的异常都接住、记在 failure 里，不往外抛 */
+export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
   const s = initialState(r)
   if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
   const jitter = opts.sample?.jitter ?? 0
@@ -31,6 +65,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
   const k: Kernel = {
     rules: r.rules,
+    at: { phase: 'init' },
     hooks: {
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
@@ -59,7 +94,8 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
   const sim: Sim = {
     r, k, book: makeBook(r.buffs), hooks: r.team.map(m => r.data.hooks[m.def.name]), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
     keepStacks: new Set(r.team.flatMap(m => EFFECT_NAMES.filter(e => m.def.effectRules?.[e]?.keepStacks))),
-    ...(opts.onHit ? { onHit: opts.onHit } : {}),
+    interventions: [],
+    ...(opts.onHit ? { onHit: rec => { try { opts.onHit!(rec) } catch (e) { throw new ObserverThrow(e) } } } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
   // 按面板属性换算的 buff 在装配时按静态面板定了数值（BuffDef.scale）
@@ -112,11 +148,19 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
-    enemyCommand: (st, c) => (c.state === 'swap' ? swapEnemy(sim, st, c.preset) : forceDisharmony(sim, st)),
+    // 录像指令（敌人 失谐 / 换、能量满）照旧发业务事件，另记一条外部干预记录（DD-01 §3.8）：写在业务动作之前，
+    // 所以它排在自己引出的 resource / enemyState 事件之前
+    enemyCommand: (st, c) => {
+      intervene(sim, st, { kind: c.state === 'swap' ? 'enemySwap' : 'enemyDisharmony' })
+      if (c.state === 'swap') swapEnemy(sim, st, c.preset)
+      else forceDisharmony(sim, st)
+    },
     // 能量满 <角色>（录像剖析，假设 forced-energy）：补到大招能量上限，记一条 resource（cause forced）
     fillCommand: (st, slot) => {
+      const before = st.chars[slot].energy, adopted = r.team[slot]!.def.energyCost
+      intervene(sim, st, { kind: 'fill', target: { slot, resource: 'energy' }, before, adopted, delta: adopted - before })
       assume(st, 'forced-energy', `${st.chars[slot].name} 第 ${st.frame} 帧`)
-      grant(sim, st, slot, 'energy', r.team[slot]!.def.energyCost - st.chars[slot].energy, 'forced')
+      grant(sim, st, slot, 'energy', adopted - before, 'forced')
     },
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     interject: st => {
@@ -127,7 +171,7 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
       return def ? { slot, def, why: '谐度破坏' } : null
     },
   })
-  let error: SimResult['error']
+  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null }
   try {
     for (const reg of r.buffs) {                                 // 常驻 buff 开场即有（总设计 §3.3 第 3 步）
       if (reg.def.trigger !== 'always') continue
@@ -135,13 +179,27 @@ export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult 
     }
     for (const m of r.team) sim.hooks[m.slot]?.onResolve?.(sim.ctxs[m.slot]!)
     drain(sim, s)
-    runLoop(s, k, schedule, r.options.maxFrames)
+    x.initCompleted = true
+    const why = runLoop(s, k, schedule, r.options.maxFrames)
+    x.loopExit = { why, worldFrame: s.frame, phase: k.at.phase }  // idle 停在 P2（这个 tick 不计入）；帧数上限停在 P7 之后
     drain(sim, s)                                                 // 最后一个 tick 在 P2 就结束时记下的事件
+    x.postDrainCompleted = true
   } catch (e) {
-    if (!(e instanceof ScheduleError)) throw e
-    error = { code: e.code, message: e.message, frame: e.frame, ...(e.cmd ? { line: e.cmd.line, loop: e.cmd.loop } : {}) }
+    if (e instanceof ObserverThrow) throw e.thrown
+    x.failure = { error: e }
   }
-  return { log: s.log, summary: summarize(s.log, r, s), forte, cooldowns, ...(error ? { error } : {}) }
+  return x
+}
+
+/** 记一条外部干预记录（DD-01 §3.8；架构 §4.1）：一直都有，不进日志的触发队列。afterEventSeq = 此刻日志里最后一条的下标 */
+function intervene(sim: Sim, s: SimState, rec: Pick<InterventionRecord, 'kind' | 'target' | 'before' | 'adopted' | 'delta'>): void {
+  const list = sim.interventions
+  const afterEventSeq = s.log.length - 1
+  list.push({
+    index: list.length, f: s.frame, phase: sim.k.at.phase, afterEventSeq,
+    orderInAnchor: list.filter(i => i.afterEventSeq === afterEventSeq).length,
+    ...rec, firedTriggers: true, skippedTriggers: [],
+  })
 }
 
 // ---------------------------------------------------------------------------
