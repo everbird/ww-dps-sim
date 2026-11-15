@@ -1,6 +1,6 @@
 // src/engine/buffs.ts —— buff 实例：施加、叠层与刷新、计时到期、结算时哪些生效（总设计 §6.8、TD-07 §2、§3、§8）
 // 触发（什么事件让 buff 施加、被消耗）在 triggers.ts；这里只管实例本身与"落到谁身上"。
-import type { Slot } from '../data/common'
+import type { CharName, Slot } from '../data/common'
 import type { BuffDef } from '../data/buff.schema'
 import { log } from './kernel'
 import type { ActiveBuff } from './formula'
@@ -28,6 +28,7 @@ export function targetsOf(def: BuffDef, owner: Slot | 'env', s: SimState, nextIn
 }
 
 const targetName = (s: SimState, t: Slot | 'enemy'): string => (t === 'enemy' ? 'enemy' : s.chars[t].name)
+export const ownerName = (s: SimState, o: Slot | 'env'): CharName | 'env' => (o === 'env' ? 'env' : s.chars[o].name)
 
 /** 施加：同一定义对同一目标只有一个实例；再次施加时加层（不超过上限）并按 refresh 刷新持续时间 */
 export function applyBuff(s: SimState, reg: RegisteredBuff, target: Slot | 'enemy', stacks = reg.def.stackGain): BuffRuntime {
@@ -41,7 +42,7 @@ export function applyBuff(s: SimState, reg: RegisteredBuff, target: Slot | 'enem
     b = { id: s.nextId++, defId: def.id, owner: reg.owner, target, stacks: Math.min(def.maxStacks, stacks), remaining: duration, lastTriggerAt: s.battleFrames, extended: 0 }
     s.buffs.push(b)
   }
-  log(s, { type: 'buffApply', buff: def.id, target: targetName(s, target), stacks: b.stacks, remaining: b.remaining })
+  log(s, { type: 'buffApply', buff: def.id, owner: ownerName(s, b.owner), target: targetName(s, target), instanceId: b.id, stacks: b.stacks, remaining: b.remaining })
   return b
 }
 
@@ -86,14 +87,14 @@ export function extendBuff(s: SimState, reg: RegisteredBuff): boolean {
     b.remaining += ext.frames
     b.extended++
     done = true
-    log(s, { type: 'buffApply', buff: b.defId, target: targetName(s, b.target), stacks: b.stacks, remaining: b.remaining })
+    log(s, { type: 'buffApply', buff: b.defId, owner: ownerName(s, b.owner), target: targetName(s, b.target), instanceId: b.id, stacks: b.stacks, remaining: b.remaining })
   }
   return done
 }
 
 export function removeBuff(s: SimState, b: BuffRuntime, reason: 'timeout' | 'switchOut' | 'removed'): void {
   s.buffs = s.buffs.filter(x => x !== b)
-  log(s, { type: 'buffExpire', buff: b.defId, target: targetName(s, b.target), reason })
+  log(s, { type: 'buffExpire', buff: b.defId, owner: ownerName(s, b.owner), target: targetName(s, b.target), instanceId: b.id, reason })
 }
 
 /** P6：按战斗速率倒数，到 0 移除（全局时停期间不走，总设计不变量 6） */

@@ -38,6 +38,8 @@ export interface ResolvedScenario {
   }
   warnings: string[]                        // 装配期警告（数据版本不符、未处理的 flag…）
   goal: Goal
+  /** 明确声明"本场景有意不含谐度破坏"及原因（DD-03 §7.4、DD-02 §3.7） */
+  tuneBreakOmitted?: { reason: 'sourceSilent' | 'notInGame' | 'deliberate'; note?: string }
 }
 
 /** 比较的目标（TD-10 §7，场景的 goal）：稳态；打死 hp 血（scale = 敌人生命的几倍，直接写血量时 null）；前 frames 个战斗帧 */
@@ -309,8 +311,8 @@ export type SimEvent =
   | (EventBase & { type: 'intro'; char: CharName; action: ActionId })
   // outro：char = 延奏的发出者（切出者），to = 这次变奏的角色；instance = 延奏动作独立时间线的实例号（TD-05 §6）
   | (EventBase & { type: 'outro'; char: CharName; to: CharName; instance?: number })
-  | (EventBase & { type: 'buffApply'; buff: string; target: CharName | 'enemy'; stacks: number; remaining: number | 'inf' })
-  | (EventBase & { type: 'buffExpire'; buff: string; target: CharName | 'enemy'; reason: 'timeout' | 'switchOut' | 'removed' })
+  | (EventBase & { type: 'buffApply'; buff: string; owner: CharName | 'env'; target: CharName | 'enemy'; instanceId: number; stacks: number; remaining: number | 'inf' })
+  | (EventBase & { type: 'buffExpire'; buff: string; owner: CharName | 'env'; target: CharName | 'enemy'; instanceId: number; reason: 'timeout' | 'switchOut' | 'removed' })
   // cause：cast / cost / hook / break / outro，或资源型效果的 id；note：钩子给的说明（ctx.addResource 的第 4 个参数）
   | (EventBase & { type: 'resource'; char: CharName; resource: ResourceKind; delta: number; value: number; cause: string; note?: string })
   | (EventBase & { type: 'resourceFull'; char: CharName; resource: 'energy' | 'concerto' })   // TD-06 §6
@@ -338,6 +340,13 @@ export type SimEvent =
 
 export type SimEventType = SimEvent['type']
 
+export interface BuffUptimeRow {
+  buff: string
+  owner: CharName | 'env'
+  target: CharName | 'enemy'
+  uptime: number
+}
+
 export interface Summary {
   totalDamage: number
   windowFrames: number
@@ -346,7 +355,8 @@ export interface Summary {
   byChar: Record<CharName, { damage: number; share: number }>
   byAction: { char: CharName; action: ActionId; damage: number; hits: number; share: number }[]
   resourceTimeline: { f: number; energy: [number, number, number]; concerto: [number, number, number] }[]
-  buffUptime: Record<string, number>        // 0–1，按战斗时钟
+  buffUptime: Record<string, number>        // 0–1，按战斗时钟（buff→target 合并后并集）
+  buffUptimeBy: BuffUptimeRow[]             // 0–1，按 (buff, owner, target) 细分（DD-03 §5.2）
   waits: { line: number; item: number; loop: number; code: WaitCode; frames: number; reason: string }[]
   skipped: { line: number; item: number; loop: number; reason: string }[]   // 跳过的指令：可选 "?" 的条件不满足、补位 "~" 不需要
   warnings: { code: string; message: string; line?: number }[]
@@ -361,11 +371,14 @@ export interface Summary {
    *  spread：窗口挪一轮 DPS 变多少（比例，误差条，docs/engine-quality-plan.md P3）：去掉稳态的第一轮或最后一轮各算一次，取离得远的；
    *  稳态只有一两轮时取各轮 DPS 离稳态最远的。比较两条轴时，差得比这个小的不算"更好" */
   steady?: { from: number; to: number; frames: number; damage: number; dps: number; spread: number }
-  /** 打死敌人（1 倍生命，TD-10 §7）：frame = 累计伤害到这么多的那一下的战斗帧；日志里没打到时 null，estimate 按稳态（没有稳态按整个窗口）的 DPS 往后估 */
-  kill: { hp: number; frame: number | null; estimate: number | null }
+  /** 打死敌人（1 倍生命，TD-10 §7）：frame = 累计伤害到这么多的那一下的战斗帧，eventSeq = 它在 log 的下标，overflow = 溢出的那截；日志里没打到时 null，estimate 按稳态（没有稳态按整个窗口）的 DPS 往后估 */
+  kill: { hp: number; frame: number | null; eventSeq: number | null; overflow: number | null; estimate: number | null }
   /** 场景的目标不是稳态时（TD-10 §7）：比较口径 [lo, hi)（战斗帧）、这段的伤害与每秒伤害。kill 的 dps = 血量 ÷ 击杀秒（越大越快），
-   *  没打到时按估的击杀帧（reached = false）；window 的窗口比日志长时 reached = false */
-  goal?: { kind: 'kill' | 'window'; label: string; lo: number; hi: number; damage: number; dps: number; reached: boolean }
+   *  没打到时按估的击杀帧（reached = false）；window 的窗口比日志长时 reached = false。kill 达标时 lethal 记录致死一击事件与溢出 */
+  goal?: {
+    kind: 'kill' | 'window'; label: string; lo: number; hi: number; damage: number; dps: number; reached: boolean
+    lethal?: { eventSeq: number; rawDamage: number; overflow: number }
+  }
   /** 敌人量表（TD-06 §13）：窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害 */
   enemy: { disharmony: number; tuneBreaks: number; tuneBreakDamage: number; breaks: number }
   /** 这次碰到的假设（总设计 T16）：按假设表的顺序；每次都适用的（tracked: false）不列，见 ASSUMPTIONS。firstFrame 是战斗帧 */

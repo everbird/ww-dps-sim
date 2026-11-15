@@ -142,6 +142,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     },
     warnings,
     goal: goalOf(sc.goal, enemy),
+    ...(sc.tuneBreakOmitted ? { tuneBreakOmitted: sc.tuneBreakOmitted } : {}),
   }
 }
 

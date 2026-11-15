@@ -21,14 +21,16 @@ async function main(): Promise<number> {
   const r = resolveScenario(sc, await loadGameData())
   const t = Date.now()
   const x = fitVariants(r, sc, { n: Number(opt.n ?? 60), near: Number(opt.near ?? 4) })
-  const ran = x.rows.filter(row => row.fit)
-  console.log(`${pos[0]}：贴合度 ${x.base.score.toFixed(2)}（越小越贴合；切人与录像动作的平均差 + 类型不对每次 ${FIT_WEIGHTS.typeMiss} 秒 + 没找到每个 ${FIT_WEIGHTS.unmatched} 秒 + 血条每 1% 记 ${FIT_WEIGHTS.hpPct} 秒 + 协奏环、回路条资源每 1% 各记 ${FIT_WEIGHTS.concertoPct}、${FIT_WEIGHTS.corePct} 秒）`)
+  const baseScore = x.base.score!
+  const ran = x.rows.filter(row => row.fit && row.fit.score !== null)
+  const failedCount = x.rows.length - ran.length
+  console.log(`${pos[0]}：贴合度 ${baseScore.toFixed(2)}（越小越贴合；切人与录像动作的平均差 + 类型不对每次 ${FIT_WEIGHTS.typeMiss} 秒 + 没找到每个 ${FIT_WEIGHTS.unmatched} 秒 + 血条每 1% 记 ${FIT_WEIGHTS.hpPct} 秒 + 协奏环、回路条资源每 1% 各记 ${FIT_WEIGHTS.concertoPct}、${FIT_WEIGHTS.corePct} 秒）`)
   console.log(`  ${fmt(x.base)}`)
-  console.log(`变体：轴的改法候选 ${x.candidates} 条（等距取 ${opt.n ?? 60}）+ 假设开关；跑通 ${ran.length}、跑不通 ${x.rows.length - ran.length}；${((Date.now() - t) / 1000).toFixed(1)} 秒\n`)
+  console.log(`变体：轴的改法候选 ${x.candidates} 条（等距取 ${opt.n ?? 60}）+ 假设开关；跑通 ${ran.length}、跑不通 ${failedCount}、不可评估 ${x.unassessable.length}；${((Date.now() - t) / 1000).toFixed(1)} 秒\n`)
   const top = Number(opt.top ?? 15)
-  const better = ran.filter(row => row.fit!.score < x.base.score - 1e-9)
+  const better = ran.filter(row => row.fit!.score! < baseScore - 1e-9)
   console.log(better.length ? `比原场景更贴合的 ${better.length} 条（前 ${Math.min(top, better.length)}）：` : '没有比原场景更贴合的变体。')
-  for (const row of better.slice(0, top)) console.log(`  ${row.fit!.score.toFixed(2)}（${(row.fit!.score - x.base.score).toFixed(2)}）${row.desc}\n      ${fmt(row.fit!)}`)
+  for (const row of better.slice(0, top)) console.log(`  ${row.fit!.score!.toFixed(2)}（${(row.fit!.score! - baseScore).toFixed(2)}）${row.desc}\n      ${fmt(row.fit!)}`)
   return 0
 }
 

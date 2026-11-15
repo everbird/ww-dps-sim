@@ -3,7 +3,7 @@
 // 退出码：0 成功；1 场景有错或运行期报错；2 用法错误。
 import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
-import { compareRuns, runScenario, type Diff, type PanelView } from '../engine/analysis'
+import { tryCompareRuns, runScenario, type Diff, type PanelView } from '../engine/analysis'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart, pct, pct2, signed, width, withOverrides, OVERRIDE_FLAGS, OVERRIDE_USAGE } from './format'
 
@@ -26,15 +26,22 @@ async function main(): Promise<number> {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
-  for (const [f, x] of [[fa, a], [fb, b]] as const)
-    if (x.res.error) { console.error(`${f} 运行出错（第 ${x.res.error.frame} 帧）：${x.res.error.message}`); return 1 }
-  const c = compareRuns(a, b)
+  const cr = tryCompareRuns(a, b)
+  if (!cr.ok) { console.error(cr.reason); return 1 }
+  const c = cr.value
+  if (c.scopeMismatch) console.log(`⚠ ${c.scopeMismatch.note}\n`)
   const [na, nb] = basename(fa) !== basename(fb) ? [basename(fa), basename(fb)] : [fa, fb]
   const w = Math.max(width(na), width(nb)) + 2
   const span = (x: { lo: number; hi: number }) => `共 ${((x.hi - x.lo) / 60).toFixed(2)} 秒`
   console.log(`基准  ${padEnd(na, w)}${c.base.label} DPS ${fmt(c.base.dps)}（${span(c.base)}）`)
   console.log(`对比  ${padEnd(nb, w)}${c.other.label} DPS ${fmt(c.other.dps)}（${span(c.other)}）` +
     `   ${signed(c.delta)}（${signed(c.pct, x => pct2(x))}）`)
+  if (c.baseOverflow || c.otherOverflow) {
+    const parts: string[] = []
+    if (c.baseOverflow) parts.push(`基准溢出 ${fmt(c.baseOverflow.overflow)}（未封顶共 ${fmt(c.baseOverflow.rawTotal)}）`)
+    if (c.otherOverflow) parts.push(`对比溢出 ${fmt(c.otherOverflow.overflow)}（未封顶共 ${fmt(c.otherOverflow.rawTotal)}）`)
+    console.log(`      击杀截断按有效扣血封顶：${parts.join('、')}`)
+  }
   // 误差条（docs/engine-quality-plan.md P3）：稳态窗口挪一轮 DPS 就会变这么多，差得比它小的不算"更好"
   const noise = Math.max(c.base.spread, c.other.spread)
   if (noise > 0) console.log(`      稳态窗口挪一轮 DPS 变 ±${pct2(noise)}（基准 ±${pct2(c.base.spread)}、对比 ±${pct2(c.other.spread)}）` +
@@ -47,8 +54,47 @@ async function main(): Promise<number> {
   }
   table('分角色（每秒伤害）', c.byChar, fmt, 0.5)
   table(`分动作（每秒伤害，差额前 ${TOP}）`, c.byAction.slice(0, TOP), fmt, 0.5)
-  table(`buff 覆盖率（差 ≥ 1 个百分点，前 ${TOP}）`, c.uptime.filter(d => Math.abs(d.delta) >= 0.01).slice(0, TOP), pct, 0)
+  printUptimeTable(c.uptime, c.uptimeBy, TOP)
   return 0
+}
+
+function parseOwnerKey(k: string): { unionKey: string; owner: string } | null {
+  const arrow = k.lastIndexOf('→')
+  if (arrow < 0) return null
+  const left = k.slice(0, arrow)
+  const target = k.slice(arrow + 1)
+  const open = left.lastIndexOf(' [')
+  if (open < 0 || !left.endsWith(']')) return null
+  return { unionKey: `${left.slice(0, open)}→${target}`, owner: left.slice(open + 2, -1) }
+}
+
+function printUptimeTable(union: Diff[], byOwner: Diff[], top: number): void {
+  const ownersOf = new Map<string, Diff[]>()
+  for (const row of byOwner) {
+    const p = parseOwnerKey(row.key)
+    if (!p) continue
+    const list = ownersOf.get(p.unionKey) ?? []
+    list.push({ ...row, key: p.owner })
+    ownersOf.set(p.unionKey, list)
+  }
+  const hasOwnerDiff = (k: string) => {
+    const list = ownersOf.get(k)
+    return list !== undefined && list.length > 1 && list.some(x => Math.abs(x.delta) >= 0.01)
+  }
+  const shown = union
+    .filter(d => Math.abs(d.delta) >= 0.01 || hasOwnerDiff(d.key))
+    .slice(0, top)
+  if (shown.length === 0) return
+  console.log(`\nbuff 覆盖率（差 ≥ 1 个百分点，前 ${top}）`)
+  for (const d of shown) {
+    console.log(`  ${padEnd(d.key, 26)}${padStart(pct(d.base), 10)} → ${padStart(pct(d.other), 10)}   ${signed(d.delta, x => pct(x))}`)
+    const subs = ownersOf.get(d.key)
+    if (subs && subs.length > 1) {
+      for (const s of subs) {
+        console.log(`    ${padEnd(`└ ${s.key}`, 24)}${padStart(pct(s.base), 10)} → ${padStart(pct(s.other), 10)}   ${signed(s.delta, x => pct(x))}`)
+      }
+    }
+  }
 }
 
 function table(title: string, rows: Diff[], f: (x: number) => string, eps: number): void {

@@ -8,7 +8,7 @@ import type { Scenario } from '../data/scenario.schema'
 import { composeStat } from './formula'
 import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
-import { battleFrameOf, buffUptime, hitValue } from './summary'
+import { battleFrameOf, buffUptimeDetail, hitValue } from './summary'
 import type { ResolvedScenario, SimResult } from './types'
 import { round, roundTo } from './num'
 
@@ -19,38 +19,67 @@ export function runScenario(sc: Scenario, data: GameData): Run {
   return { r, res: simulate(r) }
 }
 
-/** 比较口径：[lo, hi) 是战斗帧；spread：窗口挪一轮 DPS 变多少（Summary.steady.spread；整个窗口、按目标时 0） */
-export interface Basis { label: string; lo: number; hi: number; damage: number; dps: number; spread: number }
+import { basisOf, scopeMismatchOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from './basis'
+export { basisOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from './basis'
 
-export function basisOf(res: SimResult): Basis {
-  const s = res.summary
-  // 场景的目标不是稳态（TD-10 §7）：打死 boss 按"血量 ÷ 击杀秒"（越大越快），限时按窗口内每秒伤害；同一个数排名，下游不用改
-  if (s.goal) return { label: s.goal.label, lo: s.goal.lo, hi: s.goal.hi, damage: s.goal.damage, dps: s.goal.dps, spread: 0 }
-  if (s.steady && s.perLoop) {
-    // 按轮号找稳态第一轮：有启动轴时 perLoop[0] 是第 0 轮，不能按下标算（否则窗口错一轮）
-    const lo = s.perLoop.find(p => p.loop === s.steady!.from)!.start
-    const label = `稳态（第 ${s.steady.from}${s.steady.to > s.steady.from ? `–${s.steady.to}` : ''} 轮）`
-    return { label, lo, hi: lo + s.steady.frames, damage: s.steady.damage, dps: s.steady.dps, spread: s.steady.spread }
-  }
-  return { label: '整个窗口', lo: 0, hi: s.windowFrames, damage: s.totalDamage, dps: s.dps, spread: 0 }
+/** 窗口内各角色、各动作（"角色 动作"）的伤害与每秒伤害；同一个窗口里加起来就是 basis.dps（DD-03 §6.2） */
+export interface DamageBreakdown {
+  damageByChar: Map<string, number>
+  damageByAction: Map<string, number>
+  byChar: Map<string, number>
+  byAction: Map<string, number>
+  zeroDuration: boolean
+  overflow?: number
+  rawByChar?: Map<string, number>
+  rawByAction?: Map<string, number>
 }
 
-/** 窗口内各角色、各动作（"角色 动作"）的每秒伤害；同一个窗口里加起来就是 basis.dps */
-export function dpsBreakdown(res: SimResult, b: Basis): { byChar: Map<string, number>; byAction: Map<string, number> } {
+export function dpsBreakdown(res: SimResult, b: Basis): DamageBreakdown {
   const secs = (b.hi - b.lo) / 60
+  const zeroDuration = !(secs > 0 && Number.isFinite(secs))
+  const damageByChar = new Map<string, number>()
+  const damageByAction = new Map<string, number>()
   const byChar = new Map<string, number>()
   const byAction = new Map<string, number>()
-  if (secs <= 0) return { byChar, byAction }
-  for (const e of res.log) {
+  const rawByChar = b.lethal ? new Map<string, number>() : undefined
+  const rawByAction = b.lethal ? new Map<string, number>() : undefined
+
+  for (let seq = 0; seq < res.log.length; seq++) {
+    const e = res.log[seq]!
     if (e.type !== 'hit' || e.dmg === null) continue
-    const f = battleFrameOf(e)
-    if (f < b.lo || f >= b.hi) continue
-    const v = hitValue(e) / secs
-    byChar.set(e.char, (byChar.get(e.char) ?? 0) + v)
-    const k = `${e.char} ${e.action}`
-    byAction.set(k, (byAction.get(k) ?? 0) + v)
+    if (b.lethal) {
+      if (seq > b.lethal.eventSeq) continue
+      const raw = hitValue(e)
+      const eff = seq === b.lethal.eventSeq ? Math.max(0, raw - b.lethal.overflow) : raw
+      const k = `${e.char} ${e.action}`
+      rawByChar!.set(e.char, (rawByChar!.get(e.char) ?? 0) + raw)
+      rawByAction!.set(k, (rawByAction!.get(k) ?? 0) + raw)
+      damageByChar.set(e.char, (damageByChar.get(e.char) ?? 0) + eff)
+      damageByAction.set(k, (damageByAction.get(k) ?? 0) + eff)
+      if (!zeroDuration) {
+        byChar.set(e.char, (byChar.get(e.char) ?? 0) + eff / secs)
+        byAction.set(k, (byAction.get(k) ?? 0) + eff / secs)
+      }
+    } else {
+      if (zeroDuration) continue
+      const f = battleFrameOf(e)
+      if (f < b.lo || f >= b.hi) continue
+      const raw = hitValue(e)
+      const k = `${e.char} ${e.action}`
+      damageByChar.set(e.char, (damageByChar.get(e.char) ?? 0) + raw)
+      damageByAction.set(k, (damageByAction.get(k) ?? 0) + raw)
+      byChar.set(e.char, (byChar.get(e.char) ?? 0) + raw / secs)
+      byAction.set(k, (byAction.get(k) ?? 0) + raw / secs)
+    }
   }
-  return { byChar, byAction }
+  return {
+    damageByChar,
+    damageByAction,
+    byChar,
+    byAction,
+    zeroDuration,
+    ...(b.lethal ? { overflow: b.lethal.overflow, rawByChar, rawByAction } : {}),
+  }
 }
 
 /** 静态面板里常看的几项（共鸣效率含常驻的共鸣效率 buff，同 pnpm sim 的显示） */
@@ -68,6 +97,11 @@ export function panelsOf(r: ResolvedScenario): PanelView[] {
 }
 
 export interface Diff { key: string; base: number; other: number; delta: number }
+export interface LethalOverflowView {
+  overflow: number
+  rawTotal: number
+}
+
 export interface Comparison {
   base: Basis
   other: Basis
@@ -76,7 +110,11 @@ export interface Comparison {
   byChar: Diff[]                            // 每秒伤害，按 |差| 从大到小
   byAction: Diff[]
   uptime: Diff[]                            // buff 覆盖率（"buff→目标"），按 |差| 从大到小
+  uptimeBy: Diff[]                          // buff 覆盖率按提供者展开（"buff [提供者]→目标"），DD-03 §5.2
   panels: { base: PanelView[]; other: PanelView[] }
+  scopeMismatch?: ScopeMismatch
+  baseOverflow?: LethalOverflowView
+  otherOverflow?: LethalOverflowView
 }
 
 function diffs(a: Map<string, number>, b: Map<string, number>): Diff[] {
@@ -88,22 +126,60 @@ function diffs(a: Map<string, number>, b: Map<string, number>): Diff[] {
   }).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
 }
 
-export function compareRuns(a: Run, b: Run): Comparison {
-  const ba = basisOf(a.res)
-  const bb = basisOf(b.res)
+export type CompareResult =
+  | { ok: true; value: Comparison }
+  | { ok: false; status: BasisStatus; reason: string; side: 'base' | 'other'; base: BasisResult; other: BasisResult }
+
+export function tryCompareRuns(a: Run, b: Run): CompareResult {
+  const ua = usableBasis(a.res)
+  const ub = usableBasis(b.res)
+  if (!ua.ok) return { ok: false, status: ua.status, reason: `基准不可比（${ua.reason}）`, side: 'base', base: ua, other: ub }
+  if (!ub.ok) return { ok: false, status: ub.status, reason: `对比不可比（${ub.reason}）`, side: 'other', base: ua, other: ub }
+  const ba = ua.basis
+  const bb = ub.basis
   const da = dpsBreakdown(a.res, ba)
   const db = dpsBreakdown(b.res, bb)
   // 标记型 buff（计时、状态）不列：只看进伤害的
   const markers = new Set([...a.r.buffs, ...b.r.buffs].filter(x => x.def.zone === undefined).map(x => x.def.id))
-  const uptime = (run: Run, x: Basis) =>
-    new Map(Object.entries(buffUptime(run.res.log, x.lo, x.hi)).filter(([k]) => !markers.has(k.slice(0, k.lastIndexOf('→')))))
-  const ua = uptime(a, ba)
-  const ub = uptime(b, bb)
-  return {
-    base: ba, other: bb, delta: bb.dps - ba.dps, pct: ba.dps > 0 ? (bb.dps - ba.dps) / ba.dps : 0,
-    byChar: diffs(da.byChar, db.byChar), byAction: diffs(da.byAction, db.byAction), uptime: diffs(ua, ub),
-    panels: { base: panelsOf(a.r), other: panelsOf(b.r) },
+  const uptimeOf = (run: Run, x: Basis) => {
+    const d = buffUptimeDetail(run.res.log, x.lo, x.hi, run.r.team.map(m => m.def.name))
+    const union = new Map(Object.entries(d.union).filter(([k]) => !markers.has(k.slice(0, k.lastIndexOf('→')))))
+    const byOwner = new Map<string, number>()
+    for (const r of d.rows) {
+      if (markers.has(r.buff)) continue
+      byOwner.set(`${r.buff} [${r.owner}]→${r.target}`, r.uptime)
+    }
+    return { union, byOwner }
   }
+  const uaMap = uptimeOf(a, ba)
+  const ubMap = uptimeOf(b, bb)
+  const scopeMismatch = scopeMismatchOf(ba.scope, bb.scope)
+  const overflowOf = (d: DamageBreakdown): LethalOverflowView | undefined => {
+    if (d.overflow === undefined) return undefined
+    let rawTotal = 0
+    if (d.rawByChar) for (const v of d.rawByChar.values()) rawTotal += v
+    return { overflow: d.overflow, rawTotal }
+  }
+  const baseOverflow = overflowOf(da)
+  const otherOverflow = overflowOf(db)
+  return {
+    ok: true,
+    value: {
+      base: ba, other: bb, delta: bb.dps - ba.dps, pct: ba.dps > 0 ? (bb.dps - ba.dps) / ba.dps : 0,
+      byChar: diffs(da.byChar, db.byChar), byAction: diffs(da.byAction, db.byAction),
+      uptime: diffs(uaMap.union, ubMap.union), uptimeBy: diffs(uaMap.byOwner, ubMap.byOwner),
+      panels: { base: panelsOf(a.r), other: panelsOf(b.r) },
+      ...(scopeMismatch ? { scopeMismatch } : {}),
+      ...(baseOverflow ? { baseOverflow } : {}),
+      ...(otherOverflow ? { otherOverflow } : {}),
+    },
+  }
+}
+
+export function compareRuns(a: Run, b: Run): Comparison {
+  const c = tryCompareRuns(a, b)
+  if (!c.ok) throw new Error(c.reason)
+  return c.value
 }
 
 export type Tier = 'avg' | 'max' | 'min'
@@ -127,8 +203,12 @@ export function marginal(sc: Scenario, data: GameData, slot: Slot, tier: Tier = 
   if (who.echoes.length === 0) throw new Error(`${who.char} 没装声骸：副词条要加在声骸上`)
   // 跑不通的仿真只有前半段日志，汇总的数不能当结果比（R6，docs/review-2026-10-22.md）：基准跑不通就停，变体跑不通单独标出
   const res0 = runScenario(sc, data).res
-  if (res0.error) throw new Error(`原场景跑不通（${res0.error.code}）：${res0.error.message}`)
-  const base = basisOf(res0)
+  const u0 = usableBasis(res0)
+  if (!u0.ok) {
+    const tag = res0.error?.code ?? u0.status
+    throw new Error(`原场景跑不通（${tag}）：${u0.reason}`)
+  }
+  const base = u0.basis
   const rows: MarginalRow[] = []
   for (const [stat, values] of Object.entries(tiers) as [StatKey, number[]][]) {
     const value = tierValue(values, tier)
@@ -136,8 +216,9 @@ export function marginal(sc: Scenario, data: GameData, slot: Slot, tier: Tier = 
     const last = variant.team[slot]!.echoes.at(-1)!
     last.subs = { ...last.subs, [stat]: (last.subs[stat] ?? 0) + value }
     const res = runScenario(variant, data).res
-    if (res.error) { rows.push({ stat, value, dps: 0, delta: 0, pct: 0, error: `${res.error.code}：${res.error.message}` }); continue }
-    const b = basisOf(res)
+    const u = usableBasis(res)
+    if (!u.ok) { rows.push({ stat, value, dps: 0, delta: 0, pct: 0, error: u.reason }); continue }
+    const b = u.basis
     rows.push({ stat, value, dps: b.dps, delta: b.dps - base.dps, pct: base.dps > 0 ? (b.dps - base.dps) / base.dps : 0 })
   }
   rows.sort((x, y) => Number(x.error !== undefined) - Number(y.error !== undefined) || y.delta - x.delta)

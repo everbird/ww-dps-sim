@@ -6,7 +6,7 @@
 //   ⑥ 卡帧点：循环轴的每个决策点（切人、不是连段后续的出招）单独每轮晚 N 帧，DPS 掉多少——哪几处靠"一合法就按"撑着。
 // 全部按期望值算；比较口径同对比（basisOf：有分轮取稳态，否则整个窗口）。纯函数，输入装配结果。
 import type { Slot } from '../data/common'
-import { basisOf, panelsOf, type Basis } from './analysis'
+import { basisOf, panelsOf, usableBasis, type Basis } from './analysis'
 import { ASSUMPTIONS, type AdjustPath } from './assumptions'
 import { INTENDED } from './scheduler'
 import { simulate } from './simulate'
@@ -60,8 +60,9 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
   let runs = 0
   const run = (x: ResolvedScenario): SimResult => { runs++; return simulate(x) }
   const base = run(r)
-  if (base.error) throw new Error(`场景运行报错，先把轴修好再看结论：${base.error.message}`)
-  const basis = basisOf(base)
+  const u0 = usableBasis(base)
+  if (!u0.ok) throw new Error(`场景跑不通，先把轴修好再看结论：${u0.status}：${u0.reason}`)
+  const basis = u0.basis
 
   // ① 共鸣效率需求：只看轴里放大招的人；改的是静态面板（常驻 buff 那部分不变）
   const panels = panelsOf(r)
@@ -72,7 +73,8 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     const current = panels[m.slot]!.energyRegen
     const ok = (total: number): boolean => {
       const res = run(withEnergyRegen(r, m.slot, total - offset))
-      return !res.error && energyWaitFrames(res, r, m.slot, basisOf(res)) === 0
+      const u = usableBasis(res)
+      return u.ok && energyWaitFrames(res, r, m.slot, u.basis) === 0
     }
     const floor = 1 + offset                                         // 面板共鸣效率不低于基础的 100%
     const need = ok(current)
@@ -84,8 +86,9 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
   // ② 操作容错
   const tolerance: ToleranceRow[] = (opts.delays ?? DEFAULT_DELAYS).map(delay => {
     const res = delay === r.options.inputDelay ? base : run({ ...r, options: { ...r.options, inputDelay: delay } })
-    if (res.error) return { delay, dps: null, change: null, loopSecs: null, error: res.error.message }
-    const b = basisOf(res)
+    const u = usableBasis(res)
+    if (!u.ok) return { delay, dps: null, change: null, loopSecs: null, error: `${u.status}：${u.reason}` }
+    const b = u.basis
     const st = res.summary.steady
     return {
       delay, dps: b.dps, change: basis.dps > 0 ? b.dps / basis.dps - 1 : null,
@@ -104,8 +107,9 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     for (const v of adj.values ?? []) {
       const res = run(adjusted(r, adj.path, v))
       const change = `${adj.path} = ${String(v)}`
-      if (res.error) { sensitivity.push({ id: a.id, what: a.what, change, dps: null, delta: null, pct: null, error: res.error.message }); continue }
-      const dps = basisOf(res).dps
+      const u = usableBasis(res)
+      if (!u.ok) { sensitivity.push({ id: a.id, what: a.what, change, dps: null, delta: null, pct: null, error: `${u.status}：${u.reason}` }); continue }
+      const dps = u.basis.dps
       sensitivity.push({ id: a.id, what: a.what, change, dps, delta: dps - basis.dps, pct: basis.dps > 0 ? dps / basis.dps - 1 : null, error: null })
     }
   }
@@ -125,11 +129,12 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     if (c.kind === 'act' && r.team[c.slot]!.actions[c.action]?.comboFrom?.length) continue
     const what = c.kind === 'switch' ? `switch ${name(c.to)}${c.expectIntro ? ' 变奏' : ''}` : `${name(c.slot)} ${c.action}${c.filler ? '~' : ''}`
     const res = run({ ...r, options: { ...r.options, inputDelayAt: { [`${c.line}.${c.item}`]: tightFrames } } })
-    if (res.error) {
-      tight.push({ line: c.line, item: c.item, what, dps: null, pct: null, loopSecs: null, extraFrames: null, dmgPct: null, kind: null, error: res.error.message })
+    const u = usableBasis(res)
+    if (!u.ok) {
+      tight.push({ line: c.line, item: c.item, what, dps: null, pct: null, loopSecs: null, extraFrames: null, dmgPct: null, kind: null, error: `${u.status}：${u.reason}` })
       continue
     }
-    const b = basisOf(res)
+    const b = u.basis
     const loopF = loopFrames(res)
     const extraFrames = loopF !== null && baseLoop !== null ? loopF - baseLoop : null
     // 每轮伤害 = DPS × 每轮时长

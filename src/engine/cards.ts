@@ -192,8 +192,16 @@ function measureAlone(sc: Scenario, data: GameData, base: ResolvedScenario, card
   try { r = resolveScenario(variant, data) } catch (e) { row.error = (e as Error).message.replace(/\s+/g, ' ').slice(0, 120); return row }
   const res = simulate(r)
   const n = body.length
-  if (res.error && (res.error.line === undefined || res.error.line <= n)) { row.error = `${res.error.code}：${res.error.message}`; return row }
-  if (res.error) { row.error = `出口跑不通（${res.error.code}：${res.error.message}）`; return row }   // 出口那一招没出手，量不出时长
+  const c = res.completion
+  if (c.status === 'engineError') { row.error = `${c.engineError?.code ?? 'engineError'}：${c.engineError?.message ?? ''}`; return row }
+  if (c.status === 'axisFailed') {
+    const f = c.axisFailure!
+    const line = f.unmetIntent?.cmd.line ?? res.error?.line
+    const code = f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind
+    if (line === undefined || line <= n) { row.error = `${code}：${f.detail}`; return row }
+    row.error = `出口跑不通（${code}：${f.detail}）`; return row   // 出口那一招没出手，量不出时长
+  }
+  if (c.status === 'truncated') { row.error = '出口跑不通（到帧数上限被截断）'; return row }
   row.m = measureSegment(res.log, r, card.char, 1, entry === 'field' ? [n] : [n - 1, n])
   if (!row.m) row.error = '没出手'
   return row

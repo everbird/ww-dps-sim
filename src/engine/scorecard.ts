@@ -8,6 +8,7 @@
 import type { GameData } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
 import { basisOf } from './analysis'
+import { sameDamageScope, scopeShortLabel, usableBasis, type DamageScope } from './basis'
 import { HAND_PROFILES, type HandProfile } from './sample'
 import { insight, type EnergyNeed } from './insight'
 import { resolveScenario } from './resolve'
@@ -17,6 +18,9 @@ import type { SimResult } from './types'
 export interface Downgrade { char: string; what: string; pct: number | null; error: string | null }
 export interface Scorecard {
   name: string
+  scope: DamageScope
+  scopeLabel: string
+  scopeDiffersFromTop: boolean
   goal: { label: string; dps: number }
   /** 打死 1 / 2 / 3 倍敌人生命的战斗秒；estimated = 日志里没打到、按稳态估的 */
   kills: { scale: number; secs: number | null; estimated: boolean }[]
@@ -38,7 +42,7 @@ export interface Scorecard {
 const pctOf = (x: number, base: number) => (base > 0 ? x / base - 1 : null)
 
 /** 一张卡（不含 pareto，组里算） */
-export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scorecard, 'pareto'> {
+export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scorecard, 'pareto' | 'scopeDiffersFromTop'> {
   let runs = 0
   const run = (s: Scenario): SimResult => { runs++; return simulate(resolveScenario(s, data)) }
   const r = resolveScenario(sc, data)
@@ -89,7 +93,8 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
   if (changed.length) {
     try {
       const res = run({ ...sc, team: team01 })
-      baseline = res.error ? { changed, pct: null, error: res.error.code } : { changed, pct: pctOf(basisOf(res).dps, base.dps), error: null }
+      const u = usableBasis(res)
+      baseline = u.ok ? { changed, pct: pctOf(u.basis.dps, base.dps), error: null } : { changed, pct: null, error: `${u.status}：${u.reason}` }
     } catch (e) { baseline = { changed, pct: null, error: e instanceof Error ? e.message.split('\n')[0]! : String(e) } }
   }
   const downgrades: Downgrade[] = []
@@ -98,9 +103,10 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
       const team = sc.team.map((x, j) => (j === i ? member : x)) as Scenario['team']
       try {
         const res = run({ ...sc, team })
-        downgrades.push(res.error
-          ? { char: m.char, what, pct: null, error: res.error.code }
-          : { char: m.char, what, pct: pctOf(basisOf(res).dps, base.dps), error: null })
+        const u = usableBasis(res)
+        downgrades.push(u.ok
+          ? { char: m.char, what, pct: pctOf(u.basis.dps, base.dps), error: null }
+          : { char: m.char, what, pct: null, error: `${u.status}：${u.reason}` })
       } catch (e) { downgrades.push({ char: m.char, what, pct: null, error: e instanceof Error ? e.message.split('\n')[0]! : String(e) }) }
     }
     if (m.chain > 0) tryOne(`${m.chain} 链 → ${m.chain - 1} 链`, { ...m, chain: m.chain - 1 })
@@ -113,7 +119,10 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
     return score(b) > score(a) ? b : a
   })
   return {
-    name, goal: { label: base.label, dps: base.dps }, kills, hands, density, energy, baseline, downgrades,
+    name,
+    scope: baseRes.damageScope,
+    scopeLabel: scopeShortLabel(baseRes.damageScope),
+    goal: { label: base.label, dps: base.dps }, kills, hands, density, energy, baseline, downgrades,
     assumptions: baseRes.summary.assumptions.map(a => a.id),
     fragile: fragile ? { id: fragile.id, change: fragile.change, pct: fragile.pct, error: fragile.error } : null,
     runs,
@@ -121,11 +130,13 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
 }
 
 /** 一组卡：标出帕累托前沿（零帧与"熟练"两个口径，越大越好） */
-export function scorecards(items: readonly { name: string; sc: Scenario }[], data: GameData, onCard?: (c: Omit<Scorecard, 'pareto'>) => void): Scorecard[] {
+export function scorecards(items: readonly { name: string; sc: Scenario }[], data: GameData, onCard?: (c: Omit<Scorecard, 'pareto' | 'scopeDiffersFromTop'>) => void): Scorecard[] {
   const cards = items.map(({ name, sc }) => { const c = scorecard(name, sc, data); onCard?.(c); return c })
-  const skilled = (c: Omit<Scorecard, 'pareto'>) => c.hands.find(h => h.tier === '熟练')?.dps ?? -Infinity
+  const top = cards.reduce<typeof cards[number] | undefined>((best, x) => (!best || x.goal.dps > best.goal.dps ? x : best), undefined)
+  const skilled = (c: Omit<Scorecard, 'pareto' | 'scopeDiffersFromTop'>) => c.hands.find(h => h.tier === '熟练')?.dps ?? -Infinity
   return cards.map(c => ({
     ...c,
+    scopeDiffersFromTop: top ? !sameDamageScope(c.scope, top.scope) : false,
     pareto: !cards.some(o => o !== c && o.goal.dps >= c.goal.dps && skilled(o) >= skilled(c) && (o.goal.dps > c.goal.dps || skilled(o) > skilled(c))),
   }))
 }

@@ -1,7 +1,8 @@
 // src/engine/sensitivity.ts —— 假设敏感度矩阵（docs/engine-quality-plan.md P2）：每个场景在假设表里每个开关（AdjustPath）翻过来后各跑一遍，
 // 再看对照场景（文件名 = 基准名 + "-差异"，见 AGENTS.md"约定"）比基准好多少，在哪条假设下会翻。
 // 用来给进游戏验证的项排先后：让结论翻得越多的假设越先测（docs/verify-guide.md）
-import { basisOf } from './analysis'
+import { sameDamageScope, scopeShortLabel, usableBasis } from './basis'
+import type { DamageScope, RunStatus } from './run-types'
 import { ASSUMPTIONS, type AdjustPath } from './assumptions'
 import { adjusted } from './insight'
 import { simulate } from './simulate'
@@ -9,7 +10,14 @@ import type { ResolvedScenario } from './types'
 
 export interface Flip { id: string; path: AdjustPath; value: number | boolean | string; label: string }
 /** 一格：DPS（比较口径同轴搜索：有分轮取稳态，否则整个窗口），跑不通时 error 是报错代码 */
-export interface Cell { dps: number | null; error: string | null }
+export interface Cell {
+  dps: number | null
+  error: string | null
+  status: RunStatus
+  scope?: DamageScope
+  scopeLabel?: string
+  scopeChanged?: { from: DamageScope; to: DamageScope }
+}
 export interface Row { name: string; base: Cell; flips: Cell[] }
 /** 对照场景比基准：缺省假设下、每个开关翻过来后各好多少（比例；null = 有一边跑不通） */
 export interface PairRow { name: string; base: string; gain: number | null; flips: (number | null)[] }
@@ -24,11 +32,20 @@ export function flipsOf(): Flip[] {
   })
 }
 
-function cell(r: ResolvedScenario): Cell {
+function cell(r: ResolvedScenario, baseScope?: DamageScope): Cell {
   try {
     const res = simulate(r)
-    return res.error ? { dps: null, error: res.error.code } : { dps: basisOf(res).dps, error: null }
-  } catch (e) { return { dps: null, error: e instanceof Error ? e.message : String(e) } }
+    const u = usableBasis(res)
+    const scopeChanged = baseScope && !sameDamageScope(baseScope, res.damageScope)
+      ? { from: baseScope, to: res.damageScope }
+      : undefined
+    const scopeLabel = scopeShortLabel(res.damageScope)
+    return u.ok
+      ? { dps: u.basis.dps, error: null, status: res.completion.status, scope: res.damageScope, scopeLabel, ...(scopeChanged ? { scopeChanged } : {}) }
+      : { dps: null, error: `${u.status}：${u.reason}`, status: u.status, scope: res.damageScope, scopeLabel, ...(scopeChanged ? { scopeChanged } : {}) }
+  } catch (e) {
+    return { dps: null, error: `engineError：${e instanceof Error ? e.message : String(e)}`, status: 'engineError' }
+  }
 }
 
 /** 名字（不带 .yaml）→ 它的基准：最长的、名字是它的前缀加"-"的另一个场景 */
@@ -41,7 +58,8 @@ export function baseOf(name: string, names: readonly string[]): string | null {
 export function sensitivityMatrix(scenarios: readonly { name: string; r: ResolvedScenario }[], onRow?: (row: Row) => void): Matrix {
   const flips = flipsOf()
   const rows = scenarios.map(({ name, r }) => {
-    const row: Row = { name, base: cell(r), flips: flips.map(f => cell(adjusted(r, f.path, f.value))) }
+    const base = cell(r)
+    const row: Row = { name, base, flips: flips.map(f => cell(adjusted(r, f.path, f.value), base.scope)) }
     onRow?.(row)
     return row
   })
