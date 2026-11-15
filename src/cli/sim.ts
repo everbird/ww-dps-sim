@@ -8,6 +8,7 @@ import { panelsOf } from '../engine/analysis'
 import { prepareRun, runPrepared } from '../engine/run'
 import { HAND_PROFILES, sampleRuns, type HandProfile } from '../engine/sample'
 import type { ResolvedScenario, SimResult } from '../engine/types'
+import { scopeNoteForRun, usableBasis } from '../engine/basis'
 import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec, withOverrides, OVERRIDE_FLAGS } from './format'
 import { collectRunEnvironment } from './run-env'
 
@@ -40,10 +41,10 @@ async function main(): Promise<number> {
   print(file, r, res)
   const target = resolve(out ?? `out/${basename(file, extname(file))}.json`)
   mkdirSync(dirname(target), { recursive: true })
-  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
+  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, damageScope: res.damageScope, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
-  if (runs > 0 && !res.error) printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
-  return res.error ? 1 : 0
+  if (runs > 0 && res.completion.status === 'completed') printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
+  return res.completion.status !== 'completed' ? 1 : 0
 }
 
 function print(file: string, r: ResolvedScenario, res: SimResult): void {
@@ -60,7 +61,9 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   console.log(`敌人  ${e.id} · ${e.level} 级 · 防御 ${e.def} · 抗性 ${Object.entries(e.res).map(([k, v]) => `${k} ${pct(v)}`).join(' ')}`)
   console.log(`      偏谐值上限 ${fmt(e.tunabilityMax)} · 白条 ${e.whiteBarTough > 0 ? `${fmt(e.whiteBarTough)}（削韧值）、瘫痪 ${(e.paralysisFrames / 60).toFixed(2)} 秒` : '无'}` +
     ` · 谐度破坏 ${r.options.tuneBreak === 'auto' ? '自动' : r.options.tuneBreak === 'manual' ? '只按轴里写的' : '关闭'}`)
-  console.log(`\n窗口 ${sec(s.windowFrames)}  总伤害 ${fmt(s.totalDamage)}  DPS ${fmt(s.dps)}${s.overflowDamage > 0 ? `  窗口外 ${fmt(s.overflowDamage)}` : ''}`)
+  const u = usableBasis(res)
+  const warn = u.ok ? '' : `不完整，不能当结论（${u.reason}）：`
+  console.log(`\n窗口 ${sec(s.windowFrames)}  总伤害 ${fmt(s.totalDamage)}  ${warn}DPS ${fmt(s.dps)}${s.overflowDamage > 0 ? `  窗口外 ${fmt(s.overflowDamage)}` : ''}`)
   // 打死敌人（TD-10 §7）：战斗秒（通关计时是战斗时钟，大招时停也停）；目标不是稳态时另列一行
   const k = s.kill
   console.log(`打死敌人（生命 ${fmt(k.hp)}）  ${k.frame !== null ? `第 ${(k.frame / 60).toFixed(1)} 战斗秒` : k.estimate !== null ? `没打死，估第 ${(k.estimate / 60).toFixed(1)} 战斗秒（--repeat 多跑几轮）` : '没打死'}`)
@@ -106,6 +109,8 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   }
   console.log('\n这次碰到的假设（总设计 T16；影响是估计的）')
   for (const l of assumptionLines(s)) console.log(l)
+  const scopeNote = scopeNoteForRun(res, r.tuneBreakOmitted?.note)
+  if (scopeNote) console.log(`\n${scopeNote}`)
   if (res.error) console.log(`\n报错（第 ${res.error.frame} 帧）：${res.error.message}`)
   // 运行身份与完成状态（DD-01 §3.3、§3.6）
   const x = res.identity.execution, c = res.completion, l = c.loops

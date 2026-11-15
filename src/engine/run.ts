@@ -64,6 +64,12 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
     if (!(e instanceof ResolveError)) throw e
     return { ok: false, issues: e.details.map(({ stage, message, ...at }): PrepareIssue => ({ stage, ...at, code: stage, message })) }
   }
+  if (resolved.tuneBreakOmitted && [...resolved.opening, ...resolved.commands].some(c => c.kind === 'act' && resolved.team[c.slot].actions[c.action]?.kind === 'tuneBreak')) {
+    return {
+      ok: false,
+      issues: [{ stage: 'resolve', code: 'tuneBreak.omittedButWritten', message: '写了 tuneBreakOmitted（声明未含谐度破坏），但轴里仍写了谐度破坏动作（DD-03 §7.4）' }],
+    }
+  }
   // 卡帧点的操作延迟场景里写不出来，装配后补进 options（跟着进身份）
   if (overrides.inputDelayAt && Object.keys(overrides.inputDelayAt).length > 0)
     resolved = { ...resolved, options: { ...resolved.options, inputDelayAt: { ...overrides.inputDelayAt } } }
@@ -192,6 +198,7 @@ export function resolvedDigestOf(r: ResolvedScenario, fresh = false): string {
     effects: of(r.effects, es => es.map(x => ({ ...x, def: of(x.def) }))),
     commands: digestOf(r.commands), opening: digestOf(r.opening),
     initial: r.initial, tuneBreakTiming: r.tuneBreakTiming, goal: r.goal,
+    ...(r.tuneBreakOmitted ? { tuneBreakOmitted: r.tuneBreakOmitted } : {}),
   })
 }
 
@@ -238,10 +245,11 @@ function strictReportOf(p: PreparedRun): StrictReport {
  *  省略的原因要等 DD-02 加场景的 tuneBreakOmitted 声明，此前没声明的都记 undeclared */
 export function damageScopeOf(r: ResolvedScenario): DamageScope {
   const written = [...r.opening, ...r.commands].some(c => c.kind === 'act' && r.team[c.slot].actions[c.action]?.kind === 'tuneBreak')
+  const omittedReason = r.tuneBreakOmitted?.reason ?? 'undeclared'
   switch (r.options.tuneBreak) {
     case 'auto': return { tuneBreak: { mode: written ? 'writtenPlusAuto' : 'auto' } }
-    case 'manual': return { tuneBreak: written ? { mode: 'written' } : { mode: 'omitted', reason: 'undeclared', gauge: 'accumulates' } }
-    case 'off': return { tuneBreak: { mode: 'omitted', reason: written ? 'disabledByOption' : 'undeclared', gauge: 'off' } }
+    case 'manual': return { tuneBreak: written ? { mode: 'written' } : { mode: 'omitted', reason: omittedReason, gauge: 'accumulates' } }
+    case 'off': return { tuneBreak: { mode: 'omitted', reason: written ? 'disabledByOption' : omittedReason, gauge: 'off' } }
   }
 }
 

@@ -106,7 +106,14 @@ export const ScenarioSchema = z.strictObject({
     // 连段后续玩家会预输入，不加。缺省 0 = 最早合法帧（假设 earliest-frame）
     inputDelay: z.number().int().min(0).default(0),
   }).default({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto', inputDelay: 0 }),
+  tuneBreakOmitted: z.strictObject({
+    reason: z.enum(['sourceSilent', 'notInGame', 'deliberate']),
+    note: z.string().optional(),
+  }).optional(),
 }).superRefine((s, ctx) => {
+  if (s.tuneBreakOmitted && (s.options?.tuneBreak ?? 'auto') === 'auto') {
+    ctx.addIssue({ code: 'custom', path: ['tuneBreakOmitted'], message: 'options.tuneBreak=auto 时会算谐度破坏，不能写 tuneBreakOmitted' })
+  }
   const names = s.team.map(m => m.char)
   names.forEach((n, i) => {
     if (names.indexOf(n) !== i) ctx.addIssue({ code: 'custom', path: ['team', i, 'char'], message: `角色重复：${n}` })

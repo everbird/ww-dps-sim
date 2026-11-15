@@ -6,9 +6,8 @@ import type { Scenario } from '../data/scenario.schema'
 import type { HitRecord, SimOptions } from './context'
 import type { CommandRef, ResolvedScenario, WaitCode } from './types'
 
-/** SimResult 或事件的业务字段每变一次加 1（DD-01 §3.3）。'1' = DD-01：SimResult 加 runId、identity、completion、interventions、
- *  strictReport、damageScope、ruleUsage */
-export const OUTPUT_SCHEMA_VERSION = '1'
+/** SimResult 或事件的业务字段每变一次加 1（DD-01 §3.3）。'2' = DD-03：buffApply/buffExpire 增加 owner/instanceId，新增 buffUptimeBy、kill.eventSeq/overflow、goal.lethal */
+export const OUTPUT_SCHEMA_VERSION = '2'
 
 // ---------------------------------------------------------------------------
 // 运行输入（DD-01 §3.2；架构 §2.1）

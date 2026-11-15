@@ -1,6 +1,6 @@
 // src/engine/sample.ts —— 多次抽样（总设计 T4，TD-10 §6 ⑤）：同一个场景按不同种子跑 N 次（逐段抽暴击，可加操作抖动），
 // 看比较口径下 DPS 的分布，并与期望值比。现在是研究工具：只抽暴击和操作延迟，操作失误（漏按、闪避失败）以后再说。
-import { basisOf } from './analysis'
+import { usableBasis } from './analysis'
 import { runSeeds } from './rng'
 import { simulate } from './simulate'
 import type { ResolvedScenario } from './types'
@@ -27,14 +27,16 @@ export type HandProfile = keyof typeof HAND_PROFILES
 
 export function sampleRuns(r: ResolvedScenario, opts: { runs: number; seed?: number; jitter?: number; hand?: { mean: number; sd: number } }): Sampling {
   const base = simulate(r)
-  if (base.error) throw new Error(`场景运行报错，先把轴修好再抽样：${base.error.message}`)
-  const b = basisOf(base)
+  const ub = usableBasis(base)
+  if (!ub.ok) throw new Error(`场景运行报错，先把轴修好再抽样：${ub.reason}`)
+  const b = ub.basis
   const dps: number[] = []
   const errors: string[] = []
   for (const seed of runSeeds(opts.seed ?? 1, opts.runs)) {
     const res = simulate(r, { sample: { seed, ...(opts.jitter ? { jitter: opts.jitter } : {}), ...(opts.hand ? { hand: opts.hand } : {}) } })
-    if (res.error) errors.push(res.error.message)
-    else dps.push(basisOf(res).dps)
+    const u = usableBasis(res)
+    if (!u.ok) errors.push(u.reason)
+    else dps.push(u.basis.dps)
   }
   return { label: b.label, expected: b.dps, dps, stats: dps.length ? statsOf(dps) : null, failed: errors.length, errors: [...new Set(errors)].slice(0, 5) }
 }

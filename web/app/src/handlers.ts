@@ -6,7 +6,8 @@ import type { GameData } from '../../../src/data/gamedata'
 import { InventorySchema, resolveInventory } from '../../../src/data/inventory.schema'
 import { ScenarioSchema, type Scenario } from '../../../src/data/scenario.schema'
 import { parseOrThrow } from '../../../src/data/validate'
-import { basisOf, compareRuns, marginal, panelsOf, runScenario } from '../../../src/engine/analysis'
+import { basisOf, marginal, panelsOf, runScenario, tryCompareRuns, usableBasis } from '../../../src/engine/analysis'
+import { scopeNoteForRun } from '../../../src/engine/basis'
 import { insight } from '../../../src/engine/insight'
 import { optimize, withEchoes } from '../../../src/engine/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
@@ -67,11 +68,25 @@ export const handlers: Handlers = {
   async run({ scenario, view }) {
     const { r, res, model } = await simulated(scenario)
     const b = basisOf(res)
+    const u = usableBasis(res)
+    const c = res.completion
+    const truncationNote = c.truncation
+      ? (c.truncation.kind === 'commandsPending'
+          ? `到帧数上限被截断：还有 ${c.truncation.remains.pendingCommands} 条指令没执行`
+          : '到帧数上限被截断：指令发完了，场上还有没走完的判定')
+      : null
+    const failMsg = c.engineError?.message ?? c.axisFailure?.detail
+    const failFrame = res.error?.frame
     return {
       // view：缺省是原版时间轴（含调试表）；写 web/designs 里的文件名就用那个视图
       html: renderView(view, model),
       dps: res.summary.dps, steady: res.summary.steady?.dps ?? null, label: b.label,
-      error: res.error ? `第 ${res.error.frame} 帧：${res.error.message}` : null,
+      completionStatus: c.status,
+      truncationNote,
+      usable: u.ok,
+      basisReason: u.ok ? null : u.reason,
+      scopeNote: scopeNoteForRun(res, r.tuneBreakOmitted?.note),
+      error: failMsg ? (failFrame !== undefined ? `第 ${failFrame} 帧：${failMsg}` : failMsg) : null,
       // 轴可能有问题：写了"变奏"的切人没变奏（TD-12 §2），单独列出、不折叠；其余是"提示"
       alerts: res.summary.warnings.filter(w => w.code === 'introMissed').map(w => w.message),
       warnings: [...r.warnings, ...res.summary.warnings.filter(w => w.code !== 'introMissed').map(w => w.message)],
@@ -86,9 +101,10 @@ export const handlers: Handlers = {
     const d = await gd()
     const sa = scenarioOf(base), sb = scenarioOf(other)
     const a = runScenario(sa, d), b = runScenario(sb, d)
-    for (const [s, x] of [[base, a], [other, b]] as const) if (x.res.error) throw new Error(`${s.name} 运行出错（第 ${x.res.error.frame} 帧）：${x.res.error.message}`)
-    const timeline = diffTimeline({ res: a.res, basis: basisOf(a.res), rotation: sa.rotation }, { res: b.res, basis: basisOf(b.res), rotation: sb.rotation })
-    return { ...compareRuns(a, b), timeline }
+    const cr = tryCompareRuns(a, b)
+    if (!cr.ok) throw new Error(cr.reason)
+    const timeline = diffTimeline({ res: a.res, basis: cr.value.base, rotation: sa.rotation }, { res: b.res, basis: cr.value.other, rotation: sb.rotation })
+    return { ...cr.value, timeline }
   },
   async insight({ scenario }) {
     return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真，加卡帧点（每个决策点一次）再多二三十次

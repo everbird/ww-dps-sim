@@ -65,7 +65,8 @@
           <div><dt>{out.label}</dt><dd>{fmt(out.steady ?? out.dps)}</dd></div>
           <div><dt>整个窗口</dt><dd>{fmt(out.dps)}</dd></div>
         </dl>
-        {#if out.error}<p class="error">运行报错（{out.error}）：日志保留到出错为止</p>{/if}
+        {#if out.error}<p class="error">运行未完成（{out.completionStatus} · {out.error}）：日志保留到出错为止</p>{:else if out.truncationNote}<p class="error">{out.truncationNote}{out.usable ? '' : '（不完整，不能当结论）'}</p>{:else if !out.usable && out.basisReason}<p class="error">不完整，不能当结论（{out.completionStatus}）：{out.basisReason}</p>{/if}
+        {#if out.scopeNote}<p class="error">{out.scopeNote}</p>{/if}
         {#if out.alerts.length}
           <div class="alerts" role="alert"><b>轴可能有问题（{out.alerts.length} 处）：写了"变奏"的切人没变奏</b><ul>{#each out.alerts as w}<li>{w}</li>{/each}</ul></div>
         {/if}

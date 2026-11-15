@@ -25,10 +25,12 @@
 | `overflowDamage` | 窗口外仍在结算的伤害（残留的领域、召唤物），不计入 DPS |
 | `byChar`、`byAction` | 窗口内按角色、按动作（角色 + 动作 ID）的伤害与占比。按动作是按**判定所在的动作**（xlsx 的组）：散华重击居合引爆的"E-引爆冰棱"算 E，"大招-引爆冰川"单独一行；对照 xlsx、`pnpm compare` 都用它。时间轴网页里动作的伤害另按引发的动作算（v0.1.6，§5.1） |
 | `resourceTimeline` | 每 `rules.sampleInterval` 个世界帧采一次三人的能量与协奏（TD-06 §6.1） |
-| `buffUptime` | "buff→目标" → 窗口内存在的比例（TD-07 §10.1） |
+| `buffUptime` | "buff→目标" → 窗口内存在帧的跨提供者并集比例（TD-07 §10.1） |
+| `buffUptimeBy`（DD-03） | 按 `(buff, owner, target)` 细分的覆盖率列表（`BuffUptimeRow[]`） |
 | `waits` | 不是写轴要求的等待（TD-09 §3.3） |
 | `warnings` | 装配与仿真中的提示；v0.1.6：含写了"变奏"的切人没变奏（code `introMissed`，TD-09 §3.5） |
 | `perLoop?`、`steady?` | 分轮与稳态（§2，`options.repeat ≥ 2` 或有启动轴；v0.1.2：启动轴是第 0 轮，记为"启动"） |
+| `kill`、`goal?`（v0.1.17 / DD-03） | 击杀统计（1 倍血帧、`estimated`、`eventSeq?`、致死溢出 `overflow?`）与非稳态目标汇总（含致死时的 `lethal?: { frame, eventSeq, overflow }`） |
 | `enemy`（v0.1.1） | 窗口内失谐、谐度破坏命中、白条打空的次数，与谐度破坏的伤害（TD-06 §14） |
 | `skipped`（v0.1.1） | 跳过的可选指令（排轴里写了 `?`，TD-09 §3.2）：第几轮第几条、原因 |
 | `assumptions`（v0.1.5） | 这次碰到的假设（总设计 T16）：编号、次数、第一次的战斗帧、几个例子，按假设表的顺序；每次都适用的（不 tracked）不列，见 `pnpm assumptions` |
@@ -55,18 +57,22 @@
 
 ## 3. 对比 `compareRuns`
 
-**口径** `basisOf`：有分轮取稳态，否则取整个窗口；记为 [lo, hi)（战斗帧）。
+**口径与可用性闸门** `basisOf` / `usableBasis`（`src/engine/basis.ts`，DD-03 §7）：有 `goal` 取 `goal`，有分轮取稳态，否则取整个窗口；记为 `[lo, hi)`（战斗帧）。所有对比与结论在汇总前必须过 `usableBasis(res)`：
+- `engineError` 不可用且不带 `partial`；`axisFailed` 不可用（带 `partial` 供排错）；
+- `truncated` 且 `goal` 未达、或稳态选中轮次尚未跑完 / 被 `options.endAt` 截短（`roundEnds.endBattleFrame > windowFrames`）、或无稳态时整体被截断，均返回 `ok: false`，不进对比或排序；
+- 自然完成 `completed` 但 `goal` 未达时仍可用估计值（`ok: true`）；虽在尾帧截断 `inFlightRemains` 但稳态选中各轮执行与统计均完整时，稳态口径仍 `ok: true`。
 
 **差在哪**：
 
 | 项 | 怎么算 |
 |---|---|
 | DPS | 对比 − 基准，及百分比 |
-| 分角色、分动作 | 窗口内的**每秒伤害**（伤害 ÷ 窗口秒数），同一个窗口里加起来就是 DPS；两边窗口长短不同（换了声骸、轴变快）也能比。按差额绝对值排序 |
-| buff 覆盖率 | 各自的窗口内算（`buffUptime(log, lo, hi)`），标记型 buff（计时、状态）不列 |
+| 分角色、分动作 | 窗口内的**每秒伤害**（有效伤害 ÷ 窗口秒数，`dpsBreakdown`）与窗口内有效/原始伤害（`damageByChar` / `damageByAction`）。击杀口径按 `kill.eventSeq` 截到致死那一击并剥离溢出（`rawByChar` / `rawByAction` / `overflow`，`Comparison` 另带 `baseOverflow` / `otherOverflow`），使 `Σ byChar === goal.dps`；若战斗帧 `0` 即击杀（`hi - lo <= 0`），标 `zeroDuration = true`、`byChar` / `byAction` 为空，`damageByChar` 仍保留有效伤害 |
+| buff 覆盖率 | 各自的窗口内算（`buffUptimeDetail`），同时提供并集 `uptime` 与按提供者细分的 `uptimeBy`（`"buff [提供者]→目标"`），标记型 buff（计时、状态）不列 |
+| 伤害口径提示 | 比较两边 `DamageScope`（如一方未含谐度破坏、或 `tuneBreak` 省略时量表累不累积 `gauge` 不同）时设置 `scopeMismatch`；`sim`、`compare`、`scorecard`、`matrix`、`sensitivity` 与网页均显式标注 |
 | 面板 | 攻击、暴击、暴伤、共鸣效率（含常驻的共鸣效率 buff）；常驻的其他 buff 在命中时才叠，不在面板里 |
 
-**命令**：`pnpm compare 基准.yaml 对比.yaml`。打印两边的口径与 DPS、差额，变化了的面板，分角色、分动作（差额前 12）、buff 覆盖率（差 ≥ 1 个百分点，前 12）。场景有错或运行出错时退出码 1。
+**命令**：`pnpm compare 基准.yaml 对比.yaml`。任一边不过 `usableBasis` 时不输出 DPS 差额并以原因报错退出；两边 `DamageScope` 不一致时首行打印口径差异提示（含未含谐度破坏）。打印两边的口径与 DPS、差额，变化了的面板，分角色、分动作（差额前 12）、buff 覆盖率（差 ≥ 1 个百分点，前 12）。场景有错或运行出错时退出码 1。
 
 例（2026-10-05，v0.1.3）：视频轴 `scenarios/m0-video.yaml` 一日花前的补位 `A1~ A2~` 换成固定打两下 `A1 A2`，稳态 DPS 30,458 → 31,312（+2.80%），两边每轮都是 27.15 秒：这条轴有空余，多打的 A 不占时间。差额几乎都在椿：延奏每秒 +672（固定两下时每次切走都还在含苞里，延奏都打含苞 + 含苞追加；补位时有一轮切走时含苞已结束，只打普通版）、A2 +164。
 
@@ -433,6 +439,10 @@ search:
 - ④ 可信度：`compare` 与搜索报收益时，列出两边碰到的假设之差，以及敏感度矩阵里会让这个收益变号的假设。
 - 网页"对比"页出轴卡片。
 
+### 6.4 录像贴合度 `replayFit` / `fitVariants`（DD-03 §8）
+
+录像剖析场景（`src/engine/fit.ts`、`pnpm fit`）按五类观测计算贴合度：`coverage` 记录 `anchors`（锚点匹配的切人）、`events` / `eventsMatched`、`hp`、`concerto`、`core` 条数。当 `anchors + events + hp + concerto + core === 0`（没有任何有效观测覆盖）时，判定 **`assessable: false`、`score: null`**，不返回有误导性的 `0` 分；`fitVariants` 将所有 `assessable === false` 的变体单独归入 `FitReport.unassessable` 并在终端单独汇报，不混入 `rows` 排名。
+
 ---
 
 ## 7. 测试用例
@@ -488,3 +498,4 @@ search:
 - **v0.1.15（2026-10-22）**：§2 稳态的相位：汇总加提示 `steadyPhase`，心队各场景 `repeat: 10`，C2 从 +19.81% 更正为 +9.28%，卡帧点原轴那处"反而更好"是相位造成的；§6.2 ④′ `pnpm plan --hand`。
 - **v0.1.17（2026-10-22）**：新增 §6.3 评价轴的多个维度：比较的目标 `goal`（稳态 / 打死几倍血 / 前 N 秒，`Summary.kill`、`Summary.goal`，`basisOf` 按目标，命令行 `--goal`、`--repeat`）与轴卡片 `pnpm scorecard`（难度、养成门槛、可信度，帕累托前沿）已实现。§7 加 `tests/goal.test.ts`、`tests/scorecard.test.ts`。
 - **v0.1.16（2026-10-22）**：§6.1 轴搜索 `--hand`：M0 按"熟练"第一名是 D1（+5.80%），心队 C6 上卜灵第二段 Q 先放另存成 C8（零帧 +3.18%、熟练 +6.20%）。
+- **v0.1.17 补记（2026-11-15，并回 DD-03）**：§1 补充 `buffUptimeBy`、`kill.{eventSeq?, overflow?}`、`goal.lethal?`；§3 并入 `usableBasis` 口径闸门、击杀溢出拆分与 `zeroDuration` 处理、`uptimeBy` 及 `DamageScope` 口径提示（`sim` / `compare` / `scorecard` / `matrix` / `sensitivity`）；新增 §6.4 录像贴合度 `assessable` / `score: null` / `unassessable`。

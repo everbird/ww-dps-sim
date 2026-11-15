@@ -41,6 +41,7 @@
 
 {#if out}
   <section class="card pad">
+    {#if out.scopeMismatch}<p class="error">{out.scopeMismatch.note}</p>{/if}
     <dl class="stats">
       <div><dt>基准 · {out.base.label} · {span(out.base)}</dt><dd>{fmt(out.base.dps)}</dd></div>
       <div><dt>对比 · {out.other.label} · {span(out.other)}</dt><dd>{fmt(out.other.dps)}</dd></div>

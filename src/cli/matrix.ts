@@ -41,7 +41,7 @@ async function main(): Promise<number> {
     out.push(`| ${t.name} | ${s.label} ${b.preset.name}（×${ratioOf(b)}） | ${wan(b.hp)} / ${hi} | ${((s.from + r.entryFrames) / 60).toFixed(1)} | ${((s.to + r.entryFrames) / 60).toFixed(1)} | ${wan(s.damage)} | ${s.killed ? '是' : '—'} | ${fmt(s.score)} |`)
   }
   out.push('')
-  for (const t of best.teams) out.push(`- ${t.name}：${fmt(t.score)} 分，${wan(t.damage)}（转场与溢出作废 ${wan(t.lostDamage)}）`)
+  for (const t of best.teams) out.push(`- ${t.name}${t.scopeLabel ? `（谐破：${t.scopeLabel}）` : ''}：${fmt(t.score)} 分，${wan(t.damage)}（转场与溢出作废 ${wan(t.lostDamage)}）`)
   out.push('', '时间是这一队的计时（含进场），按战斗秒（大招时停也停）。', '', '碰到的假设：',
     ...best.assumptions.map(id => `- ${id}：${assumptionOf(id)!.what}`),
     '', `${((Date.now() - t0) / 1000).toFixed(0)} 秒。`)

@@ -5,7 +5,7 @@
 import type { CharName } from '../data/common'
 import { ASSUMPTIONS } from './assumptions'
 import { INTENDED } from './scheduler'
-import type { HitEvent, ResolvedScenario, SimEvent, SimState, Summary } from './types'
+import type { BuffUptimeRow, HitEvent, ResolvedScenario, SimEvent, SimState, Summary } from './types'
 import { round, roundTo } from './num'
 
 /** 一段命中计入多少伤害：期望模式是期望值；抽样模式按这一段抽到的暴击 / 非暴击（总设计 T4）。汇总、对比都按它算 */
@@ -61,14 +61,16 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   const lp = loops(log, r, hits, windowFrames)
   // 打死敌人与比较的目标（TD-10 §7）：所有命中都算（窗口外的也是真伤害）；没打到时按稳态（没有稳态按整个窗口）的 DPS 往后估
   const rate = lp.steady?.dps ?? (windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0)
-  const kill = killOf(hits, r.enemy.hp, rate, s.battleFrames)
-  const goal = goalSummary(r, hits, rate, s.battleFrames)
+  const kill = killOf(log, r.enemy.hp, rate, s.battleFrames)
+  const goal = goalSummary(r, log, rate, s.battleFrames)
+  const teamOrder = r.team.map(c => c.def.name)
+  const uptime = buffUptimeDetail(log, 0, windowFrames, teamOrder)
   return {
     totalDamage, windowFrames, dps: windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0, overflowDamage,
     ...lp,
     kill, ...(goal ? { goal: goal.goal } : {}),
     byChar, byAction: actions, enemy: enemyStats(log, windowFrames),
-    resourceTimeline: resourceTimeline(log, r, s), buffUptime: buffUptime(log, 0, windowFrames),
+    resourceTimeline: resourceTimeline(log, r, s), buffUptime: uptime.union, buffUptimeBy: uptime.rows,
     waits: log.flatMap(e => (e.type === 'wait' && !INTENDED.includes(e.code)
       ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, code: e.code, frames: e.frames, reason: e.reason }] : [])),
     skipped: log.flatMap(e => (e.type === 'skip' ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, reason: e.reason }] : [])),
@@ -90,29 +92,37 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
 
 const dpsOf = (damage: number, frames: number): number => (frames > 0 ? damage / (frames / 60) : 0)
 
-/** 累计伤害到 hp 的那一下的战斗帧；日志里没到时 frame = null，estimate = 日志结束（end，战斗帧）后按 rate 每秒补齐剩下的血 */
-function killOf(hits: readonly HitEvent[], hp: number, rate: number, end: number): Summary['kill'] {
+/** 累计伤害到 hp 的那一下的战斗帧与事件序号；日志里没到时 frame = null，estimate = 日志结束（end，战斗帧）后按 rate 每秒补齐剩下的血 */
+function killOf(log: readonly SimEvent[], hp: number, rate: number, end: number): Summary['kill'] {
   let acc = 0
-  for (const h of hits) {
+  for (let seq = 0; seq < log.length; seq++) {
+    const h = log[seq]!
+    if (h.type !== 'hit') continue
     acc += hitValue(h)
-    if (acc >= hp) return { hp, frame: battleFrameOf(h), estimate: null }
+    if (acc >= hp) return { hp, frame: battleFrameOf(h), eventSeq: seq, overflow: acc - hp, estimate: null }
   }
-  return { hp, frame: null, estimate: rate > 0 ? round(end + (hp - acc) / rate * 60) : null }
+  return { hp, frame: null, eventSeq: null, overflow: null, estimate: rate > 0 ? round(end + (hp - acc) / rate * 60) : null }
 }
 
 const wan = (x: number) => (x >= 1e4 ? `${roundTo(x / 1e4, 10)} 万` : String(Math.round(x)))
 
 /** 场景的目标（ResolvedScenario.goal）→ Summary.goal 与没打到时的提示；稳态时 null */
-function goalSummary(r: ResolvedScenario, hits: readonly HitEvent[], rate: number, end: number):
+function goalSummary(r: ResolvedScenario, log: readonly SimEvent[], rate: number, end: number):
   { goal: NonNullable<Summary['goal']>; warning: Summary['warnings'][number] | null } | null {
   const g = r.goal
   if (g.kind === 'steady') return null
   if (g.kind === 'kill') {
-    const k = killOf(hits, g.hp, rate, end)
+    const k = killOf(log, g.hp, rate, end)
     const hi = k.frame ?? k.estimate ?? Infinity
     const label = `打死 ${wan(g.hp)}血${g.scale !== null ? `（敌人生命 ×${g.scale}）` : ''}`
+    const lethal = k.frame !== null && k.eventSeq !== null && k.overflow !== null
+      ? { eventSeq: k.eventSeq, rawDamage: g.hp + k.overflow, overflow: k.overflow }
+      : undefined
     return {
-      goal: { kind: 'kill', label, lo: 0, hi, damage: g.hp, dps: dpsOf(g.hp, hi), reached: k.frame !== null },
+      goal: {
+        kind: 'kill', label, lo: 0, hi, damage: g.hp, dps: dpsOf(g.hp, hi), reached: k.frame !== null,
+        ...(lethal ? { lethal } : {}),
+      },
       warning: k.frame !== null ? null : {
         code: 'goalNotReached',
         message: `${label}：跑完 ${(end / 60).toFixed(1)} 战斗秒还没打死，按每秒 ${Math.round(rate)} 估在第 ${(hi / 60).toFixed(1)} 秒；多跑几轮（options.repeat）`,
@@ -120,7 +130,7 @@ function goalSummary(r: ResolvedScenario, hits: readonly HitEvent[], rate: numbe
     }
   }
   let damage = 0
-  for (const h of hits) if (battleFrameOf(h) < g.frames) damage += hitValue(h)
+  for (const e of log) if (e.type === 'hit' && battleFrameOf(e) < g.frames) damage += hitValue(e)
   const label = `前 ${roundTo(g.frames / 60, 10)} 秒`
   const reached = end >= g.frames
   return {
@@ -301,29 +311,107 @@ function resourceTimeline(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   return out
 }
 
-/** buff 覆盖率（TD-07 §10.1）：键"buffId→目标"，值 = 窗口 [lo, hi)（战斗帧）内存在的帧数 / 窗口帧数。
- *  到期（timeout）的在 P6 才移除，那一帧整帧算在内。对比时拿稳态窗口算（analysis.ts） */
-export function buffUptime(log: readonly SimEvent[], lo: number, hi: number): Record<string, number> {
-  const W = hi - lo
-  const since = new Map<string, number>()
-  const ended = new Map<string, number>()                  // 上一段算到哪一帧（不含）：到期那一帧整帧算过，同一帧又挂上的从这里接着算
-  const frames = new Map<string, number>()
-  const add = (k: string, from: number, to: number) => frames.set(k, (frames.get(k) ?? 0) + Math.max(0, Math.min(to, hi) - Math.max(from, lo)))
-  for (const e of log) {
-    if (e.type === 'buffApply') {
-      const k = `${e.buff}→${e.target}`
-      if (!since.has(k)) since.set(k, Math.max(battleFrameOf(e), ended.get(k) ?? -Infinity))
-      if (!frames.has(k)) frames.set(k, 0)
-    } else if (e.type === 'buffExpire') {
-      const k = `${e.buff}→${e.target}`
-      const from = since.get(k)
-      if (from === undefined) continue
-      const to = battleFrameOf(e) + (e.reason === 'timeout' ? 1 : 0)
-      add(k, from, to)
-      ended.set(k, to)
-      since.delete(k)
+const cmpStr = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0)
+
+function mergeSpanFrames(spans: readonly [number, number][]): number {
+  if (spans.length === 0) return 0
+  const sorted = [...spans].sort((a, b) => a[0] - b[0] || a[1] - b[1])
+  let total = 0
+  let [curLo, curHi] = sorted[0]!
+  for (let i = 1; i < sorted.length; i++) {
+    const [a, b] = sorted[i]!
+    if (a <= curHi) {
+      if (b > curHi) curHi = b
+    } else {
+      total += curHi - curLo
+      curLo = a
+      curHi = b
     }
   }
-  for (const [k, from] of since) add(k, from, hi)
-  return Object.fromEntries([...frames].filter(([, v]) => v > 0 || lo === 0).map(([k, v]) => [k, W > 0 ? v / W : 0]))
+  return total + (curHi - curLo)
+}
+
+/** buff 覆盖率明细（TD-07 §10.1、DD-03 §5.2）：按 instanceId 追踪每条实例区间，合并后输出
+ *  - union：键"buffId→目标"，同目标跨提供者取区间并集
+ *  - rows：按 (buff, owner, target) 细分，顺序显式固定（buff 码点 → owner 槽位/env 在后 → target 码点） */
+export function buffUptimeDetail(
+  log: readonly SimEvent[],
+  lo: number,
+  hi: number,
+  teamOrder?: readonly CharName[],
+): { union: Record<string, number>; rows: BuffUptimeRow[] } {
+  const W = hi - lo
+  interface OpenInst { start: number; buff: string; owner: CharName | 'env'; target: CharName | 'enemy' }
+  const open = new Map<string, OpenInst>()
+  const rowSpans = new Map<string, { buff: string; owner: CharName | 'env'; target: CharName | 'enemy'; spans: [number, number][] }>()
+  const unionSpans = new Map<string, [number, number][]>()
+
+  const ensureBuckets = (buff: string, owner: CharName | 'env', target: CharName | 'enemy') => {
+    const rk = `${buff}\0${owner}\0${target}`
+    let r = rowSpans.get(rk)
+    if (!r) { r = { buff, owner, target, spans: [] }; rowSpans.set(rk, r) }
+    const uk = `${buff}→${target}`
+    let u = unionSpans.get(uk)
+    if (!u) { u = []; unionSpans.set(uk, u) }
+    return { r, u }
+  }
+
+  const pushSpan = (buff: string, owner: CharName | 'env', target: CharName | 'enemy', from: number, to: number) => {
+    const { r, u } = ensureBuckets(buff, owner, target)
+    const a = Math.max(from, lo), b = Math.min(to, hi)
+    if (b <= a) return
+    r.spans.push([a, b])
+    u.push([a, b])
+  }
+
+  const keyOf = (e: Extract<SimEvent, { type: 'buffApply' | 'buffExpire' }>): { key: string; owner: CharName | 'env' } => {
+    const opt = e as { instanceId?: number; owner?: CharName | 'env' }
+    const owner: CharName | 'env' = opt.owner ?? 'env'
+    const key = typeof opt.instanceId === 'number' ? `id:${opt.instanceId}` : `syn:${owner}\0${e.buff}\0${e.target}`
+    return { key, owner }
+  }
+
+  for (const e of log) {
+    if (e.type === 'buffApply') {
+      const { key, owner } = keyOf(e)
+      ensureBuckets(e.buff, owner, e.target)
+      if (!open.has(key)) open.set(key, { start: battleFrameOf(e), buff: e.buff, owner, target: e.target })
+    } else if (e.type === 'buffExpire') {
+      const { key } = keyOf(e)
+      const cur = open.get(key)
+      if (!cur) continue
+      open.delete(key)
+      pushSpan(cur.buff, cur.owner, cur.target, cur.start, battleFrameOf(e) + (e.reason === 'timeout' ? 1 : 0))
+    }
+  }
+  for (const cur of open.values()) pushSpan(cur.buff, cur.owner, cur.target, cur.start, hi)
+
+  const ownerRank = (o: CharName | 'env'): number => {
+    if (o === 'env') return Number.MAX_SAFE_INTEGER
+    if (!teamOrder) return 0
+    const idx = teamOrder.indexOf(o)
+    return idx >= 0 ? idx : Number.MAX_SAFE_INTEGER - 1
+  }
+
+  const rows: BuffUptimeRow[] = []
+  for (const x of rowSpans.values()) {
+    const frames = mergeSpanFrames(x.spans)
+    if (frames > 0 || lo === 0) rows.push({ buff: x.buff, owner: x.owner, target: x.target, uptime: W > 0 ? frames / W : 0 })
+  }
+  rows.sort((a, b) =>
+    cmpStr(a.buff, b.buff) ||
+    (ownerRank(a.owner) - ownerRank(b.owner)) ||
+    cmpStr(a.owner, b.owner) ||
+    cmpStr(a.target, b.target))
+
+  const union: Record<string, number> = {}
+  for (const k of [...unionSpans.keys()].sort(cmpStr)) {
+    const frames = mergeSpanFrames(unionSpans.get(k)!)
+    if (frames > 0 || lo === 0) union[k] = W > 0 ? frames / W : 0
+  }
+  return { union, rows }
+}
+
+export function buffUptime(log: readonly SimEvent[], lo: number, hi: number): Record<string, number> {
+  return buffUptimeDetail(log, lo, hi).union
 }

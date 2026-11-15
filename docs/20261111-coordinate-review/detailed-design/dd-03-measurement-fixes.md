@@ -381,13 +381,13 @@ export interface Fit {
 
 ## 11. 验收清单
 
-- [ ] 路线图 §9.2 的 P0 完成标准逐条有用例：10 世界秒 / 6 战斗秒（C03-1）、两份同名 buff 不丢（C03-6）、致死一击能解释（C03-8）、截断不冒充完整（C03-12）、没有有效观测时不可评估（C03-15）。
-- [ ] `tests/calibration-clock-branch.test.ts`、`tests/summary-boundaries.test.ts` 全过；`tests/fit.test.ts`、`tests/calibration.test.ts` 更新后全过。
-- [ ] conformance 输出相对 DD-01 之后：只多 `buffApply` / `buffExpire` 的两个键，以及 `summary` 里的 `buffUptimeBy`、`kill` 与 `goal` 的新字段；`buffUptime` 的数值变化有清单。
-- [ ] 所有场景的 DPS、稳态、每轮时长与基线逐个相同（这六项都不改执行）。
-- [ ] `grep` 出的 `.error` 用法每处都有归属。
-- [ ] `pnpm fuzz` 通过；`engineError` 会让它以非零退出。
-- [ ] 未含谐度破坏的结果在 `pnpm sim`、`compare`、`scorecard`、`matrix` 的输出里都看得出来（§7.4）。
+- [x] 路线图 §9.2 的 P0 完成标准逐条有用例：10 世界秒 / 6 战斗秒（C03-1）、两份同名 buff 不丢（C03-6）、致死一击能解释（C03-8）、截断不冒充完整（C03-12）、没有有效观测时不可评估（C03-15）。
+- [x] `tests/calibration-clock-branch.test.ts`、`tests/summary-boundaries.test.ts` 全过；`tests/fit.test.ts`、`tests/calibration.test.ts` 更新后全过。
+- [x] conformance 输出相对 DD-01 之后：只多 `buffApply` / `buffExpire` 的两个键，以及 `summary` 里的 `buffUptimeBy`、`kill` 与 `goal` 的新字段；`buffUptime` 的数值变化有清单（29 个现有场景 `buffUptime` 变化 0 项，无多提供者同目标同名 buff；多提供者并集与同帧重挂由 `C03-6` / `C03-7` 覆盖；`.input.json` 全相同，`outputSchemaVersion` `'1' -> '2'`）。
+- [x] 所有场景的 DPS、稳态、每轮时长与基线逐个相同（这六项都不改执行，29 个场景 `conformance` 逐项验证无差异）。
+- [x] `grep` 出的 `.error` 用法每处都有归属。
+- [x] `pnpm fuzz` 通过（29 个场景、问题 0 条）；`engineError` 会让它以非零退出。
+- [x] 未含谐度破坏的结果在 `pnpm sim`、`compare`、`scorecard`、`matrix` 的输出里都看得出来（§7.4）。
 
 ## 12. 要同步的正式文档
 

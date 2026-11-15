@@ -6,7 +6,10 @@
 import type { EnemyPreset, GameData } from '../data/gamedata'
 import type { TrackedId } from './assumptions'
 import type { Scenario } from '../data/scenario.schema'
+import { scopeShortLabel } from './basis'
 import { resolveScenario } from './resolve'
+import { damageScopeOf } from './run'
+import type { DamageScope } from './run-types'
 import { simulate } from './simulate'
 import { battleFrameOf, hitValue } from './summary'
 import type { HitEvent } from './types'
@@ -71,6 +74,8 @@ export interface MatrixTeam {
   segments: MatrixSegment[]
   damage: number; score: number
   lostDamage: number                         // 转场期间作废、打死时溢出的伤害
+  scope?: DamageScope
+  scopeLabel?: string
 }
 
 /** 一条命中：这一队的战斗帧、伤害 */
@@ -123,10 +128,10 @@ export function teamHits(sc: Scenario, data: GameData, enemy: string, rules: Mat
     return simulate(resolveScenario(s, data))
   }
   let res = run(sc.options.repeat)
-  if (res.error) throw new Error(`${enemy}：${res.error.message}`)
+  if (res.completion.status !== 'completed') throw new Error(`${enemy}：${res.error?.message ?? res.completion.status}`)
   if (res.summary.windowFrames < need) {
     res = run(Math.ceil(sc.options.repeat * need / Math.max(1, res.summary.windowFrames)) + 1)
-    if (res.error) throw new Error(`${enemy}：${res.error.message}`)
+    if (res.completion.status !== 'completed') throw new Error(`${enemy}：${res.error?.message ?? res.completion.status}`)
   }
   return res.log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null).map(h => ({ f: battleFrameOf(h), v: hitValue(h) }))
 }
@@ -148,7 +153,8 @@ export function matrixRun(teams: readonly { name: string; sc: Scenario }[], data
       return h
     }
     const r = relay(t.name, hitsOf, bosses, st, rules)
-    out.push(r)
+    const scope = damageScopeOf(resolveScenario(t.sc, data))
+    out.push({ ...r, scope, scopeLabel: scopeShortLabel(scope) })
     st = r.end
   }
   const b = bosses[st.boss]
