@@ -9,6 +9,7 @@ import type { BuffDef, EnemyStateChange, ResourceEffect } from '../data/buff.sch
 import type { ActionDef, CharacterDef, EchoDef, EnemyPreset, GameData, JudgmentDef, Rules, WeaponDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
 import type { RngState } from './rng'
+import type { DamageScope, Diagnostics, InterventionRecord, RuleUsageReport, RunCompletion, RunIdentity, StrictReport } from './run-types'
 
 // ---------------------------------------------------------------------------
 // 装配结果 ResolvedScenario（总设计 §3.3）：仿真过程中只读
@@ -18,6 +19,8 @@ export type Core5 = [number, number, number, number, number]
 
 export interface ResolvedScenario {
   data: GameData
+  /** 场景是做什么的（场景的 purpose，装配时抄过来）：录像剖析的运行身份要标成 replay，不能因为只拿到装配结果就当成普通的轴（DD-01 §3.2） */
+  purpose: 'rotation' | 'replay'
   team: [ResolvedMember, ResolvedMember, ResolvedMember]
   enemy: EnemyPreset
   buffs: RegisteredBuff[]                   // 常驻实例 + 触发监听器，已按共鸣链过滤、按谐振阶取值
@@ -376,8 +379,25 @@ export interface SimResult {
   forte: ForteStep[]
   /** 技能冷却（时间轴视图 E 显示）：每个 tick 结束取一次，"什么时候好"或剩几次变了才记；不进日志、不影响仿真 */
   cooldowns: CooldownStep[]
-  /** 运行期报错（TD-09 §3.3：等不来、等超时、超过帧数上限）；日志与汇总保留到出错为止 */
+  /** 运行期报错（TD-09 §3.3：等不来、等超时、超过帧数上限）；日志与汇总保留到出错为止。
+   *  @deprecated 由 completion 派生，给还没迁移的调用方（DD-01 §3.7）：completed、截断但指令已发完 → 没有；截断且指令没发完 → maxFrames；
+   *  轴失败 → 原调度错误码；引擎错误 → chainDepth / invariant / uncaught。新代码看 completion.status */
   error?: { code: string; message: string; frame: number; line?: number; loop?: number }
+  /** 运行身份的摘要（DD-01 §3.3）：同一份执行输入总是同一个；只改诊断开关不变 */
+  runId: string
+  identity: RunIdentity
+  /** 完成状态（DD-01 §3.6；架构 §2.2–§2.4）：跑完、截断、轴失败还是引擎错误，停在哪，执行了几轮，目标达成没有。
+   *  引擎与钩子里的异常不往外抛，记成 engineError：调用方靠 status 判断，不能靠"没抛异常" */
+  completion: RunCompletion
+  /** 外部干预记录（架构 §4.1）：录像指令（能量满、敌人 失谐 / 换）各一条 */
+  interventions: InterventionRecord[]
+  /** 严格入口的检查结果（DD-02 §3.4）：所有入口都有；DD-02 做完之前只有 entry 与空数组 */
+  strictReport: StrictReport
+  /** 谐度破坏含不含在 DPS 里（DD-02 §3.7） */
+  damageScope: DamageScope
+  /** 列明的判定点上用到了哪些规则（DD-05）；做完之前两个数组都是空的 */
+  ruleUsage: RuleUsageReport
+  diag?: Diagnostics                        // 可选诊断（DD-05、DD-06）
 }
 
 // ---------------------------------------------------------------------------

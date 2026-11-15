@@ -72,6 +72,7 @@ export function tryRun(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Comman
   const outros: { f: number; char: string }[] = []
   const k: Kernel = {
     rules: { ...DEFAULT_RULES, ...opts.rules },
+    at: { phase: 'init' },
     hooks: {
       settle: (st, j, n) => { hits.push({ f: st.frame, char: st.chars[j.owner].name, judgment: j.def.name, tick: n }) },
       outroTrigger: (st, slot) => { outros.push({ f: st.frame, char: st.chars[slot].name }) },

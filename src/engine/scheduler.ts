@@ -16,12 +16,15 @@ export class ScheduleError extends Error {
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
   readonly frame: number
-  constructor(code: ScheduleErrorCode, message: string, cmd: CommandRef | null, frame: number) {
+  /** 是不是经调度器的 fail() 抛出的：是的话失败收尾（关掉正在累计的等待段）已经做过（DD-01 §3.5）。连锁过深、不变量不成立不经 fail */
+  readonly viaFail: boolean
+  constructor(code: ScheduleErrorCode, message: string, cmd: CommandRef | null, frame: number, viaFail = false) {
     super(message)
     this.name = 'ScheduleError'
     this.code = code
     this.cmd = cmd
     this.frame = frame
+    this.viaFail = viaFail
   }
 }
 
@@ -459,7 +462,7 @@ function closeSeg(s: SimState, ref: CommandRef): void {
 /** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到 */
 function fail(s: SimState, code: ScheduleErrorCode, message: string, ref: CommandRef): ScheduleError {
   closeSeg(s, ref)
-  return new ScheduleError(code, message, ref, s.frame)
+  return new ScheduleError(code, message, ref, s.frame, true)
 }
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环中加轮次，一行有几个动作时加"第 i 个" */
@@ -472,8 +475,10 @@ function where(q: QueueState, ref: CommandRef): string {
 // ---------------------------------------------------------------------------
 // §3.8 主循环
 
-/** 逐 tick 推进到结束。帧数上限时：还有指令没执行 → 报错；只剩判定没结算完 → 停下并记一条警告 */
-export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number): void {
+/** 逐 tick 推进到结束，返回循环怎么退出的（DD-01 §3.5）：'idle' = 无事可做（tick 在 P2 返回 false，这个 tick 不计入）；
+ *  'maxFramesInFlight' = 到帧数上限、指令已发完，只剩在途的动作 / 判定 / 尾部，记一条警告后停下。
+ *  到帧数上限、还有指令没执行 → 照旧报错（maxFrames） */
+export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number): 'idle' | 'maxFramesInFlight' {
   while (tick(s, k, schedule)) {
     if (s.frame < maxFrames) continue
     const q = s.queue
@@ -484,6 +489,7 @@ export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boole
       throw fail(s, 'maxFrames', `超过 ${maxFrames} 帧，${where(q, ref)}还没执行；调大 options.maxFrames`, ref)
     }
     log(s, { type: 'warning', code: 'maxFrames', message: `到达帧数上限 ${maxFrames}，场上还有 ${s.judgments.length} 个判定、${s.tails.length} 条尾部没走完` })
-    return
+    return 'maxFramesInFlight'
   }
+  return 'idle'
 }

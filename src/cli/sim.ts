@@ -5,11 +5,11 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { panelsOf } from '../engine/analysis'
-import { ResolveError, resolveScenario } from '../engine/resolve'
+import { prepareRun, runPrepared } from '../engine/run'
 import { HAND_PROFILES, sampleRuns, type HandProfile } from '../engine/sample'
-import { simulate } from '../engine/simulate'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec, withOverrides, OVERRIDE_FLAGS } from './format'
+import { collectRunEnvironment } from './run-env'
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
 function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: number }): string {
@@ -29,18 +29,18 @@ async function main(): Promise<number> {
   }
   const sc = withOverrides(loadScenario(file), opt)
   const data = await loadGameData()
-  let r: ResolvedScenario
-  try {
-    r = resolveScenario(sc, data)
-  } catch (e) {
-    if (e instanceof ResolveError) { console.error(e.message); return 1 }
-    throw e
+  // 归一入口（DD-01 §3.2）：命令行的 --goal / --enemy / --repeat 先并进场景（withOverrides），提交号、内容指纹在这里采集
+  const p = prepareRun(sc, data, { environment: collectRunEnvironment() })
+  if (!p.ok) {
+    console.error(`场景有 ${p.issues.length} 处错误：\n${p.issues.map(i => `  - ${i.message}`).join('\n')}`)
+    return 1
   }
-  const res = simulate(r)
+  const r = p.run.resolved
+  const res = runPrepared(p.run)
   print(file, r, res)
   const target = resolve(out ?? `out/${basename(file, extname(file))}.json`)
   mkdirSync(dirname(target), { recursive: true })
-  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
+  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
   if (runs > 0 && !res.error) printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
   return res.error ? 1 : 0
@@ -107,6 +107,13 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   console.log('\n这次碰到的假设（总设计 T16；影响是估计的）')
   for (const l of assumptionLines(s)) console.log(l)
   if (res.error) console.log(`\n报错（第 ${res.error.frame} 帧）：${res.error.message}`)
+  // 运行身份与完成状态（DD-01 §3.3、§3.6）
+  const x = res.identity.execution, c = res.completion, l = c.loops
+  const STATUS = { completed: '跑完', truncated: '到帧数上限被截断', axisFailed: '轴失败', engineError: '引擎错误' } as const
+  const why = c.truncation ? (c.truncation.kind === 'commandsPending' ? `还有 ${c.truncation.remains.pendingCommands} 条指令没执行` : '指令发完了，场上还有没走完的')
+    : c.axisFailure ? c.axisFailure.kind : c.engineError ? c.engineError.code : ''
+  console.log(`\n运行 ${res.runId}（提交 ${x.gitCommit === 'unknown' ? '未知' : x.gitCommit.slice(0, 7)}${x.contentFingerprint ? `，工作区有改动 ${x.contentFingerprint.slice(0, 8)}` : ''}，${x.entryMode === 'replay' ? '录像剖析' : x.entryMode === 'strict' ? '严格入口' : '标准入口'}）`)
+  console.log(`完成状态 ${c.status}（${STATUS[c.status]}${why ? `：${why}` : ''}）· ${c.coverage.completedTicks} 帧 · 循环 ${l.completed} / ${l.planned} 轮${l.openingCompleted === false ? '，启动轴没走完' : ''}${c.conditioning.basis === 'conditioned' ? ` · 有 ${res.interventions.length} 次外部干预` : ''}`)
 }
 
 /** 抽样 N 次（总设计 T4）：逐段抽暴击，jitter > 0 时每个决策点另加 [0, jitter] 帧的操作抖动 */

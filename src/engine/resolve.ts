@@ -19,17 +19,24 @@ export const enemyDefByLevel = (level: number): number => 8 * level + 792
 const DEFAULT_RES = 0.1
 const ELEMENTS_ALL: Element[] = ['物理', '冷凝', '热熔', '导电', '气动', '衍射', '湮灭']
 
+/** 一处装配错误的出处：compile = 编译排轴时查出来的（带第几条、第几个）；其余是 resolve。message 与 ResolveError.issues 里的同一条相同 */
+export interface ResolveIssue { stage: 'resolve' | 'compile'; line?: number; item?: number; opening?: true; message: string }
+
 export class ResolveError extends Error {
   readonly issues: string[]
-  constructor(issues: string[]) {
+  /** 与 issues 一一对应，另带出处（prepareRun 转成问题列表用，DD-01 §3.2） */
+  readonly details: ResolveIssue[]
+  constructor(issues: string[], located: ReadonlyMap<number, Omit<ResolveIssue, 'message'>> = new Map()) {
     super(`场景有 ${issues.length} 处错误：\n${issues.map(i => `  - ${i}`).join('\n')}`)
     this.name = 'ResolveError'
     this.issues = issues
+    this.details = issues.map((message, i) => ({ stage: 'resolve' as const, ...located.get(i), message }))
   }
 }
 
 export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario {
   const issues: string[] = []
+  const located = new Map<number, Omit<ResolveIssue, 'message'>>()   // issues 的下标 → 排轴里的出处（编译排轴时查出来的）
   const warnings: string[] = []
   if (sc.data !== undefined && sc.data !== data.version)
     warnings.push(`场景写的数据版本是 ${sc.data}，当前数据是 ${data.version}（只维护当前版本，总设计 T15）`)
@@ -61,22 +68,26 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     if (compiled.ok) {
       commands = compiled.commands; opening = compiled.opening
       // 敌人 换 <预设>：要在敌人表里，COST 与场景的敌人相同（谐破冷却按开局那只的 COST 定，不跟着换）
-      for (const c of [...opening, ...commands]) {
+      for (const [list, inOpening] of [[opening, true], [commands, false]] as const) for (const c of list) {
         if (c.kind !== 'enemy' || c.state !== 'swap') continue
         const p = data.enemies[c.preset]
-        if (!p) issues.push(`rotation 第 ${c.line} 条：敌人预设"${c.preset}"不存在（enemies.json 的 id）`)
-        else if (p.cost !== enemy.cost) issues.push(`rotation 第 ${c.line} 条：${c.preset} 的 COST ${p.cost} 与场景的敌人（${enemy.cost}）不同，谐破冷却不跟着换，先不支持`)
+        const bad = !p ? `rotation 第 ${c.line} 条：敌人预设"${c.preset}"不存在（enemies.json 的 id）`
+          : p.cost !== enemy.cost ? `rotation 第 ${c.line} 条：${c.preset} 的 COST ${p.cost} 与场景的敌人（${enemy.cost}）不同，谐破冷却不跟着换，先不支持` : null
+        if (bad === null) continue
+        located.set(issues.length, { stage: 'compile', line: c.line, item: c.item, ...(inOpening ? { opening: true as const } : {}) })
+        issues.push(bad)
       }
     }
     else {
       const many = (lines: string[], line: number) => { const p = parseRotationLine(lines[line - 1] ?? ''); return Array.isArray(p) && p.length > 1 }
       for (const i of compiled.issues) {
         const lines = i.opening ? sc.opening : sc.rotation
+        located.set(issues.length, { stage: 'compile', ...(i.line > 0 ? { line: i.line } : {}), ...(i.item !== undefined ? { item: i.item } : {}), ...(i.opening ? { opening: true as const } : {}) })
         issues.push(`${i.opening ? 'opening' : 'rotation'} 第 ${i.line} 条${i.item !== undefined && many(lines, i.line) ? `第 ${i.item} 个` : ''}：${i.message}`)
       }
     }
   }
-  if (issues.length > 0) throw new ResolveError(issues)
+  if (issues.length > 0) throw new ResolveError(issues, located)
   const members = built as Built[]
   const team = members.map(b => b.member) as [ResolvedMember, ResolvedMember, ResolvedMember]
 
@@ -105,7 +116,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     if (energy[i]! > m.def.energyCost) issues.push(`initial.energy：${m.def.name} 的大招能量 ${energy[i]} 超过上限 ${m.def.energyCost}`)
     if (concerto[i]! > rules.concertoMax) issues.push(`initial.concerto：${m.def.name} 的协奏 ${concerto[i]} 超过上限 ${rules.concertoMax}`)
   })
-  if (issues.length > 0) throw new ResolveError(issues)
+  if (issues.length > 0) throw new ResolveError(issues, located)
   // 共鸣效率不按伤害元素 / 标签过滤：写了 filter 的按无条件算（TD-06 §2.1）
   const regenFiltered = buffs.filter(b => b.def.zone === 'energyRegen' && b.def.filter).map(b => b.def.id)
   if (regenFiltered.length > 0) warnings.push(`共鸣效率 buff 不看 filter，按无条件算：${[...new Set(regenFiltered)].join('、')}`)
@@ -115,7 +126,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   }
 
   return {
-    data, team, enemy, buffs, effects, commands, opening,
+    data, purpose: sc.purpose, team, enemy, buffs, effects, commands, opening,
     initial: {
       energy,
       concerto,

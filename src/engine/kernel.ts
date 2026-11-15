@@ -8,6 +8,7 @@ import type {
 } from './types'
 import { assume } from './assumptions'
 import { snap4 } from './num'
+import type { TickPhase } from './run-types'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
 
@@ -22,7 +23,8 @@ export interface KernelHooks {
   timers?(s: SimState, rates: Rates): void                                        // P6 的 buff 计时（TD-07）
   expired?(s: SimState, j: JudgmentRuntime): void                                 // 判定持续帧走完自然消失（被取消移除的不算）
 }
-export interface Kernel { rules: Rules; hooks: KernelHooks }
+/** at：现在走到 tick 的哪个相位。运行环境里的簿记，不是业务状态、不影响执行：出错时拿它记停在哪一步（DD-01 §3.5；架构 §2.3） */
+export interface Kernel { rules: Rules; hooks: KernelHooks; at: { phase: TickPhase } }
 /** 时间线事件的来源：进行中的动作，或脱离动作的尾部（ActionRuntime、TailRuntime 都符合） */
 export interface EventSource { def: ActionDef; instance: number; skip?: string[]; detached?: true }
 
@@ -424,14 +426,20 @@ export function settled(s: SimState, slot: Slot): boolean {
 
 /** 推进一个世界帧。schedule 是 P2 的指令执行（TD-09），返回"还有没有未执行的指令"。返回 false = 已无事可做，本 tick 不计入 */
 export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean): boolean {
+  // 每个相位开头写 k.at.phase（DD-01 §3.5）：只是簿记，出错时记下停在哪一步
+  k.at.phase = 'P1'
   const rates = computeRates(s, k.rules)                        // P1
+  k.at.phase = 'P2'
   for (const c of s.chars) c.startedThisTick = false
   endDueActions(s)                                              // P2 开头
   const pending = schedule(s)                                   // P2 执行指令
   if (!pending && s.chars.every(c => !c.action) && s.judgments.length === 0 && s.tails.length === 0) return false
+  k.at.phase = 'P3'
   advanceActions(s, k, rates)                                   // P3
+  k.at.phase = 'P4'
   settleJudgments(s, k, rates)                                  // P4
   // P5 敌人量表：TD-06
+  k.at.phase = 'P6'
   for (const c of s.chars) {
     c.switchCd = Math.max(0, c.switchCd - rates.battle)         // P6 计时器：切人 CD（每人单独）、技能冷却、buff 都按战斗速率
     for (const key of Object.keys(c.cooldowns)) {
@@ -447,5 +455,6 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   k.hooks.timers?.(s, rates)
   s.battleFrames += rates.battle                                // P7
   s.frame += 1
+  k.at.phase = 'afterP7'
   return true
 }
