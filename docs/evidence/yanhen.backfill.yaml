@@ -1,0 +1,88 @@
+# 回填（DD-08 §6）：焰痕的延长与全队热熔。材料是 docs/tower-20261026.md 中 2 的跳字对照（两次狼舞的决意·极 19482、破敌 9606），
+# 观测 docs/calibration/points.yaml 的 焰痕.*，记录 docs/calibration/2026-10-27-跳字-焰痕-中2.md。
+# 这三下跳字参与了 2026-10-27 改读法（AGENTS 差异 38），只能当选模材料（路线图 §5.3），不能再当独立检验。
+id: yanhen.backfill
+propositionId: yanhen-extend
+question: 焰痕的被动是"最多延长 1 次、延长成功时才给全队热熔"（nanoka 原文），还是 xlsx 拆成的三句（每次重击都给全队热熔、不限延长）
+kind: backfill
+setups:
+  - id: fire-tower2
+    scenario: fire-tower2-video.yaml
+    note: 深塔 41 期中 2 录像剖析（三火）；世界秒 = 视频秒 − 2.5
+candidates:
+  - candidateId: nanoka-text
+    conditions: 施放变奏技能或共鸣解放时，露帕自己共鸣解放伤害 +24% 6 秒（战斗时钟）；造成重击伤害时这个效果延长 4 秒，从这次施加起最多 1 次（重新施加清零）；延长成功的那一刻给队伍里的角色热熔伤害加成 +24% 30 秒，同名不叠加
+    runs:
+      - setupId: fire-tower2
+        runId: run-dd88d9512411945b
+        status: completed
+    predictions:
+      - observationId: 焰痕.破敌#2
+        predicted:
+          - 9610
+          - 27098
+        covered: true
+      - observationId: 焰痕.狼舞的决意·极#2
+        predicted:
+          - 19490
+          - 54962
+        covered: true
+      - observationId: 焰痕.狼舞的决意·极#3
+        predicted:
+          - 19490
+          - 54962
+        covered: true
+  - candidateId: xlsx-three-sentences
+    conditions: 变奏 / 大招后共鸣解放伤害 +24% 6 秒；每次造成重击伤害都延长 4 秒、都给全队热熔 +24% 30 秒（2026-10-27 之前 data/curated/weapons.ts 的写法）
+    runs: []
+    predictions: []
+criteria: 跳字按观测写明的分支（不暴击）比，缺省容差 0.2%；在容差内算相容、外面算冲突
+observationIds:
+  - 焰痕.破敌#2
+  - 焰痕.狼舞的决意·极#2
+  - 焰痕.狼舞的决意·极#3
+verdicts:
+  - candidateId: nanoka-text
+    perObservation:
+      - observationId: 焰痕.破敌#2
+        status: passed
+        residual: 0.0004164064126588318
+        purpose: selection
+        covered: true
+      - observationId: 焰痕.狼舞的决意·极#2
+        status: passed
+        residual: 0.000410635458371722
+        purpose: selection
+        covered: true
+      - observationId: 焰痕.狼舞的决意·极#3
+        status: passed
+        residual: 0.000410635458371722
+        purpose: selection
+        covered: true
+    runStatuses:
+      - completed
+    overall: consistent
+  - candidateId: xlsx-three-sentences
+    perObservation: []
+    overall: notAssessed
+    notAssessedReason: unimplemented
+    runStatuses: []
+conclusion:
+  proposition: provisional
+  about: nanoka-text
+  basis:
+    independent: []
+    other:
+      - 焰痕.破敌#2
+      - 焰痕.狼舞的决意·极#2
+      - 焰痕.狼舞的决意·极#3
+  rule: 5
+scopeTested: 游戏版本 3.7；露帕 0 链、焰痕 1 精（用户确认），fire-tower2-video.yaml 的配装与深塔 41 期中 1、2 的环境特性；对 boss 无归的谬误·泰缇斯系统
+discriminatingObservationNeeded: 下一项独立观测（没参与挑读法的）：训练场露帕放大招后过 6 秒再打一下重击，看之后狼舞的决意·极的跳字是否吃到共鸣解放 +24%；连打两下重击，看第二下还延不延长（最多 1 次）；延长成功那一刻看队友面板的热熔伤害加成是否 +24%。或者另一局录像里没参与过改读法的狼舞的决意·极与破敌跳字
+decision:
+  adoptedBefore: nanoka-text
+  adopted: nanoka-text
+  defaultChanged: false
+  note: 回填：沿用 2026-10-27 起的读法（nanoka 原文）。结论只是暂定（只有选模材料），不改缺省。这一项由实现者按现状填写，用户可以改
+reruns: []
+notes: 改之前的读法（xlsx 三句）现在没有开关，只能入账为未实现；它在这三下上的预测（改前的仿真 18154、10507）是手抄的旧数，按路线图 §7 不沿用。

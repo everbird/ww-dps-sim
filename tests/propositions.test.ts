@@ -1,10 +1,14 @@
 // tests/propositions.test.ts —— DD-04 T04-1、T04-2 的用例：拆开关（forteKeepOnSwitchBy 与 forteKept，C04-1、C04-2）、
 // 规则路径的多段设值（mergeRulePaths，C04-3）、台账自检（C04-4）。人造角色，不依赖生成数据；最后一组（代表轴碰到的假设）依赖 data/generated。
 // C04-4b 与 C04-5 起的候选检查（当前生效值、分类、路径冲突…）属于 T04-4 之后，放 tests/candidates.test.ts。
-import { readFileSync } from 'node:fs'
+// DD-08 §4.3：证据入台账的用途约束（C08-11）、台账与闭环记录（docs/evidence/）三处一致（结论按同一张决策表算）。
+import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
-import { DEFAULT_RULES, forteKept, type GameData, type Rules } from '../src/data/gamedata'
+import { CalibrationFileSchema } from '../src/data/calibration.schema'
+import { DEFAULT_RULES, forteKept, PER_CHAR_RULES, type GameData, type Rules } from '../src/data/gamedata'
+import { parseClosure } from '../src/cli/evidence-file'
+import { evidenceFromClosure, evidenceViolations, judgeClosure } from '../src/engine/evidence'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { ASSUMPTIONS } from '../src/engine/assumptions'
@@ -123,12 +127,18 @@ describe('mergeRulePaths：规则路径的多段设值（DD-04 §4.2）', () => 
 const ALL: readonly Proposition[] = PROPOSITIONS
 /** 场景选项的缺省值（schema 的 default） */
 const OPTION_DEFAULTS = ScenarioSchema.shape.options.unwrap().parse({}) as Record<string, unknown>
-/** 按路径读 Rules 里的值；forteKeepOnSwitchBy.<角色> 经 forteKept（表里没有键时按共享的，DF-05） */
+/** 按路径读 Rules 里的值；按角色覆盖的表（forteKeepOnSwitchBy.<角色>、concertoTimingBy.<角色>）表里没有键时按共享的那条（DF-05、DD-08 §6） */
 function ruleValue(rules: Readonly<Rules>, path: string): unknown {
   const [head, ...rest] = path.split('.')
   if (head === 'forteKeepOnSwitchBy' && rest.length === 1) return forteKept(rules, rest[0]!)
+  if (rest.length === 1 && Object.hasOwn(PER_CHAR_RULES, head!)) {
+    const by = rules[head as keyof typeof PER_CHAR_RULES] as Readonly<Record<string, unknown>>
+    return Object.hasOwn(by, rest[0]!) ? by[rest[0]!] : rules[PER_CHAR_RULES[head as keyof typeof PER_CHAR_RULES]]
+  }
   return path.split('.').reduce<unknown>((x, k) => (x as Record<string, unknown> | undefined)?.[k], rules)
 }
+/** 按角色覆盖的表的路径（forteKeepOnSwitchBy.心、concertoTimingBy.卜灵）：角色就是 appliesToChars */
+const perCharPath = (path: string): boolean => Object.hasOwn(PER_CHAR_RULES, path.split('.')[0]!) && path.split('.').length === 2
 const defaultOf = (b: Binding): unknown => (b.kind === 'rule' ? ruleValue(DEFAULT_RULES, b.path!) : b.kind === 'option' ? OPTION_DEFAULTS[b.path!] : undefined)
 
 describe('台账（DD-04 §3.1、§3.2）', () => {
@@ -195,7 +205,7 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
       if (!r.ok) continue
       const got = b.kind === 'rule' ? ruleValue(r.run.resolved.rules, b.path!) : (r.run.resolved.options as unknown as Record<string, unknown>)[b.path!]
       expect([at, got]).toEqual([at, b.value])
-      if (b.kind === 'rule' && b.path!.startsWith('forteKeepOnSwitchBy.')) expect([at, p.appliesToChars]).toEqual([at, [b.path!.split('.')[1]]])
+      if (b.kind === 'rule' && perCharPath(b.path!)) expect([at, p.appliesToChars]).toEqual([at, [b.path!.split('.')[1]]])
     }
   })
 
@@ -208,20 +218,52 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
     for (const id of DD05) expect(propositionOf(id)?.id).toBe(id)
   })
 
-  test('证据：每条命题一条迁移来的依据（假设表 why 原文，用途未标注、三种关系都空）；证据 ID 全台账唯一，关系只指本命题的候选；只有迁移依据的结论是 unverified', () => {
+  test('证据：有假设的命题各一条迁移来的依据（假设表 why 原文，用途未标注、三种关系都空）；证据 ID 全台账唯一，关系只指本命题的候选；只有迁移依据的结论是 unverified', () => {
     const evidenceIds = ALL.flatMap(p => p.evidence.map(e => e.id))
     expect(new Set(evidenceIds).size).toBe(evidenceIds.length)
     for (const p of ALL) {
-      const a = ASSUMPTIONS.find(x => x.id === p.assumptionId)!
       const legacy = p.evidence.filter(e => e.id.startsWith('legacy:'))
+      const cands = new Set(p.candidates.map(c => c.id))
+      for (const e of p.evidence) for (const id of [...e.supports, ...e.refutes, ...e.consistentWith]) expect([p.id, e.id, cands.has(id)]).toEqual([p.id, e.id, true])
+      if (legacy.length === p.evidence.length) expect([p.id, p.conclusion]).toEqual([p.id, 'unverified'])   // DD-08 §4.1 决策表第 1 行
+      if (p.assumptionId === undefined) { expect([p.id, legacy]).toEqual([p.id, []]); continue }   // DD-08 回填的命题：假设表里没有，证据只有闭环判出来的
+      const a = ASSUMPTIONS.find(x => x.id === p.assumptionId)!
       expect([p.id, legacy]).toEqual([p.id, [{
         id: `legacy:${p.id}`, supports: [], refutes: [], consistentWith: [], purpose: 'unspecified',
         observation: { gameVersion: '未知', condition: `假设表 ${a.id} 的依据原文，没拆成逐条观测` }, summary: a.why, ref: a.ref,
       }]])
-      const cands = new Set(p.candidates.map(c => c.id))
-      for (const e of p.evidence) for (const id of [...e.supports, ...e.refutes, ...e.consistentWith]) expect([p.id, e.id, cands.has(id)]).toEqual([p.id, e.id, true])
-      if (legacy.length === p.evidence.length) expect([p.id, p.conclusion]).toEqual([p.id, 'unverified'])   // DD-08 §4.1 决策表第 1 行
       expect([p.id, p.impact.dps]).toEqual([p.id, a.impact])                                    // 沿用假设表的 DPS 影响等级
+    }
+  })
+
+  test('C08-11 台账里 supported 的命题只有 selection 证据：用途约束报错；真实台账没有违反的（DD-08 §4.3）', () => {
+    const base = ALL.find(p => p.id === 'echo-input-priority')!
+    const sel = { ...base.evidence[0]!, id: 'syn:sel', supports: [base.adopted], refutes: ['echo-table'], consistentWith: [], purpose: 'selection' as const }
+    expect(evidenceViolations({ ...base, conclusion: 'supported', evidence: [sel] })).toHaveLength(1)
+    expect(evidenceViolations({ ...base, conclusion: 'provisional', evidence: [sel] })).toEqual([])
+    expect(evidenceViolations({ ...base, conclusion: 'supported', evidence: [sel, { ...sel, id: 'syn:ind', purpose: 'independent_validation' }] })).toEqual([])
+    // 独立观测只是"相容"（consistentWith），不是 supports：仍然不能 supported
+    expect(evidenceViolations({ ...base, conclusion: 'supported', evidence: [{ ...sel, purpose: 'independent_validation', supports: [], consistentWith: [base.adopted] }] })).toHaveLength(1)
+    // 三种关系不混：同一个候选不能同时在两种关系里
+    expect(evidenceViolations({ ...base, evidence: [{ ...sel, refutes: [base.adopted] }] })).toHaveLength(1)
+    for (const p of ALL) expect([p.id, evidenceViolations(p)]).toEqual([p.id, []])
+  })
+
+  test('台账与闭环记录一致（DD-08 §4.1、§4.3）：判过的闭环，重判得到同样的判断与结论；台账这条命题的结论、来自它的证据条目与闭环算出的相同', () => {
+    const points = CalibrationFileSchema.parse(parse(readFileSync(new URL('../docs/calibration/points.yaml', import.meta.url), 'utf8'))).points
+    const dir = new URL('../docs/evidence/', import.meta.url)
+    const files = readdirSync(dir).filter(f => f.endsWith('.yaml')).sort()
+    expect(files.length).toBeGreaterThanOrEqual(4)                                              // 三个回填 + 第一条新闭环（DD-08 §6、§5.5）
+    for (const f of files) {
+      const { record } = parseClosure(readFileSync(new URL(f, dir), 'utf8'), f)
+      const p = ALL.find(x => x.id === record.propositionId)
+      expect([f, p?.id]).toEqual([f, record.propositionId])
+      const fromClosure = p!.evidence.filter(e => e.ref === `docs/evidence/${f}`)
+      if (!record.conclusion) { expect([f, fromClosure]).toEqual([f, []]); continue }      // 还没判断的（实验等读数）不入账
+      const j = judgeClosure(record, p!, points)
+      expect([f, j.verdicts, j.conclusion]).toEqual([f, record.verdicts, record.conclusion])
+      expect([f, p!.conclusion]).toEqual([f, j.conclusion.proposition])
+      expect([f, fromClosure]).toEqual([f, evidenceFromClosure(record, j, p!, points)])
     }
   })
 })

@@ -236,6 +236,9 @@ export interface Rules {
   switchCooldown: Frame
   concertoMax: number
   concertoTiming: 'onCast' | 'onHit'
+  /** 按角色覆盖 concertoTiming（DD-08 §6 卜灵协奏时机的回填：同 forteKeepOnSwitchBy 的写法）：键是角色名，没写的角色用 concertoTiming；缺省 {}。
+   *  一律经 concertoTimingOf(rules, 角色) 读 */
+  concertoTimingBy: Partial<Record<CharName, 'onCast' | 'onHit'>>
   energyShare: { dealer: number; others: number }
   breakEnergy: number
   /** 震谐·干涉持续多久（战斗帧），期间偏谐值不累积（TD-06 §19，第三方攻略"震谐干涉的 buff 持续 8秒…无法进行处决和积攒"） */
@@ -293,6 +296,7 @@ export const DEFAULT_RULES: Rules = {
   switchCooldown: 60,                               // 被切走的人 1 秒内不能切回来，每人单独计（机制设计 5.4 写的是全局，2026-10-25 用户更正）
   concertoMax: 100,
   concertoTiming: 'onHit',                          // 逐段所得按命中给，"起手即得"仍在动作开始时（2026-10-03 用户实测，TD-06 Q1）
+  concertoTimingBy: {},                             // 不按角色覆盖（DD-08 §6）
   energyShare: { dealer: 1, others: 0.5 },          // 机制设计 4.1
   breakEnergy: 3,                                   // 白条打空（破盾）时全队每人 +3 × 各自共鸣效率（TD-06 §13.2）
   interferenceFrames: 480,                          // 8 秒（假设 resonance-rules）
@@ -327,3 +331,9 @@ export const DEFAULT_RULES: Rules = {
 /** 这个角色切走时保不保留共鸣回路的状态（DD-04 §4.1）：按角色的覆盖优先，没写用共享的 forteKeepOnSwitch。
  *  角色模块的钩子与台账的"当前生效值"都经它读（DF-05） */
 export const forteKept = (rules: Readonly<Rules>, char: CharName): boolean => rules.forteKeepOnSwitchBy[char] ?? rules.forteKeepOnSwitch
+
+/** 这个角色的协奏逐段所得什么时候给（DD-08 §6）：按角色的覆盖优先，没写用共享的 concertoTiming */
+export const concertoTimingOf = (rules: Readonly<Rules>, char: CharName): Rules['concertoTiming'] => rules.concertoTimingBy[char] ?? rules.concertoTiming
+
+/** 按角色覆盖共享规则的表 → 它覆盖的那条共享规则（DD-04 §4.1、DD-08 §6）：台账的"当前生效值"按它回退 */
+export const PER_CHAR_RULES = { forteKeepOnSwitchBy: 'forteKeepOnSwitch', concertoTimingBy: 'concertoTiming' } as const satisfies Partial<Record<keyof Rules, keyof Rules>>

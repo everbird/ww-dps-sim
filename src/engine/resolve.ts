@@ -369,7 +369,8 @@ function initialCore(given: Record<string, Record<string, number>>, team: Resolv
 }
 
 /** options.rules 覆盖 DEFAULT_RULES：只认已有的键，类型要一致；对象类的键按一层合并。
- *  按角色的表 forteKeepOnSwitchBy 另查每一项：键是数据里的角色名（原样比，不做模糊匹配），值是布尔（DD-04 §4.1） */
+ *  按角色的表 forteKeepOnSwitchBy、concertoTimingBy 另查每一项：键是数据里的角色名（原样比，不做模糊匹配），值是布尔 / onCast、onHit
+ *  （DD-04 §4.1、DD-08 §6） */
 function resolveRules(over: Record<string, unknown> | undefined, data: GameData, issues: string[]): Rules {
   const out: Rules = structuredClone(DEFAULT_RULES)
   for (const [k, v] of Object.entries(over ?? {})) {
@@ -380,6 +381,12 @@ function resolveRules(over: Record<string, unknown> | undefined, data: GameData,
       const bad = Object.entries(v as object).flatMap(([char, x]) =>
         !Object.hasOwn(data.characters, char) ? [`options.rules.forteKeepOnSwitchBy.${char}：没有这个角色`]
         : typeof x !== 'boolean' ? [`options.rules.forteKeepOnSwitchBy.${char}：应为 boolean`] : [])
+      if (bad.length > 0) { issues.push(...bad); continue }
+    }
+    if (k === 'concertoTimingBy') {
+      const bad = Object.entries(v as object).flatMap(([char, x]) =>
+        !Object.hasOwn(data.characters, char) ? [`options.rules.concertoTimingBy.${char}：没有这个角色`]
+        : x !== 'onCast' && x !== 'onHit' ? [`options.rules.concertoTimingBy.${char}：应为 onCast 或 onHit`] : [])
       if (bad.length > 0) { issues.push(...bad); continue }
     }
     ;(out as unknown as Record<string, unknown>)[k] = typeof v === 'object' ? { ...(cur as object), ...v } : v

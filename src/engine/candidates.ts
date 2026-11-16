@@ -1,5 +1,5 @@
 // DD-04 §4–5：候选检查属于分析层；所有变体重新 prepareRun，不修改装配结果。
-import { forteKept, type GameData } from '../data/gamedata'
+import { PER_CHAR_RULES, type GameData, type Rules } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
 import { damageShareByTag, usableBasis } from './basis'
 import { canonicalJson } from './digest'
@@ -27,8 +27,15 @@ export function scenarioFeatures(p: PreparedRun): ReadonlySet<ScenarioFeature> {
   }
   return features
 }
+/** 绑定的当前生效值。按角色覆盖的表（forteKeepOnSwitchBy.<角色>、concertoTimingBy.<角色>）表里没写这个角色时回退到共享的那条（DF-05、DD-08 §6） */
 export function effectiveValue(b: Binding, r: ResolvedScenario): unknown {
-  if (b.kind === 'rule' && b.path?.startsWith('forteKeepOnSwitchBy.')) return forteKept(r.rules, b.path.slice('forteKeepOnSwitchBy.'.length))
+  if (b.kind === 'rule' && b.path) {
+    const [head, char, ...rest] = b.path.split('.')
+    if (rest.length === 0 && char !== undefined && Object.hasOwn(PER_CHAR_RULES, head!)) {
+      const by = r.rules[head as keyof typeof PER_CHAR_RULES] as Readonly<Record<string, unknown>>
+      return Object.hasOwn(by, char) ? by[char] : r.rules[PER_CHAR_RULES[head as keyof typeof PER_CHAR_RULES] as keyof Rules]
+    }
+  }
   let v: unknown = b.kind === 'rule' ? r.rules : b.kind === 'option' ? r.options : undefined
   for (const key of b.path?.split('.') ?? []) v = v && typeof v === 'object' && Object.hasOwn(v, key) ? (v as Record<string, unknown>)[key] : undefined
   return v
@@ -99,7 +106,7 @@ function overridesFor(base: RunOverrides, rows: readonly PlannedCandidate[]): Ru
 export function runCandidateReport(scenario: Scenario, data: GameData, opts: {
   overrides?: RunOverrides; pairs: boolean; onProgress?: (done: number, total: number) => void; ledger?: readonly Proposition[]
 }) {
-  const overrides = opts.overrides ?? {}, ledger = opts.ledger ?? PROPOSITIONS
+  const overrides = opts.overrides ?? {}, ledger: readonly Proposition[] = opts.ledger ?? PROPOSITIONS
   const p = prepareRun(scenario, data, overrides)
   if (!p.ok) throw new Error(p.issues.map(i => `${i.code}: ${i.message}`).join('\n'))
   const base = runPrepared(p.run), plan = classifyCandidates(p.run, ledger)

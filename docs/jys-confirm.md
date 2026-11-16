@@ -1,5 +1,7 @@
 # 景燃 · 尤诺 · 守岸人（"景尤守"）的确认清单
 
+> **读法的证据在台账**（DD-08 §7）：本清单里的"已关闭""已处理""接受"只说明采用了某种读法，不代表已证实。每条规则采用哪个读法、证据到了哪一步，统一看规则台账（`docs/proposition-ledger.md`，`pnpm assumptions --ledger`）与证据闭环（`docs/evidence/`）。
+
 2026-10-24 起。场景 `scenarios/jys-team.yaml`，角色模块 `data/curated/characters/{景燃,尤诺,守岸人}.ts`，用例 `tests/jys.test.ts`。数据 20261019（资源版本 3.7.13），说明文字按 nanoka 3.7。
 
 ## 0. 现在的结果

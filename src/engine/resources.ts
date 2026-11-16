@@ -4,7 +4,7 @@
 // 资源只读账本（DD-06）：角色资源只在三处写——这里的 add、switch.ts 的延奏清零、simulate.ts 的 initialState，三处都接进了账本。
 // 新增资源写入点必须同时接进账本（DD-06）：漏接的话闭合检查（checkLedgerClosure）与 pnpm fuzz --ledger 会报出来。
 import { RESOURCE_KINDS, type CharName, type ResourceKind, type Slot } from '../data/common'
-import type { ActionDef } from '../data/gamedata'
+import { concertoTimingOf, type ActionDef } from '../data/gamedata'
 import { activeFor } from './buffs'
 import type { Sim } from './context'
 import type { LedgerCauseKind } from './diagnostics'
@@ -143,11 +143,12 @@ export function payCost(sim: Sim, s: SimState, slot: Slot, def: ActionDef): void
 // §3.2、§7 施放资源
 
 /** 动作开始（或延奏动作的独立时间线开始）时给施放者：castGains 里 atFrame = 0 的项，加上 onCast 模式下
- *  时间线上未被跳过的判定的协奏（× 寿命内结算次数）。正数的能量乘施放者的共鸣效率。每种资源记一条 resource（cast） */
+ *  时间线上未被跳过的判定的协奏（× 寿命内结算次数）。正数的能量乘施放者的共鸣效率。每种资源记一条 resource（cast）。
+ *  onCast / onHit 按施放者经 concertoTimingOf 取（按角色的覆盖优先，DD-08 §6） */
 export function castResources(sim: Sim, s: SimState, slot: Slot, src: EventSource): void {
   const sum: Partial<Record<ResourceKind, number>> = {}
   for (const g of src.def.castGains) if (g.atFrame === 0) sum[g.resource] = (sum[g.resource] ?? 0) + g.amount
-  if (sim.r.rules.concertoTiming === 'onCast') {
+  if (concertoTimingOf(sim.r.rules, s.chars[slot].name) === 'onCast') {
     for (const j of src.def.judgments) {
       if (j.spawnFrame === null || src.skip?.includes(j.name) || !j.gains.concerto) continue
       sum.concerto = (sum.concerto ?? 0) + j.gains.concerto * ticksWithinLife(j)
@@ -187,7 +188,7 @@ export function settleGains(
       put(x, add(sim, s, x, 'energy', base * share * regenOf(sim, s, x), full, 'hit', 'hit'))
     }
   } else if (base < 0) put(j.owner, add(sim, s, j.owner, 'energy', base, full, 'hit', 'hit'))   // 消耗：只作用于出伤者，不乘效率
-  const concerto = rules.concertoTiming === 'onHit' || d.spawnFrame === null
+  const concerto = concertoTimingOf(rules, s.chars[j.owner].name) === 'onHit' || d.spawnFrame === null
     ? add(sim, s, j.owner, 'concerto', d.gains.concerto, full, 'hit', 'hit') : 0
   const core = [0, 0, 0]
   for (let k = 0; k < 3; k++) {

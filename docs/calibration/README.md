@@ -49,6 +49,10 @@
 |---|---|---|
 | `2026-10-21-跳字-心开场AAA.md` | 心的面板与开场三下普攻的跳字（全息 6 无常凶鹭），表由 `pnpm trace scenarios/xin-team-r5.yaml --loop 0 --hits --char 心` 出 | 待实测；`points.yaml` 里 22 个点 |
 | `2026-10-21-跳字-椿开场AAE.md` | 椿的面板与开场 AAE 的跳字（全息 6 朔雷之鳞），表由 `pnpm trace scenarios/m0-video-eq.yaml --loop 0 --hits --char 椿` 出 | 待实测；`points.yaml` 里 15 个点 |
+| `2026-10-20-回填-散华E-视频轴.md` | 视频轴"散AQ变奏椿"的变奏（DD-08 回填，闭环 `docs/evidence/sanhua-e.backfill.yaml`） | 4 条有读数、1 条没核对过；`散华E.*` |
+| `2026-10-27-跳字-焰痕-中2.md` | 深塔 41 期中 2 露帕的三下跳字（DD-08 回填，闭环 `yanhen.backfill`） | 3 条有读数（选模材料）；`焰痕.*` |
+| `2026-10-28-协奏环-卜灵-中3中4.md` | 中 3、中 4 卜灵切雷主的变奏与段中协奏环（DD-08 回填，闭环 `buling-concerto-timing.backfill`） | 8 条切人类型、3 条段中读数（条件不足）；`卜灵协奏.*` |
+| `../experiments/C8-声骸起手优先级.md` | 第一条新闭环 `echo-input-priority.2026-11` 的实验页（技能 → 声骸隔几帧） | 预测已登记，等进游戏；`声骸起手.*` |
 
 
 ## 时钟、跳字分支、区间与用途（DD-03 §3–4）
@@ -58,3 +62,19 @@
 - **`gameRange: [lo, hi]`**：实测只能读取区间时填写，与 `game`（非 `null`）互斥；仿真值落入区间内相对差为 `0`。
 - **`purpose`**：`given` | `formulation` | `selection` | `independent_validation` | `unspecified`（缺省）；`pnpm calibrate` 统计时把 `independent_validation` 单列。
 - **`condition`**：可选元数据 `{ gameVersion, recordedAt?, note?, unknowns }`，记录采样版本与未控条件。
+
+## 观测与证据闭环（DD-08 §3、§4）
+
+"校准点"在文档里改叫**观测**（文件名、位置、类型名 `CalibrationPoint` 都不变，别名 `Observation`）。DD-08 加了三种：
+
+| 种类 | 写什么 | 仿真值 | 容差 |
+|---|---|---|---|
+| `interval` | 两个事件之间隔多久：`from`、`to` 是事件选择器（`to` 从 `from` 选中的那条之后数起），`clock: world \| battle` 必填（录像数帧是 world、深塔倒计时是 battle），`unit: frames \| seconds` | 两条事件的世界帧或战斗帧之差 | 绝对的帧数：缺省 ±1；写了 `fps: 30` 时 ±2 |
+| `resourceAt` | 某个时刻某人某种资源：`at`（选择器）、`when: before \| after`、`char`、`resource`（`energy`、`concerto` 或核心资源名）、`as: value \| ratio` | 资源账本（DD-06）：`before` 取事件之前最后一条的余额，`after` 取它（与同一帧里由它引出的事件）写的条目之后的余额 | 相对 1% |
+| `switchType` | 某次切人是变奏还是普通：`at` 选 switch，读数写在 `expect: intro \| normal`（没看时 null），不填 game | 那次切人的 `intro` | 类别相同才算 |
+
+- **事件选择器**：`type`（actionStart / switch / hit / intro / outro / buffApply / buffExpire）加能写的字段：动作是 ID 或别名，switch 的 `char` 是切进来的人，buff 事件的 `char` 是 buff 挂在谁身上；`loop` 限定轮次，`nth` 第几个。同一帧几条分不清、换一条值就不同的，比较结果是"相容（分不清）"或冲突。
+- **缺条件就写出来**：`requires: [...]` 声明比较必需的条件，它在 `condition.unknowns` 里时结果是"条件不足"（`insufficientCondition`），不硬比。读数的精度写进 `condition.note`（"30 帧录像，±2 世界帧"），能读成区间的写 `gameRange`。
+- **用途照实标**：参与过"挑哪种读法"的标 `selection`，不能再当独立检验；只有另外独立对上的才标 `independent_validation`（路线图 §5.3）。
+- **仿真列带身份**：`pnpm calibrate` 按场景各跑一次（带运行身份），末尾列出每个场景的 runId；闭环的预测由 `pnpm evidence predict` 生成，带 runId 与身份文件（`docs/evidence/runs/`）。旧文档里手抄的仿真数不沿用（路线图 §7）。
+- **证据闭环**：一条闭环引用若干观测，拿冻结的预测与读数比，结论按 DD-08 §4.1 的决策表算；格式与命令见 `docs/evidence/README.md`、`docs/experiments/README.md`。闭环的观测也在这里：有读数的同样是回归测试（冲突、找不到时 `tests/calibration.test.ts` 失败，条件不足的不算）。

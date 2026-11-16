@@ -9,10 +9,11 @@ import { describe, expect, it } from 'vitest'
 
 const ENGINE = fileURLToPath(new URL('../src/engine/', import.meta.url))
 
-/** ④ 分析与应用：架构附录 B 的 14 个，加详细设计新增的 candidates（DD-04）、observations（DD-08、DD-09）、zero-interference（DD-05 §6 的零干扰对拍） */
+/** ④ 分析与应用：架构附录 B 的 14 个，加详细设计新增的 candidates（DD-04）、observations（DD-08、DD-09）、zero-interference（DD-05 §6 的零干扰对拍）、
+ *  evidence（DD-08 §4 的证据闭环） */
 const ANALYSIS = [
   'analysis', 'calibration', 'cards', 'fit', 'fuzz', 'insight', 'matrix', 'optimize', 'plan', 'sample', 'scorecard', 'search', 'sensitivity', 'trace',
-  'candidates', 'observations', 'zero-interference',
+  'candidates', 'observations', 'zero-interference', 'evidence',
 ]
 /** ① 执行核心、①D 查询与诊断、② 台账：架构 §1.1 的 18 个，加 DD-01 新增的 run、run-types、digest，DD-04 新增的 propositions（② 台账），
  *  DD-05 新增的 diagnostics（①D 诊断旁路）、rule-points（② 判定点登记表）。新文件先在这里归层 */

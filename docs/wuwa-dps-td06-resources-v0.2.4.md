@@ -102,6 +102,7 @@ xlsx 的协奏回收有两部分：公式末项是"起手即得"（已装配成 
 - "未被跳过"：钩子在 `actionStart` 里用 `ctx.skipJudgments` 去掉的运行时版本（TD-08 §4 模式 P5）不计入。所以施放资源排在 `actionStart` 的触发与钩子之后发（§0.1 第 6 条）。
 - 延奏动作的独立时间线（TD-05 §4.3）视同一次动作开始：在它开始时按同样规则发施放资源。
 - 两种模式的总量在"动作完整打完"时相同；差别在被取消、切人时刻前后（TD-05 T05-1 那种同 tick 切人）。默认值的实测见 Q1。
+- **按角色覆盖**（2026-11-16，DD-08 §6）：`rules.concertoTimingBy: { <角色>: 'onCast' | 'onHit' }`，缺省 `{}`；表里写了的角色按它、没写的按共享的 `concertoTiming`（`concertoTimingOf(rules, 角色)`，同 `forteKeepOnSwitchBy` 的写法）。按施放者取：`castResources` 看开始动作的人，`settleGains` 看判定的出伤者。用途是台账命题 `buling-concerto-timing` 的候选 `on-cast`（卜灵的逐段所得也在起手时给），场景的缺省行为不变。
 
 ---
 

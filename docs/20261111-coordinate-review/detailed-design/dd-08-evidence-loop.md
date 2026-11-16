@@ -1,7 +1,7 @@
 # DD-08 证据闭环与进游戏实验的做法
 
 **版本**：v0.4，2026-11-14，Claude。v0.2 按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10：DF-16、DF-17）；v0.3 按 Codex 第二轮复核修订（意见文件 §13：DF-16 的区分力）；v0.4 按第三轮复核统一单候选分支（意见文件 §16：DF-16）。
-**状态**：Final（2026-11-15）。本文 v0.4 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）；定稿时按意见文件 §17.2 在 §4.1 作一处文字澄清，判定不变。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.4 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）；定稿时按意见文件 §17.2 在 §4.1 作一处文字澄清，判定不变。**T08-1～T08-7、T08-9 已实现（2026-11-16）**，T08-8 等进游戏；验收清单见 §10，实施中按代码改的地方见 §13。
 **阶段**：三。**前置**：DD-03（量尺）、DD-04（台账与候选）、DD-07（查询）。**被依赖**：DD-09。
 
 ## 1. 范围与依据
@@ -372,12 +372,12 @@ T08-1～T08-7 不用进游戏。T08-8 等用户安排。
 
 ## 10. 验收清单（阶段三）
 
-- [ ] 三个回填案例各有一份闭环记录，其中 `buling-concerto-timing.backfill` 的结论是 `ambiguous` 并写明了下一项可区分的观测。
-- [ ] 至少一条共享规则的新闭环走完：预测在观测之前登记；有判断；有采用决定；受影响场景带 `runId` 重跑。结论是 `supported`、`refuted` 或 `ambiguous` 都算完成。
-- [ ] 台账里这几条命题带证据条目，用途、三种关系、条件、版本都填了。
-- [ ] 结论变了的命题：代表轴的 `docs/m0-strict-conclusion.md` 重新生成，"依赖的未证实规则"相应变化。
-- [ ] `pnpm calibrate`、`pnpm evidence --md` 的输出里，没有任何一处把"相容"写成"证实"。
-- [ ] `tests/observations.test.ts`、`tests/evidence.test.ts`、`tests/propositions.test.ts` 全过。
+- [x] 三个回填案例各有一份闭环记录，其中 `buling-concerto-timing.backfill` 的结论是 `ambiguous` 并写明了下一项可区分的观测。（2026-11-16：`sanhua-e.backfill` 暂定〔第 5 行〕、`yanhen.backfill` 暂定〔第 5 行〕、`buling-concerto-timing.backfill` 分不清〔第 3 行〕，见 `docs/evidence/README.md`）
+- [ ] 至少一条共享规则的新闭环走完：预测在观测之前登记；有判断；有采用决定；受影响场景带 `runId` 重跑。结论是 `supported`、`refuted` 或 `ambiguous` 都算完成。（`echo-input-priority.2026-11`：预测已登记、区分度检查通过〔T08-6〕；判断、采用决定与重跑等进游戏〔T08-8〕）
+- [x] 台账里这几条命题带证据条目，用途、三种关系、条件、版本都填了。（三个回填的命题；新闭环判完后照 `pnpm evidence ledger` 补）
+- [x] 结论变了的命题：代表轴的 `docs/m0-strict-conclusion.md` 重新生成，"依赖的未证实规则"相应变化。（台账多了三条命题，重新生成；三条都没有 assumptionId，"依赖的未证实规则"不变，变的是"未实现""未列全""不适用"几行）
+- [x] `pnpm calibrate`、`pnpm evidence --md` 的输出里，没有任何一处把"相容"写成"证实"。
+- [x] `tests/observations.test.ts`、`tests/evidence.test.ts`、`tests/propositions.test.ts` 全过。
 
 ## 11. 要同步的正式文档
 
@@ -398,3 +398,19 @@ T08-1～T08-7 不用进游戏。T08-8 等用户安排。
 | DD08-Q3 | 预测登记靠什么保证"在观测之前" | 提交哈希与日期；不做保证 | 提交哈希。个人项目里这已经够用，也便于事后核对 |
 | DD08-Q4 | 观测要不要从 `docs/calibration/` 搬到新目录、改文件名 | 不搬，只在文档里改叫"观测"；搬 | 不搬。现有的测试与命令都指着它 |
 | DD08-Q5 | 每组实验重复几次 | 3 次；按题定 | 缺省 3 次，实验页里可以改并写理由 |
+
+## 13. 实施记录（2026-11-16）
+
+按总览 §8 的做法，实施中按代码改的地方直接写在这里（代码注释与提交说明引用本节）：
+
+1. **观测**（T08-1）：`EventSelector` 按事件种类限定能写的字段（switch 的 `char` 是切进来的人，buff 事件的 `char` 是 buff 挂在谁身上，动作写 ID 或别名）；`interval` 的 `to` 从 `from` 选中的那条之后数起（"大招之后紧接着的切人"）；`interval` 加可选的 `fps`（30 帧录像缺省容差 ±2，§3.2）；`switchType` 的 `expect` 可以为 null（登记预测时还没读数，§5.2 第 1 步），没有 game；`DEFAULT_TOLERANCE` 加 `interval: 1`（绝对帧数）与 `resourceAt: 0.01`（相对），实际用的容差由 `toleranceOf` 取。
+2. **比较**（T08-2）：`compareValue` 的顺序是条件不足 → 取不到 → 没有读数 → 比；"同一帧几条分不清的事件"只在值不同时才算（`resourceAt`），interval 的值一样，不报 ambiguous。`resourceAt` 的 `after` 取"这条事件、与同一世界帧里 directParentSeq / subjectSeq 指向它们的事件"写的账本条目之后的余额，没有就等于 `before`。`readObservation` 给出 `covered`：运行提前停了、事件还没发生的是"不在覆盖范围里"，跑完了还找不到的不是。`calibrate()` 的薄包装保留旧字段（多一个 `category`），`pnpm calibrate` 现有 37 个点的行与合计逐字不变，末尾多列每个场景的 runId。
+3. **闭环记录**（T08-3）：预测条目多 `covered`、`reason`（取不到时）、`alternatives`（分不清的另几个值）、`manual`（没实现的候选手算的，不参与判断）；运行条目多 `detail`（轴失败、截断、引擎错误的明细，判断时进 `intentFailures`）；`decision` 在人填之前可以没有。登记是第四个子命令 `pnpm evidence register`（§5.2 第 4 步），要求工作区干净（运行身份没有内容指纹）、评分观测都还没有读数（已有的材料按回填记），`preRegistration.commit` 是预测运行身份里的提交号，身份文件是 `docs/evidence/runs/<闭环 ID>.predict.json`（一张 runId → 身份的表，`identities` 写成 `<文件>#<runId>`）。另有 `pnpm evidence ledger <闭环>` 打印要贴进台账的证据条目；`judge` 在评分观测一条读数都没有时拒绝（不存空的"未验证"结论）。
+4. **`--verify`**：runId 含提交号，只改文档的提交也会让它变。所以重跑后 runId 不同时再比身份：除提交号、内容指纹以外的字段（数据、装配结果、场景、规则、选项……）不同，或重跑出来的预测值不同，才报"预测已过期"；只有提交号不同、预测也一样的照样有效、单列说明（C08-17 的"只改倍率"改的是装配结果，照样报过期）。
+5. **候选级判断**：没实现的候选 `perObservation` 为空；`notAssessedReason` 的取法：没实现 → unimplemented；没有覆盖到的评分观测时，有引擎错误的运行 → engineError，否则 noCoveredObservation；覆盖到的都是条件不足或没读数 → allInsufficient；其余（跑完了还找不到）→ noCoveredObservation。严格入口里变奏意图没满足、轴停在那次切人上时，观测正是这次切人的类型就预测 normal（§4.1"经由那条观测算不相容"）。
+6. **进台账**（T08-4）：`evidenceFromClosure` 把"同一个 setup、同一种用途、同样的三种关系、同一个游戏版本与日期"的观测并成一条证据，id 是 `<闭环 ID>:<setup>:<第几组>`，条件里列出是哪几条观测；`simulationRunId` 取采用候选在那个 setup 上的预测运行。台账的结论与证据条目照闭环贴进 `propositions.ts`，`tests/propositions.test.ts` 核对重判结果、结论、证据条目三者与闭环一致，并核对入账约束（C08-11）。
+7. **回填的命题**（T08-5）：三条新命题没有 assumptionId（假设表里没有对应条目），证据只有闭环判出来的。`cast-gain-at-start`（散华 E 的起手即得）、`yanhen-extend`（焰痕）的另一种读法现在没有开关，记为未实现，结论都是第 5 行的暂定（散华 E 的预期写的是"supported 或 provisional"，这里是后者：视频材料与采用的读法相容，但另一种读法没实现，而且这几条观测在两种读法下本来就预测相同）。`buling-concerto-timing` 的竞争候选 `on-cast` 要能跑，新加了按角色覆盖的规则 `Rules.concertoTimingBy`（同 `forteKeepOnSwitchBy` 的写法；缺省 `{}` 不改任何场景的行为，conformance 只有运行身份的 rules 多一个空表）；段中协奏环读数声明了"环与仿真的时刻对齐"这个必需条件、不知道，比较结果是条件不足，结论由切走时的切人类型定：两种到账时机都相容，第 3 行的分不清。
+8. **重跑的受影响场景**：命题既没有登记判定点（`rule-points.ts`）、也没有对应的假设时，§4.2 的两条永远找不到场景，改按 `appliesToChars`（队里有这些角色的场景）；都没有就没有受影响的场景（`cast-gain-at-start` 是全库的数据读法，回填的采用决定不改缺省，没有重跑）。
+9. **游戏版本**（T08-7）：写在 `data/xlsx-versions.json` current 条目的 `gameVersion`（手填，现为 3.7）。`pnpm evidence --stale` 列出闭环观测与台账证据里游戏版本与它不同的（版本不详的单列）。`pnpm assumptions --ledger` 的结论列用中文标签，证据一栏标"沿用自 <版本>，待复核"；`check:data --flags` 有角色模块的角色多一行"已处理（采用了某种读法，不代表已证实）"的条数。
+10. **第一条新闭环**（T08-6）：三个 setup（散华、维里奈、椿的 E → 首位声骸）放在 `scenarios/evidence/`，不进场景快照、conformance、敏感度矩阵与模糊测试（它们只扫 `scenarios/` 这一层）。判据的容差取 ±6 世界帧：读数两端各 ±1 帧，另加连按声骸键的间隔（没有预输入时按键会比最早能放的那一帧晚到最多约 5 帧，读数只会偏晚）。预测：散华 20 / 96、维里奈 26 / 87、椿 36 / 86 世界帧（`generic-5` / `echo-table`），三条都可区分。
+

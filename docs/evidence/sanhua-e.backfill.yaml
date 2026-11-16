@@ -1,0 +1,101 @@
+# 回填（DD-08 §6）：散华 E 的协奏 15 是"起手即得"——E 开始那一帧就给。材料是 docs/m0-confirm.md §11 V5、V7 与视频轴的"变奏椿"
+# （观测 docs/calibration/points.yaml 的 散华E.*，记录 docs/calibration/2026-10-20-回填-散华E-视频轴.md）。
+# runs / predictions 由 pnpm evidence predict 写，verdicts / conclusion 由 judge 写，reruns 由 rerun 写；其余是人写的。
+id: sanhua-e.backfill
+propositionId: cast-gain-at-start
+question: 散华 E 的协奏 15 是在 E 起手那一帧就给（起手即得），还是随 E 的第一段命中才给
+kind: backfill
+setups:
+  - id: m0-video-eq
+    scenario: m0-video-eq.yaml
+    note: 视频轴 EQ 版（V7 以它为准），配装照视频的硬性指标（V3）
+candidates:
+  - candidateId: at-start
+    conditions: 散华 E 起手那一帧（动作局部第 0 帧，TD-04 §1 第 9 条、TD-06 §7）协奏 +15，与打没打中无关；适用于资源公式末项是常数的格子（TD-01 §3.7）
+    runs:
+      - setupId: m0-video-eq
+        runId: run-d14eaf8f7452f6a0
+        status: completed
+    predictions:
+      - observationId: 散华E.散EQ变奏椿.启动轴
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第1轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第2轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第3轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散华切维里奈.第2轮
+        predicted: normal
+        covered: true
+  - candidateId: at-first-hit
+    conditions: 这 15 点随 E 的第一段命中（E 的判定第 19 帧出现）才给；E 在命中之前被取消、切人不打断 E 时照样在后台命中后给
+    runs: []
+    predictions: []
+criteria: 切人类型按类别比，仿真与读数相同算相容、不同算冲突；没有读数的不算。这些观测都在 E 命中之后才切人，两种读法预测相同，只能相容、区分不了——要区分得在 E 命中之前就切人（discriminatingObservationNeeded）
+observationIds:
+  - 散华E.散EQ变奏椿.启动轴
+  - 散华E.散EQ变奏椿.第1轮
+  - 散华E.散EQ变奏椿.第2轮
+  - 散华E.散EQ变奏椿.第3轮
+  - 散华E.散华切维里奈.第2轮
+verdicts:
+  - candidateId: at-start
+    perObservation:
+      - observationId: 散华E.散EQ变奏椿.启动轴
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第1轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第2轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第3轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散华切维里奈.第2轮
+        status: unassessable
+        residual: null
+        purpose: unspecified
+        covered: true
+    runStatuses:
+      - completed
+    overall: consistent
+  - candidateId: at-first-hit
+    perObservation: []
+    overall: notAssessed
+    notAssessedReason: unimplemented
+    runStatuses: []
+conclusion:
+  proposition: provisional
+  about: at-start
+  basis:
+    independent: []
+    other:
+      - 散华E.散EQ变奏椿.启动轴
+      - 散华E.散EQ变奏椿.第1轮
+      - 散华E.散EQ变奏椿.第2轮
+      - 散华E.散EQ变奏椿.第3轮
+  rule: 5
+scopeTested: 游戏版本不详（视频 2026-06-18 发布）；椿 0 链 · 散华 6 链（行进序曲 5 阶）· 维里奈 3 链，m0-video-eq.yaml 的配装；只覆盖视频轴里"散EQ→椿"这几次切人
+discriminatingObservationNeeded: 训练场（Evariste 账号）：散华先把协奏攒到差一两格满（入场后打几下 A），按 E 后立刻切人（E 起手后、第 19 帧命中之前），看下一位是不是变奏入场——起手即得则变奏，随第一段命中给则普通切人。录 60 帧，读 E 起手到切人隔几帧（要少于 19 帧才算在命中之前）
+decision:
+  adoptedBefore: at-start
+  adopted: at-start
+  defaultChanged: false
+  note: 回填：沿用现在的读法（起手即得）。结论只是暂定，另一种读法没有开关、现有观测也区分不了，不改缺省。这一项由实现者按现状填写，用户可以改
+reruns: []
+notes: 回填的意义在于把"起手即得"这条读法和它现有的证据关系写清楚：现有的视频材料与它相容，但另一种读法（随第一段命中给）现在没有开关、没有评估，而且这几条观测在两种读法下本来就预测相同。
