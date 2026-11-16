@@ -8,7 +8,8 @@ import type { GameData } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
-import { gainSteps, hitCauses } from './trace'
+import type { EventMeta } from './diagnostics'
+import { gainSteps, hitCauses, metaOf } from './trace'
 import type { ResolvedScenario, SimEvent, WaitCode } from './types'
 
 export type Entry = 'field' | 'switch' | 'intro'
@@ -17,7 +18,7 @@ export const ENTRY_LABEL: Record<Entry, string> = { field: '接着打', switch: 
 export const EXIT_LABEL: Record<Exit, string> = { switch: '切走', self: '接自己' }
 
 /** 一段的量。时长按战斗秒：这段第一条指令（切人或出招）开始 → 下一条指令开始，就是"占前台多久"；
- *  资源与伤害按"归到的动作"（trace.ts 的 walkOwners）算，切走后在后台打完的也算这段的 */
+ *  资源与伤害按"归到的动作"（trace.ts 的 walkCauses，按记录下来的事件来源，DD-05 §3.4）算，切走后在后台打完的也算这段的 */
 export interface CardMeasure {
   secs: number                              // 已扣掉下一条指令自己的外部等待（exitWait）
   waits: Partial<Record<WaitCode, number>>  // 这段指令的等待（战斗秒），按原因合计
@@ -101,8 +102,11 @@ export function routinesOf(sc: Pick<Scenario, 'opening' | 'rotation'>): Routine[
   return [...out.values()]
 }
 
-/** 一段在日志里的量：lines 是这段的指令行号（切人那条可选 + 本行），loop 是第几轮 */
-export function measureSegment(log: readonly SimEvent[], r: ResolvedScenario, char: CharName, loop: number, lines: readonly number[]): CardMeasure | null {
+/** 一段在日志里的量：lines 是这段的指令行号（切人那条可选 + 本行），loop 是第几轮。
+ *  资源与伤害按出处归到这段的动作上（DD-05 §3.4）：meta 是这份日志的事件来源（带 diag: { eventMeta: true } 跑） */
+export function measureSegment(
+  log: readonly SimEvent[], meta: readonly EventMeta[], r: ResolvedScenario, char: CharName, loop: number, lines: readonly number[],
+): CardMeasure | null {
   const last = Math.max(...lines)
   const inSeg = (e: SimEvent) => 'cmd' in e && e.cmd !== undefined && e.cmd.loop === loop && lines.includes(e.cmd.line)
   const isNext = (e: SimEvent) => 'cmd' in e && e.cmd !== undefined && (e.cmd.loop > loop || (e.cmd.loop === loop && e.cmd.line > last))
@@ -122,7 +126,7 @@ export function measureSegment(log: readonly SimEvent[], r: ResolvedScenario, ch
   const waits: Partial<Record<WaitCode, number>> = {}
   for (const e of log) if (e.type === 'wait' && inSeg(e)) waits[e.code] = (waits[e.code] ?? 0) + e.battleFrames / 60
   let concerto = 0, energy = 0, energyTeam = 0
-  for (const g of gainSteps(log, r)) {
+  for (const g of gainSteps(log, r, meta)) {
     if (!owned(g.owner)) continue
     for (const [n, v] of Object.entries(g.deltas)) {
       if (!v || v <= 0) continue
@@ -131,7 +135,7 @@ export function measureSegment(log: readonly SimEvent[], r: ResolvedScenario, ch
     }
   }
   let damage = 0, hits = 0
-  for (const [e, cause] of hitCauses(log, r)) if (e.type === 'hit' && e.dmg && owned(cause.owner)) { damage += e.dmg.expected; hits++ }
+  for (const [e, cause] of hitCauses(log, r, meta)) if (e.type === 'hit' && e.dmg && owned(cause.owner)) { damage += e.dmg.expected; hits++ }
 
   const ownerOf = new Map(r.buffs.flatMap(b => (b.owner === 'env' ? [] : [[b.def.id, r.team[b.owner]!.def.name] as const])))
   const buffs: CardMeasure['buffs'] = []
@@ -190,7 +194,7 @@ function measureAlone(sc: Scenario, data: GameData, base: ResolvedScenario, card
   }
   let r: ResolvedScenario
   try { r = resolveScenario(variant, data) } catch (e) { row.error = (e as Error).message.replace(/\s+/g, ' ').slice(0, 120); return row }
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })
   const n = body.length
   const c = res.completion
   if (c.status === 'engineError') { row.error = `${c.engineError?.code ?? 'engineError'}：${c.engineError?.message ?? ''}`; return row }
@@ -202,7 +206,7 @@ function measureAlone(sc: Scenario, data: GameData, base: ResolvedScenario, card
     row.error = `出口跑不通（${code}：${f.detail}）`; return row   // 出口那一招没出手，量不出时长
   }
   if (c.status === 'truncated') { row.error = '出口跑不通（到帧数上限被截断）'; return row }
-  row.m = measureSegment(res.log, r, card.char, 1, entry === 'field' ? [n] : [n - 1, n])
+  row.m = measureSegment(res.log, metaOf(res), r, card.char, 1, entry === 'field' ? [n] : [n - 1, n])
   if (!row.m) row.error = '没出手'
   return row
 }
@@ -212,7 +216,7 @@ export interface CardsOptions { chars?: readonly string[]; lines?: readonly stri
 /** 量一份场景里全部套路的卡：先跑原场景（每轮的这一段），再逐个单独量 */
 export function measureCards(sc: Scenario, data: GameData, opts: CardsOptions = {}): { cards: Card[]; runs: number } {
   const base = resolveScenario(sc, data)
-  const res = simulate(base)
+  const res = simulate(base, { diag: { eventMeta: true } })
   let runs = 1
   const loops = [...new Set(res.log.flatMap(e => (e.type === 'loop' ? [e.loop] : [])))]
   const cards: Card[] = []
@@ -226,7 +230,7 @@ export function measureCards(sc: Scenario, data: GameData, opts: CardsOptions = 
         if (clean(line) !== rt.line) return
         const lines = i > 0 && switchTo(list[i - 1]!) === rt.char ? [i, i + 1] : [i + 1]
         for (const loop of loopList) {
-          const m = measureSegment(res.log, base, rt.char, loop, lines)
+          const m = measureSegment(res.log, metaOf(res), base, rt.char, loop, lines)
           if (m) card.team.push({ loop, entry: m.intro === null ? 'field' : m.intro ? 'intro' : 'switch', m, match: null })
         }
       })

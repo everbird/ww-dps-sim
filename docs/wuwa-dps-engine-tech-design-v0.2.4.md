@@ -801,7 +801,7 @@ wuwa-dps/
 5. **遍历顺序显式。** 对外输出的列表按固定规则排（队伍槽位、登记顺序、伤害），不依赖对象键的遍历顺序（JS 里整数样的键排在前面，Rust 的 `HashMap` 没有顺序）。
 6. **出错。** 仿真失败（等不来、等超时、超过帧数、不变量不成立）抛 `ScheduleError`，只在 `simulate` 一处接住，对应 Rust 的 `Result` 与 `?`；别的异常都是程序错误。
 7. **随机数只来自 `src/engine/rng.ts`**（T4），期望模式不用。
-8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表，`src/engine/portable.ts`）、事件日志、汇总写成 JSON，放到 `out/conformance/`；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。
+8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表，`src/engine/portable.ts`）、事件日志、汇总写成 JSON，放到 `out/conformance/`；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。零干扰对拍是它的一部分（2026-11-16，DD-05 §6.3）：每个场景另带全部诊断再跑一次，结果（去掉 `diag`）、终态 `SimState`、事件队列游标都要相同，不一致就打印第一个不同的路径并以退出码 1 结束；诊断本身不写进样例。
 9. **已知要改的两处。** `kernel.ts` 里有两处模块级的东西：`settleQueue`（P4 进行中新生成的判定）与 `timelineOf` 按对象身份的 WeakMap 缓存。JS 单线程、同步跑，没有问题；Rust 里前者放进仿真上下文，后者在装配时预先算好放进动作定义。
 
 ---
@@ -821,7 +821,7 @@ wuwa-dps/
 4. **不变量断言**（开发模式常开）：能量 ≤ 上限、协奏在 0–100、计时器不为负、战斗时钟单调不减、每段伤害 ≥ 0。已实现（`src/engine/invariants.ts`），不成立时 `SimResult.error.code = 'invariant'`。
 5. **回归快照**：每个场景存一份汇总快照（v0.2 起含这次碰到的假设）；数据或引擎改动导致的数值变化，人工确认后再更新快照。已建（`tests/scenarios.test.ts`，`pnpm test -u` 更新）。
 6. **游戏内校准**：实测伤害数字、轴时长、半程切人拿到的能量和协奏，记到 `docs/calibration/`（v0.1.9：已建，格式见其中 README）；发现偏差优先改 `rules` 里的规则表，而不是改引擎。对不上时怎么查（说清楚、分层、从粗到细、做实验）与调试工具见 TD-11。
-7. **一致性样例**（v0.2，§10.1）：装配结果去掉钩子表后是纯数据，JSON 往返再接上钩子，事件日志与汇总逐条相同（`tests/portable.test.ts`）；取整与 Rust 写法逐位相同（`tests/num.test.ts`）。`pnpm conformance` 写出每个场景的输入与输出，换实现时逐条对拍。
+7. **一致性样例**（v0.2，§10.1）：装配结果去掉钩子表后是纯数据，JSON 往返再接上钩子，事件日志与汇总逐条相同（`tests/portable.test.ts`）；取整与 Rust 写法逐位相同（`tests/num.test.ts`）。`pnpm conformance` 写出每个场景的输入与输出，换实现时逐条对拍；并做零干扰对拍（DD-05 §6：诊断全关与全开的结果、终态、事件队列游标相同，`tests/zero-interference.test.ts` 另有合成场景与反向用例）。
 
 ---
 

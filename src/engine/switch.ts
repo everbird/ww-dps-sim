@@ -34,6 +34,10 @@ export function onSwitch(sim: Sim, s: SimState, from: Slot, to: Slot, cmd: Comma
   const full = s.chars[from].concerto >= sim.r.rules.concertoMax
   const intro = full && introDef !== undefined
   log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[to].name, intro, cmd })
+  // 写完 switch 之后直接写的（切出者 buff 的移除、切人结束技能、挂起 buff 的施加、变奏动作、intro）：来源仍是这条指令，
+  // 直接父事件是那条 switch（DD-05 §3.3，DF-06）
+  const k = sim.k
+  const sc = k.diag?.open({ kind: 'command', cmd }, s.log.length, s.log.length - 1)
   if (full && !introDef) {
     log(s, { type: 'warning', code: 'noIntro', message: `${s.chars[to].name} 没有变奏动作（别名 QTE），按普通切人处理，${s.chars[from].name} 的协奏不清零` })
   }
@@ -49,6 +53,7 @@ export function onSwitch(sim: Sim, s: SimState, from: Slot, to: Slot, cmd: Comma
     log(s, { type: 'intro', char: s.chars[to].name, action: introDef.id })
   }
   drain(sim, s)
+  if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
 }
 
 /** TD-04 的 hooks.outroTrigger（§4.2）：变奏动作（或它的尾部）走到 outroTriggerFrame。
@@ -73,9 +78,14 @@ export function outroTrigger(sim: Sim, s: SimState, slot: Slot, src: EventSource
     s.tails.push(tail)
   }
   log(s, { type: 'outro', char: c.name, to: s.chars[slot].name, ...(tail ? { instance: tail.instance } : {}) })
+  const k = sim.k
+  if (tail) k.diag?.tailCreated(tail.instance, s.log.length - 1, s.frame)   // 延奏的尾部：创建事件是这条 outro（DD-05 §3.3）
   drain(sim, s)
   if (tail) {
+    // 延奏动作开始时的施放资源：同动作开始，来源是这个实例（DD-05 §3.2 的 actionLifecycle；没有 actionStart，subjectSeq 经尾部来源表回到 outro）
+    const sc = k.diag?.open({ kind: 'actionLifecycle', actionInstance: tail.instance }, s.log.length)
     castResources(sim, s, from, tail)
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     drain(sim, s)
   }
 }

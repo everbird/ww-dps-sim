@@ -33,7 +33,7 @@ async function main(): Promise<number> {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })         // 出处按记录下来的事件来源（DD-05 §3.4）
   const model = timelineModel(file, sc, r, res)
   const html = view === undefined
     ? renderTimeline(readFileSync(TEMPLATE, 'utf8'), model, fragment)

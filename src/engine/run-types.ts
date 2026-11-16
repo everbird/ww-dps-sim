@@ -4,6 +4,7 @@ import type { CharName, Frame, ResourceKind, Slot } from '../data/common'
 import type { Rules } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
 import type { HitRecord, SimOptions } from './context'
+import type { DiagOptions } from './diagnostics'
 import type { CommandRef, ResolvedScenario, WaitCode } from './types'
 
 /** SimResult 或事件的业务字段每变一次加 1（DD-01 §3.3）。'2' = DD-03：buffApply/buffExpire 增加 owner/instanceId，新增 buffUptimeBy、kill.eventSeq/overflow、goal.lethal */
@@ -236,7 +237,8 @@ export interface DamageScope {
         readonly gauge: 'off' | 'accumulates' }
 }
 
-/** 列明的判定点上读到、决定了哪条规则（架构 §4.2；DD-05）。DD-05 做完之前两个数组都是空的。
+/** 列明的判定点上读到、决定了哪条规则（架构 §4.2；DD-05 §4）。byProposition 按命题汇总判定点表（rule-points.ts）里每一条命题，
+ *  readCount、decisiveCount 是求值次数（调度器对同一条指令每个 tick 都重新求值，每求一次记一次）；firstFrame 是第一次读到的战斗帧。
  *  decisive：在当时的局部状态下换成另一个已实现的候选值，这一处会走另一条分支；不等于改变了结果 */
 export interface RuleUsageReport {
   readonly byProposition: readonly {
@@ -249,18 +251,8 @@ export interface RuleUsageReport {
   readonly coverage: readonly { readonly pointId: string; readonly propositionId: string; readonly symbol: string }[]
 }
 
-/** 可选诊断的开关（DD-05 §3.1）。观察选项，不进运行身份；DD-05、DD-06、DD-07 做完之前给了也不产出记录 */
-export interface DiagOptions {
-  readonly eventMeta?: boolean
-  readonly resourceLedger?: boolean
-  readonly ruleTrace?: boolean
-  readonly hitInputs?: boolean
-  readonly hitMargins?: boolean
-  readonly commandVerdicts?: boolean
-}
-
-/** 可选诊断的产出：字段由 DD-05（事件来源、规则明细）、DD-06（资源账本）加，现在还没有 */
-export interface Diagnostics { readonly eventMeta?: never }
+/** 可选诊断的开关与产出（DD-05 §3.1）：类型在 diagnostics.ts，这里转出去给还从 run-types 取的调用方 */
+export type { DiagOptions, Diagnostics } from './diagnostics'
 
 /** runPrepared 的观察选项：都不进运行身份。回调只读收到的对象；回调自己抛的异常原样抛给调用方，不算这次运行的状态（总览 §6 的 S-04） */
 export interface RunOptions {

@@ -1,7 +1,7 @@
 # DD-05 事件来源、诊断旁路、规则使用与零干扰
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-06、DF-10、DF-23 与 S-04 的条件）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**已实现（2026-11-16）**：T05-1～T05-8，验收清单见 §9；实施中与正文对不上、按代码改了正文的几处记在 §12。
 **阶段**：二。**前置**：DD-01。**被依赖**：DD-06、DD-07。
 
 ## 1. 范围与依据
@@ -110,6 +110,8 @@ if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
 | `command` | 调度器对队首指令的一轮处理。算出 `ref` 之后立刻打开，包住插队分支里的 `hold` / `closeSeg`、补位与可选的 `skip`、`evaluate`、`hold`、`execute`（含 `onSwitch`、`startAction`）。只包后半段的话，插队分支写出的 `wait` 会落成 `unattributed`（DF-06） | `scheduler.ts` 的 `createScheduler` 循环体 |
 | `autoInterject` | 插队动作的 `startAction`，嵌在 `command` 作用域里面 | 同上，`ij` 分支 |
 | `actionLifecycle` | `endAction` 写 `actionEnd` 与生成尾部 | `kernel.ts` 的 `endDueActions`（加参数 `k`） |
+| `actionLifecycle`（实施时加，§12 第 1 条） | `startAction` 里的 `hooks.actionStarted`：扣大招能量、施放资源与它们的 `resourceFull` | `kernel.ts` 的 `startAction` |
+| `actionLifecycle`（实施时加，§12 第 1 条，`actionInstance` 是延奏尾部的实例号） | 延奏动作开始时的施放资源 | `switch.ts` 的 `outroTrigger` |
 | `timeline` | 每个时间线节点的 `fireEvent`（资源、膨胀、生成判定、延奏） | `kernel.ts` 的 `advanceActions` 里调 `fireEvent` 处；`nodeIndex` 是节点在 `timelineOf(def)` 里的下标，尾部的带 `detached` |
 | `judgmentSettle` | 每次 `hooks.settle` | `kernel.ts` 的 `settleJudgments` |
 | `judgmentExpire` | 每次 `hooks.expired` | 同上 |
@@ -356,17 +358,17 @@ DD-07 做完后再加一项：抽样若干世界帧（首、尾、三个中间�
 | C05-8 | 合成：大招的切人锁来自"不响应输入"，轴里紧接着切人。`ultInputLocksSwitch` 为 true 与 false 各跑一次 | true：该判定点 `decisiveCount > 0`，有 `switchLock` 的等待；false：`decisiveCount > 0`（这一处同样决定了分支，方向相反），没有等待。两次的 `readCount` 都大于 0 |
 | C05-9 | 同一场景，切人写在锁结束之后 | `readCount > 0`，`decisiveCount === 0` |
 | C05-10 | 任意场景 | `ruleUsage.coverage` 等于 `RULE_POINTS`；诊断关与开，`ruleUsage` 相同；`ruleTrace` 的条数等于各点 `readCount` 之和 |
-| C05-11 | C05-3 的场景过 `trace.ts` 的来源函数，给与不给 `meta` | 给：两条各归各的；不给：`ownersInferred === true` |
+| C05-11 | C05-3 的场景过 `trace.ts` 的来源函数，给与不给 `meta` | 给：两条各归各的；不给：`ownersInferred === true`（T05-8 删掉旧算法后 `meta` 必填，"不给"一支改为对照搬到测试里的旧算法：它把两条都归到乙，§12 第 6 条） |
 
 ## 9. 验收清单
 
-- [ ] `tests/phase-boundary.test.ts`、`tests/zero-interference.test.ts` 全过；反向用例证明检查有效。
-- [ ] `pnpm conformance` 带零干扰对拍，全部场景通过。
-- [ ] 代表场景上 `eventMeta` 没有 `unattributed`。
-- [ ] `ruleUsage` 在所有运行里都有，`coverage` 列出 16 个判定点。
-- [ ] 路线图 §4.2 末尾说的两种错归（同帧多个到期、队列交错）各有用例，并断言了旧算法在该用例上是错的。
-- [ ] 诊断全关时，单次运行的耗时相对 DD-01 之后的增加不超过 3%（`m0-video-eq.yaml` 跑 20 次取中位数，数字写进提交说明）。
-- [ ] `pnpm fuzz` 通过。
+- [x] `tests/phase-boundary.test.ts`、`tests/zero-interference.test.ts` 全过；反向用例证明检查有效（在 `open` 里改 `s.nextId` 的收集器子类，比较失败并指出路径）。
+- [x] `pnpm conformance` 带零干扰对拍，全部场景通过（29 个场景；样例的 `log`、`summary`、`error`、`completion` 等与实现之前逐字节相同，只有 `ruleUsage` 有了内容）。
+- [x] 代表场景上 `eventMeta` 没有 `unattributed`（`m0-video-eq.yaml` 与合成主轴，`tests/event-origin.test.ts`；零干扰对拍另跑了 `xin-team.yaml`、`xin-tower4-video.yaml`）。
+- [x] `ruleUsage` 在所有运行里都有，`coverage` 列出 16 个判定点。
+- [x] 路线图 §4.2 末尾说的两种错归（同帧多个到期、队列交错）各有用例，并断言了旧算法在该用例上是错的（C05-3、C05-11：旧算法搬到 `tests/helpers/old-owners.ts` 只作对照，§12 第 6 条）。
+- [x] 诊断全关时，单次运行的耗时相对 DD-01 之后的增加不超过 3%：`m0-video-eq.yaml` 两份代码同一进程交替跑，200 对的成对比值中位数 +0.9%、+1.4%；各跑 20 次取中位数的 5 次交替测量 −1.3%、+3.9%、+4.3%、−1.1%、−2.3%（单次测量的机器噪声约 ±4%，平均 +0.7%）。
+- [x] `pnpm fuzz` 通过（29 个场景，问题 0 条）。
 
 ## 10. 要同步的正式文档
 
@@ -385,3 +387,21 @@ DD-07 做完后再加一项：抽样若干世界帧（首、尾、三个中间�
 | DD05-Q3 | 作用域要不要 `try / finally` | 要；不要 | 不要。抛错路径上两侧的控制流保持一致，收尾交给 `finish` |
 | DD05-Q4 | `readCount` 按求值次数还是按指令去重 | 求值次数；按指令 | 求值次数，口径最简单；按指令的统计由 `ruleTrace` 加工 |
 | DD05-Q5 | 角色模块里的规则读取怎么记 | A：`ctx.noteRule`，模块显式调；B：把 `ctx.rules` 包一层自动记 | A。B 等于换了个地方用 `Proxy`（路线图 §1.3 已排除），也分不出"决定了分支" |
+
+## 12. 实施记录（2026-11-16）
+
+按代码改正文、或正文没写到的几处。README §8：设计结案后实施中发现对不上，直接改对应的文档并在总览的修订记录里记一条。
+
+1. **`actionLifecycle` 多包两处**（§3.2 的表已补两行）：`startAction` 里的 `hooks.actionStarted`（扣大招能量、施放资源与它们的 `resourceFull`），以及延奏动作开始时的施放资源（`outroTrigger` 里的 `castResources`）。不包的话，前者落在指令的作用域里、没有 `subjectSeq`；后者落在切入者变奏动作的时间线节点里，`subjectSeq` 指到别人的 `actionStart`。包了以后前者的 `subjectSeq` 是这个动作的 `actionStart`，后者经尾部来源表回到那条 `outro`。`command` 作用域因此只补直接由指令写的（switch、actionStart、actionCancel、wait、skip、loop、录像指令的事件、introMissed 警告）。
+2. **`subjectSeq` 的取法**：先按事件种类（`actionEnd` / `actionCancel` → 这个实例的 `actionStart`；`buffExpire` 与同一实例再次施加的 `buffApply` → 第一条 `buffApply`；非异常效应的 `hit` → 它的 `judgmentSpawn`），种类没说的再按作用域（§3.3 的表）；只认更早写的事件。表里没写"再次施加的 `buffApply`"，按"它说的实体"补上。
+3. **收集器的接口**：`finish(log, phase)` 收日志与结束时的相位（建实体映射要读日志；没关的作用域都包着抛错的那一点，按这个相位记）；另加 `markPost()`——空闲退出时 `k.at.phase` 停在 P2，收尾的 `drain` 只靠相位分不出来。`EventMeta`、`RuleTraceEntry` 现在就带 `scope`（总览 S-08）：`trace.ts` 要按它找"这次结算的 hit"。`runForInspection` 的选项多一个测试用的 `sink`（反向用例换收集器）。
+4. **判定点的"读取"**照业务代码里那个表达式实际求值的时机记（短路的不算读）：`sched.switch.ultInputLock` / `invincibleLock` 只在锁来自"不响应输入" / 无敌推断时读；`sched.act.echoInputPriority` 每次 `evaluateAct` 都读（它是 `gate` 的实参），换个读法的 `gate` 只对有起手优先级的动作另算一次；`sched.interject.tuneBreak` 记在 `simulate.ts` 的插队回调里（选项的值在那里），决定分支只认"插入了一次"；`formula.defFloor` 经三个公式函数的可选参数 `rule` 记；`char.爱弥斯.trackNoConsume` 只在"无消耗期间、有轨迹层数"时读，读到就决定分支。规则使用的普查（29 个场景）与敏感度矩阵一致：心队 `xin-team.yaml` 的 forteKeep 两点、全部场景的 defFloor 一次都没决定分支，对应矩阵里 F7、F1 对它们"·"；按套路重排的心队变体 forteKeep 决定分支 10 次，对应"翻过来跑不通"。
+5. **`assume()` 的调用点**：实施时数到 45 处（引擎 24 处、钩子上下文的两处转发、13 个角色模块 19 处；正文"49 处"是基线 `6eedc0b` 的数法），逐个归类的表在提交说明里。归成"决定分支"的 7 处（`ult-no-switch`、`echo-input-priority`、`switch-ends-stop`、`hitstop-in-global-stop`、`effect-owner`、`track-no-consume`，以及 `tune-break-auto` 由插队那一处判定点覆盖）、"读规则"的 2 处（`def-no-floor`、`summon-as-char` 的说明文字）都有对应的判定点；其余是"碰到假设"，照旧只调 `assume()`。另有 8 处直接读可翻规则、没有 `assume()` 的判定点（§4.1 表里的其余几行）。心的模块里 `ctx.rules.summonCountsAsChar` 那一处没有登记，算"未插桩"。
+6. **T05-7 与 T05-8 一起做**：出处的函数（`gainSteps`、`hitCauses`、`traceLedger`、`measureSegment`）的 `meta` 是必填的，没有"不给 meta 就按旧算法、标 `ownersInferred`"的过渡态；`metaOf(res)` 在结果没带诊断时报错。只要资源数值的（录像剖析的贴合度）改用不归动作的 `resourceSteps`。旧算法 `walkOwners` 原样搬到 `tests/helpers/old-owners.ts`，只给 C05-3、C05-11 断言"旧算法在这里是错的"。新的规则（`walkCauses`）见 TD-11 §6.1；在 29 个场景上与旧算法逐条比，`pnpm trace` 的缺省表与 `--hits` 表、各资源的逐帧值都相同，有差别的只有出处，逐类是旧算法的错归：
+   - 钩子在 `judgmentSpawn` 上反应（心的引爆魔方与额外能量、莫特斐的前置碰撞爆炸）：处理那条 `judgmentSpawn` 时日志里已经又写了这一下的 `hit`，旧算法把它当成触发者（"命中"），实际是判定生成（"开始"）——队列交错；
+   - 持续帧结束后生成的判定（嘉贝莉娜 E1-跳 → E1-爆炸、琳奈棱镜 → 激光）：旧算法归到最近一次命中（琳奈的激光算到延奏、爱弥斯的 A3 头上），新的沿到期的判定回到它的动作；
+   - 钩子生成、所在动作组从不开始的判定（心的协同-飞阙、守岸人的耀星·蝶、达妮娅的蚀域）与它们引出的异常效应伤害：旧算法退到"出伤者最近开始的动作"（常是延奏或之后的普攻），新的沿计时器链回到起头的那次命中或动作（飞阙 → 起头的照世·E，耀星·蝶 → 生成坍缩核的 A1，蚀域 → 黑大招）；
+   - 切出时钩子写的资源（卜灵切走清卦象）：处理 `switch` 时日志里已经写了切入者变奏的 `actionStart`，旧算法算到它头上；新的不归动作（切人不是动作）——队列交错；
+   - 外部干预（能量满）：旧算法算到前一次命中头上，新的不归动作。
+   套路卡跟着变的是这些出处的合计（景尤守守岸人的套路多算了自己 A1 生成的耀星·蝶，心队照世·E 的套路多算了它起头的飞阙）。
+

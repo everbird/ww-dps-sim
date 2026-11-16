@@ -2,7 +2,7 @@
 // 触发（什么事件让 buff 施加、被消耗）在 triggers.ts；这里只管实例本身与"落到谁身上"。
 import type { CharName, Slot } from '../data/common'
 import type { BuffDef } from '../data/buff.schema'
-import { log } from './kernel'
+import { log, type Kernel } from './kernel'
 import type { ActiveBuff } from './formula'
 import type { BuffRuntime, Rates, RegisteredBuff, SimState } from './types'
 
@@ -97,12 +97,16 @@ export function removeBuff(s: SimState, b: BuffRuntime, reason: 'timeout' | 'swi
   log(s, { type: 'buffExpire', buff: b.defId, owner: ownerName(s, b.owner), target: targetName(s, b.target), instanceId: b.id, reason })
 }
 
-/** P6：按战斗速率倒数，到 0 移除（全局时停期间不走，总设计不变量 6） */
-export function tickBuffs(s: SimState, rates: Rates): void {
+/** P6：按战斗速率倒数，到 0 移除（全局时停期间不走，总设计不变量 6）。
+ *  k：诊断的作用域要它——每一个到期 buff 的移除各是一个带实例号的 timer 作用域，同帧多个到期不再串（DD-05 §3.2，R02）；不给时不记 */
+export function tickBuffs(s: SimState, rates: Rates, k?: Kernel): void {
   for (const b of [...s.buffs]) {
     if (b.remaining === 'inf') continue
     b.remaining -= rates.battle
-    if (b.remaining <= 0) removeBuff(s, b, 'timeout')
+    if (b.remaining > 0) continue
+    const sc = k?.diag?.open({ kind: 'timer', timerKind: 'buff', id: b.id, defId: b.defId }, s.log.length)
+    removeBuff(s, b, 'timeout')
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
 }
 

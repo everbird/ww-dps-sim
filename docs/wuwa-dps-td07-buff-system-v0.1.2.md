@@ -158,6 +158,18 @@ pendingNextIn: { owner: Slot | 'env'; defId: string; stacks: number }[]
 
 **动作开始**：`actionStart` 进队列的时机见 TD-06 §7（扣大招能量之后、施放资源之前）。
 
+**处理器与事件来源**（2026-11-16，DD-05 §3.2；诊断旁路，不改上面的顺序）：队列处理第 `i` 条事件时，每个处理器的一次执行各是一个 `trigger` 作用域，它写出的事件的直接父事件（`diag.eventMeta[x].directParentSeq`）就是第 `i` 条：
+
+| 处理器 | `handlerKind` | `handlerId` | 一个作用域包住什么 |
+|---|---|---|---|
+| ① 消耗 | `consume` | buff 定义 ID | 每个被消耗的实例（移除或减层） |
+| ② buff 触发 | `buffTrigger` | buff 定义 ID | 一次触发成功后的施加 |
+| ② buff 延长 | `buffExtend` | buff 定义 ID | 一次触发成功后的延长与 `grants` 的施加 |
+| ③ 资源型效果 | `resourceEffect` | 效果 ID | 一次触发成功后给各目标的资源 |
+| ④ 角色钩子 | `charHook` | 角色名 | 每个角色的一次 `onEvent`（钩子在里面调 `ctx.addResource`、`ctx.spawnJudgment`… 写的事件都落在这里） |
+
+所以同帧几个 buff 一起到时、队列交错（E1、E2 先后入队，E1 引出的事件写在 E2 之后）时，引出的事件仍各指各的父事件，不按日志里的先后猜（R02）。
+
 ---
 
 ## 6. 消耗型："下次 X…"

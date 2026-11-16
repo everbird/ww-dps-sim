@@ -5,7 +5,8 @@ import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
-import { airborne, cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
+import { ProbeStop } from './diagnostics'
+import { airborne, cooldownKey, gate, log, settled, startAction, tick, type GateResult, type Kernel } from './kernel'
 import type { UnmetIntentDetail, StrictReport } from './run-types'
 import { roundTo } from './num'
 import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
@@ -200,15 +201,25 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       }
       const c = listOf(q)[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
+      // 对队首指令的这一轮处理，来源是这条指令（DD-05 §3.2）：算出 ref 之后立刻打开，插队分支写出的 wait 也落在它里面（DF-06）。
+      // 每个出口（等、跳过、执行完、插队）各关一次；抛错时留着，由收集器的 finish 收尾
+      const sc = k.diag?.open({ kind: 'command', cmd: ref }, s.log.length)
       // 插在队首之前的动作：与出招指令同样的检查（不强制、不延迟）；等的时候记在队首指令名下。开始后不带指令出处，回到循环再看队首。
       // 队首是连段的后续（comboFrom）时先不插：谐度破坏会打断当前角色的动作，插进去连段就断了，等这串连段打完再插
       // （TD-09 §3.2 插队；m0-confirm §10 H1）
       const ij = c.kind === 'act' && actions[c.slot]![c.action]!.comboFrom?.length ? null : opts.interject?.(s)
       if (ij) {
         const w = evaluateAct(s, k, opts, ij.slot, ij.def, false, 0, ref, false)
-        if (!w.go) { hold(s, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref); return true }
+        if (!w.go) {
+          hold(s, k, opts, { ...w, reason: `${ij.why}：${w.reason}` }, ref)
+          if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+          return true
+        }
         closeSeg(s, ref)
+        const ia = k.diag?.open({ kind: 'autoInterject', slot: ij.slot, action: ij.def.id }, s.log.length)
         startAction(s, k, ij.slot, ij.def)
+        if (ia !== undefined) k.diag!.close(ia, s.log.length, k.at.phase)
+        if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
         continue
       }
       // 补位 "~"：后面那个动作的冷却、资源、角色条件都满足了，或后面是"switch <角色> 变奏"而协奏已经满了，就不用补这一下
@@ -228,6 +239,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           q.readyAt = null
           q.extra = null
           q.until = null
+          if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
           continue
         }
       }
@@ -241,9 +253,14 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         q.readyAt = null
         q.extra = null
         q.until = null
+        if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
         continue
       }
-      if (!v.go) { hold(s, opts, v, ref); return true }
+      if (!v.go) {
+        hold(s, k, opts, v, ref)
+        if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+        return true
+      }
       closeSeg(s, ref)
       execute(s, k, actions, opts, c, ref)
       q.next += 1
@@ -251,6 +268,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       q.readyAt = null
       q.extra = null
       q.until = null
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     }
   }
 }
@@ -268,7 +286,7 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
     case 'enemy': case 'fill':
       return GO
     case 'switch': {
-      if (c.to === s.onField) throw fail(s, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
+      if (c.to === s.onField) throw fail(s, k, 'switchSelf', `${where(q, ref)}：${s.chars[c.to].name} 已经在前台`, ref)
       // 切人冷却每人单独计：被切走的人一段时间内不能再切回来（2026-10-25 用户确认；视频 A 里尤诺 → 景燃 → 守岸人两次切人只隔约 18 帧）
       const back = s.chars[c.to].switchCd
       if (back > 0) return { go: false, code: 'switchCd', reason: `${s.chars[c.to].name} 的切人冷却还剩 ${Math.ceil(back)} 帧` }
@@ -280,6 +298,9 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       const stop = last?.def.globalStopUntil
       const written = last?.def.switchLockUntil !== undefined && !last.def.switchLockFromInput && !last.def.switchLockFromInvincible
       const early = k.rules.switchEndsStop && written && stop !== undefined && last!.def.switchLockUntil! < stop && last!.localFrame >= last!.def.switchLockUntil!
+      // 规则使用（DD-05 §4.1）：过了写明的锁、还在全局时停里，switchEndsStop 才决定放不放行
+      k.rule.note('sched.switch.switchEndsStop', k.rules.switchEndsStop, written && stop !== undefined
+        && last!.def.switchLockUntil! < stop && last!.localFrame >= last!.def.switchLockUntil! && last!.localFrame < stop)
       if (last && stop !== undefined && last.localFrame < stop && !early) return { go: false, code: 'globalStop', reason: `${last.id} 全局时停到第 ${stop} 帧（动画中切不了人）` }
       // 写了"变奏"、切出者协奏还没满、手上的动作还有判定没出手：等它出手再切——这几下的协奏可能正好补满
       // （TD-09 §3.5；2026-10-25 景尤守 5R18Z 补位的普攻、爱琳莫琳奈视觉冲击的落地段：不等的话同一 tick 就切走，这几下白打）
@@ -288,6 +309,11 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       const lock = last?.def.switchLockUntil
       // 推断出来的锁可以在场景里关掉，量假设的敏感度（options.rules.ultInputLocksSwitch / invincibleLocksSwitch）
       const off = last && ((last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch) || (last.def.switchLockFromInvincible && !k.rules.invincibleLocksSwitch))
+      // 规则使用（DD-05 §4.1）：照上一行的求值顺序记读取；局部帧还在锁内时，换个读法就会走另一条分支
+      const inLock = lock !== undefined && last!.localFrame < lock
+      if (last?.def.switchLockFromInput) k.rule.note('sched.switch.ultInputLock', k.rules.ultInputLocksSwitch, inLock)
+      if (last?.def.switchLockFromInvincible && !(last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch))
+        k.rule.note('sched.switch.invincibleLock', k.rules.invincibleLocksSwitch, inLock)
       if (last && lock !== undefined && last.localFrame < lock && !off) {
         if (!last.def.switchLockFromInput) return { go: false, code: 'switchLock', reason: `${last.id} 第 ${lock} 帧前不能切人` }
         // 大招没写"不能切人"，按"不响应输入"挡（假设 ult-no-switch）：每段等待记一次
@@ -303,23 +329,23 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
         const cur = s.chars[s.onField].action
         const up = cur && !cur.ended ? cur.def.air : undefined
         if (up && cur!.localFrame < up.from) return { go: false, code: 'airborne', reason: `等 ${cur!.id} 跳起（第 ${up.from} 帧），${s.chars[c.to].name} 切进来才在空中` }
-        throw intentFail(s, opts, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
+        throw intentFail(s, k, opts, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
       }
       // 切人后第一下是地面出场技：切进来的人自己在后台的动作要走完才算出场技入场（TD-09 §3.5 的 busy）。会走完的，切人等它
       // （2026-10-25 景莫守：景燃 A4 脱手退场后不久切回来打出场技阳A2，BV1VJYL6HEuQ）
       const busy = s.chars[c.to].action
       if (first?.entrySkill && busy && !busy.ended)
         return { go: false, code: 'entryBusy', reason: `等 ${s.chars[c.to].name} 在后台的 ${busy.id} 走完，切进来才是出场技` }
-      return afterInput(s, opts, 0)
+      return afterInput(s, k, opts, 0)
     }
     case 'act': {
-      if (c.slot !== s.onField) throw fail(s, 'notOnField', `${where(q, ref)}：${s.chars[c.slot].name} 不在前台`, ref)
+      if (c.slot !== s.onField) throw fail(s, k, 'notOnField', `${where(q, ref)}：${s.chars[c.slot].name} 不在前台`, ref)
       // 操作延迟只加在"决策点"：连段的后续（有 comboFrom 的动作，如 A2–A5）玩家会预输入，不加（假设 no-input-buffer）
       const def = actions[c.slot]![c.action]!
       // 有出场技的角色，地面普通切人入场后第一下 A（A1）就是出场技（用户确认，TD-09 §3.5）：轴里要写出场技，写 A1 报错
       const entry = def.id === 'A1' && s.entry?.slot === c.slot && s.entry.block === null
         ? Object.values(actions[c.slot]!).find(a => a.entrySkill) : undefined
-      if (entry) throw intentFail(s, opts, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
+      if (entry) throw intentFail(s, k, opts, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
       if (c.optional && def.entrySkill && !(s.entry?.slot === c.slot && s.entry.block === null))
         return { go: false, code: 'entry', reason: `${def.id} 是出场技，${entryWhy(s, c.slot)}` }
       return evaluateAct(s, k, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
@@ -335,11 +361,13 @@ function evaluateAct(
   const ch = s.chars[slot]
   // 出场技只在普通切人入场后第一个出（用户确认，m0-confirm §11 V10）；不满足就再也等不来，同连段中断直接报错
   if (def.entrySkill && !(s.entry?.slot === slot && s.entry.block === null))
-    throw intentFail(s, opts, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
+    throw intentFail(s, k, opts, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
   const g = gate(ch, def, k.rules.echoInputPriority)
+  // 规则使用（DD-05 §4.1）：换个读法 gate 的结果不同才算决定了分支（gate 是纯函数；没有起手优先级的动作两种读法总是相同，不用再算）
+  k.rule.note('sched.act.echoInputPriority', k.rules.echoInputPriority, def.inputPriority !== undefined && !sameGate(g, gate(ch, def, !k.rules.echoInputPriority)))
   const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
   if (!g.ok && !onlyStarted) {
-    if (!g.wait) throw fail(s, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
+    if (!g.wait) throw fail(s, k, 'comboBroken', `${where(q, ref)} ${ch.name} ${def.id}：${g.reason}`, ref)
     return { go: false, code: g.code, reason: g.reason }
   }
   const st = stateVerdict(s, opts, slot, def)
@@ -351,7 +379,7 @@ function evaluateAct(
     q.readyAt ??= s.battleFrames
     if (s.battleFrames < q.readyAt + delay) return { go: false, code: 'delay', reason: `+${delay}` }
   }
-  const v = input ? afterInput(s, opts, delay) : GO
+  const v = input ? afterInput(s, k, opts, delay) : GO
   if (v.go && g.via === 'echoInput')
     assume(s, 'echo-input-priority', `${ch.name} ${def.id} 打断 ${ch.action!.id}（第 ${Math.floor(ch.action!.localFrame)} 帧）`)
   return v
@@ -367,10 +395,15 @@ function entryWhy(s: SimState, slot: Slot): string {
   return ENTRY_WHY[e.block!]
 }
 
+/** gate 的两个结果是不是同一条分支（同样放行、同样的途径；或同样挡住、同样的原因代码） */
+const sameGate = (a: GateResult, b: GateResult): boolean =>
+  a.ok ? b.ok && a.via === b.via : !b.ok && a.code === b.code
+
 /** 操作延迟（options.inputDelay；抽样模式另加抖动）：其余全部满足后（+N 之后）再等这么多帧。每条指令只问一次 */
-function afterInput(s: SimState, opts: SchedulerOptions, delay: number): Verdict {
+function afterInput(s: SimState, k: Kernel, opts: SchedulerOptions, delay: number): Verdict {
   const q = s.queue
   const extra = (q.extra ??= opts.inputDelay?.(s) ?? 0)
+  k.rule.note('sched.input.delay', extra, extra > 0)              // 规则使用（DD-05 §4.1）：取到的延迟（已经算好的，不再问一次）
   if (extra <= 0) return GO
   q.readyAt ??= s.battleFrames
   return s.battleFrames < q.readyAt + delay + extra ? { go: false, code: 'input', reason: `操作延迟 ${extra} 帧` } : GO
@@ -410,7 +443,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
             expected: short ? `切出者协奏 ≥ ${k.rules.concertoMax}` : '有变奏动作',
             actual: short ? `${ch.name} 协奏 ${roundTo(ch.concerto, 100)}` : `${s.chars[c.to].name} 没有变奏动作` }
           if (opts.onIntentUnmet?.(s, d) !== 'continue') {
-            const e = fail(s, 'intentUnmet', d.actual, ref); e.intent = d; throw e
+            const e = fail(s, k, 'intentUnmet', d.actual, ref); e.intent = d; throw e
           }
         }
       }
@@ -421,6 +454,7 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       // 切出者登记的时停、全局时停还没走完的，随切人结束（守岸人大招 178 帧切人、全局时停到 207：剩下的不再冻住切进来的人和战斗时钟；
       // 中间可能接了补位的普攻，所以按切出者而不是按最近一个动作找；假设 switch-ends-stop）
       const stops = s.dilations.filter(d => d.source === from && STOP_TYPES.includes(d.type))
+      k.rule.note('sched.execute.switchEndsStop', k.rules.switchEndsStop, stops.length > 0)   // 规则使用（DD-05 §4.1）
       if (k.rules.switchEndsStop && stops.length) {
         assume(s, 'switch-ends-stop', `${s.chars[from].name} 切人时还剩 ${Math.max(...stops.map(d => d.remaining))} 帧时停`)
         s.dilations = s.dilations.filter(d => !stops.includes(d))
@@ -462,7 +496,7 @@ function beginLoop(s: SimState): void {
 const roundHasAction = (q: QueueState): boolean => listOf(q).some(c => c.kind === 'act' || c.kind === 'switch')
 
 /** 队首要等：原因变了就另起一段；"不合法"的等待累计超过 maxWait 就报错 */
-function hold(s: SimState, opts: SchedulerOptions, v: Extract<Verdict, { go: false }>, ref: CommandRef): void {
+function hold(s: SimState, k: Kernel, opts: SchedulerOptions, v: Extract<Verdict, { go: false }>, ref: CommandRef): void {
   const q = s.queue
   if (!q.seg || q.seg.code !== v.code) {
     closeSeg(s, ref)
@@ -472,7 +506,7 @@ function hold(s: SimState, opts: SchedulerOptions, v: Extract<Verdict, { go: fal
   q.waited += 1
   if (q.waited > opts.maxWait) {
     const blocked = { code: v.code, reason: v.reason, sinceFrame: q.seg.from }
-    const e = fail(s, 'timeout', `${where(q, ref)}等了 ${opts.maxWait} 帧仍不能执行：${v.reason}`, ref)
+    const e = fail(s, k, 'timeout', `${where(q, ref)}等了 ${opts.maxWait} 帧仍不能执行：${v.reason}`, ref)
     e.blocked = blocked; throw e
   }
 }
@@ -490,9 +524,11 @@ function closeSeg(s: SimState, ref: CommandRef): void {
   if (g.code === 'settled') assume(s, 'wait-settled', `${where(s.queue, ref)}：${g.reason}，${s.frame - g.from} 帧`)
 }
 
-/** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到 */
-function fail(s: SimState, code: ScheduleErrorCode, message: string, ref: CommandRef): ScheduleError {
+/** 报错前先把正在累计的等待段写进日志：停在哪里、等了什么都看得到。这条 wait 的来源是失败收尾（DD-05 §3.2 的 finalization） */
+function fail(s: SimState, k: Kernel, code: ScheduleErrorCode, message: string, ref: CommandRef): ScheduleError {
+  const sc = k.diag?.open({ kind: 'finalization', step: 'failClose' }, s.log.length)
   closeSeg(s, ref)
+  if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   return new ScheduleError(code, message, ref, s.frame, true)
 }
 
@@ -508,26 +544,33 @@ function where(q: QueueState, ref: CommandRef): string {
 
 /** 逐 tick 推进到结束，返回循环怎么退出的（DD-01 §3.5）：'idle' = 无事可做（tick 在 P2 返回 false，这个 tick 不计入）；
  *  'maxFramesInFlight' = 到帧数上限、指令已发完，只剩在途的动作 / 判定 / 尾部，记一条警告后停下。
- *  到帧数上限、还有指令没执行 → 照旧报错（maxFrames） */
-export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number): 'idle' | 'maxFramesInFlight' {
+ *  到帧数上限、还有指令没执行 → 照旧报错（maxFrames）。
+ *  afterTick：边界观察点（DD-05 §6.1），每个 tick 走完 P7 之后、检查帧数上限之前调，这时是 S[s.frame]；返回 'stop' 就抛 ProbeStop 停下
+ *  （不经 fail、不做失败收尾）。在帧数上限之前调，S[maxFrames] 才取得到 */
+export function runLoop(
+  s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number, afterTick?: (s: SimState) => 'stop' | void,
+): 'idle' | 'maxFramesInFlight' {
   while (tick(s, k, schedule)) {
+    if (afterTick?.(s) === 'stop') throw new ProbeStop(s.frame)
     if (s.frame < maxFrames) continue
     const q = s.queue
     if (q.next < listOf(q).length || q.loop < q.repeat) {
       const wrap = q.next >= listOf(q).length
       const c = wrap ? q.commands[0]! : listOf(q)[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: wrap ? q.loop + 1 : q.loop }
-      throw fail(s, 'maxFrames', `超过 ${maxFrames} 帧，${where(q, ref)}还没执行；调大 options.maxFrames`, ref)
+      throw fail(s, k, 'maxFrames', `超过 ${maxFrames} 帧，${where(q, ref)}还没执行；调大 options.maxFrames`, ref)
     }
+    const sc = k.diag?.open({ kind: 'finalization', step: 'maxFramesWarning' }, s.log.length)
     log(s, { type: 'warning', code: 'maxFrames', message: `到达帧数上限 ${maxFrames}，场上还有 ${s.judgments.length} 个判定、${s.tails.length} 条尾部没走完` })
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     return 'maxFramesInFlight'
   }
   return 'idle'
 }
 
 // DD-02 §3.3：没有可续跑语义的入场意图直接失败。
-function intentFail(s: SimState, opts: SchedulerOptions, kind: 'airEntry' | 'entrySkill', message: string, ref: CommandRef): ScheduleError {
-  const e = fail(s, opts.strict ? 'intentUnmet' : kind, message, ref)
+function intentFail(s: SimState, k: Kernel, opts: SchedulerOptions, kind: 'airEntry' | 'entrySkill', message: string, ref: CommandRef): ScheduleError {
+  const e = fail(s, k, opts.strict ? 'intentUnmet' : kind, message, ref)
   if (opts.strict) e.intent = { kind, cmd: ref, expected: kind === 'airEntry' ? '空中入场' : '普通切人后第一个出场技', actual: message }
   return e
 }

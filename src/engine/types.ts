@@ -1,6 +1,7 @@
 // src/engine/types.ts —— 仿真引擎的输入、运行时状态、事件与汇总（TD-02 §7）
 // 纯内部类型：不跨进程边界，不用 zod。所有状态都是可 structuredClone 的纯数据（总设计 §3.7）。
 import type { TrackedId } from './assumptions'
+import type { HookRulePointId } from './rule-points'
 import type {
   ActionId, Chain, CharName, DamageTag, DilationSide, DilationType, EffectName, Element, Frame, Rank, ResourceKind, Slot,
   StatKey, ZoneId,
@@ -408,9 +409,9 @@ export interface SimResult {
   strictReport: StrictReport
   /** 谐度破坏含不含在 DPS 里（DD-02 §3.7） */
   damageScope: DamageScope
-  /** 列明的判定点上用到了哪些规则（DD-05）；做完之前两个数组都是空的 */
+  /** 列明的判定点上用到了哪些规则（DD-05 §4）：一直都有，诊断关与开相同 */
   ruleUsage: RuleUsageReport
-  diag?: Diagnostics                        // 可选诊断（DD-05、DD-06）
+  diag?: Diagnostics                        // 可选诊断（DD-05、DD-06）：RunOptions.diag 开了才有；零干扰对拍时比较的是去掉它之后的结果
 }
 
 // ---------------------------------------------------------------------------
@@ -474,6 +475,9 @@ export interface HookContext<V extends HookVars = HookVars> {
   warn(message: string): void
   /** 记一次碰到的假设（总设计 T16，src/engine/assumptions.ts 里 tracked 的那些）：角色模块里推断着写、还没查证的机制 */
   assume(id: TrackedId, detail?: string): void
+  /** 规则使用（DD-05 §4.2）：在读规则的那个判断旁边记一次读取，decisive = 换个读法这一处会不会走另一条分支（模块本来就算出来的值，
+   *  或纯函数的结果）。读到的值由上下文按规则取；判定点要先登记在 src/engine/rule-points.ts */
+  noteRule(point: HookRulePointId, decisive: boolean): void
 }
 
 /** 一次结算的草稿：由判定生成，modifyHit 可改，随后按它的元素 / 标签收集 buff（TD-03 §4） */

@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario, ResolveError } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, videoSeconds } from '../src/engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, videoSeconds } from '../src/engine/trace'
 import { timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -23,7 +23,7 @@ const 乙: SynthChar = { ...idle('乙'), actions: [action({ id: 'Y', endFrame: 4
 function run(sc: Partial<ScenarioInput>) {
   const data = synthData([甲, 乙, idle('丙')])
   const r = resolveScenario(ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, ...sc }), data)
-  return { r, res: simulate(r) }
+  return { r, res: simulate(r, { diag: { eventMeta: true } }) }   // 出处按记录下来的事件来源（DD-05 §3.4）
 }
 // 每轮：甲 X X → 切乙 → 乙 Y → 切甲（切人冷却 60 帧，第二次切人要等）
 const ROT = ['甲 X X', 'switch 乙', '乙 Y', 'switch 甲']
@@ -63,7 +63,7 @@ describe('TD-11 资源逐步', () => {
     const { r, res } = run({ rotation: ['甲 X X'] })
     const sel = resourceSel(r, '协奏')
     if (typeof sel === 'string') throw new Error(sel)
-    const rows = traceLedger(res.log, r, 1, sel, '甲')
+    const rows = traceLedger(res.log, gainSteps(res.log, r, metaOf(res)), r, 1, sel, '甲')
     expect(rows.map(x => [x.label, x.source, x.deltas['甲'], x.values['甲']])).toEqual([
       ['甲 X 开始', '起手即得', 5, 5], ['甲 X 命中（x）', '命中', 10, 15],
       ['甲 X 开始', '起手即得', 5, 20], ['甲 X 命中（x）', '命中', 10, 30],
@@ -74,7 +74,7 @@ describe('TD-11 资源逐步', () => {
     expect(resourceSel(r, '红椿·蕊')).toMatch(/没有资源"红椿·蕊"：可选 协奏、能量、蕊/)
     const sel = resourceSel(r, '蕊')
     if (typeof sel === 'string') throw new Error(sel)
-    expect(traceLedger(res.log, r, 1, sel).map(x => [x.deltas['甲'], x.values['甲']])).toEqual([[-5, 2], [-2, 0]])
+    expect(traceLedger(res.log, gainSteps(res.log, r, metaOf(res)), r, 1, sel).map(x => [x.deltas['甲'], x.values['甲']])).toEqual([[-5, 2], [-2, 0]])
   })
 })
 
@@ -115,10 +115,11 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
     rotation: ['丁 Y Q'], initial: { energy: [50, 0, 0], core: { 丁: { 蕊: 50 } } },
   })
   const r = resolveScenario(sc, data)
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })
+  const meta = metaOf(res)
 
   test('按动作合计：效果、起手即得、命中、钩子归 Y；扣除与钩子生成的判定归引发它的 Q；同一种资源里按先后', () => {
-    const gains = actionGains(gainSteps(res.log, r))
+    const gains = actionGains(gainSteps(res.log, r, meta))
     expect(gains.map(g => [g.char, g.action, g.items.map(it => [it.resource, it.how, it.what, it.n, it.dt, it.base ?? null, it.of ?? null, it.deltas])])).toEqual([
       ['丁', 'Y', [
         ['concerto', 'effect', '丁.技能协奏', 1, 0, null, null, { 丁: 8 }],          // 效果在施放资源之前（TD-06 §7：actionStart 的触发先于施放资源）
@@ -136,13 +137,13 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
   })
 
   test('命中归到的动作同资源（TD-11 §6.1）：y 归 Y；Q 引发的 z、y2 归 Q（判定在 Z、Y 组里）；时间轴模型的命中带上那个动作的实例号', () => {
-    const causes = hitCauses(res.log, r)
+    const causes = hitCauses(res.log, r, meta)
     expect(eventsOfLog(res.log, 'hit').map(e => [e.judgment, causes.get(e)?.owner?.action ?? null, causes.get(e)?.trigger ?? null]))
       .toEqual([['y', 'Y', null], ['z', 'Q', null], ['y2', 'Q', null]])      // z、y2 由动作开始、buff 到时引出，不是命中触发的
     // 引出原因（TD-11 §6.1）：钩子在什么之后生成的、钩子附的说明；不是钩子生成的没有
     expect(eventsOfLog(res.log, 'hit').map(e => causes.get(e)?.origin ?? null))
       .toEqual([null, { via: '丁 Q 开始', note: null }, { via: '丁.计时 到时', note: '计时到了' }])
-    expect(actionGains(gainSteps(res.log, r)).find(g => g.action === 'Q')!.items.filter(it => it.how === 'hit').map(it => [it.what, it.note ?? null, it.via ?? null]))
+    expect(actionGains(gainSteps(res.log, r, meta)).find(g => g.action === 'Q')!.items.filter(it => it.how === 'hit').map(it => [it.what, it.note ?? null, it.via ?? null]))
       .toEqual([['z', null, '丁 Q 开始'], ['y2', '计时到了', '丁.计时 到时']])
     const inst = (a: string) => eventsOfLog(res.log, 'actionStart').find(e => e.action === a)!.instance
     const m = timelineModel('丁.yaml', sc, r, res)
@@ -153,7 +154,7 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
   test('调试表的事件列：效果写它跟在哪个动作开始后面，钩子写跟在哪次命中后面、来源带说明', () => {
     const sel = resourceSel(r, '协奏')
     if (typeof sel === 'string') throw new Error(sel)
-    expect(traceLedger(res.log, r, 1, sel, '丁').map(x => [x.label, x.source, x.deltas['丁'], x.values['丁']])).toEqual([
+    expect(traceLedger(res.log, gainSteps(res.log, r, meta), r, 1, sel, '丁').map(x => [x.label, x.source, x.deltas['丁'], x.values['丁']])).toEqual([
       ['丁 Y 开始', '效果 丁.技能协奏', 8, 8], ['丁 Y 开始', '起手即得', 5, 13],
       ['丁 Y 命中（y）', '命中', 10, 23], ['丁 Y 命中后', '角色钩子：每消耗 10 点蕊', 4, 27],
       ['丁 Z 命中（z；丁 Q 开始）', '命中', 3, 30], ['丁 Y 命中（y2；计时到了（丁.计时 到时））', '命中', 6, 36],
@@ -175,10 +176,10 @@ describe('命中触发：钩子在命中后生成的判定，记下由谁的命�
     rotation: ['戊 R', 'switch 甲', '甲 X'],
   })
   const r = resolveScenario(sc, data)
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })
 
   test('自己命中触发的归那一下、记触发者；队友命中触发的仍归 R、触发者是队友；时间轴模型的命中带上 trigger', () => {
-    const causes = hitCauses(res.log, r)
+    const causes = hitCauses(res.log, r, metaOf(res))
     const trig = (t: { char: string; action: string; judgment: string } | null | undefined) => (t ? `${t.char} ${t.action}（${t.judgment}）` : null)
     expect(eventsOfLog(res.log, 'hit').map(e => [`${e.char} ${e.judgment}`, causes.get(e)?.owner?.action ?? null, trig(causes.get(e)?.trigger), causes.get(e)?.origin?.via ?? null])).toEqual([
       ['戊 r', 'R', null, null], ['戊 c', 'R', '戊 R（r）', '戊 R 命中'], ['甲 x', 'X', null, null], ['戊 c', 'R', '甲 X（x）', '甲 X 命中'],

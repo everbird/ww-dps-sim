@@ -2,21 +2,23 @@
 // prepareRun：合并覆盖 → 校验 → （严格入口检查，DD-02）→ 装配 → 算身份，得到一份冻结的 PreparedRun；编译、运行、查询、重跑都用它。
 // runPrepared：跑一次，结果带运行身份、完成状态与必有记录；引擎与钩子里的异常不往外抛，记成 engineError。
 // 纯函数：不读盘、不读时钟。提交号、内容指纹由命令行采集后经 overrides.environment 传进来（src/cli/run-env.ts）。
+import type { Frame } from '../data/common'
 import { DEFAULT_RULES, type GameData } from '../data/gamedata'
 import { ScenarioSchema, type Scenario } from '../data/scenario.schema'
 import type { SimOptions } from './context'
+import { anyDiag, DiagSink } from './diagnostics'
 import { cachedDigest, canonicalJson, digestOf, sha256Hex } from './digest'
 import { ResolveError, resolveScenario } from './resolve'
 import {
   OUTPUT_SCHEMA_VERSION,
   type AxisFailureKind, type DamageScope, type PreparedRun, type PrepareIssue, type PrepareResult, type RunCompletion, type RunCoverage,
-  type RunEnvironment, type RunIdentity, type RunOptions, type RunOverrides, type StrictReport,
+  type RunEnvironment, type RunIdentity, type RunOptions, type RunOverrides, type StatePrefix, type StrictReport,
 } from './run-types'
 import { checkStrictSource, checkStrictResolved, STRICT_CHECKS } from './strict'
 import { INTENT_WAITS, ScheduleError, type ScheduleErrorCode } from './scheduler'
 import { execute, type Execution } from './simulate'
 import { battleFrameOf, summarize, windowEnd } from './summary'
-import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, Summary } from './types'
+import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, SimState, Summary } from './types'
 
 // ---------------------------------------------------------------------------
 // §3.2 归一入口
@@ -204,15 +206,55 @@ export function resolvedDigestOf(r: ResolvedScenario, fresh = false): string {
 
 /** 跑一次。结果带 runId、identity、completion 与必有记录；本身不抛：引擎与钩子里的异常记成 completion.status === 'engineError'，
  *  日志与汇总保留到出错为止。例外是观察回调（opts.onHit）自己抛的异常，原样抛给调用方（那是调用方的错，不是这次运行的结论）。
- *  opts 是观察选项，不进运行身份；diag 的记录由 DD-05、DD-06 做，现在给了也不产出 */
+ *  opts 是观察选项，不进运行身份；diag 开了的诊断（DD-05 的事件来源、规则明细）放在 res.diag，不影响其余字段 */
 export function runPrepared(p: PreparedRun, opts: RunOptions = {}): SimResult {
   return runWithFailure(p, opts).res
 }
 
 /** 同 runPrepared，另外带出没被归成调度错误的原异常（uncaught）：兼容外壳 simulate 要把它重新抛出（DD-01 §3.7） */
 export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: SimResult; uncaught: { error: unknown } | null } {
+  const { res, uncaught } = runCore(p, opts)
+  return { res: res!, uncaught }
+}
+
+/** 边界观察点（DD-05 §6.1）：只给诊断与查询用（零干扰对拍、DD-06 的任意帧闭合、DD-07 的 stateAt）。合法边界只有两类：
+ *  S[0]（初始化全部做完之后、第 0 帧 P1 之前）与 S[f + 1]（tick 走完 P7 之后、帧数上限检查之前，所以 S[maxFrames] 取得到） */
+export interface BoundaryObserver {
+  readonly frames: ReadonlySet<Frame>
+  /** 到了 S[f]：s 是本体，只读；要留就自己拷贝（DD-07 的 viewOf）。返回 'stop' 就在这里停下。ledgerLength：开了账本诊断时这个边界的
+   *  ledgerEndExclusive（DD-06），现在总是 null */
+  onBoundary(f: Frame, s: SimState, prefix: StatePrefix, ledgerLength: number | null): void | 'stop'
+}
+
+/** runForInspection 的选项：RunOptions 之外加边界观察点；sink 是测试用的，换一个收集器（零干扰的反向用例，DD-05 §6.2），给了就用它 */
+export interface InspectOptions extends RunOptions {
+  readonly observer?: BoundaryObserver
+  readonly sink?: (s: Readonly<SimState>) => DiagSink
+}
+
+/** 内部入口（DD-05 §6.1）：跑一次并交出终态，零干扰对拍与查询用。观察回调要求停下时 result 为 null——停在中途得到的是前缀，
+ *  不是一次运行的结果；terminal 是停下时的 SimState 本体，调用方不要改它 */
+export function runForInspection(p: PreparedRun, opts: InspectOptions = {}): {
+  readonly result: SimResult | null
+  readonly stoppedAt: Frame | null
+  readonly terminal: SimState
+  readonly busCursor: number
+} {
+  const { x, res } = runCore(p, opts)
+  return { result: res, stoppedAt: x.stoppedAt, terminal: x.s, busCursor: x.sim.bus.cursor }
+}
+
+function runCore(p: PreparedRun, opts: InspectOptions): { x: Execution; res: SimResult | null; uncaught: { error: unknown } | null } {
   const r = p.resolved
-  const x = execute(r, { continueAfterIntentUnmet: p.effective.continueAfterIntentUnmet, ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) })
+  const diag = opts.diag
+  const sink = opts.sink ?? (anyDiag(diag) ? () => new DiagSink(diag!) : undefined)
+  const x = execute(
+    r,
+    { continueAfterIntentUnmet: p.effective.continueAfterIntentUnmet, ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) },
+    { ...(sink ? { sink } : {}), ...(opts.observer ? { observer: opts.observer } : {}) },
+  )
+  if (x.stoppedAt !== null) return { x, res: null, uncaught: null }
+  x.k.diag?.finish(x.s.log, x.k.at.phase)
   const summary = summarize(x.s.log, r, x.s)                    // 任何状态下都算，包括初始化没走完（这时是空汇总）；用不用由调用方按 completion 决定
   const completion = buildCompletion(x, r, summary)
   const e = x.failure?.error
@@ -222,9 +264,10 @@ export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: Si
   const res: SimResult = {
     log: x.s.log, summary, forte: x.forte, cooldowns: x.cooldowns, ...(error ? { error } : {}),
     runId: p.runId, identity: p.identity, completion, interventions: x.sim.interventions,
-    strictReport: strictReportOf(p, x), damageScope: p.effective.damageScope, ruleUsage: { byProposition: [], coverage: [] },
+    strictReport: strictReportOf(p, x), damageScope: p.effective.damageScope, ruleUsage: x.ruleCounter.report(),
+    ...(x.k.diag ? { diag: x.k.diag.result() } : {}),
   }
-  return { res, uncaught: x.failure && !(e instanceof ScheduleError) ? x.failure : null }
+  return { x, res, uncaught: x.failure && !(e instanceof ScheduleError) ? x.failure : null }
 }
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e))

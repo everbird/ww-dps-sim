@@ -52,7 +52,7 @@ async function simulated(s: Source) {
   if (last?.key === key) return last
   const sc = scenarioOf(s)
   const r = resolveScenario(sc, await gd())
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })         // 时间轴的出处按记录下来的事件来源（DD-05 §3.4）
   last = { key, r, res, model: timelineModel(s.name, sc, r, res) }
   return last
 }

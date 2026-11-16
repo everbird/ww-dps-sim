@@ -3,13 +3,14 @@
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
 // 新的运行入口是 run.ts 的 prepareRun + runPrepared：它调这里的 execute，再算完成状态与汇总。
 import { EFFECT_NAMES, type ActionId, type DamageTag, type EffectName, type Slot } from '../data/common'
-import type { ActionDef, JudgmentDef } from '../data/gamedata'
-import type { Frame } from '../data/common'
+import { forteKept, type ActionDef, type JudgmentDef, type Rules } from '../data/gamedata'
+import type { CharName, Frame } from '../data/common'
 import { assume } from './assumptions'
 import { roundTo } from './num'
 import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
+import { ProbeStop, RuleCounter, type DiagSink } from './diagnostics'
 import {
   applyEffect, applyShift, canTuneBreak, forceDisharmony, freshEnemy, swapEnemy, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
@@ -17,8 +18,9 @@ import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneB
 import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
-import { prepareResolved, runWithFailure } from './run'
-import type { InterventionRecord, TickPhase } from './run-types'
+import { prepareResolved, runWithFailure, type BoundaryObserver } from './run'
+import type { InterventionRecord, StatePrefix, TickPhase } from './run-types'
+import type { HookRulePointId } from './rule-points'
 import { createScheduler, newQueue, runLoop } from './scheduler'
 import { selectIntro, onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
@@ -31,7 +33,9 @@ import type {
  *  try { simulate(r) } catch 悄悄换了语义。
  *  @deprecated 新代码用 prepareRun + runPrepared，看 completion.status */
 export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
-  const { res, uncaught } = runWithFailure(prepareResolved(r, opts.sample ? { sample: opts.sample } : {}), opts.onHit ? { onHit: opts.onHit } : {})
+  const { res, uncaught } = runWithFailure(prepareResolved(r, opts.sample ? { sample: opts.sample } : {}), {
+    ...(opts.onHit ? { onHit: opts.onHit } : {}), ...(opts.diag ? { diag: opts.diag } : {}),
+  })
   if (uncaught) throw uncaught.error
   return res
 }
@@ -48,6 +52,15 @@ export interface Execution {
   loopExit: { why: 'idle' | 'maxFramesInFlight'; worldFrame: Frame; phase: TickPhase } | null
   postDrainCompleted: boolean               // 循环正常返回后那次 drain 做完没有
   failure: { error: unknown } | null        // 抛出来的东西（调度错误或别的异常）；没抛错为 null
+  /** 边界观察点要求停下时停在哪个 S[f]（DD-05 §6.1）：这时不是一次运行的结果，没有完成状态；否则为 null */
+  stoppedAt: Frame | null
+  ruleCounter: RuleCounter                  // Kernel.rule 的实现：运行结束时汇总成 ruleUsage（DD-05 §4.2）
+}
+
+/** 运行体的观察项（DD-05 §6.1）：都不进运行身份，也不改执行。sink：建诊断收集器（诊断全关时不给）；observer：边界观察点 */
+export interface Inspect {
+  readonly sink?: (s: Readonly<SimState>) => DiagSink
+  readonly observer?: BoundaryObserver
 }
 
 /** 观察回调（onHit）自己抛的异常：不算这次运行的状态，execute 接住后把原异常抛给调用方（DD-01 §3.4；总览 §6 的 S-04） */
@@ -57,15 +70,20 @@ class ObserverThrow extends Error {
 }
 
 /** 运行体：建初始状态与运行环境，初始化 → 逐 tick 循环 → 收尾的 drain。引擎与钩子里的异常都接住、记在 failure 里，不往外抛 */
-export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
+export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Inspect = {}): Execution {
   const s = initialState(r)
   if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
   const jitter = opts.sample?.jitter ?? 0
   const hand = opts.sample?.hand
   let lastBattle = 0                                              // 不变量：战斗时钟不倒退
+  const at: { phase: TickPhase } = { phase: 'init' }
+  const diag = inspect.sink?.(s) ?? null                          // 诊断收集器（DD-05 §3.1）：全关时不建
+  const ruleCounter = new RuleCounter(s, at, diag)                // 规则使用（DD-05 §4.2）：总是有
   const k: Kernel = {
     rules: r.rules,
-    at: { phase: 'init' },
+    at,
+    diag,
+    rule: ruleCounter,
     hooks: {
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
@@ -80,8 +98,8 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
       outroTrigger: (st, slot, src) => outroTrigger(sim, st, slot, src),
       timers: (st, rates) => {
         effectTicks(sim, st, rates)                               // 异常效应定时结算（§18）：到期那一刻赶上的先结算
-        enemyTimers(st, rates)                                    // 瘫痪结束、白条回满（TD-06 §13.2）；异常效应到时（§18）
-        tickBuffs(st, rates)
+        enemyTimers(st, rates, k)                                 // 瘫痪结束、白条回满（TD-06 §13.2）；异常效应到时（§18）
+        tickBuffs(st, rates, k)
         drain(sim, st)
         sim.bus.spawned.clear()
         captureForte(st)
@@ -172,29 +190,55 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
       grant(sim, st, slot, 'energy', adopted - before, 'forced')
     },
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
+    // 规则使用（DD-05 §4.1）：每次问都读 options.tuneBreak；插入了一次自动谐度破坏才算决定了分支（不为换个读法多调钩子）
     interject: st => {
-      if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) return null
+      if (r.options.tuneBreak !== 'auto' || canTuneBreak(sim, st) !== true) {
+        k.rule.note('sched.interject.tuneBreak', r.options.tuneBreak, false)
+        return null
+      }
       // 有几种谐度破坏的（椿：常态 / 盛绽），挑角色钩子允许的那个（m0-confirm §10 H5）
       const slot = st.onField
       const def = tuneBreaks[slot]!.find(d => (sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, d.id) ?? true) === true)
+      k.rule.note('sched.interject.tuneBreak', r.options.tuneBreak, def !== undefined)
       return def ? { slot, def, why: '谐度破坏' } : null
     },
   })
-  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null }
+  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null, stoppedAt: null, ruleCounter }
+  // 边界观察点（DD-05 §6.1）：S[0] 在初始化做完之后、第 0 帧 P1 之前；S[f + 1] 在 tick 走完 P7 之后、帧数上限检查之前（runLoop 的 afterTick）。
+  // 回调只读收到的状态；它自己抛的异常原样抛给调用方（同 onHit）
+  const observer = inspect.observer
+  const boundary = observer && ((st: SimState): 'stop' | void => {
+    if (!observer.frames.has(st.frame)) return
+    const prefix: StatePrefix = { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length }
+    try { return observer.onBoundary(st.frame, st, prefix, null) } catch (e) { throw new ObserverThrow(e) }
+  })
   try {
+    // 初始化的两个来源（DD-05 §3.2）：挂常驻 buff；每个角色的 onResolve
+    const ab = k.diag?.open({ kind: 'init', sourceId: 'alwaysBuffs' }, s.log.length)
     for (const reg of r.buffs) {                                 // 常驻 buff 开场即有（总设计 §3.3 第 3 步）
       if (reg.def.trigger !== 'always') continue
       for (const t of targetsOf(reg.def, reg.owner, s)) applyBuff(s, reg, t)
     }
-    for (const m of r.team) sim.hooks[m.slot]?.onResolve?.(sim.ctxs[m.slot]!)
+    if (ab !== undefined) k.diag!.close(ab, s.log.length, k.at.phase)
+    for (const m of r.team) {
+      const hooks = sim.hooks[m.slot]
+      if (!hooks?.onResolve) continue
+      const sc = k.diag?.open({ kind: 'init', sourceId: `onResolve:${m.def.name}` }, s.log.length)
+      hooks.onResolve(sim.ctxs[m.slot]!)
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+    }
     drain(sim, s)
     x.initCompleted = true
-    const why = runLoop(s, k, schedule, r.options.maxFrames)
+    if (boundary?.(s) === 'stop') throw new ProbeStop(s.frame)
+    const why = runLoop(s, k, schedule, r.options.maxFrames, boundary)
     x.loopExit = { why, worldFrame: s.frame, phase: k.at.phase }  // idle 停在 P2（这个 tick 不计入）；帧数上限停在 P7 之后
+    k.diag?.markPost()                                            // 之后写的事件记 post（k.at.phase 在空闲退出时停在 P2）
     drain(sim, s)                                                 // 最后一个 tick 在 P2 就结束时记下的事件
     x.postDrainCompleted = true
   } catch (e) {
     if (e instanceof ObserverThrow) throw e.thrown
+    // 观察点要求停下（DD-05 §6.1）：不是运行状态，不记 failure，也不做收尾
+    if (e instanceof ProbeStop) { x.stoppedAt = e.frame; return x }
     x.failure = { error: e }
   }
   return x
@@ -269,14 +313,14 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
         base: tuneBase(r.data.tuneBreak, r.rules.charLevel, s.enemy.preset.cost), rate: draft.multiplier, level: r.rules.charLevel,
         enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[tb ? '物理' : draft.element] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
         ...(tb && s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
-      }, acc, r.rules)
+      }, acc, r.rules, sim.k.rule)
       dmg = { nonCrit: v, crit: v, expected: v }
     } else {
       const hc = {
         rate: draft.multiplier, attr: d.relatedAttr, extraFlat: draft.extraFlat, level: r.rules.charLevel,
         enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[draft.element] },
       }
-      const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules)
+      const res = computeHit({ ...hc, panel: m.panel }, acc, r.rules, sim.k.rule)
       if (sim.onHit) rec = { slot: j.owner, index: -1, ctx: hc, view, active, draft: { zones: draft.zones, critOnly: draft.critOnly } }
       dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
       if (s.rng) dmg.isCrit = nextFloat(s.rng) < res.critRate          // 抽样模式：这一段暴击了没有（结算时的随机注入点）
@@ -385,5 +429,14 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
     takeBurst: (effect, note) => takeBurst(s, self, effect, note ?? `${m.def.name} 的钩子`),
     warn: message => log(s, { type: 'warning', code: 'hook', message: `${m.def.name}：${message}` }),
     assume: (id, detail) => assume(s, id, detail),
+    noteRule: (point, decisive) => { sim.k.rule.note(point, hookRuleValue(sim.r.rules, point, m.def.name), decisive) },
+  }
+}
+
+/** 角色模块的判定点读到的规则值（DD-05 §4.2 的 ctx.noteRule）：forteKeepOnSwitch 按角色经 forteKept 取（DD-04 §4.1） */
+function hookRuleValue(rules: Rules, point: HookRulePointId, char: CharName): boolean {
+  switch (point) {
+    case 'char.心.forteKeep': case 'char.卜灵.forteKeep': return forteKept(rules, char)
+    case 'char.爱弥斯.trackNoConsume': return rules.trackNoConsume
   }
 }

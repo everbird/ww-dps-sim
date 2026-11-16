@@ -9,7 +9,7 @@ import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { ResolveError, resolveScenario } from '../engine/resolve'
 import { simulate } from '../engine/simulate'
-import { compareMarks, loopSpan, loopsOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../engine/trace'
+import { compareMarks, gainSteps, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../engine/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, loadScenario, padEnd, padStart, width } from './format'
 
@@ -26,7 +26,8 @@ const signed2 = (x: number) => (Math.abs(x) < 0.005 ? '±0.00' : `${x > 0 ? '+' 
 
 export interface TraceOpts { seg?: boolean; res?: string; hits?: boolean; char?: string; marks?: Record<string, string | number> }
 
-/** 要打印的表与说明（对照视频的小结、对不上的时间点）；参数有错时返回错误说明 */
+/** 要打印的表与说明（对照视频的小结、对不上的时间点）；参数有错时返回错误说明。
+ *  资源逐步表的出处按记录下来的事件来源算（DD-05 §3.4）：res 要带 diag: { eventMeta: true } 跑 */
 export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: TraceOpts): { tables: Table[]; notes: string[] } | string {
   const log = res.log
   const span = loopSpan(log, loop) as LoopSpan
@@ -56,7 +57,7 @@ export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: 
   if (opts.res) {
     const sel = resourceSel(r, opts.res)
     if (typeof sel === 'string') return sel
-    const rows = traceLedger(log, r, loop, sel, opts.char)
+    const rows = traceLedger(log, gainSteps(log, r, metaOf(res)), r, loop, sel, opts.char)
     const shown = rows[0] ? Object.keys(rows[0].values) : []
     if (rows.length === 0) notes.push(`${sel.label}这一轮没有变化`)
     out.push({
@@ -128,7 +129,7 @@ async function main(): Promise<number> {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
-  const res = simulate(r)
+  const res = simulate(r, { diag: { eventMeta: true } })         // 资源出处按记录下来的事件来源（DD-05 §3.4）
   const loops = loopsOf(res.log)
   const loop = opt.loop !== undefined ? Number(opt.loop) : res.summary.steady?.from ?? loops.at(-1) ?? 1
   if (!loops.includes(loop)) { console.error(`没有第 ${opt.loop} 轮（有：${loops.map(k => (k === 0 ? '0（启动）' : k)).join('、')}）`); return 2 }

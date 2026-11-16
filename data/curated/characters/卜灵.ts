@@ -133,12 +133,16 @@ export default defineCharacter('卜灵', {
       const me = ctx.state.chars[ctx.self].name
       // 切走不保留卦象、少阳 / 少阴（假设 forte-keep-on-switch 翻过来，量敏感度用）：options.rules.forteKeepOnSwitch = false（两人一起），
       // 或只翻卜灵 forteKeepOnSwitchBy.卜灵 = false（台账 forte-keep.卜灵-卦象，DD-04 §4.1）
-      if (ev.type === 'switch' && ev.from === me && !forteKept(ctx.rules, me)) {
+      if (ev.type === 'switch' && ev.from === me) {
         const v = ctx.vars
         const n = ctx.state.chars[ctx.self].core[0]!
-        if (n > 0) ctx.addResource('core1', -n, ctx.self, '切走清卦象（forteKeepOnSwitch = false）')
-        v.卦象数 = 0; v.卦象位 = 0; v.少阳 = false; v.少阴 = false; v.阴阳相生 = false
-        return
+        // 规则使用（DD-05 §4.1 的 char.卜灵.forteKeep）：切出时卦象、少阳 / 少阴不为空，换个读法才走另一条分支
+        ctx.noteRule('char.卜灵.forteKeep', n > 0 || v.卦象数 > 0 || v.卦象位 !== 0 || v.少阳 || v.少阴 || v.阴阳相生)
+        if (!forteKept(ctx.rules, me)) {
+          if (n > 0) ctx.addResource('core1', -n, ctx.self, '切走清卦象（forteKeepOnSwitch = false）')
+          v.卦象数 = 0; v.卦象位 = 0; v.少阳 = false; v.少阴 = false; v.阴阳相生 = false
+          return
+        }
       }
       if (ev.type === 'actionStart' && ev.char === me) {
         if (ev.action === 'E') push(ctx, 震)                        // "施放共鸣技能·遁影牵雷时获得【卦象·震】"（E-前置第 1 帧）

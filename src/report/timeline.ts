@@ -1,17 +1,19 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type HitTrigger } from '../engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type GainStep, type HitTrigger } from '../engine/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>
 
 export const DATA_TAG = '<script id="timeline-data" type="application/json">null</script>'
 
-/** 网页要的数据：仿真结果，加上画图用的队伍、敌人、排轴原文与各动作的类别（事件日志里没有的） */
+/** 网页要的数据：仿真结果，加上画图用的队伍、敌人、排轴原文与各动作的类别（事件日志里没有的）。
+ *  资源与伤害的出处按记录下来的事件来源算（DD-05 §3.4）：res 要带 diag: { eventMeta: true } 跑，没带就报错 */
 export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, res: SimResult) {
   const e = r.enemy
-  const steps = gainSteps(res.log, r)
+  const meta = metaOf(res)
+  const steps = gainSteps(res.log, r, meta)
   return {
     title: basename(file, extname(file)),
     scenario: file,
@@ -45,10 +47,10 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     cooldowns: res.cooldowns,
     effectInfo: Object.fromEntries(r.effects.map(e => [e.def.id, { source: e.def.source }])),
     energyShare: r.rules.energyShare,
-    trace: traceModel(r, res),
+    trace: traceModel(r, res, steps),
     video: videoModel(sc, r, res),
     ...(res.error ? { error: res.error } : {}),
-    log: withCauses(res.log.filter(ev => ev.type !== 'judgmentSpawn'), hitCauses(res.log, r)),   // 判定生成网页不用，省体积
+    log: withCauses(res.log.filter(ev => ev.type !== 'judgmentSpawn'), hitCauses(res.log, r, meta)),   // 判定生成网页不用，省体积
   }
 }
 
@@ -75,7 +77,7 @@ function withCauses(log: SimEvent[], causes: ReturnType<typeof hitCauses>): Time
 }
 
 /** 调试表（TD-11 §3、§6 P3）：每轮的分段、逐条与资源逐步（协奏、能量、各核心资源），网页按轮次显示 */
-function traceModel(r: ResolvedScenario, res: SimResult) {
+function traceModel(r: ResolvedScenario, res: SimResult, steps: readonly GainStep[]) {
   const names = ['协奏', '能量', ...r.team.flatMap(m => m.def.coreResources.map(c => c.name)).filter(Boolean)]
   return loopsOf(res.log).map(loop => ({
     loop,
@@ -84,7 +86,7 @@ function traceModel(r: ResolvedScenario, res: SimResult) {
     commands: traceCommands(res.log, r, loop),
     ledgers: names.flatMap(n => {
       const sel = resourceSel(r, n)
-      return typeof sel === 'string' ? [] : [{ name: sel.label, rows: traceLedger(res.log, r, loop, sel) }]
+      return typeof sel === 'string' ? [] : [{ name: sel.label, rows: traceLedger(res.log, steps, r, loop, sel) }]
     }),
   }))
 }

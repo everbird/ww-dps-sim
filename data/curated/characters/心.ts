@@ -207,11 +207,16 @@ export default defineCharacter('心', {
       const self = me(ctx)
       // 切走回到应世相、退出心相心生（假设 forte-keep-on-switch 翻过来，量敏感度用）：options.rules.forteKeepOnSwitch = false（两人一起），
       // 或只翻心 forteKeepOnSwitchBy.心 = false（台账 forte-keep.心-照世相，DD-04 §4.1）
-      if (ev.type === 'switch' && ev.from === self && !forteKept(ctx.rules, self)) {
-        v.照世 = false; v.转相解锁 = false; v.万阙解锁 = false; v.魔方至 = -1
-        ctx.removeBuff('心.心相心生')
-        ctx.removeBuff('心.统御众机')
-        return
+      if (ev.type === 'switch' && ev.from === self) {
+        // 规则使用（DD-05 §4.1 的 char.心.forteKeep）：切出时有状态可清，换个读法才走另一条分支
+        ctx.noteRule('char.心.forteKeep', v.照世 || v.转相解锁 || v.万阙解锁 || v.魔方至 !== -1
+          || ctx.buffStacks('心.心相心生') > 0 || ctx.buffStacks('心.统御众机') > 0)
+        if (!forteKept(ctx.rules, self)) {
+          v.照世 = false; v.转相解锁 = false; v.万阙解锁 = false; v.魔方至 = -1
+          ctx.removeBuff('心.心相心生')
+          ctx.removeBuff('心.统御众机')
+          return
+        }
       }
       switch (ev.type) {
         case 'actionStart':
