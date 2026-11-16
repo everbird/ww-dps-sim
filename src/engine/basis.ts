@@ -2,6 +2,21 @@
 // 纯函数，属于核心汇总层（CORE），供 analysis / scorecard / search / plan / insight / matrix / cli / web 共用。
 import type { DamageScope, RunCompletion, RunStatus } from './run-types'
 import type { SimResult } from './types'
+import { battleFrameOf, hitValue } from './summary'
+
+/** DD-04 §5.6：分子分母严格使用同一窗口、同一组命中。 */
+export function damageShareByTag(res: SimResult, tag: string, window: { lo: number; hi: number }): number | null {
+  let total = 0, tagged = 0
+  for (const e of res.log) {
+    if (e.type !== 'hit' || e.dmg === null) continue
+    const f = battleFrameOf(e)
+    if (f < window.lo || f >= window.hi) continue
+    const damage = hitValue(e)
+    total += damage
+    if (e.tags.some(t => t === tag)) tagged += damage
+  }
+  return total > 0 ? tagged / total : null
+}
 
 export type { DamageScope } from './run-types'
 

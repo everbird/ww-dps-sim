@@ -932,11 +932,14 @@ export interface CandidateOutcome {
 export interface StrictCandidateReport {
   readonly baseline: { readonly runId: string; readonly completion: RunCompletion }
   readonly observedWaits: readonly { readonly cmd: CommandRef; readonly code: WaitCode; readonly intent: boolean; readonly battleFrames: number; readonly reason: string }[]
-  /** 经指定对照确认改变了每轮时长的等待 */
-  readonly confirmedBottlenecks: readonly { readonly cmd: CommandRef; readonly controlRunId: string; readonly window: string; readonly loopSecondsDelta: number }[]
+  /** DD-04 §5.4：只确认指令时刻敏感，不确认某一等待门槛是瓶颈 */
+  readonly timingSensitive: readonly { readonly cmd: CommandRef; readonly controlRunId: string; readonly window: string; readonly loopSecondsDelta: number; readonly recordedWaits: readonly WaitCode[]; readonly gateConfirmed: false }[]
+  readonly timingAbsorbed: readonly { readonly cmd: CommandRef; readonly controlRunId: string }[]
+  // 实现另列 timingFaster、timingUnassessable，不丢失变快和失败对照；完整字段见 candidates.ts。
   readonly mechanismOutcomes: readonly CandidateOutcome[]     // 主表：单项与两两
   readonly policyTrials: readonly CandidateOutcome[]
-  readonly excluded: readonly { readonly candidate: CandidateRef; readonly reason: string }[]
+  readonly excluded: readonly { readonly candidates: readonly CandidateRef[]; readonly reason: string }[]
+  readonly notApplicable: readonly CandidateRef[]
   readonly unimplemented: readonly CandidateRef[]
   readonly nonExhaustivePropositions: readonly string[]
   readonly coverage: {
@@ -949,8 +952,8 @@ export interface StrictCandidateReport {
 ```
 
 - **覆盖是实际跑出来的**：由计划的集合、实际运行的集合、失败与未运行的项生成，不写死"都查过了"。`engineError` 与没运行的不算已检查；`axisFailed` 是保留的结果。
-- **"记录到等待"与"确认是瓶颈"分开**：后者要引用具体的对照运行与适用窗口。
-- **诊断对照不是台账候选**：放宽某个门槛看轮长变不变，只说明模型对这个门槛敏感，不证明游戏里存在更快的可执行操作。
+- **记录到等待与指令时刻敏感分开**（DD-04 §5.4，DF-20）：+6f 对照引用运行与窗口，只确认该指令的时刻影响轮长，不确认哪个等待门槛决定轮长；门槛级对照未做。
+- **时刻对照不是台账候选**：不证明游戏里存在更快的可执行操作；变快和不可评估的对照同样列出。
 
 ## 12. 录像输入（路线图 §13 第 12 项；CD-03、AD-05）
 

@@ -25,20 +25,20 @@ async function main(): Promise<number> {
   const out: string[] = []
   out.push('# 假设敏感度矩阵', '', `${files.length} 个场景 × ${m.flips.length} 个开关，${((Date.now() - t0) / 1000).toFixed(0)} 秒；比较口径同轴搜索（有分轮取稳态，否则整个窗口）。`, '')
   if (skipped.length) out.push(`没跑的录像剖析场景（purpose: replay）：${skipped.join('、')}。`, '')
-  out.push('开关：', ...m.flips.map((f, i) => `- **F${i + 1}** ${f.label}`), '')
+  out.push('开关：', ...m.flips.map((f, i) => `- **F${i + 1}** ${f.label}${f.changes === 'policy' ? '【策略】' : f.changes === 'input' ? '【输入】' : ''}`), '')
   out.push('## 各场景翻一条假设后 DPS 变多少', '')
   const vs = (c: Cell, b: Cell) => {
     const tag = c.scopeChanged ? '†' : ''
     if (c.error) return `跑不通（${c.error}）${tag}`
     return b.dps && c.dps !== null ? `${Math.abs(c.dps / b.dps - 1) < 5e-5 ? '·' : pct(c.dps / b.dps - 1)}${tag}` : '—'
   }
-  out.push(`| 场景 | DPS | 谐破 | ${m.flips.map((_, i) => `F${i + 1}`).join(' | ')} |`, `|---|---:|:---:|${m.flips.map(() => '---:').join('|')}|`)
+  out.push(`| 场景 | DPS | 谐破 | ${m.flips.map((f, i) => `F${i + 1}${f.changes === 'policy' ? ' 策略' : f.changes === 'input' ? ' 输入' : ''}`).join(' | ')} |`, `|---|---:|:---:|${m.flips.map(() => '---:').join('|')}|`)
   for (const r of m.rows) out.push(`| ${r.name} | ${r.base.dps !== null ? Math.round(r.base.dps).toLocaleString('en-US') : `跑不通（${r.base.error}）`} | ${r.base.scopeLabel ?? '—'} | ${r.flips.map(c => vs(c, r.base)).join(' | ')} |`)
   if (m.rows.some(r => r.flips.some(c => c.scopeChanged))) out.push('', '† 翻转该开关后谐度破坏口径相对基准发生变化。')
   out.push('', '"·" = 不变（这个场景碰不到这条假设）。', '')
   out.push('## 对照场景比基准好多少：翻了哪条假设会变', '')
   out.push(`结论"变了"：正负号变了、差 ${CHANGED * 100} 个百分点以上，或有一边跑不通（**粗体**）。`, '')
-  out.push(`| 对照 | 基准 | 缺省 | ${m.flips.map((_, i) => `F${i + 1}`).join(' | ')} |`, `|---|---|---:|${m.flips.map(() => '---:').join('|')}|`)
+  out.push(`| 对照 | 基准 | 缺省 | ${m.flips.map((f, i) => `F${i + 1}${f.changes === 'policy' ? ' 策略' : f.changes === 'input' ? ' 输入' : ''}`).join(' | ')} |`, `|---|---|---:|${m.flips.map(() => '---:').join('|')}|`)
   const hits = new Map<number, number>()
   for (const p of m.pairs) {
     const cells = p.flips.map((g, i) => {

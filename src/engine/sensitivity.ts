@@ -4,11 +4,12 @@
 import { sameDamageScope, scopeShortLabel, usableBasis } from './basis'
 import type { DamageScope, RunStatus } from './run-types'
 import { ASSUMPTIONS, type AdjustPath } from './assumptions'
+import { PROPOSITIONS, type Proposition, type CandidateChange } from './propositions'
 import { adjusted } from './insight'
 import { simulate } from './simulate'
 import type { ResolvedScenario } from './types'
 
-export interface Flip { id: string; path: AdjustPath; value: number | boolean | string; label: string }
+export interface Flip { id: string; path: AdjustPath; value: number | boolean | string; label: string; changes: CandidateChange }
 /** 一格：DPS（比较口径同轴搜索：有分轮取稳态，否则整个窗口），跑不通时 error 是报错代码 */
 export interface Cell {
   dps: number | null
@@ -28,7 +29,14 @@ export function flipsOf(): Flip[] {
   return ASSUMPTIONS.flatMap(a => {
     const adj = 'adjust' in a ? a.adjust : undefined
     if (!adj || !('path' in adj) || !adj.path) return []
-    return (adj.values ?? []).map(v => ({ id: a.id, path: adj.path!, value: v, label: `${a.id}：${adj.path} = ${String(v)}` }))
+    return (adj.values ?? []).map(v => {
+      // DD-04 §6：共享 forte 开关仍同时翻两人；它的类别和两条角色命题相同。
+      const candidates = (PROPOSITIONS as readonly Proposition[]).filter(p => p.assumptionId === a.id).flatMap(p => p.candidates)
+      const changes = candidates.find(c => `${c.binding.kind === 'rule' ? 'rules' : 'options'}.${c.binding.path}` === adj.path && c.binding.value === v)?.changes
+        ?? (adj.path === 'rules.forteKeepOnSwitch' ? 'mechanism' : undefined)
+      if (!changes) throw new Error(`台账缺少 ${adj.path} = ${v}`)
+      return { id: a.id, path: adj.path!, value: v, changes, label: `${a.id}：${adj.path} = ${String(v)}` }
+    })
   })
 }
 

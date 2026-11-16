@@ -1,7 +1,7 @@
 # DD-04 规则台账、候选检查、代表轴与第一份有条件结论
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-05、DF-20、DF-24）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**T04-1、T04-2 已实现（2026-11-16）**：用例 C04-1～C04-4 在 `tests/propositions.test.ts`；实现时的决定记在 AGENTS.md"与设计文档的差异"第 53 条。T04-3～T04-10 还没做。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**T04-1、T04-2 已实现（2026-11-16）**：用例 C04-1～C04-4 在 `tests/propositions.test.ts`；实现时的决定记在 AGENTS.md"与设计文档的差异"第 53 条。T04-3～T04-10 已实现：`src/engine/candidates.ts`、`tests/candidates.test.ts` 与两份生成文档。覆盖计数按 §5.3 的兼容性检查后集合，策略不计主表；排除项用 `candidates[]` 保留整对；另列 `timingFaster`、`timingUnassessable`，不丢失失败对照。
 **阶段**：一（台账的证据部分在 DD-08 接着做）。**前置**：DD-01、DD-02、DD-03 的 §7。**被依赖**：DD-08、阶段一、二的汇合验收。
 
 ## 1. 范围与依据
@@ -300,12 +300,12 @@ readonly timingAbsorbed: readonly { readonly cmd: CommandRef; readonly controlRu
 
 在 `m0-video-eq-不打谐破.yaml` 上：
 
-- [ ] 严格入口下得到确定的完成状态；同一 `runId` 重复运行，日志逐字节相同。
-- [ ] `strictReport` 列出了全部按意图的等待与提示。
-- [ ] `StrictCandidateReport` 里：主表只有机制 / 数据候选；`input-delay` 在策略试验里；`tune-break-mode` 的 `auto` 在排除项里（`strictEntry`），`manual` 在策略试验里；`damageScope` 是 `omitted`（`sourceSilent`），报告带 `scopeReference`；爱弥斯的 `track-no-consume`、心与卜灵的两条在"不适用"里。
-- [ ] `coverage` 的数字与表的行数对得上；`higherOrderChecked === false`。
-- [ ] 任何让轴失败的候选都在主表里，带 `completion`。
-- [ ] `docs/m0-strict-conclusion.md` 由命令生成，带各 `runId` 与生成命令；重新生成的结果相同。
+- [x] 严格入口得到 completed；同一 `runId` 重复运行，日志逐字节相同。
+- [x] `strictReport` 列出全部按意图的等待与提示。
+- [x] 主表只有机制 / 数据；input-delay 与 manual 在策略试验；auto 因 strictEntry 排除；omitted / sourceSilent 带 scopeReference；不在队的角色命题单列不适用。
+- [x] 覆盖数字与行数一致；higherOrderChecked=false。
+- [x] 断轴和引擎错误保留 completion（合成用例）；代表轴 11 单项 / 54 对没有失败。
+- [x] 结论由命令生成，带各 runId 与命令；固定输入与代码状态重复生成相同。
 
 ## 9. 实施步骤
 

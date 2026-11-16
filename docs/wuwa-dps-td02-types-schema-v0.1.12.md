@@ -7,6 +7,14 @@
 
 ---
 
+## DD-04 补充：规则台账与候选报告
+
+- `Rules.forteKeepOnSwitchBy: Partial<Record<CharName, boolean>>` 缺省 `{}`；`forteKept` 按角色覆盖优先、否则用共享值。`mergeRulePaths` 支持多段规则路径，父对象逐层合并。
+- 台账类型在 `src/engine/propositions.ts`：`Proposition`、`Candidate`、`Binding`、`Evidence`、`FieldProvenance`、`EvidencePurpose`、`Conclusion`、`CandidateChange`、`ScenarioFeature`。rule / option 路径相对于各自根；curated / hook 路径是符号引用，不自动翻。
+- `src/engine/candidates.ts` 导出 `CandidatePlan`、`CandidateOutcome`、`StrictCandidateReport`。主表保留 `completion`、实际稳态轮次及各轮帧数；DPS 实际差与窗口变化幅度分开。基准含身份、严格报告、伤害口径和警告。排除项用 `candidates: CandidateRef[]` 同时表示单项与组合；不适用、未实现、未列全分开。
+- `timingSensitive` / `timingAbsorbed` 是 +6f 指令时刻对照；另有 `timingFaster` 与 `timingUnassessable`，门槛级 `gateConfirmed` 恒 false。覆盖仅计机制 / 数据主表（策略单列），`*Planned` 为兼容性检查后计划执行的数量，`engineError` 不算已检查，`axisFailed` 算已检查。三项以上未查。
+- `scopeReference` 是自动谐破的非严格参考，不进入主表覆盖。`damageShareByTag` 按同窗同组命中计算占比，稳态与全窗口分列。完整字段以代码和 DD-04 §5 为准。
+
 ## 0. 原则
 
 ### 0.1 边界用 zod，内部用 interface
