@@ -20,7 +20,7 @@ import { canAfford, castGainAt, castResources, grant, payCost, settleGains } fro
 import { prepareResolved, runWithFailure } from './run'
 import type { InterventionRecord, TickPhase } from './run-types'
 import { createScheduler, newQueue, runLoop } from './scheduler'
-import { onSwitch, outroTrigger } from './switch'
+import { selectIntro, onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
   CharRuntime, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
@@ -94,7 +94,7 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
   const sim: Sim = {
     r, k, book: makeBook(r.buffs), hooks: r.team.map(m => r.data.hooks[m.def.name]), ctxs: [], slotOf: new Map(r.team.map(m => [m.def.name, m.slot])), warned: new Set(), bus: newBus(),
     keepStacks: new Set(r.team.flatMap(m => EFFECT_NAMES.filter(e => m.def.effectRules?.[e]?.keepStacks))),
-    interventions: [],
+    interventions: [], unmetIntents: [], hints: [],
     ...(opts.onHit ? { onHit: rec => { try { opts.onHit!(rec) } catch (e) { throw new ObserverThrow(e) } } } : {}),
   }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
@@ -139,6 +139,15 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}): Execution {
   }
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
     maxWait: r.options.maxWait,
+    strict: r.options.strict ?? false,
+    introAvailable: (_st, to) => selectIntro(sim, to) !== undefined,
+    onHint: (_st, hint) => { sim.hints.push(hint) },
+    onIntentUnmet: (st, d) => {
+      const continued = opts.continueAfterIntentUnmet ?? false
+      sim.unmetIntents.push({ ...d, worldFrame: st.frame, continued })
+      if (continued) sim.continuationFrom ??= { worldFrame: st.frame, prefix: { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length } }
+      return continued ? 'continue' : 'fail'
+    },
     // 操作延迟：期望模式是固定的 options.inputDelay（卡帧点另给某几条加 inputDelayAt）；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
     inputDelay: st => r.options.inputDelay + delayAt(st) + (st.rng && jitter > 0 ? nextInt(st.rng, jitter) : 0)
       + (st.rng && hand ? Math.max(0, roundTo(hand.mean + hand.sd * nextNormal(st.rng), 1)) : 0),

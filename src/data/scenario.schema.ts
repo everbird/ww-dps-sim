@@ -94,7 +94,16 @@ export const ScenarioSchema = z.strictObject({
     z.strictObject({ killHp: z.number().positive() }),
     z.strictObject({ window: z.number().positive() }),
   ]).default('steady'),
+  // DD-02 §3.6–3.7：出处不参与执行，省略声明定义伤害口径。
+  notation: z.strictObject({
+    source: z.string().optional(),
+    opening: z.record(z.string().regex(/^\d+$/), z.string()).optional(),
+    rotation: z.record(z.string().regex(/^\d+$/), z.string()).optional(),
+    readings: z.array(z.string()).optional(),
+  }).optional(),
+  tuneBreakOmitted: z.strictObject({ reason: z.enum(['sourceSilent', 'notInGame', 'deliberate']), note: z.string().optional() }).optional(),
   options: z.strictObject({
+    strict: z.boolean().optional(),
     repeat: z.number().int().min(1).default(1),
     maxFrames: z.number().int().min(1).default(3600),
     maxWait: z.number().int().min(1).default(600),
@@ -106,13 +115,10 @@ export const ScenarioSchema = z.strictObject({
     // 连段后续玩家会预输入，不加。缺省 0 = 最早合法帧（假设 earliest-frame）
     inputDelay: z.number().int().min(0).default(0),
   }).default({ repeat: 1, maxFrames: 3600, maxWait: 600, tuneBreak: 'auto', inputDelay: 0 }),
-  tuneBreakOmitted: z.strictObject({
-    reason: z.enum(['sourceSilent', 'notInGame', 'deliberate']),
-    note: z.string().optional(),
-  }).optional(),
 }).superRefine((s, ctx) => {
-  if (s.tuneBreakOmitted && (s.options?.tuneBreak ?? 'auto') === 'auto') {
-    ctx.addIssue({ code: 'custom', path: ['tuneBreakOmitted'], message: 'options.tuneBreak=auto 时会算谐度破坏，不能写 tuneBreakOmitted' })
+  if (s.tuneBreakOmitted && s.options.tuneBreak === 'auto') ctx.addIssue({ code: 'custom', path: ['tuneBreakOmitted'], message: '声明省略谐度破坏不能同时开启 auto' })
+  for (const part of ['opening', 'rotation'] as const) for (const key of Object.keys(s.notation?.[part] ?? {})) {
+    if (Number(key) < 1 || Number(key) > s[part].length) ctx.addIssue({ code: 'custom', path: ['notation', part, key], message: '出处指向的行不存在' })
   }
   const names = s.team.map(m => m.char)
   names.forEach((n, i) => {

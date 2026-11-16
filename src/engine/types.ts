@@ -32,7 +32,7 @@ export interface ResolvedScenario {
   /** 对这个敌人：谐度破坏命中后多久不能累积偏谐值（谐破冷却，按 COST）、按钮亮多久（null = 不限时）；战斗帧（m0-confirm §10 H2、H4） */
   tuneBreakTiming: { lockFrames: Frame; buttonFrames: Frame | null }
   options: {
-    repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame
+    strict: boolean; repeat: number; maxFrames: Frame; maxWait: Frame; endAt?: Frame; tuneBreak: 'auto' | 'manual' | 'off'; inputDelay: Frame
     /** 只给循环轴的某几条另加操作延迟（"第几条.第几个" → 帧，每轮都加）：结论的卡帧点（TD-10 §6 ⑥）一次晚一条用；场景里写不出来 */
     inputDelayAt?: Readonly<Record<string, Frame>>
   }
@@ -137,7 +137,7 @@ export interface WaitSegment { code: WaitCode; reason: string; from: number; bat
 /** 等待原因（TD-09 §3.3）。delay、wait、at 是写轴的人要求的等待，不计入 maxWait */
 export type WaitCode =
   | 'started' | 'combo' | 'inputLock' | 'priority' | 'derive'   // gate（TD-04 §6.5）
-  | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
+  | 'concertoSettle' | 'cooldown' | 'resource' | 'hook' | 'settled'                 // 冷却、资源（TD-06）、角色钩子（TD-08）、就绪（TD-04 §6.4）
   | 'switchCd' | 'switchLock' | 'globalStop'                      // 切人；globalStop = 全局时停（大招动画）中切不了人
   | 'delay' | 'wait' | 'at'
   | 'input'                                                     // 操作延迟（options.inputDelay、抽样模式的抖动）

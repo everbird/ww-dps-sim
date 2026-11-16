@@ -31,9 +31,9 @@ async function main(): Promise<number> {
   const sc = withOverrides(loadScenario(file), opt)
   const data = await loadGameData()
   // 归一入口（DD-01 §3.2）：命令行的 --goal / --enemy / --repeat 先并进场景（withOverrides），提交号、内容指纹在这里采集
-  const p = prepareRun(sc, data, { environment: collectRunEnvironment() })
+  const p = prepareRun(sc, data, { environment: collectRunEnvironment(), ...(opt.strict !== undefined ? { strict: opt.strict === 'true' } : {}) })
   if (!p.ok) {
-    console.error(`场景有 ${p.issues.length} 处错误：\n${p.issues.map(i => `  - ${i.message}`).join('\n')}`)
+    console.error(`场景有 ${p.issues.length} 处错误：\n${p.issues.map(i => `  - ${i.code}: ${i.message}`).join('\n')}`)
     return 1
   }
   const r = p.run.resolved
@@ -41,13 +41,17 @@ async function main(): Promise<number> {
   print(file, r, res)
   const target = resolve(out ?? `out/${basename(file, extname(file))}.json`)
   mkdirSync(dirname(target), { recursive: true })
-  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, damageScope: res.damageScope, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
+  writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, strictReport: res.strictReport, damageScope: res.damageScope, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
   if (runs > 0 && res.completion.status === 'completed') printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
   return res.completion.status !== 'completed' ? 1 : 0
 }
 
 function print(file: string, r: ResolvedScenario, res: SimResult): void {
+  const report = res.strictReport
+  console.log(`入口 ${report.entry} · 最早合法帧基线 ${report.earliestLegalBaseline ? '是' : '否'} · 意图等待 ${report.intentWaits.length} 处 · 提示 ${report.hints.length} 条`)
+  for (const d of report.unmetIntents) console.log(`意图失败：${d.expected}；${d.actual}`)
+  if (res.damageScope.tuneBreak.mode === 'omitted') console.log(`未含谐度破坏（${res.damageScope.tuneBreak.reason}）；${res.damageScope.tuneBreak.gauge === 'off' ? '依赖失谐的效果也不在' : '偏谐值仍累积'}`)
   const s = res.summary
   console.log(`场景 ${file} · 数据 ${r.data.version}`)
   // 共鸣效率：静态面板 + 常驻的共鸣效率 buff（千古洑流这类写成了 buff，TD-06 §2.1）

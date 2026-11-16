@@ -91,7 +91,7 @@ exports[`场景回归快照 > alm-爱琳莫.yaml 1`] = `
 {
   "assumptions": [
     "def-no-floor ×189",
-    "wait-settled ×62",
+    "wait-settled ×55",
     "resonance-rules ×7",
     "track-no-consume ×7",
     "hitstop-in-global-stop ×7",
@@ -182,7 +182,7 @@ exports[`场景回归快照 > fire-tower1-video.yaml 1`] = `
   "assumptions": [
     "def-no-floor ×181",
     "effect-settle-clear ×7",
-    "wait-settled ×15",
+    "wait-settled ×12",
     "hitstop-in-global-stop ×3",
     "echo-input-priority ×5",
     "dilation-rules ×380",
@@ -258,7 +258,7 @@ exports[`场景回归快照 > fire-tower2-video.yaml 1`] = `
   "assumptions": [
     "def-no-floor ×160",
     "effect-settle-clear ×7",
-    "wait-settled ×14",
+    "wait-settled ×13",
     "hitstop-in-global-stop ×3",
     "echo-input-priority ×5",
     "dilation-rules ×385",
@@ -418,7 +418,7 @@ exports[`场景回归快照 > jys-5r18z.yaml 1`] = `
 {
   "assumptions": [
     "def-no-floor ×276",
-    "wait-settled ×67",
+    "wait-settled ×64",
     "hitstop-in-global-stop ×39",
     "switch-ends-stop ×5",
     "echo-input-priority ×20",
@@ -502,7 +502,7 @@ exports[`场景回归快照 > jys-5r18z-尤诺快开大.yaml 1`] = `
 {
   "assumptions": [
     "def-no-floor ×272",
-    "wait-settled ×59",
+    "wait-settled ×56",
     "hitstop-in-global-stop ×39",
     "switch-ends-stop ×5",
     "echo-input-priority ×20",
@@ -586,7 +586,7 @@ exports[`场景回归快照 > jys-5r20z.yaml 1`] = `
 {
   "assumptions": [
     "def-no-floor ×274",
-    "wait-settled ×84",
+    "wait-settled ×81",
     "hitstop-in-global-stop ×40",
     "switch-ends-stop ×7",
     "echo-input-priority ×20",
@@ -1169,7 +1169,7 @@ exports[`场景回归快照 > tys-video.yaml 1`] = `
 {
   "assumptions": [
     "def-no-floor ×6",
-    "wait-settled ×25",
+    "wait-settled ×21",
     "hitstop-in-global-stop ×12",
     "switch-ends-stop ×2",
     "echo-input-priority ×7",
@@ -1247,7 +1247,7 @@ exports[`场景回归快照 > xin-team.yaml 1`] = `
   "assumptions": [
     "effect-tick ×63",
     "effect-owner ×63",
-    "wait-settled ×66",
+    "wait-settled ×61",
     "ult-no-switch ×10",
     "hitstop-in-global-stop ×33",
     "switch-ends-stop ×4",

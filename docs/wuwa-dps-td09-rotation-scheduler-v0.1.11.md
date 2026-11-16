@@ -812,3 +812,11 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 - **v0.1.10（2026-10-21）**：出场技的规则进调度器（Q11 关闭）：§3.2 检查顺序加 1′（`ActionDef.entrySkill`、`SimState.entry`，切回来时后台动作要走完、切出者要在地面），§3.3 报错加 `entrySkill`，§3.5 写明规则与三种原因，§5 `ScheduleError` 的代码。`pnpm plan` 去掉自己的剪枝；一度排出的 M0 维里奈两段对调（+0.48%）因切出者在空中被排除（m0-confirm §14 D2）。用例：`tests/td09.test.ts`、`tests/td01.test.ts`、`tests/plan.test.ts`。
 - **v0.1.10 补记（2026-10-21）**：§3.5 加"有出场技的角色，地面普通切人入场后第一下写 A1 报错"（按套路排启动轴时发现）。
 - **v0.1.11（2026-10-21）**：§3.5 加空中入场：切进来的第一下是空中攻击时切出者要在空中，稍后会离地的等（`WaitCode` 加 `airborne`），不会的报错（`ScheduleErrorCode` 加 `airEntry`）；没处理的几种记在假设 `air-entry`。用例：`tests/td09.test.ts`。
+
+## 严格教学入口补充（2026-11-15，DD-02 §3）
+
+§2、§4：`options.strict` 可选，缺省 false；CLI sim / insight / sensitivity 的 `--strict`、`--no-strict` 优先于场景。严格入口检查启动与循环轴，禁止 replay、auto 谐破、`~`、`?`、对时及外部指令；装配后检查谐破开关矛盾、未声明省略与不存在的变奏动作。`notation` 提供按行出处，不进摘要；`tuneBreakOmitted` 声明不打谐破的原因，进入摘要。省略声明与 auto 或手写谐破不能并用。
+
+§3.3、§3.5：所有入口的变奏等待码为 `concertoSettle`，计入 maxWait，不记 wait-settled 假设。严格入口在最终切人条件放行后、状态修改之前核对变奏意图；失败为 `intentUnmet`。空中入场与出场技失败也归此码。可选诊断续跑只支持变奏意图，运行状态仍为 axisFailed。报告记录意图等待、未达到的意图、多余 `!` 提示，以及超时条件、角色资源与冷却。
+
+`!@N` 按 DD02-Q3 延后，本阶段不支持该语法。

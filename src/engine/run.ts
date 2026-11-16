@@ -12,7 +12,8 @@ import {
   type AxisFailureKind, type DamageScope, type PreparedRun, type PrepareIssue, type PrepareResult, type RunCompletion, type RunCoverage,
   type RunEnvironment, type RunIdentity, type RunOptions, type RunOverrides, type StrictReport,
 } from './run-types'
-import { ScheduleError, type ScheduleErrorCode } from './scheduler'
+import { checkStrictSource, checkStrictResolved, STRICT_CHECKS } from './strict'
+import { INTENT_WAITS, ScheduleError, type ScheduleErrorCode } from './scheduler'
 import { execute, type Execution } from './simulate'
 import { battleFrameOf, summarize, windowEnd } from './summary'
 import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, Summary } from './types'
@@ -24,10 +25,6 @@ import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, Summary } f
  *  同样的输入得到同样的 runId；返回的 PreparedRun 冻结了顶层与 effective、identity（resolved 太大不深冻结，引擎不写它） */
 export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOverrides = {}): PrepareResult {
   // ① 合并：overrides 给了的 > 场景写了的 > schema 缺省
-  if (overrides.strict === true) {
-    // 严格入口的声明（options.strict）、编译期检查与意图失败由 DD-02 做；在那之前不能声称跑的是严格入口
-    return { ok: false, issues: [{ stage: 'strict', code: 'strict.unavailable', message: '严格入口还没实现（DD-02），现在不能给 strict: true' }] }
-  }
   let rules = scenario.options.rules
   if (overrides.rules && Object.keys(overrides.rules).length > 0) {
     const m = mergeRulePaths(rules, overrides.rules)
@@ -39,7 +36,7 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
     ...scenario,
     ...(overrides.goal !== undefined ? { goal: overrides.goal } : {}),
     ...(overrides.enemy !== undefined ? { enemy: overrides.enemy } : {}),
-    options: { ...scenario.options, ...given, ...(rules !== undefined ? { rules } : {}) },
+    options: { ...scenario.options, ...given, ...(overrides.strict !== undefined ? { strict: overrides.strict } : {}), ...(rules !== undefined ? { rules } : {}) },
   }
   // ② 校验：有效场景再过一遍 schema，覆盖项也要合法
   const parsed = ScenarioSchema.safeParse(merged)
@@ -55,8 +52,10 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
     }
   }
   const effective = parsed.data
-  // ③ 严格入口检查：checkStrictSource（DD-02 §3.2）。DD-02 做完之前是空的
-  // ④ 装配；装配后的严格检查 checkStrictResolved 同样由 DD-02 接上
+  const sourceIssues = checkStrictSource(effective)
+  if (sourceIssues.length) return { ok: false, issues: sourceIssues }
+  // ③、④ 严格入口检查（DD-02 §3.2）
+  // 装配后按动作种类检查谐破与变奏
   let resolved: ResolvedScenario
   try {
     resolved = resolveScenario(effective, data)
@@ -64,12 +63,9 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
     if (!(e instanceof ResolveError)) throw e
     return { ok: false, issues: e.details.map(({ stage, message, ...at }): PrepareIssue => ({ stage, ...at, code: stage, message })) }
   }
-  if (resolved.tuneBreakOmitted && [...resolved.opening, ...resolved.commands].some(c => c.kind === 'act' && resolved.team[c.slot].actions[c.action]?.kind === 'tuneBreak')) {
-    return {
-      ok: false,
-      issues: [{ stage: 'resolve', code: 'tuneBreak.omittedButWritten', message: '写了 tuneBreakOmitted（声明未含谐度破坏），但轴里仍写了谐度破坏动作（DD-03 §7.4）' }],
-    }
-  }
+  const checks = checkStrictResolved(resolved)
+  if (checks.issues.length) return { ok: false, issues: checks.issues }
+  resolved.warnings.push(...checks.warnings)
   // 卡帧点的操作延迟场景里写不出来，装配后补进 options（跟着进身份）
   if (overrides.inputDelayAt && Object.keys(overrides.inputDelayAt).length > 0)
     resolved = { ...resolved, options: { ...resolved.options, inputDelayAt: { ...overrides.inputDelayAt } } }
@@ -78,8 +74,8 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
   delete executable.notation                 // video、search、notation 不影响执行，不进摘要（notation 由 DD-02 加）
   const run = sealed(resolved, {
     scenarioDigest: digestOf(executable),
-    strict: false,                           // DD-02 的 T02-1 起读有效场景的 options.strict
-    strictSource: overrides.strict !== undefined ? 'cli-override' : 'default',
+    strict: effective.options.strict ?? false,                           // DD-02 §3.1
+    strictSource: overrides.strict !== undefined ? 'cli-override' : scenario.options.strict !== undefined ? 'scenario' : 'default',
     continueAfterIntentUnmet: overrides.continueAfterIntentUnmet ?? false,
     sample: overrides.sample ?? null,
     environment: overrides.environment,
@@ -164,7 +160,7 @@ function sealed(resolved: ResolvedScenario, e: Effective): PreparedRun {
     runId: `run-${sha256Hex(canonicalJson(identity)).slice(0, 16)}`,
     identity,
     resolved,
-    effective: Object.freeze({ strict: e.strict, strictSource: e.strictSource, continueAfterIntentUnmet: e.continueAfterIntentUnmet, sample: identity.execution.sample }),
+    effective: Object.freeze({ damageScope: damageScopeOf(resolved), strict: e.strict, strictSource: e.strictSource, continueAfterIntentUnmet: e.continueAfterIntentUnmet, sample: identity.execution.sample }),
   })
 }
 
@@ -216,7 +212,7 @@ export function runPrepared(p: PreparedRun, opts: RunOptions = {}): SimResult {
 /** 同 runPrepared，另外带出没被归成调度错误的原异常（uncaught）：兼容外壳 simulate 要把它重新抛出（DD-01 §3.7） */
 export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: SimResult; uncaught: { error: unknown } | null } {
   const r = p.resolved
-  const x = execute(r, { ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) })
+  const x = execute(r, { continueAfterIntentUnmet: p.effective.continueAfterIntentUnmet, ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) })
   const summary = summarize(x.s.log, r, x.s)                    // 任何状态下都算，包括初始化没走完（这时是空汇总）；用不用由调用方按 completion 决定
   const completion = buildCompletion(x, r, summary)
   const e = x.failure?.error
@@ -226,24 +222,32 @@ export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: Si
   const res: SimResult = {
     log: x.s.log, summary, forte: x.forte, cooldowns: x.cooldowns, ...(error ? { error } : {}),
     runId: p.runId, identity: p.identity, completion, interventions: x.sim.interventions,
-    strictReport: strictReportOf(p), damageScope: damageScopeOf(r), ruleUsage: { byProposition: [], coverage: [] },
+    strictReport: strictReportOf(p, x), damageScope: p.effective.damageScope, ruleUsage: { byProposition: [], coverage: [] },
   }
   return { res, uncaught: x.failure && !(e instanceof ScheduleError) ? x.failure : null }
 }
 
 const messageOf = (e: unknown): string => (e instanceof Error ? e.message : String(e))
 
-/** DD-02 做完之前：只有入口与空数组 */
-function strictReportOf(p: PreparedRun): StrictReport {
+/** DD-02 §3.4：所有入口均生成报告。 */
+function strictReportOf(p: PreparedRun, execution: Execution): StrictReport {
   const x = p.identity.execution
+  const unmetIntents = [...execution.sim.unmetIntents]
+  const error = execution.failure?.error
+  if (error instanceof ScheduleError && error.intent && !unmetIntents.some(d => d.worldFrame === error.frame && d.kind === error.intent!.kind && d.cmd.line === error.intent!.cmd.line && d.cmd.item === error.intent!.cmd.item && d.cmd.loop === error.intent!.cmd.loop))
+    unmetIntents.push({ ...error.intent, worldFrame: error.frame, continued: false })
   return {
     entry: x.entryMode, earliestLegalBaseline: x.entryMode === 'strict' && x.inputTiming === 'earliest',
-    compileChecks: [], intentWaits: [], unmetIntents: [], hints: [],
+    compileChecks: p.effective.strict ? STRICT_CHECKS.map(code => ({ code, passed: true })) : [],
+    intentWaits: execution.s.log.flatMap(e => e.type === 'wait' && INTENT_WAITS.some(c => c === e.code) ? [{ cmd: e.cmd, code: e.code as StrictReport['intentWaits'][number]['code'], fromFrame: e.from, frames: e.frames, battleFrames: e.battleFrames, reason: e.reason }] : []),
+    unmetIntents,
+    hints: execution.sim.hints,
+    ...timeoutContextOf(p, execution),
   }
 }
 
 /** 谐度破坏的口径（DD-02 §3.7 的表）：按最终的有效配置分类，"轴里有没有谐破动作"看装配后的动作种类。
- *  省略的原因要等 DD-02 加场景的 tuneBreakOmitted 声明，此前没声明的都记 undeclared */
+ *  省略原因来自场景声明；没有声明则记 undeclared */
 export function damageScopeOf(r: ResolvedScenario): DamageScope {
   const written = [...r.opening, ...r.commands].some(c => c.kind === 'act' && r.team[c.slot].actions[c.action]?.kind === 'tuneBreak')
   const omittedReason = r.tuneBreakOmitted?.reason ?? 'undeclared'
@@ -257,8 +261,8 @@ export function damageScopeOf(r: ResolvedScenario): DamageScope {
 // ---------------------------------------------------------------------------
 // §3.6 完成状态
 
-/** 轴失败的调度错误码：同名映射到 AxisFailureKind（intentUnmet 由 DD-02 加） */
-const AXIS_CODES: readonly ScheduleErrorCode[] = ['comboBroken', 'timeout', 'notOnField', 'switchSelf', 'airEntry', 'entrySkill']
+/** 轴失败的调度错误码：同名映射到 AxisFailureKind（DD-02 §3.3） */
+const AXIS_CODES: readonly ScheduleErrorCode[] = ['intentUnmet', 'comboBroken', 'timeout', 'notOnField', 'switchSelf', 'airEntry', 'entrySkill']
 const ENGINE_CODES: readonly ScheduleErrorCode[] = ['chainDepth', 'invariant']
 
 /** 由运行体留下的簿记算完成状态（DD-01 §3.6 的判定表；架构 §2.3 的七条停止路径）。
@@ -312,7 +316,7 @@ export function buildCompletion(x: Execution, r: ResolvedScenario, summary: Summ
     loopExitAt = { reason: 'axisFailed', worldFrame: s.frame, phase: k.at.phase, ...inFlight }
     finalization = { kind: sched.viaFail ? 'failClose' : 'none', completed: true }
     terminal = 'midTick'
-    detail = { axisFailure: { kind: sched.code as AxisFailureKind, detail: sched.message } }
+    detail = { axisFailure: { kind: sched.code as AxisFailureKind, detail: sched.message, ...(sched.intent ? { unmetIntent: sched.intent } : {}) } }
   } else {
     // 连锁过深、不变量不成立、钩子抛错：不经调度器的 fail，等待段不关；正在处理的那条事件可能只跑了一部分处理器
     status = 'engineError'
@@ -322,6 +326,10 @@ export function buildCompletion(x: Execution, r: ResolvedScenario, summary: Summ
     detail = { engineError: engineError() }
   }
 
+  if (sim.unmetIntents.length && status !== 'engineError') {
+    status = 'axisFailed'
+    detail = { axisFailure: { kind: 'intentUnmet', unmetIntent: sim.unmetIntents[0]!, detail: sim.unmetIntents[0]!.actual } }
+  }
   const loops = loopsOf(s.log, x, r, status)
   const st = summary.steady
   const steadyReached = (): boolean => {
@@ -335,6 +343,7 @@ export function buildCompletion(x: Execution, r: ResolvedScenario, summary: Summ
   }
   const n = sim.interventions.length
   return {
+    ...(sim.continuationFrom ? { diagnosticContinuationFrom: sim.continuationFrom } : {}),
     status, ...detail,
     coverage: {
       initCompleted: x.initCompleted,
@@ -382,4 +391,17 @@ function loopsOf(log: readonly SimEvent[], x: Execution, r: ResolvedScenario, st
     openingCompleted: r.opening.length === 0 ? null : started >= 1 || status === 'completed',
     roundEnds,
   }
+}
+
+// DD-02 §3.4：超时条件在 fail 清等待段之前保存；资源取失败终态。
+function timeoutContextOf(p: PreparedRun, x: Execution): Pick<StrictReport, 'timeoutContext'> {
+  const e = x.failure?.error
+  if (!(e instanceof ScheduleError) || e.code !== 'timeout' || !e.blocked || !e.cmd) return {}
+  const c = (e.cmd.loop === 0 ? p.resolved.opening : p.resolved.commands).find(c => c.line === e.cmd!.line && c.item === e.cmd!.item)
+  type Role = 'actor' | 'switchOut' | 'switchIn'
+  const subject = (slot: number, role: Role) => { const ch = x.s.chars[slot]!; return { role, char: ch.name, energy: ch.energy, concerto: ch.concerto, core: [...ch.core], cooldowns: { ...ch.cooldowns } } }
+  const subjects = c?.kind === 'act' ? [subject(c.slot, 'actor')] : c?.kind === 'switch' ? [subject(x.s.onField, 'switchOut'), subject(c.to, 'switchIn')] : []
+  const code = e.blocked.code
+  const blockingRole: Role | undefined = ['input', 'delay'].includes(code) ? undefined : c?.kind === 'act' ? 'actor' : c?.kind === 'switch' ? (['switchCd', 'entryBusy'].includes(code) ? 'switchIn' : ['globalStop', 'concertoSettle', 'switchLock', 'airborne'].includes(code) ? 'switchOut' : undefined) : undefined
+  return { timeoutContext: { maxWait: p.resolved.options.maxWait, cmd: e.cmd, blocked: e.blocked, subjects, ...(blockingRole ? { blockingRole } : {}) } }
 }

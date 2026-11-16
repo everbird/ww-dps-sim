@@ -1,7 +1,7 @@
 # DD-02 严格教学轴入口
 
 **版本**：v0.3，2026-11-14，Claude。v0.2 按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10：DF-03、DF-04、DF-08、DF-23、DF-24 与 DD02-Q3 的补充）；v0.3 改正 §3.3 对时序的说法（意见文件 §13，Codex §12.5）。
-**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。已实现阶段一范围（2026-11-16）；`!@N` 按 DD02-Q3 延后。验证与兼容性差异见[实现记录](dd-02-implementation.md)。
 **阶段**：一。**前置**：DD-01。**被依赖**：DD-04。
 
 ## 1. 范围与依据
@@ -330,12 +330,12 @@ T02-2 与 T02-4 都改 `scheduler.ts`，各自跑 `pnpm conformance` 与 `pnpm f
 
 ## 6. 验收清单
 
-- [ ] `tests/strict-teaching.test.ts` 全过，路线图 §3.7 的六个夹具都有对应用例。
+- [x] `tests/strict-teaching.test.ts` 全过，路线图 §3.7 的六个夹具都有对应用例。
 - [ ] 非严格场景：T02-2 之后的 conformance 输出，与 T02-9 之后的逐字节相同。
-- [ ] T02-2 引起的快照变化只有等待代码与 `wait-settled` 的计数，没有任何伤害或帧数变化；变化清单在提交说明里。
-- [ ] `m0-video-eq.yaml` 加 `--strict` 运行，得到 `strict.tuneBreakAuto` 的编译问题（它用的是缺省的自动谐破），不是运行期错误。
-- [ ] `pnpm fuzz` 通过。
-- [ ] `strictReport` 在所有入口的结果里都有。
+- [x] T02-2 引起的快照变化只有等待代码与 `wait-settled` 的计数，没有任何伤害或帧数变化；变化清单在提交说明里。
+- [x] `m0-video-eq.yaml` 加 `--strict` 运行，得到 `strict.tuneBreakAuto` 的编译问题（它用的是缺省的自动谐破），不是运行期错误。
+- [x] `pnpm fuzz` 通过。
+- [x] `strictReport` 在所有入口的结果里都有。
 
 ## 7. 要同步的正式文档
 
