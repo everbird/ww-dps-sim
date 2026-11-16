@@ -9,7 +9,7 @@ import { ScenarioSchema } from '../src/data/scenario.schema'
 import { composeStat } from '../src/engine/formula'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { actionGains, gainSteps, resourceTracks } from '../src/engine/trace'
+import { actionGains, gainSteps, metaOf, resourceSteps, resourceTracks } from '../src/engine/trace'
 import { dataDescribe } from './helpers/kernel-harness'
 import { M0, m0Run } from './helpers/m0'
 import { eventsOfLog } from './helpers/synth'
@@ -59,7 +59,8 @@ dataDescribe('M0 三人的钩子', () => {
   test('T08-散华-4 资源出处（时间轴的检查器）：谁引发的算谁——E 只有行进序曲 16（R5）+ 起手即得 15，重击居合引爆的冰都算重击居合；没被引爆、5 链到时自爆的冰算 E', () => {
     const gainsOf = (rotation: string[]) => {
       const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
-      const gains = actionGains(gainSteps(simulate(r).log, r))
+      const out = simulate(r, { diag: { eventMeta: true } })        // 出处按记录下来的事件来源（DD-05 §3.4）
+      const gains = actionGains(gainSteps(out.log, r, metaOf(out)))
       return (action: string, res: string) => gains.find(g => g.char === '散华' && g.action === action)!.items
         .filter(it => it.resource === res).map(it => [it.how, it.what, it.deltas['散华'], it.of ?? null])
     }
@@ -79,7 +80,7 @@ dataDescribe('M0 三人的钩子', () => {
     const core1 = (rotation: string[]) => {
       const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
       const out = simulate(r)
-      const t = resourceTracks(gainSteps(out.log, r), r).find(x => x.char === '散华')!.tracks.find(x => x.key === 'core1')!
+      const t = resourceTracks(resourceSteps(out.log), r).find(x => x.char === '散华')!.tracks.find(x => x.key === 'core1')!
       const timers = out.log.flatMap(e => ((e.type === 'buffApply' || e.type === 'buffExpire') && e.buff.startsWith('散华.透视')
         ? [[e.f, e.type === 'buffApply' ? '+' : `-${e.reason}`, e.buff]] : []))
       return { name: t.name, cap: t.cap, steps: t.steps, timers }

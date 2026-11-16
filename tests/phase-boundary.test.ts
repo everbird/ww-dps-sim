@@ -6,9 +6,10 @@ import { ScenarioSchema } from '../src/data/scenario.schema'
 import type { EventMeta } from '../src/engine/diagnostics'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { gainSteps } from '../src/engine/trace'
+import { gainSteps, hitCauses } from '../src/engine/trace'
 import type { SimResult } from '../src/engine/types'
 import { action, eventsOf, judgment, run } from './helpers/kernel-harness'
+import { oldGainSteps } from './helpers/old-owners'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
 
 const buff = (o: Partial<BuffDefInput> & { id: string }): BuffDefInput =>
@@ -118,9 +119,15 @@ describe('C05-3 同帧多个到期：各自引出的事件指向各自的到期�
     expect([meta[e甲]!.scope === meta[e乙]!.scope]).toEqual([false])
   })
 
-  test('旧的按日志邻近推来源（walkOwners）：两条都归到了 buff乙 的施加者 Q——用例确实打到了 R02', () => {
-    const steps = gainSteps(out.log, r).filter(g => g.how === 'hook')
+  test('旧的按日志邻近推来源（walkOwners，T05-8 删掉后搬在 tests/helpers/old-owners）：两条都归到了 buff乙 的施加者 Q——用例确实打到了 R02', () => {
+    const steps = oldGainSteps(out.log, r).filter(g => g.how === 'hook')
     expect(steps.map(g => [g.resource, g.owner?.action, g.label])).toEqual([['core1', 'Q', '甲.buff乙 到时'], ['concerto', 'Q', '甲.buff乙 到时']])
+  })
+
+  test('C05-11 trace 的出处按 eventMeta：两条各归各的（甲到期的归 P、乙到期的归 Q），与旧算法不同', () => {
+    const steps = gainSteps(out.log, r, meta).filter(g => g.how === 'hook')
+    expect(steps.map(g => [g.resource, g.owner?.action, g.label])).toEqual([['core1', 'P', '甲.buff甲 到时'], ['concerto', 'Q', '甲.buff乙 到时']])
+    expect(steps.map(g => g.owner?.action)).not.toEqual(oldGainSteps(out.log, r).filter(g => g.how === 'hook').map(g => g.owner?.action))
   })
 })
 

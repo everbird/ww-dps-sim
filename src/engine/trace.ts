@@ -4,7 +4,8 @@
 import { FLAT_STATS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
 import { composeStat } from './formula'
 import type { Scenario } from '../data/scenario.schema'
-import type { ResolvedScenario, SimEvent } from './types'
+import type { EventMeta } from './diagnostics'
+import type { ResolvedScenario, SimEvent, SimResult } from './types'
 import { round, roundTo } from './num'
 import { outroOf } from './switch'
 
@@ -140,9 +141,10 @@ const CAUSE: Record<string, string> = {
   hit: '命中', cast: '起手即得', cost: '扣除', hook: '角色钩子', break: '破盾回能', outro: '延奏清零',
 }
 
-/** 从开场按日志重放（同 TD-06 §6.1 的资源曲线：命中的 gains 是实际增减，resource 事件给出变化后的值），列出本轮每次变化 */
+/** 从开场按日志重放（同 TD-06 §6.1 的资源曲线：命中的 gains 是实际增减，resource 事件给出变化后的值），列出本轮每次变化。
+ *  steps 是这份日志的 gainSteps（出处按记录下来的事件来源，DD-05 §3.4）；一次算好，几张表共用 */
 export function traceLedger(
-  log: readonly SimEvent[], r: ResolvedScenario, loop: number, sel: ResourceSel, only?: CharName,
+  log: readonly SimEvent[], steps: readonly GainStep[], r: ResolvedScenario, loop: number, sel: ResourceSel, only?: CharName,
 ): LedgerRow[] {
   const span = loopSpan(log, loop)
   if (!span) return []
@@ -154,7 +156,7 @@ export function traceLedger(
   const shown = core ? [names[core.slot]!] : only ? [only] : names
   const kind = core ? `core${core.k}` : sel.kind
   const out: LedgerRow[] = []
-  for (const g of gainSteps(log, r)) {
+  for (const g of steps) {
     if (g.f >= span.endF) break
     if (g.resource !== kind || (core && !(names[core.slot]! in g.deltas))) continue
     for (const [n, v] of Object.entries(g.deltas)) val[slotOf.get(n)!] = g.value ?? val[slotOf.get(n)!]! + v!
@@ -169,8 +171,9 @@ export function traceLedger(
  *  只在值变了的帧记；cap 是上限（能量 = 大招耗能，协奏 = concertoMax，核心资源 = 上限），没有时为 null */
 export interface ResourceTrack { key: ResourceKind; name: string; cap: number | null; steps: [number, number][] }
 
-/** 每人的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）逐帧值：从开局值出发按 gainSteps 重放（同 traceLedger），值取两位小数 */
-export function resourceTracks(steps: readonly GainStep[], r: ResolvedScenario): { char: CharName; tracks: ResourceTrack[] }[] {
+/** 每人的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）逐帧值：从开局值出发按资源变化逐步重放（gainSteps 或只要数值的 resourceSteps，
+ *  同 traceLedger），值取两位小数 */
+export function resourceTracks(steps: readonly ResourceStep[], r: ResolvedScenario): { char: CharName; tracks: ResourceTrack[] }[] {
   const slotOf = new Map(r.team.map(m => [m.def.name, m.slot]))
   const all = r.team.map(m => [
     { key: 'energy' as ResourceKind, name: '能量', cap: m.def.energyCost ?? null, v: r.initial.energy[m.slot] },
@@ -194,7 +197,7 @@ export function resourceTracks(steps: readonly GainStep[], r: ResolvedScenario):
 }
 
 // ---------------------------------------------------------------------------
-// 资源出处与伤害归属（TD-11 §6、TD-12 §2.1 视图 D 的检查器）：每次资源变化、每次命中归到引起它的动作上。只读日志，不影响仿真
+// 资源出处与伤害归属（TD-11 §6、TD-12 §2.1 视图 D 的检查器）：每次资源变化、每次命中归到引起它的动作上。只读日志与事件来源，不影响仿真
 
 /** 资源变化归到的动作：动作开始的实例号；延奏动作没有 actionStart，按 outro 事件算（instance 是独立时间线的实例号，没有延奏动作时为 null） */
 export interface GainOwner { char: CharName; action: ActionId; instance: number | null; f: number; t: number; outro?: true }
@@ -202,11 +205,16 @@ export interface GainOwner { char: CharName; action: ActionId; instance: number 
 /** 怎么来的：命中（判定的回能、协奏、核心资源）、起手即得（动作开始时给的固定量）、扣除（大招能量）、资源型效果、角色钩子、破盾回能、延奏清零 */
 export type GainHow = 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'outro'
 
-export interface GainStep {
-  f: number; t: number
+/** 资源的一次变化，只有数值（resourceTracks 用；不要出处时用 resourceSteps，不必带诊断跑） */
+export interface ResourceStep {
+  f: number
   resource: ResourceKind
   deltas: Partial<Record<CharName, number>>  // 实际变化（满了就不再加）
   value?: number                             // resource 事件：变化之后的值
+}
+
+export interface GainStep extends ResourceStep {
+  t: number
   how: GainHow
   what: string                               // 判定名（命中）、效果 id（效果）、钩子的说明（钩子，可能为空）
   base?: number                              // 命中：数据里每段给多少（能量是分给全队之前的基础值）
@@ -214,7 +222,7 @@ export interface GainStep {
   note?: string                              // 命中：钩子生成这个判定时附的说明（散华"5 链：冰到时自爆"）
   via?: string                               // 命中：钩子在什么之后生成的（"散华.冰棱 到时""椿 盛绽·A3 命中"）
   label: string                              // 调试表的"事件"列
-  owner: GainOwner | null                    // null：不归动作（延奏清零；切人、计时引起的）
+  owner: GainOwner | null                    // null：不归动作（延奏清零；切人、计时、外部干预引起的）
 }
 
 const CAUSES = new Set(['cast', 'cost', 'hook', 'break', 'outro'])
@@ -222,93 +230,160 @@ const CAUSES = new Set(['cast', 'cost', 'hook', 'break', 'outro'])
 type HitEvent = Extract<SimEvent, { type: 'hit' }>
 type ResourceEvent = Extract<SimEvent, { type: 'resource' }>
 
-/** 按日志顺序推出处（一条事件引出的事件紧跟在它后面，TD-07 §5），"谁引发的算谁"；命中交给 hit，资源变化交给 resource：
- *  - 起因：最近一条动作开始、命中或延奏所归的动作；buff 到时结束时，起因是挂上这个 buff 时的那个动作（散华重击居合挂的"引爆计时"到时 →
- *    重击居合；E 命中时挂的冰棱到时 → E）；切人、loop 之后（下一个起因之前）没有起因；
- *  - 命中：钩子生成的判定（没有发生帧，如散华"E-引爆冰棱""大招-引爆冰川"）归生成那一刻的起因，起因是别人的动作时（维里奈的协同攻击由
- *    队友命中触发）改归它所在动作最近的实例；其余判定归生成那一刻出伤者同名动作最近的实例；都找不到时归出伤者最近开始的动作；
- *  - 施放资源、扣除归本人最近开始的动作（含延奏动作）；效果、钩子、破盾回能归起因；延奏清零不归动作；
- *  - 钩子生成的判定记下引出原因，交给 hit：起因是一次命中时记那次命中（trigger，维里奈的协同攻击由谁的命中触发）；
- *    via 是钩子在什么之后生成的（"散华.冰棱 到时""丁 Q 开始""椿 盛绽·A3 命中"），note 是钩子附的说明（"5 链：冰到时自爆"）。
- *  局限：同一帧有几个 buff 一起到时，它们引出的事件都排在后面，会全算到最后一个到时的 buff 的起因上 */
-function walkOwners(log: readonly SimEvent[], r: ResolvedScenario, visit: {
+/** 带诊断跑的结果里的事件来源（DD-05 §3.2）：出处的函数都要它。没带就报错，提示调用方怎么跑 */
+export function metaOf(res: Pick<SimResult, 'log' | 'diag'>): readonly EventMeta[] {
+  const meta = res.diag?.eventMeta
+  if (!meta || meta.length !== res.log.length)
+    throw new Error('出处要按记录下来的事件来源算：仿真要带 diag: { eventMeta: true } 跑（DD-05 §3.4），这份结果里没有')
+  return meta
+}
+
+/** 一次命中给的资源（命中的 gains 是实际增减）：按 能量 → 协奏 → 核心资源 1–3 的顺序 */
+function hitDeltas(e: HitEvent): { resource: ResourceKind; deltas: Partial<Record<CharName, number>>; k?: number }[] {
+  const out: { resource: ResourceKind; deltas: Partial<Record<CharName, number>>; k?: number }[] = []
+  const energy = Object.entries(e.gains.energy).filter(([, v]) => v)
+  if (energy.length) out.push({ resource: 'energy', deltas: Object.fromEntries(energy) })
+  if (e.gains.concerto) out.push({ resource: 'concerto', deltas: { [e.char]: e.gains.concerto } })
+  e.gains.core.forEach((v, k) => { if (v) out.push({ resource: `core${k + 1}` as ResourceKind, deltas: { [e.char]: v }, k }) })
+  return out
+}
+
+/** 资源变化逐步，只有数值、不归动作：不需要事件来源（录像剖析的贴合度只比资源的值） */
+export function resourceSteps(log: readonly SimEvent[]): ResourceStep[] {
+  const out: ResourceStep[] = []
+  for (const e of log) {
+    if (e.type === 'hit') for (const d of hitDeltas(e)) out.push({ f: e.f, resource: d.resource, deltas: d.deltas })
+    else if (e.type === 'resource') out.push({ f: e.f, resource: e.resource, deltas: { [e.char]: e.delta }, value: e.value })
+  }
+  return out
+}
+
+/** 按记录下来的事件来源推出处（DD-05 §3.4，R02）："谁引发的算谁"；命中交给 hit，资源变化交给 resource。不再按日志里的先后猜：
+ *  - 起因：沿事件的直接父事件往上找（没有就沿它说的实体；判定结算里写的事件先看这次结算的 hit），第一个动作开始、延奏、命中，
+ *    或到时结束的 buff（起因是最后一次挂上它时的起因：散华重击居合挂的"引爆计时"到时 → 重击居合）。切人、外部干预、计时器引起的没有起因；
+ *  - 命中：判定归它生成时的起因；起因是别人的（维里奈的协同攻击由队友命中触发）或找不到时，归它所在动作在那一刻最近的实例，
+ *    再找不到归出伤者最近开始的动作（异常效应自身的伤害没有判定，起因是自己的就归起因，否则也按这条退路）；
+ *  - 施放资源、扣除归它的动作（起因是本人的动作开始或延奏）；效果、钩子、破盾回能归起因；延奏清零不归动作；
+ *  - 钩子生成的判定（发生帧为空）记下引出原因，交给 hit：起因是一次命中时记那次命中（trigger）；via 是起因的说法
+ *    （"散华.冰棱 到时""丁 Q 开始""椿 盛绽·A3 命中"），note 是钩子附的说明。
+ *  同帧几个 buff 一起到时、队列交错（E1、E2 先后入队，E1 引出的事件写在 E2 之后）都按各自记下的父事件归，不串到最后一个头上 */
+function walkCauses(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[], visit: {
   hit(e: HitEvent, owner: GainOwner | null, trigger: HitTrigger | null, origin: HitOrigin | null): void
   resource(e: ResourceEvent, how: GainHow, owner: GainOwner | null, label: string): void
 }): void {
+  if (meta.length !== log.length) throw new Error(`事件来源 ${meta.length} 条，日志 ${log.length} 条，对不上（DD-05 §3.2）`)
   const members = new Map(r.team.map(m => [m.def.name, m]))
-  const last = new Map<CharName, GainOwner>()                 // 每人最近开始的动作
+  const last = new Map<CharName, GainOwner>()                 // 每人最近开始的动作（找不到起因时的退路）
   const latest = new Map<string, GainOwner>()                 // "角色|动作" 最近的实例
+  const started = new Map<number, GainOwner>()                // 动作开始、延奏的日志下标 → 它们代表的动作
+  const hitOwner = new Map<number, GainOwner | null>()        // hit 的日志下标 → 归到的动作
   const spawned = new Map<number, GainOwner | null>()         // 判定 id → 生成时归到的动作
-  const applied = new Map<string, GainOwner | null>()         // "buff→目标" → 最近一次挂上时的起因
-  let anchor: { owner: GainOwner | null; label: string; hit?: HitEvent } = { owner: null, label: '' }   // hit：起因是一次命中时
   const triggers = new Map<number, HitTrigger>()              // 钩子生成的判定 id → 触发它的命中
   const origins = new Map<number, HitOrigin>()                // 钩子生成的判定 id → 引出原因
-  const started = (o: GainOwner) => (o.outro ? `${o.char} 延奏` : `${o.char} ${o.action} 开始`)
-  for (const e of log) {
+  const lastApply = new Map<number, number>()                 // buff 实例 → 最近一条 buffApply 的下标
+  const expiredApply = new Map<number, number>()              // 到时结束的 buffExpire 的下标 → 那时最近一条 buffApply
+  const settleHit = new Map<number, number>()                 // 判定结算的作用域号 → 这次结算的 hit
+  const memo = new Map<number, number | null>()
+  const startedText = (o: GainOwner) => (o.outro ? `${o.char} 延奏` : `${o.char} ${o.action} 开始`)
+  const isAnchor = (e: SimEvent) => e.type === 'actionStart' || e.type === 'outro' || e.type === 'hit' || (e.type === 'buffExpire' && e.reason === 'timeout')
+  /** 往上走一步：直接父事件；判定结算里写的、在这次的 hit 之后的，先到这次的 hit；再没有就是它说的实体 */
+  const up = (i: number): number | null => {
+    const m = meta[i]!
+    if (m.directParentSeq !== undefined) return m.directParentSeq
+    if (m.origin.kind === 'judgmentSettle' && m.scope !== undefined) {
+      const h = settleHit.get(m.scope)
+      if (h !== undefined && h < i) return h
+    }
+    return m.subjectSeq ?? null
+  }
+  /** 第 i 条的起因（不含它自己）：往上第一个动作开始、延奏、命中或到时的 buff */
+  const anchorOf = (i: number): number | null => {
+    const hit = memo.get(i)
+    if (hit !== undefined) return hit
+    const p = up(i)
+    const a = p === null ? null : isAnchor(log[p]!) ? p : anchorOf(p)
+    memo.set(i, a)
+    return a
+  }
+  const cause = (a: number | null): { owner: GainOwner | null; label: string; hit?: HitEvent } => {
+    if (a === null) return { owner: null, label: '' }
+    const e = log[a]!
+    if (e.type === 'actionStart' || e.type === 'outro') { const o = started.get(a)!; return { owner: o, label: startedText(o) } }
+    if (e.type === 'hit') return { owner: hitOwner.get(a) ?? null, label: `${e.char} ${e.action} 命中后`, hit: e }
+    const ap = expiredApply.get(a)
+    return { owner: ap === undefined ? null : cause(anchorOf(ap)).owner, label: `${(e as Extract<SimEvent, { type: 'buffExpire' }>).buff} 到时` }
+  }
+  const mine = (o: GainOwner | null, char: CharName): GainOwner | null => (o?.char === char ? o : null)
+  for (let i = 0; i < log.length; i++) {
+    const e = log[i]!
     switch (e.type) {
       case 'actionStart': case 'outro': {
         const o: GainOwner = e.type === 'actionStart'
           ? { char: e.char, action: e.action, instance: e.instance, f: e.f, t: e.t }
           : { char: e.char, action: outroOf(members.get(e.char)!)?.id ?? '延奏', instance: e.instance ?? null, f: e.f, t: e.t, outro: true }
+        started.set(i, o)
         last.set(e.char, o)
         latest.set(`${e.char}|${o.action}`, o)
-        anchor = { owner: o, label: started(o) }
+        break
+      }
+      case 'buffApply':
+        lastApply.set(e.instanceId, i)
+        break
+      case 'buffExpire': {
+        const ap = lastApply.get(e.instanceId)
+        if (e.reason === 'timeout' && ap !== undefined) expiredApply.set(i, ap)
         break
       }
       case 'judgmentSpawn': {
         const byHook = members.get(e.char)?.actions[e.action]?.judgments.find(j => j.name === e.judgment)?.spawnFrame === null
-        const cause = byHook && anchor.owner?.char === e.char ? anchor.owner : null
-        spawned.set(e.id, cause ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null)
+        const c = cause(anchorOf(i))
+        spawned.set(e.id, mine(c.owner, e.char) ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null)
         if (byHook) {
-          if (anchor.hit) triggers.set(e.id, { char: anchor.hit.char, action: anchor.hit.action, judgment: anchor.hit.judgment })
-          const via = anchor.hit ? `${anchor.hit.char} ${anchor.hit.action} 命中` : anchor.label || null
+          if (c.hit) triggers.set(e.id, { char: c.hit.char, action: c.hit.action, judgment: c.hit.judgment })
+          const via = c.hit ? `${c.hit.char} ${c.hit.action} 命中` : c.label || null
           if (via || e.note) origins.set(e.id, { via, note: e.note ?? null })
         }
         break
       }
-      case 'switch': case 'loop':
-        anchor = { owner: null, label: '' }
-        break
-      case 'buffApply':
-        applied.set(`${e.buff}→${e.target}`, anchor.owner)
-        break
-      case 'buffExpire':
-        if (e.reason === 'timeout') anchor = { owner: applied.get(`${e.buff}→${e.target}`) ?? null, label: `${e.buff} 到时` }
-        break
       case 'hit': {
-        const owner = spawned.get(e.id) ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null
-        anchor = { owner, label: `${e.char} ${e.action} 命中后`, hit: e }
+        const m = meta[i]!
+        if (m.origin.kind === 'judgmentSettle' && m.scope !== undefined && !settleHit.has(m.scope)) settleHit.set(m.scope, i)
+        const fromSpawn = e.effect ? undefined : spawned.get(e.id)
+        const fromCause = e.effect ? mine(cause(anchorOf(i)).owner, e.char) : null
+        const owner = fromSpawn ?? fromCause ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null
+        hitOwner.set(i, owner)
         visit.hit(e, owner, triggers.get(e.id) ?? null, origins.get(e.id) ?? null)
         break
       }
       case 'resource': {
         const how = (CAUSES.has(e.cause) ? e.cause : 'effect') as GainHow
-        const own = how === 'cast' || how === 'cost' ? last.get(e.char) ?? null : null
-        const owner = how === 'outro' ? null : own ?? (how === 'cast' || how === 'cost' ? null : anchor.owner)
-        visit.resource(e, how, owner, how === 'outro' ? `${e.char} 延奏` : own ? started(own) : anchor.label || e.char)
+        if (how === 'outro') { visit.resource(e, how, null, `${e.char} 延奏`); break }
+        const c = cause(anchorOf(i))
+        if (how === 'cast' || how === 'cost') {
+          const own = mine(c.owner, e.char) ?? last.get(e.char) ?? null
+          visit.resource(e, how, own, own ? startedText(own) : c.label || e.char)
+        } else visit.resource(e, how, c.owner, c.label || e.char)
         break
       }
     }
   }
 }
 
-/** 资源变化逐步，每步归到引起它的动作（规则见 walkOwners） */
-export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario): GainStep[] {
+/** 资源变化逐步，每步归到引起它的动作（规则见 walkCauses）；meta 是这份日志的事件来源（metaOf(res)） */
+export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[]): GainStep[] {
   const members = new Map(r.team.map(m => [m.def.name, m]))
   const out: GainStep[] = []
-  walkOwners(log, r, {
+  walkCauses(log, r, meta, {
     hit(e, owner, _trigger, origin) {
       const of = owner && owner.action !== e.action ? { of: e.action } : {}
       const why = origin ? { ...(origin.note ? { note: origin.note } : {}), ...(origin.via ? { via: origin.via } : {}) } : {}
       const g = members.get(e.char)?.actions[e.action]?.judgments.find(j => j.name === e.judgment)?.gains
       const c = origin ? causeText(origin.note, origin.via) : ''
       const label = `${e.char} ${e.action} 命中（${e.judgment}${c ? `；${c}` : ''}）`
-      const step = (resource: ResourceKind, deltas: Partial<Record<CharName, number>>, base: number | undefined) =>
-        out.push({ f: e.f, t: e.t, resource, deltas, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, ...why, label, owner })
-      const energy = Object.entries(e.gains.energy).filter(([, v]) => v)
-      if (energy.length) step('energy', Object.fromEntries(energy), g?.energy)
-      if (e.gains.concerto) step('concerto', { [e.char]: e.gains.concerto }, g?.concerto)
-      e.gains.core.forEach((v, k) => { if (v) step(`core${k + 1}` as ResourceKind, { [e.char]: v }, g?.core[k]) })
+      for (const d of hitDeltas(e)) {
+        const base = d.resource === 'energy' ? g?.energy : d.resource === 'concerto' ? g?.concerto : g?.core[d.k!]
+        out.push({ f: e.f, t: e.t, resource: d.resource, deltas: d.deltas, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, ...why, label, owner })
+      }
     },
     resource(e, how, owner, label) {
       const what = how === 'effect' ? e.cause : how === 'hook' ? e.note ?? '' : ''
@@ -329,11 +404,11 @@ export interface HitCause { owner: GainOwner | null; trigger: HitTrigger | null;
 export const causeText = (note: string | null | undefined, via: string | null | undefined): string =>
   note && via ? `${note}（${via}）` : note ?? via ?? ''
 
-/** 每次命中归到的动作与触发者（规则见 walkOwners）：时间轴网页里动作的伤害按 owner 合计，同资源的出处（TD-11 §6.1、TD-12 §2.1）；
- *  汇总的"分动作"、pnpm compare 仍按判定所在的动作（xlsx 的组）。键是日志里的 hit 事件 */
-export function hitCauses(log: readonly SimEvent[], r: ResolvedScenario): Map<SimEvent, HitCause> {
+/** 每次命中归到的动作与触发者（规则见 walkCauses）：时间轴网页里动作的伤害按 owner 合计，同资源的出处（TD-11 §6.1、TD-12 §2.1）；
+ *  汇总的"分动作"、pnpm compare 仍按判定所在的动作（xlsx 的组）。键是日志里的 hit 事件；meta 是这份日志的事件来源 */
+export function hitCauses(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[]): Map<SimEvent, HitCause> {
   const out = new Map<SimEvent, HitCause>()
-  walkOwners(log, r, { hit: (e, owner, trigger, origin) => out.set(e, { owner, trigger, origin }), resource: () => {} })
+  walkCauses(log, r, meta, { hit: (e, owner, trigger, origin) => out.set(e, { owner, trigger, origin }), resource: () => {} })
   return out
 }
 

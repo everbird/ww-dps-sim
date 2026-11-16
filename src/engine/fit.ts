@@ -8,7 +8,7 @@ import { adjusted } from './insight'
 import { compileRotation, type CompileMember } from './scheduler'
 import { lineText, neighborIter, parseLines } from './search'
 import { simulate } from './simulate'
-import { compareMarks, gainSteps, hpPoints, resourceTracks, traceCommands, videoSeconds, type HpPoint } from './trace'
+import { compareMarks, hpPoints, resourceSteps, resourceTracks, traceCommands, videoSeconds, type HpPoint } from './trace'
 import type { ResolvedScenario, SimResult } from './types'
 
 type Video = NonNullable<Scenario['video']>
@@ -77,7 +77,7 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video): Fi
     hp = { n: err.length, rmse: Math.sqrt(mean(err.map(x => x * x))), end: err.at(-1)! }
   }
   // 仿真每人资源的逐步值（pnpm trace 的资源轨道），取视频秒对应的世界帧那一刻，按上限折成比例
-  const tracks = video.concerto?.length || video.core?.length ? resourceTracks(gainSteps(res.log, r), r) : []
+  const tracks = video.concerto?.length || video.core?.length ? resourceTracks(resourceSteps(res.log), r) : []
   const ratioAt = (t: string, char: string, pick: (x: { key: string; name: string }) => boolean, what: string) => {
     const tr = tracks.find(x => x.char === char)?.tracks.find(pick)
     if (!tr) throw new Error(`${what}：${char} 不在队伍里，或没有这项资源`)

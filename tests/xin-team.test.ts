@@ -9,7 +9,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
 import { simulate } from '../src/engine/simulate'
-import { gainSteps, resourceTracks } from '../src/engine/trace'
+import { resourceSteps, resourceTracks } from '../src/engine/trace'
 import type { SimEvent, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 import { eventsOfLog } from './helpers/synth'
@@ -139,7 +139,7 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
     expect(xin[turn]).toBe('照世相 · 心相心生 · 承天则冷却中 · 敕令 21 · 霆霓 10 · 霆心域 49 · 额外能量')
     expect(xin.some(t => t.includes('统御众机') && t.includes('电磁+1 ×5'))).toBe(true)
     const r = load()
-    expect(resourceTracks(gainSteps(out.log, r), r).map(x => [x.char, x.tracks.map(t => t.name)])).toEqual([
+    expect(resourceTracks(resourceSteps(out.log), r).map(x => [x.char, x.tracks.map(t => t.name)])).toEqual([
       ['心', ['能量', '协奏', '应世心', '照世心']], ['雷主·男', ['能量', '协奏', '电涌']], ['卜灵', ['能量', '协奏', '卦象']],
     ])
   })

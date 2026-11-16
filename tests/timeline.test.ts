@@ -4,7 +4,8 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+import { simulate as run } from '../src/engine/simulate'
+import type { ResolvedScenario } from '../src/engine/types'
 import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -15,6 +16,8 @@ const sc = ScenarioSchema.parse({
   enemy: { custom: { level: 90, tunabilityMax: 100, whiteBar: 50 } },
   rotation: ['甲 X X   # 注释里写 </script><b>', 'wait 10'],
 })
+/** 时间轴模型的出处按记录下来的事件来源（DD-05 §3.4）：带 eventMeta 跑 */
+const simulate = (r: ResolvedScenario) => run(r, { diag: { eventMeta: true } })
 const data = synthData([甲, idle('乙'), idle('丙')])
 data.characters['甲']!.tunabilityRate = 1                          // 人造角色缺省偏谐效率 0
 const r = resolveScenario(sc, data)
