@@ -268,7 +268,7 @@ function runCore(p: PreparedRun, opts: InspectOptions): { x: Execution; res: Sim
   )
   if (x.stoppedAt !== null) return { x, res: null, uncaught: null }
   x.k.diag?.finish(x.s.log, x.k.at.phase)
-  const summary = summarize(x.s.log, r, x.s)                    // 任何状态下都算，包括初始化没走完（这时是空汇总）；用不用由调用方按 completion 决定
+  const summary = summarize(x.s.log, r, x.s, x.sim.interventions)   // 任何状态下都算，包括初始化没走完（这时是空汇总）；用不用由调用方按 completion 决定
   const completion = buildCompletion(x, r, summary)
   const e = x.failure?.error
   const error: SimResult['error'] = !x.failure ? undefined

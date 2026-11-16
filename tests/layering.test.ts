@@ -10,7 +10,7 @@ const EXECUTION = new Set([
   'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula',
   'simulate', 'execution', 'context', 'num', 'rng', 'types', 'wait-codes', 'event-util',
 ])
-const ENTRY_REPORT = new Set(['resolve', 'compile', 'run', 'strict', 'portable', 'summary', 'invariants', 'basis'])
+const ENTRY_REPORT = new Set(['resolve', 'compile', 'run', 'strict', 'portable', 'summary', 'invariants', 'basis', 'resource-replay'])   // resource-replay：DD-09 §3.2，按日志重放资源（checkLog、汇总共用）
 // DD-10 §4–§5：显式分类，不允许新执行文件因漏列 EXECUTION 而绕过规则 3。
 const QUERY_DIAGNOSTICS = new Set(['diagnostics', 'digest', 'probe', 'query', 'run-types', 'snapshot', 'wire'])
 const LEDGER = new Set(['assumptions', 'propositions', 'rule-points'])

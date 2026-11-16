@@ -9,7 +9,7 @@ import { preparedScenario } from './analysis'
 import type { Scenario } from '../data/scenario.schema'
 import type { GameData } from '../data/gamedata'
 import { neighborIter, parseLines, lineText, type Change, type Line } from './search'
-import { compileRotation, type CompileMember } from '../engine'
+import { compileMembers, type CompileMember } from '../engine'
 
 import type { HitEvent, ResolvedScenario, SimResult } from '../engine'
 
@@ -48,7 +48,7 @@ export function fuzzScenario(sc: Scenario, data: GameData, n = 60, opts: FuzzOpt
   const r = p.resolved
   const problems: FuzzProblem[] = []
   let engineErrors = 0
-  const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
+  const members: CompileMember[] = compileMembers(r)
   const has = (char: string, action: string) => !!members.find(x => x.name === char && (action in x.actions || action in x.aliases))
   const run = (rr: PreparedRun, where: string): SimResult | null => {
     if (opts.ledger) {

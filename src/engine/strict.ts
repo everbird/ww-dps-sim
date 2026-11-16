@@ -17,7 +17,7 @@ export function checkStrictSource(sc: Scenario): PrepareIssue[] {
       const codes: string[] = []
       if (it.kind === 'act') { if (it.filler) codes.push('filler'); if (it.optional) codes.push('optional') }
       if (it.kind === 'at') codes.push('at')
-      if (it.kind === 'fill' || it.kind === 'enemy') codes.push('external')
+      if (it.kind === 'fill' || it.kind === 'enemy' || it.kind === 'sync') codes.push('external')
       const messages: Record<string, string> = { filler: '补位不进严格入口', optional: '可选动作不进严格入口', at: '对时只用于录像剖析', external: '外部指令只用于录像剖析' }
       for (const code of codes) issues.push({ stage: 'strict', code: `strict.${code}`, message: `${part === 'opening' ? '启动' : ''}第 ${i + 1} 条第 ${j + 1} 个：${messages[code]}`,  line: i + 1, item: j + 1, ...(part === 'opening' ? { opening: true } : {}) })
     })

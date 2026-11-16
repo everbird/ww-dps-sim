@@ -7,7 +7,7 @@
 //   用途是检验与启发：比原轴好的改法是"游戏里也该更好"的假设，要拿实战核对。纯函数，输入装配结果与轴的原文。
 import { parseRotationLine, type RotationItem } from '../data/scenario.schema'
 import { usableBasis, type Basis } from './analysis'
-import { compileRotation, type CompileMember } from '../engine'
+import { compileMembers, compileRotation, type CompileMember } from '../engine'
 import { prepareRun, runPrepared } from '../engine'
 import { preparedScenario } from './analysis'
 import type { Scenario } from '../data/scenario.schema'
@@ -92,6 +92,7 @@ export function neighbors(lines: readonly Line[], opts: NeighborOptions = {}): C
 type NeighborOptions = Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & {
   has?: (char: string, action: string) => boolean
   near?: number                             // 挪动只挪到前后这么多行之内（录像剖析的贴合度，src/analysis/fit.ts）；缺省不限
+  keepEmpty?: boolean                       // 去掉 / 挪走一行唯一的动作后留下空行（条号不变，video.marks 照旧指得对；DD-09 §4.1）
 }
 
 /** 同 neighbors，按需一条条给出；改过的轴（lines）在取用时才算（2026-10-27：几千个动作的长轴，候选全摊开会把内存用完，pnpm fuzz 只取其中几十条） */
@@ -109,13 +110,13 @@ export function* neighborIter(lines: readonly Line[], opts: NeighborOptions = {}
           for (let p = 0; p <= rest.length; p++) {
             if (lj === li && p === ii) continue                       // 原位
             yield {
-              get lines() { return edit(lines, li, ii, { line: lj, at: p }) },
+              get lines() { return edit(lines, li, ii, { line: lj, at: p }, opts.keepEmpty) },
               desc: `${who}：第 ${li + 1} 条第 ${ii + 1} 个 → 第 ${lj + 1} 条第 ${p + 1} 个（${where(rest[p - 1]?.action, rest[p]?.action)}）`,
             }
           }
         }
       }
-      if (droppable(it.action)) yield { get lines() { return edit(lines, li, ii, null) }, desc: `去掉 ${who}（第 ${li + 1} 条第 ${ii + 1} 个）` }
+      if (droppable(it.action)) yield { get lines() { return edit(lines, li, ii, null, opts.keepEmpty) }, desc: `去掉 ${who}（第 ${li + 1} 条第 ${ii + 1} 个）` }
       // 对调：与同一行的下一个，行末的与紧接着的同一角色那一行的第一个（两行连着，执行起来就是相邻的两个）
       if (opts.swap) {
         const lj = ii + 1 < line.items.length ? li : li + 1
@@ -158,13 +159,13 @@ export function* neighborIter(lines: readonly Line[], opts: NeighborOptions = {}
   }
 }
 
-/** 拿掉第 li 行的第 ii 个条目，放到 to（null = 不放回）；行空了就去掉这一行 */
-function edit(lines: readonly Line[], li: number, ii: number, to: { line: number; at: number } | null): Line[] {
+/** 拿掉第 li 行的第 ii 个条目，放到 to（null = 不放回）；行空了就去掉这一行（keepEmpty：留一个空行） */
+function edit(lines: readonly Line[], li: number, ii: number, to: { line: number; at: number } | null, keepEmpty = false): Line[] {
   const next: Line[] = lines.map(l => (isChar(l) ? { char: l.char, items: [...l.items] } : l))
   const from = next[li] as { char: string; items: Act[] }
   const [it] = from.items.splice(ii, 1)
   if (to) (next[to.line] as { char: string; items: Act[] }).items.splice(to.at, 0, it!)
-  return next.filter(l => !isChar(l) || l.items.length > 0)
+  return keepEmpty ? next.map(l => (isChar(l) && l.items.length === 0 ? { text: '' } : l)) : next.filter(l => !isChar(l) || l.items.length > 0)
 }
 
 /** 跑一条轴：只重新编译循环轴，启动轴与其余装配结果照用。basis 是这次的比较口径（跑不通时 null） */
@@ -206,7 +207,7 @@ export function searchRotation(
   sc: Scenario, data: GameData, opts: SearchOptions = {},
 ): SearchResult {
   const r = preparedScenario(sc, data).resolved
-  const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
+  const members: CompileMember[] = compileMembers(r)
   const has = (char: string, action: string) => {
     const m = members.find(x => x.name === char)
     return !!m && (action in m.actions || action in m.aliases)

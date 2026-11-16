@@ -9,7 +9,7 @@ import { prepareRun, runPrepared } from '../engine/run'
 import { HAND_PROFILES, sampleRuns, type HandProfile } from '../analysis/sample'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { scopeNoteForRun, usableBasis } from '../engine/basis'
-import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec, withOverrides, OVERRIDE_FLAGS } from './format'
+import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, pickFillCombo, sec, withOverrides, OVERRIDE_FLAGS } from './format'
 import { collectRunEnvironment } from './run-env'
 
 /** "第 k 条"；启动轴写"启动第 k 条"，循环第 2 轮起加轮次，一行有几个动作时加"第 i 个" */
@@ -20,15 +20,15 @@ function cmdLabel(r: ResolvedScenario, c: { line: number; item: number; loop: nu
 }
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter', '--hand', ...OVERRIDE_FLAGS])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--sample', '--seed', '--jitter', '--hand', '--fill', ...OVERRIDE_FLAGS])
   const out = opt.out
   const file = pos[0]
   const runs = opt.sample !== undefined ? Number(opt.sample) : 0
   if (!file || !Number.isInteger(runs) || runs < 0) {
-    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F] [--hand 高手|熟练|普通]]')
+    console.error('用法：pnpm sim <场景.yaml> [--out <日志.json>] [--sample N [--seed S] [--jitter F] [--hand 高手|熟练|普通]] [--fill <填法组合>]')
     return 2
   }
-  const sc = withOverrides(loadScenario(file), opt)
+  const sc = withOverrides(pickFillCombo(loadScenario(file), opt.fill), opt)   // 录像剖析有几个填法组合时 --fill 选一个（DD-09 §3.1）
   const data = await loadGameData()
   // 归一入口（DD-01 §3.2）：命令行的 --goal / --enemy / --repeat 先并进场景（withOverrides），提交号、内容指纹在这里采集
   const p = prepareRun(sc, data, { environment: collectRunEnvironment(), ...(opt.strict !== undefined ? { strict: opt.strict === 'true' } : {}) })

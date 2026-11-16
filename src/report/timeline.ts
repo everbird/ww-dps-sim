@@ -1,6 +1,8 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
-import type { Scenario } from '../data/scenario.schema'
+import { replayRotationText, splitVideoLine } from '../data/replay'
+import { videoTime, type Scenario } from '../data/scenario.schema'
+import { replayFit } from '../analysis/fit'
 import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type GainStep, type HitTrigger } from '../analysis/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
@@ -13,7 +15,7 @@ export const DATA_TAG = '<script id="timeline-data" type="application/json">null
 export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, res: SimResult) {
   const e = r.enemy
   const meta = metaOf(res)
-  const steps = gainSteps(res.log, r, meta)
+  const steps = gainSteps(res.log, r, meta, undefined, res.interventions)   // 静默的同步按干预记录补进来（DD-09 §3.2）
   return {
     title: basename(file, extname(file)),
     scenario: file,
@@ -26,7 +28,7 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
       id: e.id, level: e.level, hp: e.hp, tunabilityMax: e.tunabilityMax, whiteBarTough: e.whiteBarTough, paralysisSec: e.paralysisFrames / 60,
     },
     concertoMax: r.rules.concertoMax,
-    rotation: sc.rotation,
+    rotation: replayRotationText(sc),          // 录像剖析的填法接在 rotation 之后（条号同编译，DD-09 §3.1）
     opening: sc.opening,
     options: { repeat: r.options.repeat, tuneBreak: r.options.tuneBreak },
     kinds: Object.fromEntries(r.team.map(m => [m.def.name, Object.fromEntries(Object.values(m.actions).map(a => [a.id, a.kind]))])),
@@ -104,16 +106,48 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
     loop: sc.video.loop, missing: cmp.missing,
     // at：视频里的绝对时刻（秒），视图 E 拿它当锚点把视频和时间轴对上
     marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60, at: videoSeconds(sc.video!.marks[String(x.line)]!) })),
-    // 录像里看到的动作：动作按角色的别名换成动作 ID（换不了的 action 为 null，视图里标"仿真里没有"）
+    // 录像里看到的动作：动作按角色的别名换成动作 ID（换不了的 action 为 null，视图里标"仿真里没有"）；@ 开头的是后台来源（summon 通道，DD-09 §4.1）
     events: (sc.video.events ?? []).map(line => {
-      const [t, char, act] = line.trim().split(/\s+/) as [string, string, string]
-      const m = r.team.find(x => x.def.name === char)
+      const x = splitVideoLine(line)
+      const [char, raw] = x.tokens as [string, string]
+      const summon = raw.startsWith('@'), act = summon ? raw.slice(1) : raw
+      const m = r.team.find(y => y.def.name === char)
       const id = m ? (Object.hasOwn(m.actions, act) ? act : m.aliases[act] ?? null) : null
-      return { t: videoSeconds(t), char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null }
+      return { t: x.t, char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null, ...(summon ? { summon: true } : {}) }
     }),
     // 录像里敌人的血条：left = 剩余比例；视图 F 拿第一条的时刻起仿真的累计伤害 / 敌人生命对照
     // 换了敌人的（末尾写了敌人预设）另起一段：seg / left0 / hp 是这一段的起点、起点读数、这只的生命
     hp: hpPoints(sc.video, r),
+    // 贴合度（DD-09 §4，视图 F 按通道显示匹配状态）与有条件推演的起点（第一次外部干预的世界帧，DD-09 §3.2）、三种时段（§3.1）
+    fit: fitModel(sc, r, res),
+    conditionedFrom: res.interventions[0]?.f ?? null,
+    interventions: res.interventions.map(i => ({
+      f: i.f, kind: i.kind, firedTriggers: i.firedTriggers,
+      ...(i.target?.slot !== undefined ? { char: r.team[i.target.slot]!.def.name } : {}), ...(i.target?.resource ? { resource: i.target.resource } : {}),
+      ...(i.before !== undefined ? { before: i.before } : {}), ...(i.adopted !== undefined ? { adopted: i.adopted } : {}),
+    })),
+    segments: (sc.replay?.segments ?? []).map(g => ({
+      kind: g.kind, from: videoTime(g.from), to: videoTime(g.to),
+      note: g.kind === 'idle' ? g.basis : g.reason, ...(g.kind === 'unobserved' ? { fills: g.fills.map(f => f.name) } : {}),
+    })),
+  }
+}
+
+/** 每条录像观测的匹配状态（DD-09 §4.2）：观测写错了（角色、资源名对不上）时只给错误 */
+function fitModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
+  try {
+    const f = replayFit(r, res, sc.video!)
+    return {
+      assessable: f.assessable, score: f.score, signature: f.eligibility.signature, earliestDeviation: f.earliestDeviation,
+      observations: f.observations.map(o => ({
+        id: o.id, channel: o.channel, t: o.t, status: o.status, scored: o.scored,
+        ...(o.residual !== undefined ? { residual: o.residual } : {}), ...(o.sim !== undefined ? { sim: o.sim } : {}),
+        ...(o.conflict ? { conflict: o.conflict } : {}), ...(o.mayBeUnmatched ? { mayBeUnmatched: true } : {}),
+        ...(o.candidates ? { candidates: o.candidates.length } : {}),
+      })),
+    }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) }
   }
 }
 

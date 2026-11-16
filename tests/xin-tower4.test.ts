@@ -46,18 +46,18 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     const pts = hpPoints(sc.video!, r)
     expect(new Set(pts.map(p => p.enemy))).toEqual(new Set(['41塔中4/异构武装', '41塔中4/无冠者']))
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.hp!.rmse).toBeLessThan(0.03)
-    expect(fit.switches.typeMiss).toBe(0)
-    expect(fit.events.matched).toBe(fit.events.n)
+    expect(fit.residualByChannel.hp!.rmse).toBeLessThan(0.03)
+    expect(fit.observations.filter(o => o.channel === 'switch' && o.status !== 'matched')).toEqual([])   // 切人类型全对
+    expect(fit.observations.filter(o => o.channel === 'action' && o.status !== 'matched')).toEqual([])
     // 协奏环（2026-10-28）：133 个点，均方根差约 9.8%，仿真平均高约 5.6%（卜灵段中间给得早）
-    expect(fit.concerto!.n).toBe(133)
-    expect(fit.concerto!.rmse).toBeLessThan(0.11)
+    expect(fit.residualByChannel.concerto!.n).toBe(133)
+    expect(fit.residualByChannel.concerto!.rmse).toBeLessThan(0.11)
   })
 
   test('回路条上的应世心（video.core，2026-10-28）：均方根差不到 6%；开打、镇红尘之后到 E 都没打普攻，借相回应世只打一下 A1，第四次变奏入场约 70（原来带进去 39，入场就满）', () => {
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.core!.n).toBe(sc.video!.core!.length)
-    expect(fit.core!.rmse).toBeLessThan(0.06)
+    expect(fit.residualByChannel.core!.n).toBe(sc.video!.core!.length)
+    expect(fit.residualByChannel.core!.rmse).toBeLessThan(0.06)
     const qte = out.log.filter(e => e.type === 'resource' && e.char === '心' && e.resource === 'core1' && e.cause === 'cast' && e.delta === 60)   // 变奏入场 +60
     expect(qte).toHaveLength(4)
     const after = qte.map(e => (e.type === 'resource' ? e.value : 0))
@@ -69,7 +69,7 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
 
   test('变奏入场放完声骸不补普攻（2026-10-29，回路条在电磁QTE-3 落下之前不涨）：第一轮 E 在视频 31.3 起手，原来补的 A1 让它晚 0.1 秒；回路条均方根差不到 4%', () => {
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.core!.rmse).toBeLessThan(0.04)
+    expect(fit.residualByChannel.core!.rmse).toBeLessThan(0.04)
     const e = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'E' && vsec(x.f) > 30)!
     expect(Math.abs(vsec(e.f) - 31.3)).toBeLessThan(0.02)
     const firstA1 = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'A1' && vsec(x.f) > 30)!

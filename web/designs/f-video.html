@@ -88,6 +88,11 @@
   <aside class="right">
     <h2>分段：每次上场一行（点一行跳过去）</h2>
     <ol class="segs" id="segs"></ol>
+    <details id="fitbox" open hidden>
+      <summary>录像观测：按通道的匹配（DD-09 §4）</summary>
+      <div class="note" id="fitsum" style="margin:6px 0"></div>
+      <ol class="segs" id="fitlist"></ol>
+    </details>
     <details>
       <summary>锚点（视频 ↔ 仿真）</summary>
       <div class="ctl" style="margin-top:6px"><button type="button" id="mark">打点：视频此刻 = 光标这一帧</button><button type="button" id="clear">清空</button></div>
@@ -108,7 +113,10 @@
   $('title').textContent = `${names.join(' · ')}　${M.title}`
   // 录像剖析（purpose: replay）：DPS 只作参考，标出来
   if (M.purpose === 'replay') $('kpi').title = '录像剖析：敌人走位、出招不建模，DPS 只作参考'
-  $('kpi').innerHTML = (M.purpose === 'replay' ? '<div class="kpi"><span>录像剖析</span>DPS 仅供参考</div>' : '') + [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
+  // 有条件推演（DD-09 §3.2）：从第一次外部干预（同步、敌人 失谐 / 换）起，之后的时间轴是在外部指定的状态上推演的
+  const COND = M.video && M.video.conditionedFrom !== undefined ? M.video.conditionedFrom : null
+  const condKpi = COND !== null ? `<div class="kpi" title="同步补上的是读数那一刻的值，恢复不了隐藏的历史（什么时候到的满、内置冷却的时刻、因为没满而没触发的效果）；差额不等于机制缺口"><span>有条件推演</span>第 ${COND} 帧起</div>` : ''
+  $('kpi').innerHTML = (M.purpose === 'replay' ? '<div class="kpi"><span>录像剖析</span>DPS 仅供参考</div>' : '') + condKpi + [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
   const sec = f => D.clock.secAt(f)
   const clamp = f => Math.max(0, Math.min(D.lastF, f))
   let cursor = 0, playing = false
@@ -210,6 +218,29 @@
   }
   $('segs').addEventListener('click', e => { const li = e.target.closest('li'); if (li) seek(SEGS[+li.dataset.k].start) })
 
+  // ---- 录像观测按通道的匹配状态（场景 video.* 的每一条有固定 ID，DD-09 §4.1–§4.2）：先列冲突、落单、歧义，点一行跳过去 ----
+  const FIT = (M.video && M.video.fit) || null
+  const RSEG = (M.video && M.video.segments) || []
+  const CHN = { switch: '切人', action: '前台动作', summon: '后台来源', hit: '跳字', hp: '血条', concerto: '协奏环', core: '回路条' }
+  const STN = { matched: '对上', conflicted: '冲突', ambiguous: '歧义', unmatched: '落单', uncovered: '没覆盖' }
+  const resText = o => o.residual === undefined ? '' : (o.channel === 'switch' || o.channel === 'action' || o.channel === 'summon') ? `仿真${o.residual > 0 ? '晚' : '早'} ${Math.abs(o.residual).toFixed(2)} 秒` : `差 ${(o.residual * 100).toFixed(o.channel === 'hit' ? 2 : 1)}%`
+  function fitPanel() {
+    if (!FIT) return
+    $('fitbox').hidden = false
+    if (FIT.error) { $('fitsum').textContent = `观测写错了：${FIT.error}`; return }
+    const chs = [...new Set(FIT.observations.map(o => o.channel))]
+    const cnt = chs.map(c => {
+      const os = FIT.observations.filter(o => o.channel === c && o.scored)
+      const parts = Object.keys(STN).map(s => [s, os.filter(o => o.status === s).length]).filter(([, n]) => n)
+      return `${CHN[c]}：${parts.map(([s, n]) => `${STN[s]} ${n}`).join('、')}`
+    })
+    const dev = FIT.earliestDeviation
+    $('fitsum').innerHTML = cnt.map(WW.esc).join('<br>') + (dev ? `<br>最早检测到的偏差：视频 ${vclock(dev.videoSeconds)} ${WW.esc(dev.observationId)}（只是最早检测到的）` : '') + (FIT.assessable ? '' : '<br>不可评估：没有对上的锚点')
+    const odd = FIT.observations.filter(o => o.status !== 'matched').sort((a, b) => a.t - b.t)
+    $('fitlist').innerHTML = odd.map(o => `<li data-t="${o.t}" style="--c:${o.status === 'conflicted' ? 'var(--slow)' : 'var(--faint)'}"><span>${vclock(o.t)}　<b>${WW.esc(o.id)}</b>　${CHN[o.channel]} · ${STN[o.status]}${o.scored ? '' : '（不评分）'}</span><span class="acts">${WW.esc(o.conflict || resText(o) || (o.candidates ? `${o.candidates} 个仿真事件同样说得通` : ''))}${o.mayBeUnmatched ? '；也可能落单' : ''}</span></li>`).join('') || '<li class="note">评分观测都对上了</li>'
+  }
+  $('fitlist').addEventListener('click', e => { const li = e.target.closest('li[data-t]'); if (li) seek(t2f(+li.dataset.t)) })
+
   // ---- 整局时间轴：在场段、各人的动作、每秒伤害、锚点、光标 ----
   const SV = $('strip'), PAD = 6, ROW = 9, H_EV = 10, H_SEG = 14, H_DPS = 34
   const TOP = EVS.length ? H_EV + 3 : 0
@@ -241,6 +272,12 @@
     const out = []
     for (const e of EVM) out.push(`<path d="M${x(e.fv) - 4} 0 h8 l-4 ${H_EV - 2} z" style="fill:var(--c${e.i})"${e.sim === null ? ' opacity="0.45"' : ''}><title>${WW.esc(`录像 ${vclock(e.t)} ${e.char} ${e.label}`)}：${WW.esc(evNote(e))}</title></path>`)
     for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="${TOP}" width="${Math.max(1, x(o.end) - x(o.start))}" height="${H_SEG}" style="fill:var(--c${o.i})" opacity="0.85"><title>${WW.esc(o.char)} ${sec(o.start).toFixed(1)}–${sec(o.end).toFixed(1)} 战斗秒</title></rect>`)
+    // 录像的三种时段（DD-09 §3.1）：已知空闲灰、未观测紫（填法是推演的输入）；有条件推演（第一次外部干预之后）整片加底色
+    for (const g of RSEG) {
+      const f1 = Math.round(t2f(g.from)), f2 = Math.round(t2f(g.to))
+      out.push(`<rect x="${x(f1)}" y="0" width="${Math.max(1, x(f2) - x(f1))}" height="${TOP + H_SEG}" style="fill:${g.kind === 'idle' ? 'var(--faint)' : 'var(--el-havoc)'}" opacity="0.35"><title>${WW.esc(`${g.kind === 'idle' ? '已知空闲' : '未观测'} 视频 ${vclock(g.from)}–${vclock(g.to)}：${g.note}${g.fills ? `；填法 ${g.fills.join(' / ')}` : ''}`)}</title></rect>`)
+    }
+    if (COND !== null) out.push(`<rect x="${x(COND)}" y="0" width="${Math.max(1, x(D.lastF) - x(COND))}" height="${H}" style="fill:var(--wait)" opacity="0.06"><title>有条件推演：第 ${COND} 帧（第一次外部干预）之后，状态有外部指定的成分；同步补不回隐藏的历史</title></rect>`)
     names.forEach((n, i) => {
       const y = TOP + H_SEG + 6 + i * (ROW + 3)
       for (const a of D.actions) if (a.i === i && a.end !== null) out.push(`<rect x="${x(a.start)}" y="${y}" width="${Math.max(1, x(a.end) - x(a.start) - 0.5)}" height="${ROW}" style="fill:var(--c${i})" opacity="${a.kind === 'liberation' ? 1 : a.kind === 'skill' || a.kind === 'intro' || a.kind === 'echo' ? 0.75 : 0.4}"><title>${WW.esc(`${n} ${a.id}`)}</title></rect>`)
@@ -294,7 +331,7 @@
     const recent = D.hits.filter(h => h.dmg && h.f <= g && h.f > g - 90).slice(-5).reverse()
     const hits = recent.length ? `<div class="hits">${recent.map(h => `<span>${sec(h.f).toFixed(2)}s　${WW.esc(h.char)} ${WW.esc(h.judgment)}　<b>${WW.fmt(h.dmg.expected)}</b></span>`).join('')}</div>` : ''
     $('now').innerHTML = rows + (on ? `<h2>${WW.esc(on.char)} 身上的 buff</h2>${buffs}` : '') + (hits ? `<h2>最近 1.5 秒的伤害</h2>${hits}` : '')
-    $('clock').innerHTML = `${V.src ? `视频 <b>${vclock(VEL.currentTime || 0)}</b>　` : ''}第 <b>${g}</b> 帧 · <b>${sec(g).toFixed(2)}</b> 战斗秒${V.anchors.length ? `　↔ 视频 ${vclock(Math.max(0, f2t(g)))}` : ''}`
+    $('clock').innerHTML = `${V.src ? `视频 <b>${vclock(VEL.currentTime || 0)}</b>　` : ''}第 <b>${g}</b> 帧 · <b>${sec(g).toFixed(2)}</b> 战斗秒${V.anchors.length ? `　↔ 视频 ${vclock(Math.max(0, f2t(g)))}` : ''}${COND !== null && g >= COND ? '　<span class="slow">有条件推演</span>' : ''}`
   }
 
   // ---- 跳转与播放：有视频时视频是主，光标跟着视频；没有视频时按世界时间走 ----
@@ -382,7 +419,7 @@
   })
   $('clear').addEventListener('click', () => { V.anchors = []; vsave(); refresh() })
 
-  function refresh() { matchEvents(); strip(); segs(); anchors(); render() }
+  function refresh() { matchEvents(); strip(); segs(); anchors(); fitPanel(); render() }
   addEventListener('resize', () => { strip() })
   refresh()
 })()

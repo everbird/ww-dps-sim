@@ -17,7 +17,7 @@ import {
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, contributes, hitView, matchesFilter, tuneBase } from './formula'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
-import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains } from './resources'
+import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains, syncResource } from './resources'
 import type { BoundaryObserver } from './run-types'
 import type { InterventionRecord, StatePrefix, TickPhase } from './run-types'
 import type { HookRulePointId } from './rule-points'
@@ -222,6 +222,15 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       grant(sim, st, slot, 'energy', adopted - before, 'forced')
       if (mark !== undefined) k.diag!.ledgerRelateIntervention(mark, sim.interventions.length - 1)   // 账本：这条写入是哪条干预引起的
     },
+    // 同步 <角色> <资源> <值>（录像剖析，DD-09 §3.2，假设 forced-sync）：静默地设成采用值，不写日志、不发业务触发；
+    // 记一条干预记录（firedTriggers false，列出本来会发的触发）与一条账本条目（关联到这条干预）
+    syncCommand: (st, c) => {
+      const mark = k.diag?.ledgerMark()
+      const x = syncResource(sim, st, c.slot, c.resource, c.value, c.unit)
+      intervene(sim, st, { kind: 'sync', target: { slot: c.slot, resource: c.resource }, before: x.before, adopted: x.adopted, delta: x.delta }, x.skipped)
+      if (mark !== undefined) k.diag!.ledgerRelateIntervention(mark, sim.interventions.length - 1)
+      assume(st, 'forced-sync', `${st.chars[c.slot].name} ${c.resource} ${roundTo(x.before, 100)} → ${roundTo(x.adopted, 100)}（第 ${st.frame} 帧）`)
+    },
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     // 规则使用（DD-05 §4.1）：每次问都读 options.tuneBreak；插入了一次自动谐度破坏才算决定了分支（不为换个读法多调钩子）
     interject: st => {
@@ -296,14 +305,15 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
   return x
 }
 
-/** 记一条外部干预记录（DD-01 §3.8；架构 §4.1）：一直都有，不进日志的触发队列。afterEventSeq = 此刻日志里最后一条的下标 */
-function intervene(sim: Sim, s: SimState, rec: Pick<InterventionRecord, 'kind' | 'target' | 'before' | 'adopted' | 'delta'>): void {
+/** 记一条外部干预记录（DD-01 §3.8；架构 §4.1）：一直都有，不进日志的触发队列。afterEventSeq = 此刻日志里最后一条的下标。
+ *  skipped 为 undefined：照旧发业务事件的干预（能量满、敌人 失谐 / 换）；给了是静默的同步（DD-09 §3.2），列出本来会发的触发 */
+function intervene(sim: Sim, s: SimState, rec: Pick<InterventionRecord, 'kind' | 'target' | 'before' | 'adopted' | 'delta'>, skipped?: readonly string[]): void {
   const list = sim.interventions
   const afterEventSeq = s.log.length - 1
   list.push({
     index: list.length, f: s.frame, phase: sim.k.at.phase, afterEventSeq,
     orderInAnchor: list.filter(i => i.afterEventSeq === afterEventSeq).length,
-    ...rec, firedTriggers: true, skippedTriggers: [],
+    ...rec, firedTriggers: skipped === undefined, skippedTriggers: skipped ? [...skipped] : [],
   })
 }
 

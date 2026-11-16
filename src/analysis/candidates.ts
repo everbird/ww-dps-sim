@@ -23,7 +23,7 @@ export function scenarioFeatures(p: PreparedRun): ReadonlySet<ScenarioFeature> {
   for (const c of [...r.opening, ...r.commands]) {
     if (c.kind === 'act' && r.team[c.slot]!.actions[c.action]?.kind === 'tuneBreak') features.add('hasManualTuneBreak')
     if ('filler' in c && c.filler || 'optional' in c && c.optional) features.add('hasFillerOrOptional')
-    if (c.kind === 'fill' || c.kind === 'enemy') features.add('hasForcedIntervention')
+    if (c.kind === 'fill' || c.kind === 'enemy' || c.kind === 'sync') features.add('hasForcedIntervention')
   }
   return features
 }

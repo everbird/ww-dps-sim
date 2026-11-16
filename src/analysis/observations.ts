@@ -3,6 +3,8 @@
 // compareValue 是纯函数，闭环的 judge 拿冻结的预测值直接调它（DD-08 §4.2），不重跑仿真；compareObservations 是对一次运行的包装，
 // 结果带信封（架构 §2.7）。旧的 calibrate()（面板、跳字、时长）是这里的薄包装（calibration.ts）。
 import { toleranceOf, type EventSelector, type Observation } from '../data/calibration.schema'
+import { splitVideoLine, type VideoPurpose } from '../data/replay'
+import { videoTime, type Scenario } from '../data/scenario.schema'
 import type { ResourceKind } from '../data/common'
 // DD-10 §5：分析层只经显式公开入口调用执行与查询。
 import { battleFrameOf, envelope, runPrepared, type EventMeta, type ResourceLedgerEntry, type PreparedRun, type RunCompletion, type QueryEnvelope, type ResolvedMember, type ResolvedScenario, type SimEvent, type SimResult } from '../engine'
@@ -349,4 +351,163 @@ export function compareObservations(p: PreparedRun, res: SimResult, observations
   const data = observations.map(o => compareOne(o, src))
   const env = envelope(p, res, data, used, [])
   return { ...env, capability: { ...env.capability, observationSummary: observationSummary(data) } }
+}
+
+// ---------------------------------------------------------------------------
+// 录像观测（DD-09 §4.1）：场景 video 块里的每条读数是一条有固定 ID 的观测。ID = 通道 + 它在原场景列表里的位置（从 1 数）；
+// 变体不改 video，所以 ID 在变体之间稳定。按位置生成的 ID 只保证同一批候选之间对得上，不证明两份观测的内容相同（报告身份另算摘要）。
+
+/** 七个通道：切人、前台动作、后台来源（召唤、阵、延奏）、单下跳字、boss 血条、协奏环、回路条上的核心资源 */
+export type Channel = 'switch' | 'action' | 'summon' | 'hit' | 'hp' | 'concerto' | 'core'
+export const CHANNELS: readonly Channel[] = ['switch', 'action', 'summon', 'hit', 'hp', 'concerto', 'core']
+/** 要按事件一对一匹配的通道（其余三个取那一刻的值） */
+export const EVENT_CHANNELS: readonly Channel[] = ['switch', 'action', 'summon', 'hit']
+
+interface VideoObsBase { readonly id: string; readonly t: number; readonly purpose: VideoPurpose }
+export type VideoObservation =
+  /** reference：切人类型的参照来自哪里——video 是录像读数（video.switches），scenario 是过渡期从原场景的写法冻结的（DD-09 §4.3） */
+  | (VideoObsBase & { readonly channel: 'switch'; readonly from: string; readonly to: string; readonly type: 'intro' | 'normal' | null; readonly reference: 'video' | 'scenario' })
+  | (VideoObsBase & { readonly channel: 'action' | 'summon'; readonly char: string; readonly action: string })
+  | (VideoObsBase & { readonly channel: 'hit'; readonly char: string; readonly judgment: string; readonly value: number; readonly branch: 'crit' | 'nonCrit' | 'unknown' })
+  | (VideoObsBase & { readonly channel: 'hp'; readonly left: number; readonly enemy: string | null })
+  | (VideoObsBase & { readonly channel: 'concerto'; readonly char: string; readonly ratio: number })
+  | (VideoObsBase & { readonly channel: 'core'; readonly char: string; readonly resource: string; readonly ratio: number })
+
+type VideoBlock = NonNullable<Scenario['video']>
+
+/** 过渡期的切人参照（DD-09 §4.3）：场景还没写 video.switches 时，由原场景在生成变体之前冻结——marks 指到的切人那一条，
+ *  时刻是 mark 的视频秒，类型按"写了变奏的应是变奏、没写的应是普通"。所有变体共用这一份 */
+export interface FrozenSwitch { readonly line: number; readonly t: number; readonly from: string; readonly to: string; readonly type: 'intro' | 'normal' }
+
+export function frozenSwitches(r: Pick<ResolvedScenario, 'team' | 'initial' | 'commands' | 'opening'>, video: VideoBlock): FrozenSwitch[] {
+  const list = video.loop === 0 ? r.opening : r.commands
+  let cur: number = r.initial.onField
+  if (video.loop !== 0) for (const c of r.opening) if (c.kind === 'switch') cur = c.to
+  const out: FrozenSwitch[] = []
+  const seen = new Set<number>()
+  for (const c of list) {
+    if (c.kind !== 'switch') continue
+    const mark = video.marks[String(c.line)]
+    if (mark !== undefined && !seen.has(c.line)) {
+      seen.add(c.line)
+      out.push({ line: c.line, t: videoTime(mark), from: r.team[cur]!.def.name, to: r.team[c.to]!.def.name, type: c.expectIntro ? 'intro' : 'normal' })
+    }
+    cur = c.to
+  }
+  return out
+}
+
+/** video 块 → 观测列表（按通道、列表位置）。frozen：没写 video.switches 时用的过渡参照（frozenSwitches）；写了 switches 就不用它 */
+export function videoObservations(video: VideoBlock, frozen: readonly FrozenSwitch[] = []): VideoObservation[] {
+  const out: VideoObservation[] = []
+  if (video.switches?.length) {
+    video.switches.forEach((line, i) => {
+      const x = splitVideoLine(line)
+      const [pair, type] = x.tokens as [string, string | undefined]
+      const [from, to] = pair.split(/→|->/) as [string, string]
+      out.push({ id: `switch#${i + 1}`, channel: 'switch', t: x.t, purpose: x.purpose, from, to, type: type === 'intro' || type === 'normal' ? type : null, reference: 'video' })
+    })
+  } else {
+    for (const s of frozen) out.push({ id: `switch#m${s.line}`, channel: 'switch', t: s.t, purpose: 'score', from: s.from, to: s.to, type: s.type, reference: 'scenario' })
+  }
+  ;(video.events ?? []).forEach((line, i) => {
+    const x = splitVideoLine(line)
+    const [char, act] = x.tokens as [string, string]
+    const summon = act.startsWith('@')
+    out.push({ id: `${summon ? 'summon' : 'action'}#${i + 1}`, channel: summon ? 'summon' : 'action', t: x.t, purpose: x.purpose, char, action: summon ? act.slice(1) : act })
+  })
+  ;(video.hits ?? []).forEach((line, i) => {
+    const x = splitVideoLine(line)
+    const [char, judgment, value, branch] = x.tokens as [string, string, string, string | undefined]
+    out.push({ id: `hit#${i + 1}`, channel: 'hit', t: x.t, purpose: x.purpose, char, judgment, value: Number(value), branch: branch === 'crit' || branch === 'nonCrit' ? branch : 'unknown' })
+  })
+  ;(video.hp ?? []).forEach((line, i) => {
+    const x = splitVideoLine(line)
+    out.push({ id: `hp#${i + 1}`, channel: 'hp', t: x.t, purpose: x.purpose, left: Number(x.tokens[0]), enemy: x.tokens[1] ?? null })
+  })
+  ;(video.concerto ?? []).forEach((line, i) => {
+    const x = splitVideoLine(line)
+    out.push({ id: `concerto#${i + 1}`, channel: 'concerto', t: x.t, purpose: x.purpose, char: x.tokens[0]!, ratio: Number(x.tokens[1]) })
+  })
+  ;(video.core ?? []).forEach((line, i) => {
+    const x = splitVideoLine(line)
+    out.push({ id: `core#${i + 1}`, channel: 'core', t: x.t, purpose: x.purpose, char: x.tokens[0]!, resource: x.tokens[1]!, ratio: Number(x.tokens[2]) })
+  })
+  return out
+}
+
+// ---------------------------------------------------------------------------
+// 一对一、保序的匹配（DD-09 §4.2，DF-18）：一个通道里的观测与仿真事件各按时刻排成一列；能不能配由调用方的 allowed 决定
+// （键相同、时刻差不超过窗口），配上的各对之间不交叉。目标：先让配上的对数最多，对数相同时让时刻差的总和最小（带权的最长公共子序列）。
+// 歧义：对每个配上的观测 o（当前配 e），对它的每个其他可配事件 e' 求"强制 o 配 e'"的最优对齐——o 与 e' 把两列各切成前后两段，
+// 前段对前段、后段对后段各取最优，再加上 (o, e')；对数等于全局最优、代价不超过最优 + tol 的，o 记 ambiguous，候选列出 e 与这些 e'。
+// 实现：正向、反向各做一遍动态规划，得到所有前缀、后缀的最优，每个强制解查表即得，总规模是两列长度之积。
+// mayBeUnmatched：存在对数同为最优、代价在阈值内、而 o 落单的对齐（只是说明，不代替上面的检查）。
+
+/** 歧义的阈值（秒）：另一种合法对齐的总时刻差不比最优多这么多 */
+export const AMBIGUITY_SECONDS = 0.25
+const ALIGN_EPS = 1e-9
+
+export interface Alignment {
+  readonly pairs: readonly (number | null)[]                     // 每条观测配到的事件下标；落单为 null
+  readonly count: number
+  readonly cost: number                                          // 配上的各对时刻差之和
+  readonly alternatives: readonly (readonly number[] | null)[]   // 配上的观测：有同样好的另一种配法时，它可配的事件（含当前的）；没有为 null
+  readonly mayBeUnmatched: readonly boolean[]
+}
+
+/** obsT、evT 各按时刻升序；allowed(i, j)：第 i 条观测能不能配第 j 个事件（键与窗口由调用方判） */
+export function alignSequences(obsT: readonly number[], evT: readonly number[], allowed: (i: number, j: number) => boolean, tol = AMBIGUITY_SECONDS): Alignment {
+  const n = obsT.length, m = evT.length, W = m + 1
+  const at = (i: number, j: number) => i * W + j
+  const fc = new Int32Array((n + 1) * W), fd = new Float64Array((n + 1) * W)   // 前缀 O[0, i) × E[0, j) 的最优（对数、代价）
+  const bc = new Int32Array((n + 1) * W), bd = new Float64Array((n + 1) * W)   // 后缀 O[i, n) × E[j, m) 的最优
+  const ok = new Uint8Array(n * m)
+  for (let i = 0; i < n; i++) for (let j = 0; j < m; j++) ok[i * m + j] = allowed(i, j) ? 1 : 0
+  const gap = (i: number, j: number) => Math.abs(evT[j]! - obsT[i]!)
+  const better = (c1: number, d1: number, c2: number, d2: number) => c1 > c2 || (c1 === c2 && d1 < d2 - ALIGN_EPS)
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    let c = fc[at(i - 1, j)]!, d = fd[at(i - 1, j)]!
+    if (better(fc[at(i, j - 1)]!, fd[at(i, j - 1)]!, c, d)) { c = fc[at(i, j - 1)]!; d = fd[at(i, j - 1)]! }
+    if (ok[(i - 1) * m + j - 1]) {
+      const c2 = fc[at(i - 1, j - 1)]! + 1, d2 = fd[at(i - 1, j - 1)]! + gap(i - 1, j - 1)
+      if (better(c2, d2, c, d)) { c = c2; d = d2 }
+    }
+    fc[at(i, j)] = c; fd[at(i, j)] = d
+  }
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) {
+    let c = bc[at(i + 1, j)]!, d = bd[at(i + 1, j)]!
+    if (better(bc[at(i, j + 1)]!, bd[at(i, j + 1)]!, c, d)) { c = bc[at(i, j + 1)]!; d = bd[at(i, j + 1)]! }
+    if (ok[i * m + j]) {
+      const c2 = bc[at(i + 1, j + 1)]! + 1, d2 = bd[at(i + 1, j + 1)]! + gap(i, j)
+      if (better(c2, d2, c, d)) { c = c2; d = d2 }
+    }
+    bc[at(i, j)] = c; bd[at(i, j)] = d
+  }
+  const count = fc[at(n, m)]!, cost = fd[at(n, m)]!
+  const same = (c1: number, d1: number, c2: number, d2: number) => c1 === c2 && Math.abs(d1 - d2) <= ALIGN_EPS
+  // 回溯一种最优对齐：能配就配（同样好时让后面的观测配后面的事件），否则先丢事件、再丢观测
+  const pairs: (number | null)[] = Array.from({ length: n }, () => null)
+  for (let i = n, j = m; i > 0 && j > 0;) {
+    if (ok[(i - 1) * m + j - 1] && same(fc[at(i, j)]!, fd[at(i, j)]!, fc[at(i - 1, j - 1)]! + 1, fd[at(i - 1, j - 1)]! + gap(i - 1, j - 1))) {
+      pairs[i - 1] = j - 1; i--; j--
+    } else if (same(fc[at(i, j)]!, fd[at(i, j)]!, fc[at(i, j - 1)]!, fd[at(i, j - 1)]!)) j--
+    else i--
+  }
+  const within = (c: number, d: number) => c === count && d <= cost + tol + ALIGN_EPS
+  const alternatives = pairs.map((e, i) => {
+    if (e === null) return null
+    const alt: number[] = []
+    for (let j = 0; j < m; j++) {
+      if (j === e || !ok[i * m + j]) continue
+      if (within(fc[at(i, j)]! + 1 + bc[at(i + 1, j + 1)]!, fd[at(i, j)]! + gap(i, j) + bd[at(i + 1, j + 1)]!)) alt.push(j)
+    }
+    return alt.length ? [e, ...alt].sort((a, b) => a - b) : null
+  })
+  const mayBeUnmatched = pairs.map((e, i) => {
+    if (e === null) return false
+    for (let s = 0; s <= m; s++) if (within(fc[at(i, s)]! + bc[at(i + 1, s)]!, fd[at(i, s)]! + bd[at(i + 1, s)]!)) return true
+    return false
+  })
+  return { pairs, count, cost, alternatives, mayBeUnmatched }
 }
