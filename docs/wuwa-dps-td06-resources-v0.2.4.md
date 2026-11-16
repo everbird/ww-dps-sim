@@ -148,6 +148,19 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 
 `Summary.resourceTimeline`：从第 0 帧起每 `rules.sampleInterval`（30）个世界帧采样一次三人的能量与协奏，最后一帧再采一次（TD-10 可再改）。每轮资源首尾差（`Summary.perLoop`）归 TD-10。
 
+### 6.2 资源只读账本（2026-11-16，DD-06）
+
+可选诊断 `diag: { resourceLedger: true }`（DD-05 的收集器，`src/engine/diagnostics.ts`）：角色资源的**每一次写入与期初余额**各记一条，只读、旁路，不补发业务事件，诊断开关两侧的事件、状态、触发次数完全相同（零干扰对拍）。敌人量表（偏谐值、白条、异常效应层数）不在账本里。
+
+- **写入点只有三处**，都接进了账本：① `add`（`resources.ts`）：命中资源（`settleGains`，含全队能量分配）与 `grant` 的全部来源（施放资源、扣费、资源型效果、钩子 `ctx.addResource`、破盾回能、`能量满`）都经它；② 延奏触发时协奏清零（`switch.ts` 的 `outroTrigger`，"设为 0"，不经 `add`）；③ 期初（`initialState`），初始状态建好后、挂常驻 buff 之前按（槽位，资源）的固定顺序记 21 条（3 人 × 能量、协奏、核心资源 5 个槽，没登记的槽也记）。**新增资源写入点必须同时接进账本**；漏接的话闭合检查与 `pnpm fuzz --ledger` 会报出来。
+- **一条记什么**（`ResourceLedgerEntry`）：世界帧与战斗帧、相位、谁的哪种资源；`kind`（`initial` / `change` / `outroReset` / `sync`）；`causeKind`（`initial`、`hit`、`cast`、`cost`、`effect`、`hook`、`break`、`forced`、`outro`、`sync`）与 `cause` 原文（效果是它的 ID，钩子带说明时是 `hook：<说明>`）；`before`、`after`、上限 `cap`（没有上限的槽是 `Infinity`）；三个增量——`requestedDelta`（交给 `add` 的量，能量已乘过共鸣效率）、`actualDelta`（实际的库存变化）、`clippedDelta`（二者之差：正数是到上限被截，负数是扣到 0 以下被截）；关联的业务事件 `relatedEventSeq`（`resource` 或 `hit`）与外部干预 `relatedInterventionIndex`（`能量满`）。
+- **记与不记**：请求量为 0 的不记；请求了、实际变化为 0 的要记（满格再获得、空了再扣），这类请求没有业务事件（不多发事件，免得多触发钩子），只在账本里可见；数据给了角色没有的核心资源槽而被丢弃的（§4 的 `coreSlot` 警告）不记。期初条目的增量都是 0，余额在 `after` 里。
+- **关联**：`grant` 写完 `resource` 紧接着关联、再写 `resourceFull`；结算把这次的条目直接关联到 `hit` 的下标（`hit` 后面还可能紧跟 `resourceFull` 与 `heal`）；延奏清零关联到它的 `resource`（`cause: 'outro'`）。
+- **闭合**（`checkLedgerClosure`）：对每个（角色，资源），状态里的余额 = 期初条目的 `after` + Σ 其余条目的 `actualDelta`，两边取整到 1e-6 再比；另查同一个（角色，资源）相邻两条的 `after === before`（中间有没进账本的写入时先报这一条）。tick 边界 `S[f]` 取满足 `phase === 'init' || f' < f` 的条目（集合条件，`ledgerPrefixForBoundary`；结果恰好是一个前缀，长度就是边界观察点给的 `ledgerLength`）；终态与降级续跑的起点用 `diag.ledgerMarks` 里各自的上界（`terminalEndExclusive`、`continuationFromEndExclusive`），不用帧号去猜。账本的上界不进完成状态。
+- **两个口径的合计**（`ledgerTotals`，可按世界帧或战斗帧的窗口 `[from, to)`、按 `causeKind` 过滤）：报"这一轮回了多少能量"用 `gainRequested`（没按上限截断的获得量），报"到上限后的实际库存"用 `gainActual` 与 `final`；被截掉的量单列（`clippedAtCap`、`clippedAtZero`），不当作可见状态。都是带符号的变化量，不过滤时 `final = initial + gainActual + spendActual + outroReset + synced`。
+- **与日志互相核对**：`checkLog`（总设计 §11）仍按日志重放，诊断关着也能跑；另有交叉检查 `crossCheckLedger`（账本的每一步 `after` 等于对应 `resource` 的 `value`、关联到 `hit` 的实际变化等于 `hit.gains`），只在测试与 `pnpm fuzz --ledger` 里跑。账本漏了写入点，闭合检查失败；日志漏了事件或 `gains` 记错，`checkLog` 与交叉检查失败、账本照样闭合。
+- **调试表**：`pnpm trace --res` 带账本跑，值取账本，多一列"被截"，整次被截掉的请求也列一行（TD-11 §6.1）。汇总的 `resourceTimeline`、分轮的首尾差仍按日志重放（§6.1）。
+
 ---
 
 ## 7. 同一 tick 里的顺序
@@ -399,3 +412,4 @@ export function grant(sim: Sim, s: SimState, slot: Slot, resource: ResourceKind,
 - **v0.2.2（2026-10-05）**：并回 AGENTS.md 差异 3、5、7。§4 核心资源的槽名（`coreNames`）与开局值（`initial.core`），Q7 关闭；§17 M0 代表轴换梦魇·无冠者后的数字（稳态 31,023）。
 - **v0.2.3（2026-10-18）**：并回 AGENTS.md 差异 5：资源公式末项的"进入（动作）即得"改称"起手即得"（§0 第 3、6 条，§1 的表与装配缺陷，§3.2 的协奏时机表，T06-4，Q1），"仍在出手时给"改为"仍在动作开始时给"（"出手"在 TD-09 里指该生成的判定都生成了）；含义不变。
 - **v0.2.4（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。新增 §18 异常效应：数据（`effects.json`，TD-01 §4.3、§11.2）、规则（`data/curated/effects.ts` 的 `decay`，角色模块的 `effectRules`）、附加（`applies`、`ctx.applyEffect`、额外层、`effectApplied`）、P6 定时结算（`effect-tick`、`effect-owner`、`effect-burst` 三条假设与 `rules.effectTickReset`、`rules.effectOwner` 两个开关）、钩子主动触发与消耗（`ctx.effectDamage`、`ctx.takeBurst`、`effectConsumed`）、到期与用例 T06-13、T06-14。Q6 关闭（散华槽 1 改叫"透视"、上限 2、每层 5 秒由钩子扣；重击爆裂假设 `burst-release`）；Q13 的异常效应部分关闭。
+- **2026-11-16（DD-06）**：新增 §6.2 资源只读账本：三个写入点、条目的字段、记与不记、闭合公式与两个口径的合计（DD-06 §3、§9）。

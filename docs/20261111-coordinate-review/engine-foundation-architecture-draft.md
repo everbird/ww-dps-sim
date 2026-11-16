@@ -571,10 +571,13 @@ export interface RuleUsageReport {
 export interface ResourceLedgerEntry {
   readonly index: number                    // 账本自己的序号，就是检查点的 ledgerEndExclusive 用的那个（§6.3）
   readonly f: Frame
+  readonly battleFrame: number              // 写入那一刻的战斗帧：按战斗帧开窗口合计用（DD-06 §9 第 1 条）
   readonly phase: 'init' | 'P2' | 'P3' | 'P4' | 'P6' | 'post'
   readonly slot: Slot
   readonly resource: ResourceKind
   readonly kind: 'initial' | 'change' | 'outroReset' | 'sync'
+  /** 给程序分类用的固定取值（详细设计总览 S-06）；cause 保留原文 */
+  readonly causeKind: 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'forced' | 'outro' | 'sync'
   readonly before: number
   readonly requestedDelta: number           // 请求的变化量，截断之前
   readonly actualDelta: number              // 实际的库存变化
@@ -1142,6 +1145,7 @@ AF-03、11、16、23、24 在 v0.2 里按 Codex 与 Claude 同意的方案写。
   - **状态同步**：去掉五处"待 Antigravity 确认"的标记，§14.2 改为已确认。
 - **v0.3 Final（2026-11-14）**：三方签署齐备后定稿。架构条款与 v0.3 相同，只改了标题、开头的状态与审查记录。文件名保留 `-draft`，是为了不让路线图与意见文件里的链接失效。
 - **详细设计带来的补充（2026-11-15，Claude）**：[详细设计 v0.4 Final](detailed-design/README.md) 三方签署，其中 §6 的补充提案 S-01～S-15 一并通过。它们不改已有契约，都是加字段或把没写明的地方写明。本文各节的正文这次没有逐处改写：与那张表不一致的地方以那张表为准，实施相应工作包时再把对应的几条写进正文并在这里各记一条。
+- **DD-06 实施（2026-11-16）**：§6.2 的 `ResourceLedgerEntry` 写进 S-06 的 `causeKind`，另加 `battleFrame`（账本按战斗帧开窗口合计，DD-06 §9 第 1 条）。其余账本条款（写入点、闭合、`LedgerMarks`）与实现一致，没有改。
 
 <a id="review-log"></a>
 
