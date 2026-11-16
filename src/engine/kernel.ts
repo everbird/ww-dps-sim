@@ -8,6 +8,7 @@ import type {
 } from './types'
 import { assume } from './assumptions'
 import { snap4 } from './num'
+import type { DiagSink, RuleRecorder } from './diagnostics'
 import type { TickPhase } from './run-types'
 
 export const SLOTS: readonly Slot[] = [0, 1, 2]
@@ -23,8 +24,10 @@ export interface KernelHooks {
   timers?(s: SimState, rates: Rates): void                                        // P6 的 buff 计时（TD-07）
   expired?(s: SimState, j: JudgmentRuntime): void                                 // 判定持续帧走完自然消失（被取消移除的不算）
 }
-/** at：现在走到 tick 的哪个相位。运行环境里的簿记，不是业务状态、不影响执行：出错时拿它记停在哪一步（DD-01 §3.5；架构 §2.3） */
-export interface Kernel { rules: Rules; hooks: KernelHooks; at: { phase: TickPhase } }
+/** at：现在走到 tick 的哪个相位。运行环境里的簿记，不是业务状态、不影响执行：出错时拿它记停在哪一步（DD-01 §3.5；架构 §2.3）。
+ *  diag：诊断收集器（DD-05 §3.1），诊断全关时为 null；插桩处一律写 k.diag?.方法(…)，返回值不参与业务判断。
+ *  rule：规则使用的记录（DD-05 §4.2），总是有，不随诊断开关变 */
+export interface Kernel { rules: Rules; hooks: KernelHooks; at: { phase: TickPhase }; diag: DiagSink | null; rule: RuleRecorder }
 /** 时间线事件的来源：进行中的动作，或脱离动作的尾部（ActionRuntime、TailRuntime 都符合） */
 export interface EventSource { def: ActionDef; instance: number; skip?: string[]; detached?: true }
 
@@ -94,10 +97,14 @@ export function computeRates(s: SimState, rules: Rules): Rates {
 
 /** 登记一条膨胀定义：按侧展开到具体单位；攻击顿帧类的侧先撤掉该单位上已有的攻击顿帧。下一 tick 起生效 */
 export function registerDilation(
-  s: SimState, rules: Rules, def: DilationDef, source: Slot, instance: number, withSelf: boolean,
+  s: SimState, rules: Rules, def: DilationDef, source: Slot, instance: number, withSelf: boolean, rule?: RuleRecorder,
 ): void {
   const sides = [['self', def.self], ['enemy', def.enemy], ['ally', def.ally]] as const
   assume(s, 'dilation-rules', def.type)                          // 作用范围按 rules.dilation（TD-04 §3.3）
+  // 规则使用（DD-05 §4.1）：战斗时钟正被全局时停停住、登记的是作用在角色侧的攻击顿帧时，hitstopInGlobalStop 才决定登不登记
+  rule?.note('kernel.dilation.hitstopInGlobalStop', rules.hitstopInGlobalStop,
+    s.dilations.some(d => rules.dilation[d.type].stopsBattleClock)
+      && sides.some(([side, w]) => side !== 'enemy' && w !== undefined && w.duration > 0 && (side !== 'self' || withSelf) && rules.dilation[def.type].hitstopSides.includes(side)))
   // 大招过场（全局时停停住战斗时钟）里命中的攻击顿帧不作用在角色身上（假设 hitstop-in-global-stop）；整条略过，过场快结束时命中的也一样（简化）
   const inStop = !rules.hitstopInGlobalStop && s.dilations.some(d => rules.dilation[d.type].stopsBattleClock)
   for (const [side, w] of sides) {
@@ -162,11 +169,12 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
   c.startedThisTick = true
   if (s.entry?.slot === slot && s.entry.block === null)             // 入场后出过招了：不能再出出场技（TD-09 §3.5）
     s.entry.block = def.kind === 'intro' ? 'intro' : 'acted'
+  let summoned: TailRuntime | undefined
   if (def.summon) {
     // 召唤类声骸（脱手）：召唤物的判定走独立时间线（同延奏动作，TD-05 §4.3），角色之后的动作、取消都不影响它们，也不挡"就绪"；
     // 实例号另取，召唤物命中的自身顿帧也就不落到角色身上
     const events = timelineOf(def).filter(e => detachedSpawn(def, e))
-    if (events.length) s.tails.push({ owner: slot, action: def.id, def, instance: s.nextId++, localFrame: 0, events, detached: true })
+    if (events.length) s.tails.push((summoned = { owner: slot, action: def.id, def, instance: s.nextId++, localFrame: 0, events, detached: true }))
   }
   if (def.cooldown) {
     const key = cooldownKey(def)
@@ -177,8 +185,13 @@ export function startAction(s: SimState, k: Kernel, slot: Slot, def: ActionDef, 
     } else c.cooldowns[key] = def.cooldown
   }
   log(s, { type: 'actionStart', char: c.name, action: def.id, instance: a.instance, ...(cmd ? { cmd } : {}), ...(dropped.length ? { dropped } : {}) })
+  // 召唤的尾部在写 actionStart 之前就推入了，来源登记在写完它之后：createdBySeq 是它自己的 actionStart（DD-05 §3.3，DF-06）
+  if (summoned) k.diag?.tailCreated(summoned.instance, s.log.length - 1, s.frame)
   if (def.flags.length > 0) assume(s, 'data-guess', `${c.name}·${def.id}：${def.flags.join('、')}`)   // 没确认的推断值（TD-01 §13）
+  // 开始之后的扣费、施放资源与它们的触发（DD-05 §3.2）：来源是这个动作实例，subjectSeq 指向它的 actionStart
+  const sc = k.diag?.open({ kind: 'actionLifecycle', actionInstance: a.instance }, s.log.length)
   k.hooks.actionStarted?.(s, slot, a)
+  if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   return a
 }
 
@@ -206,10 +219,11 @@ export function cancelAction(s: SimState, k: Kernel, slot: Slot, by: string): vo
   a.ended = true
   c.action = null
   log(s, { type: 'actionCancel', char: c.name, action: a.id, instance: a.instance, by, dropped })
+  if (keep.length) k.diag?.tailCreated(a.instance, s.log.length - 1, s.frame)   // 取消留下的尾部：创建事件是这条 actionCancel（DD-05 §3.3）
 }
 
 /** 自然结束（§4.3）：局部帧到达 endFrame。持续帧 -1 的判定随之移除；没发生的事件转为尾部（持续帧 -1 的判定除外：动作停了它就不存在） */
-function endAction(s: SimState, slot: Slot): void {
+function endAction(s: SimState, slot: Slot, diag?: DiagSink | null): void {
   const c = s.chars[slot]
   const a = c.action!
   s.judgments = s.judgments.filter(j => !(j.actionInstance === a.instance && j.def.lifeFrames === -1))
@@ -218,13 +232,18 @@ function endAction(s: SimState, slot: Slot): void {
   a.ended = true
   c.action = null
   log(s, { type: 'actionEnd', char: c.name, action: a.id, instance: a.instance })
+  if (rest.length) diag?.tailCreated(a.instance, s.log.length - 1, s.frame)   // 自然结束留下的尾部：创建事件是这条 actionEnd（DD-05 §3.3）
 }
 
-/** P2 开头：局部帧已到 endFrame 的动作结束。放在这里而不是上一 tick 的 P3 末尾，动作才能占满 [0, endFrame) 的每一帧 */
-export function endDueActions(s: SimState): void {
+/** P2 开头：局部帧已到 endFrame 的动作结束。放在这里而不是上一 tick 的 P3 末尾，动作才能占满 [0, endFrame) 的每一帧。
+ *  k：诊断的作用域要它（DD-05 §3.2 的 actionLifecycle）；不给时不记 */
+export function endDueActions(s: SimState, k?: Kernel): void {
   for (const slot of SLOTS) {
     const a = s.chars[slot].action
-    if (a && a.localFrame >= a.def.endFrame) endAction(s, slot)
+    if (!a || a.localFrame < a.def.endFrame) continue
+    const sc = k?.diag?.open({ kind: 'actionLifecycle', actionInstance: a.instance }, s.log.length)
+    endAction(s, slot, k?.diag)
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
 }
 
@@ -238,7 +257,13 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
       tail.noted = true
       assume(s, 'summon-clock', `${s.chars[tail.owner].name} ${tail.action}`)
     }
-    while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) fireEvent(s, k, tail.owner, tail, tail.events.shift()!)
+    while (tail.events.length > 0 && tail.events[0]!.frame < tail.localFrame + rates.battle) {
+      const e = tail.events.shift()!
+      // 尾部的时间线节点（DD-05 §3.2）：detached 表示来自尾部，subjectSeq 经尾部来源表回到创建它的事件
+      const sc = k.diag?.open({ kind: 'timeline', actionInstance: tail.instance, nodeIndex: timelineOf(tail.def).indexOf(e), detached: true }, s.log.length)
+      fireEvent(s, k, tail.owner, tail, e)
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+    }
     tail.localFrame = snap4(tail.localFrame + rates.battle)
   }
   for (const slot of SLOTS) {
@@ -248,7 +273,12 @@ export function advanceActions(s: SimState, k: Kernel, rates: Rates): void {
     if (a) {
       const tl = actionTimeline(a.def)
       const until = Math.min(a.localFrame + r, a.def.endFrame)   // ≥ endFrame 的事件一律归尾部（§4.3）
-      while (a.cursor < tl.length && tl[a.cursor]!.frame < until) fireEvent(s, k, slot, a, tl[a.cursor++]!)
+      while (a.cursor < tl.length && tl[a.cursor]!.frame < until) {
+        const e = tl[a.cursor++]!
+        const sc = k.diag?.open({ kind: 'timeline', actionInstance: a.instance, nodeIndex: timelineOf(a.def).indexOf(e) }, s.log.length)
+        fireEvent(s, k, slot, a, e)
+        if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+      }
       a.localFrame = snap4(a.localFrame + r)
     } else if (c.last) {
       c.last.localFrame = snap4(c.last.localFrame + r)  // 已结束的动作继续计时：派生窗口可以越过结束帧（§6.2）
@@ -272,7 +302,7 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
   switch (e.kind) {
     case 'gain': k.hooks.castGain?.(s, slot, src, e.index); break
     case 'dilation':
-      registerDilation(s, k.rules, src.def.dilations[e.index]!, slot, src.instance, s.chars[slot].action?.instance === src.instance)
+      registerDilation(s, k.rules, src.def.dilations[e.index]!, slot, src.instance, s.chars[slot].action?.instance === src.instance, k.rule)
       break
     case 'spawn':
       if (!skipped(src, e)) spawnJudgment(s, slot, src.def.id, src.instance, src.def.judgments[e.index]!, src.detached)
@@ -334,10 +364,12 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
           : within(at, j.age, r) && (j.def.lifeFrames === -1 || n * spacing < j.def.lifeFrames)
         if (!due) break
         j.ticksDone++
+        const sc = k.diag?.open({ kind: 'judgmentSettle', judgmentId: j.id }, s.log.length)
         k.hooks.settle(s, j, n)
+        if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
         if (j.def.hitstop) {
           const self = s.chars[j.owner].action?.instance === j.actionInstance   // 自身侧只作用于仍在进行的出招动作
-          registerDilation(s, k.rules, j.def.hitstop, j.owner, j.actionInstance, self)
+          registerDilation(s, k.rules, j.def.hitstop, j.owner, j.actionInstance, self, k.rule)
         }
       }
     }
@@ -347,7 +379,11 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
   for (const j of s.judgments) j.age = snap4(j.age + judgmentRate(j, rates))
   const gone = s.judgments.filter(j => j.def.lifeFrames !== -1 && j.age >= (j.def.delayFrames ?? 0) + j.def.lifeFrames)
   s.judgments = s.judgments.filter(j => !gone.includes(j))
-  for (const j of gone) k.hooks.expired?.(s, j)                   // 到期生成的判定下一个 tick 起结算
+  for (const j of gone) {                                          // 到期生成的判定下一个 tick 起结算
+    const sc = k.diag?.open({ kind: 'judgmentExpire', judgmentId: j.id }, s.log.length)
+    k.hooks.expired?.(s, j)
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -431,7 +467,7 @@ export function tick(s: SimState, k: Kernel, schedule: (s: SimState) => boolean)
   const rates = computeRates(s, k.rules)                        // P1
   k.at.phase = 'P2'
   for (const c of s.chars) c.startedThisTick = false
-  endDueActions(s)                                              // P2 开头
+  endDueActions(s, k)                                           // P2 开头
   const pending = schedule(s)                                   // P2 执行指令
   if (!pending && s.chars.every(c => !c.action) && s.judgments.length === 0 && s.tails.length === 0) return false
   k.at.phase = 'P3'

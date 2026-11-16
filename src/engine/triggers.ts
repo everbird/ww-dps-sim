@@ -46,7 +46,7 @@ export function drain(sim: Sim, s: SimState): void {
       }
       const before = s.log.length
       bus.current = link
-      handle(sim, s, s.log[i]!)
+      handle(sim, s, s.log[i]!, i)
       bus.current = null
       for (let x = before; x < s.log.length; x++) bus.chain.set(x, { depth: link.depth + 1, root: link.root })
       bus.inFlight = null                              // 只在正常处理完后清
@@ -69,33 +69,50 @@ function describe(e: SimEvent): string {
   }
 }
 
-/** 一条事件：① 消耗 → ② buff 触发 → ③ 资源型效果 → ④ 钩子（§5）。登记顺序即槽位 0 → 2、然后 env；同一角色内角色模块、武器、套装 */
-function handle(sim: Sim, s: SimState, ev: SimEvent): void {
+/** 一条事件：① 消耗 → ② buff 触发 → ③ 资源型效果 → ④ 钩子（§5）。登记顺序即槽位 0 → 2、然后 env；同一角色内角色模块、武器、套装。
+ *  seq：这条事件的日志下标。每个处理器的一次执行各是一个 trigger 作用域，写出的事件的直接父事件就是它（DD-05 §3.2） */
+function handle(sim: Sim, s: SimState, ev: SimEvent, seq: number): void {
+  const k = sim.k
   const occs = occurrencesOf(sim, ev)
   if (occs.length > 0) {
-    consume(sim, s, occs)
+    consume(sim, s, occs, seq)
     for (const reg of sim.r.buffs) {
       if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
-      if (occ) applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks, occ.by)
+      if (!occ) continue
+      const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'buffTrigger', handlerId: reg.def.id }, s.log.length)
+      applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks, occ.by)
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     }
     for (const reg of sim.r.buffs) {                  // 延长（BuffDef.extend）：在施加之后看，同一事件刚施加的实例也能被延长
       const ext = reg.def.extend
       if (!ext || !s.buffs.some(b => b.defId === reg.def.id && b.owner === reg.owner)) continue
       const occ = firing(s, ext.trigger, reg.owner, `${reg.def.id}#extend`, undefined, occs)
-      if (!occ || !extendBuff(s, reg)) continue
-      for (const id of ext.grants ?? []) {
-        const g = sim.book.get(bookKey(reg.owner, id))
-        if (g) applyTriggered(s, g, undefined, g.def.stackGain, occ.by)
+      if (!occ) continue
+      const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'buffExtend', handlerId: reg.def.id }, s.log.length)
+      if (extendBuff(s, reg)) {
+        for (const id of ext.grants ?? []) {
+          const g = sim.book.get(bookKey(reg.owner, id))
+          if (g) applyTriggered(s, g, undefined, g.def.stackGain, occ.by)
+        }
       }
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     }
     for (const e of sim.r.effects) {                  // 已按共鸣链过滤、按谐振阶取值（resolve）
       const occ = firing(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs)
       if (!occ) continue
+      const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'resourceEffect', handlerId: e.def.id }, s.log.length)
       for (const t of effectTargets(e.def.target, e.owner, s)) grant(sim, s, t, e.def.resource, e.amount, e.def.id, e.def.scaledByRegen)
+      if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     }
   }
-  for (const m of sim.r.team) sim.hooks[m.slot]?.onEvent?.(sim.ctxs[m.slot]!, ev)
+  for (const m of sim.r.team) {
+    const hooks = sim.hooks[m.slot]
+    if (!hooks?.onEvent) continue
+    const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'charHook', handlerId: m.def.name }, s.log.length)
+    hooks.onEvent(sim.ctxs[m.slot]!, ev)
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+  }
 }
 
 function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
@@ -117,6 +134,8 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     // 敌人状态：记了发出者的才能触发（附加异常效应，TD-06 §18）；破盾、失谐等还没记谁造成的
     // 阵、召唤物附加的不算"角色附加"时（rules.summonCountsAsChar = false，假设 summon-as-char）不触发
     case 'enemyState':
+      // 规则使用（DD-05 §4.1）：事件带 summon 时才读；记了附加者的，换个读法就触发 / 不触发"附加…后"
+      if (ev.summon) sim.k.rule.note('triggers.summonAsChar', sim.r.rules.summonCountsAsChar, ev.by !== undefined)
       if (ev.summon && !sim.r.rules.summonCountsAsChar) return []
       return ev.by !== undefined ? [{ on: 'enemyState', by: slot(ev.by), enemyState: ev.change, ...(ev.effect ? { effect: ev.effect } : {}) }] : []
     default: return []
@@ -161,17 +180,20 @@ function firing(
   return occ
 }
 
-/** 消耗型"下次 X…"（§6）：先于触发处理。相关实例 = 挂在事件发出者身上的、挂在敌人身上的 */
-function consume(sim: Sim, s: SimState, occs: Occurrence[]): void {
+/** 消耗型"下次 X…"（§6）：先于触发处理。相关实例 = 挂在事件发出者身上的、挂在敌人身上的。每个被消耗的实例一个作用域（DD-05 §3.2） */
+function consume(sim: Sim, s: SimState, occs: Occurrence[], seq: number): void {
+  const k = sim.k
   for (const b of [...s.buffs]) {
     const c = sim.book.get(bookKey(b.owner, b.defId))?.def.consume
     if (!c) continue
     if (!occs.some(o => (b.target === o.by || b.target === 'enemy') && matches(s, c.on, c.where, b.owner, o))) continue
+    const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'consume', handlerId: b.defId }, s.log.length)
     if (c.stacks === 'all' || b.stacks <= c.stacks) removeBuff(s, b, 'removed')
     else {
       b.stacks -= c.stacks                   // 只消耗几层：记一条 buffApply 说明现在的层数
       log(s, { type: 'buffApply', buff: b.defId, owner: ownerName(s, b.owner), target: b.target === 'enemy' ? 'enemy' : s.chars[b.target].name, instanceId: b.id, stacks: b.stacks, remaining: b.remaining })
     }
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   }
 }
 

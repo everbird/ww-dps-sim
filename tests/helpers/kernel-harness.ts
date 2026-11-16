@@ -10,6 +10,7 @@ import type { ActionDef, DilationDef, JudgmentDef } from '../../src/data/gamedat
 import { GenActionFileSchema, type GenActionFile } from '../../src/data/generated.schema'
 import type { Command } from '../../src/data/scenario.schema'
 import { describe } from 'vitest'
+import { RuleCounter } from '../../src/engine/diagnostics'
 import type { Kernel } from '../../src/engine/kernel'
 import { createScheduler, newQueue, runLoop, ScheduleError, type CompileMember, type SchedulerOptions } from '../../src/engine/scheduler'
 import type { CharRuntime, SimEvent, SimState } from '../../src/engine/types'
@@ -70,9 +71,12 @@ export function tryRun(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Comman
   const s = newState(opts.names ?? ['甲', '乙', '丙'], opts.onField ?? 0)
   const hits: Hit[] = []
   const outros: { f: number; char: string }[] = []
+  const at: Kernel['at'] = { phase: 'init' }
   const k: Kernel = {
     rules: { ...DEFAULT_RULES, ...opts.rules },
-    at: { phase: 'init' },
+    at,
+    diag: null,
+    rule: new RuleCounter(s, at, null),           // 规则使用（DD-05 §4.2）：测试台也记，k.rule 总是有
     hooks: {
       settle: (st, j, n) => { hits.push({ f: st.frame, char: st.chars[j.owner].name, judgment: j.def.name, tick: n }) },
       outroTrigger: (st, slot) => { outros.push({ f: st.frame, char: st.chars[slot].name }) },

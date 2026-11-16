@@ -5,6 +5,7 @@ import { AMPLIFY_ZONES, FINAL_ZONES, ZONE_IDS } from '../data/common'
 import type { DamageTag, EffectName, Element, Slot, ZoneId } from '../data/common'
 import type { BuffDef, BuffFilter } from '../data/buff.schema'
 import type { Rules, TuneBreakTable } from '../data/gamedata'
+import type { RuleRecorder } from './diagnostics'
 import type { HitDraft, HitFactors, StaticPanel, StatParts, ZoneAccumulator } from './types'
 import { roundTo } from './num'
 
@@ -51,6 +52,12 @@ export function defFactor(targetDef: number, defRate: number, ignore: number, le
   return d <= 0 ? cap : Math.min(cap, 1 / d)
 }
 
+/** 减防之后的目标防御是不是整数：不是整数时 rules.defFloor 取不取整才有区别（DD-05 §4.1 的判定点 formula.defFloor）。纯函数 */
+export const defFloorMatters = (targetDef: number, defRate: number): boolean => {
+  const reduced = targetDef * (1 + defRate)
+  return Math.floor(reduced) !== reduced
+}
+
 /** 抗性系数（三段）：r ≤ 0 → 1 − r/2；r < 0.8 → 1 − r；否则 1 / (1 + 5r) */
 export function resFactor(r: number, high = 0.8): number {
   if (r <= 0) return 1 - r / 2
@@ -84,8 +91,11 @@ export interface HitResult {
   factors: HitFactors
 }
 
-export function computeHit(ctx: HitContext, acc: ZoneAccumulator, rules: FormulaRules): HitResult {
+/** rule：规则使用的记录（DD-05 §4.2，引擎里的结算传 Kernel.rule）；不给时不记，公式本身不变 */
+export function computeHit(ctx: HitContext, acc: ZoneAccumulator, rules: FormulaRules, rule?: RuleRecorder): HitResult {
   const zc = addZones(acc.zones, acc.critOnly)                     // 暴击分支 = 全部 + 暴击专属
+  rule?.note('formula.defFloor', rules.defFloor ?? false,
+    defFloorMatters(ctx.enemy.def, acc.zones.TargetDefRate) || defFloorMatters(ctx.enemy.def, zc.TargetDefRate))
   const critDamage = ctx.panel.critDamage + zc.critDamage
   const nc = hurt(ctx, acc.zones, 1, rules)
   const cr = hurt(ctx, zc, critDamage, rules)
@@ -131,8 +141,9 @@ export function computeAbnormal(ctx: AbnormalContext, acc: ZoneAccumulator, rule
 }
 
 /** 同 computeAbnormal，另给各项系数（时间轴的乘区拆分用；暴击两项为 0）。乘法顺序照 xlsx，不能改 */
-export function abnormalHit(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules): { value: number; factors: HitFactors } {
+export function abnormalHit(ctx: AbnormalContext, acc: ZoneAccumulator, rules: FormulaRules, rule?: RuleRecorder): { value: number; factors: HitFactors } {
   const z = acc.zones
+  rule?.note('formula.defFloor', rules.defFloor ?? false, defFloorMatters(ctx.enemy.def, z.TargetDefRate))
   const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
   const dr1 = 1 - Math.min(z.TargetDamageReduce, 1)
@@ -172,8 +183,9 @@ export interface TuneContext {
   vsNormal?: boolean                   // 谐度破坏打在非失谐目标上（× 0.0001）
 }
 
-export function computeTuneBreak(ctx: TuneContext, acc: ZoneAccumulator, rules: FormulaRules): number {
+export function computeTuneBreak(ctx: TuneContext, acc: ZoneAccumulator, rules: FormulaRules, rule?: RuleRecorder): number {
   const z = acc.zones
+  rule?.note('formula.defFloor', rules.defFloor ?? false, defFloorMatters(ctx.enemy.def, z.TargetDefRate))
   const def = defFactor(ctx.enemy.def, z.TargetDefRate, z.RoleIgnoreDefRate, ctx.level, rules.defFactorCap, rules.defFloor)
   const res = resFactor(ctx.enemy.res + z.TargetElementResistant - z.RoleIgnoreResistance, rules.highResThreshold)
   let v = ctx.base * ctx.rate * def * res

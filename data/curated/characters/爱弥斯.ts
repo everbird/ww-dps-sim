@@ -159,7 +159,10 @@ export default defineCharacter('爱弥斯', {
       if (ev.type === 'judgmentSpawn' && ev.char === me && ev.judgment === '强化E-模态增益') {
         const layers = t < v.轨迹至 ? v.轨迹 : 0
         const keep = t < v.无消耗至
-        if (keep && layers > 0) ctx.assume('track-no-consume', `爱弥斯 ${ev.action}：轨迹无消耗，${layers} 层照样加成`)
+        if (keep && layers > 0) {
+          ctx.assume('track-no-consume', `爱弥斯 ${ev.action}：轨迹无消耗，${layers} 层照样加成`)
+          ctx.noteRule('char.爱弥斯.trackNoConsume', true)           // 规则使用（DD-05 §4.1）：只在这时读 rules.trackNoConsume，读到就决定分支
+        }
         // 开关关掉（rules.trackNoConsume = false）：无消耗的这一次不按层数加成（层数照旧留给下一次）
         if (layers > 0 && (!keep || ctx.rules.trackNoConsume)) ctx.addBuff('爱弥斯.轨迹增幅', { target: ctx.self, stacks: layers })
         if (keep) v.无消耗至 = -1

@@ -3,6 +3,7 @@
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
+import { RULE_POINTS } from '../src/engine/rule-points'
 import { prepareRun, runPrepared } from '../src/engine/run'
 import { simulate } from '../src/engine/simulate'
 import type { SimResult } from '../src/engine/types'
@@ -50,10 +51,11 @@ describe('七条停止路径（DD-01 §3.6 的判定表）', () => {
     expect(c.loops).toEqual({ planned: 1, started: 1, completed: 1, openingCompleted: null, roundEnds: [{ loop: 1, endBattleFrame: 10 }] })
     expect(c.conditioning).toEqual({ basis: 'unconditioned', firstInterventionIndex: null })
     expect(r.error).toBeUndefined()
-    // 必有记录都在，后续工作包才有内容的是空值
+    // 必有记录都在；规则使用（DD-05 §4）的覆盖清单就是判定点表，这条轴没有切人、没有声骸，读到的只有结算的 defFloor 与插队的谐破开关
     expect(r.interventions).toEqual([])
     expect(r.strictReport).toEqual({ entry: 'standard', earliestLegalBaseline: false, compileChecks: [], intentWaits: [], unmetIntents: [], hints: [] })
-    expect(r.ruleUsage).toEqual({ byProposition: [], coverage: [] })
+    expect(r.ruleUsage.coverage.map(x => x.pointId)).toEqual(RULE_POINTS.map(p => p.id))
+    expect(r.ruleUsage.byProposition.filter(x => x.readCount > 0).map(x => x.propositionId)).toEqual(['echo-input-priority', 'input-delay', 'tune-break-mode', 'def-floor'])
     expect(r.damageScope).toEqual({ tuneBreak: { mode: 'auto' } })
     expect(r.diag).toBeUndefined()
   })

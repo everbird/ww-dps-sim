@@ -13,7 +13,7 @@ import { activeFor, bookKey, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { abnormalBase, abnormalHit, accumulate, contributes, type HitView } from './formula'
 import { checkHit } from './invariants'
-import { log, SLOTS, spawnJudgment } from './kernel'
+import { log, SLOTS, spawnJudgment, type Kernel } from './kernel'
 import { grant } from './resources'
 import type { EnemyPreset } from '../data/gamedata'
 import type { EnemyRuntime, JudgmentRuntime, Rates, ResonanceKind, SimState } from './types'
@@ -148,6 +148,7 @@ function interfere(sim: Sim, s: SimState, by: Slot): void {
     return
   }
   const frames = sim.r.rules.interferenceFrames
+  sim.k.rule.note('enemy.interferenceFrames', frames, true)       // 规则使用（DD-05 §4.1）：数值型规则，用到就算
   e.interference = { kind, stacks: 1, remaining: frames }
   e.tunabilityLockedUntil = Math.max(e.tunabilityLockedUntil, s.battleFrames + frames)
   log(s, { type: 'enemyState', change: 'interference', by: s.chars[by].name, detail: `${kind}·干涉` })
@@ -170,29 +171,39 @@ export function applyShift(s: SimState, by: Slot, kind: ResonanceKind, frames: n
   log(s, { type: 'enemyState', change: 'shift', by: s.chars[by].name, detail: `${kind}·偏移（${why}）` })
 }
 
-/** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18）。定时结算在它之前（effectTicks） */
-export function enemyTimers(s: SimState, rates: Rates): void {
+/** P6：瘫痪结束时白条回满（推断，TD-06 Q11）；异常效应按战斗帧倒数，到 0 整个消失（§18）。定时结算在它之前（effectTicks）。
+ *  k：诊断的作用域要它——每个到点的计时器各是一个 timer 作用域（DD-05 §3.2）；不给时不记 */
+export function enemyTimers(s: SimState, rates: Rates, k?: Kernel): void {
   const e = s.enemy
+  // 每个到点的计时器各开一个作用域：写成内联的 open / close，不建闭包（每个 tick 都调，DD-05 §9 的耗时）
   if (e.broken && s.battleFrames >= e.paralyzedUntil) {
+    const sc = k?.diag?.open({ kind: 'timer', timerKind: 'enemy', defId: 'paralysis' }, s.log.length)
     e.broken = false
     e.whiteBar = e.preset.whiteBarTough
     log(s, { type: 'enemyState', change: 'breakEnd' })
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
   if (e.shift && (e.shift.remaining -= rates.battle) <= 0) {
+    const sc = k?.diag?.open({ kind: 'timer', timerKind: 'enemy', defId: 'shift' }, s.log.length)
     log(s, { type: 'enemyState', change: 'shiftEnd', detail: `${e.shift.kind}·偏移` })
     delete e.shift
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
   if (e.interference && (e.interference.remaining -= rates.battle) <= 0) {
+    const sc = k?.diag?.open({ kind: 'timer', timerKind: 'enemy', defId: 'interference' }, s.log.length)
     log(s, { type: 'enemyState', change: 'interferenceEnd', detail: `${e.interference.kind}·干涉` })
     delete e.interference
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
   for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
     const x = e.effects[name]
     if (!x) continue
     x.remaining -= rates.battle
     if (x.remaining > 0) continue
+    const sc = k?.diag?.open({ kind: 'timer', timerKind: 'enemy', defId: name }, s.log.length)
     delete e.effects[name]
     log(s, { type: 'enemyState', change: 'effectEnd', effect: name })
+    if (sc !== undefined) k!.diag!.close(sc, s.log.length, k!.at.phase)
   }
 }
 
@@ -210,7 +221,11 @@ export function applyEffect(sim: Sim, s: SimState, by: Slot, effect: EffectName,
     }
     return
   }
+  const existed = s.enemy.effects[effect] !== undefined
   const x = (s.enemy.effects[effect] ??= { stacks: 0, burst: 0, remaining: 0, nextTick: s.battleFrames + (def.tickInterval ?? 0), source: by, origin: by })
+  // 规则使用（DD-05 §4.1）：效应已在计时中又被附加、重新计时会改下次结算的时刻时，effectTickReset 才决定分支
+  sim.k.rule.note('enemy.effectTick.reset', sim.r.rules.effectTickReset,
+    existed && def.tickInterval !== null && x.nextTick !== s.battleFrames + def.tickInterval)
   if (sim.r.rules.effectTickReset) x.nextTick = s.battleFrames + (def.tickInterval ?? 0)   // 每次附加都重新计时（假设 effect-tick 的另一种读法）
   const added = Math.max(0, Math.min(stacks, def.maxStacks - x.stacks))
   const burstAdded = Math.max(0, Math.min(stacks - added, def.burstMax - x.burst))
@@ -251,7 +266,7 @@ function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multipli
   const { value, factors } = abnormalHit({
     base: abnormalBase(r.data.abnormalBaseByLevel, r.rules.charLevel), multiplier, level: r.rules.charLevel,
     enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[def.element] },
-  }, accumulate(view, active), r.rules)
+  }, accumulate(view, active), r.rules, sim.k.rule)
   const dmg = { nonCrit: value, crit: value, expected: value }
   checkHit(s, dmg, s.chars[by].name, `${effect} ${judgment}`)
   log(s, {
@@ -267,13 +282,18 @@ function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multipli
  *  （缺省最后附加的人，假设 effect-owner）；之后移除
  *  ⌊层数 × decay⌋ 层（角色模块的 effectRules 可让它不减）、额外层清零，记 effectTick。在到期判断之前：到期那一刻赶上的先结算 */
 export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
+  const k = sim.k
   for (const name of EFFECT_NAMES) {                             // 按固定顺序（总设计 §10.1）
     const x = s.enemy.effects[name]
     const def = sim.r.data.effects[name]
     if (!x || !def || def.tickInterval === null || s.battleFrames + rates.battle < x.nextTick - 1e-6) continue
+    // 每个效应的一次定时结算是一个 timer 作用域（DD-05 §3.2）
+    const sc = k.diag?.open({ kind: 'timer', timerKind: 'effectTick', defId: name }, s.log.length)
     x.nextTick += def.tickInterval
     const { stacks, burst } = x
     const owner = sim.r.rules.effectOwner === 'first' ? x.origin : sim.r.rules.effectOwner === 'onField' ? s.onField : x.source
+    // 规则使用（DD-05 §4.1）：最后附加者、第一次附加者、当前前台三者不全相同时，effectOwner 才决定记在谁名下
+    k.rule.note('enemy.effectTick.owner', sim.r.rules.effectOwner, !(x.origin === x.source && x.source === s.onField))
     const who = s.chars[owner].name
     assume(s, 'effect-tick', name)
     assume(s, 'effect-owner', `${name} → ${who}`)
@@ -286,6 +306,7 @@ export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
     x.stacks = sim.keepStacks.has(name) ? stacks : stacks - Math.floor(stacks * def.decay)
     x.burst = 0
     log(s, { type: 'effectTick', effect: name, stacks, ...(def.burstMax > 0 ? { burst } : {}), left: x.stacks, damage, source: who })
+    if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   }
 }
 
