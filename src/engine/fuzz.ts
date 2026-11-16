@@ -13,23 +13,30 @@ export interface FuzzReport {
   ran: number                         // 实际跑的
   ok: number                          // 跑通的
   rejected: Record<string, number>    // 跑不通的原因（编译不过、连段中断…）
+  engineErrors: number                // 引擎内部错误 / 不变量失败 / 未捕获异常
   problems: FuzzProblem[]
 }
 
 /** n：最多跑几条变体（从全部候选里等距取，结果可重复） */
 export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], opening: readonly string[], n = 60): FuzzReport {
   const problems: FuzzProblem[] = []
+  let engineErrors = 0
   const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
   const has = (char: string, action: string) => !!members.find(x => x.name === char && (action in x.actions || action in x.aliases))
   const run = (rr: ResolvedScenario, where: string): SimResult | null => {
     try { return simulate(rr) } catch (e) {
+      engineErrors++
       problems.push({ where, what: `抛异常：${e instanceof Error ? e.message : String(e)}` })
       return null
     }
   }
   const audit = (rr: ResolvedScenario, res: SimResult, where: string) => {
-    if (res.error?.code === 'invariant') problems.push({ where, what: res.error.message })
-    if (res.error) return
+    if (res.completion.status === 'engineError') {
+      engineErrors++
+      problems.push({ where, what: res.completion.engineError?.message ?? res.error?.message ?? '引擎错误' })
+      return
+    }
+    if (res.completion.status === 'axisFailed' || res.completion.status === 'truncated') return
     for (const what of checkLog(rr, res)) problems.push({ where, what })
   }
 
@@ -39,7 +46,7 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
     audit(r, base, '原轴')
     const again = run(r, '原轴（第二次）')
     if (again && JSON.stringify(again.log) !== JSON.stringify(base.log)) problems.push({ where: '原轴', what: '同样的输入跑两次，事件日志不同（有隐藏状态或依赖了顺序不定的东西）' })
-    if (!base.error) problems.push(...monotonic(r, base, run))
+    if (base.completion.status === 'completed') problems.push(...monotonic(r, base, run))
   }
 
   // 变体：挪动任一动作、去掉任一动作、对调相邻两个；另按连段整块挪动、去掉、对调（2026-10-24：单个挪多半把连段拆断，跑不通）
@@ -73,10 +80,21 @@ export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], o
     const res = run(rr, ch.desc)
     if (!res) continue
     audit(rr, res, ch.desc)
-    if (res.error) { if (res.error.code !== 'invariant') rejected[res.error.code] = (rejected[res.error.code] ?? 0) + 1; continue }
+    const st = res.completion.status
+    if (st === 'engineError') continue
+    if (st === 'axisFailed') {
+      const f = res.completion.axisFailure
+      const code = f ? (f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind) : 'axisFailed'
+      rejected[code] = (rejected[code] ?? 0) + 1
+      continue
+    }
+    if (st === 'truncated') {
+      rejected['truncated'] = (rejected['truncated'] ?? 0) + 1
+      continue
+    }
     ok++
   }
-  return { variants: nSingle + block.length, ran, ok, rejected, problems }
+  return { variants: nSingle + block.length, ran, ok, rejected, engineErrors, problems }
 }
 
 /** 一行里的连段块：后一个动作的连段前置（comboFrom）含前一个的就接成一块（A1 A2 A3 A4），其余各自一块 */
@@ -127,7 +145,10 @@ function monotonic(r: ResolvedScenario, base: SimResult, run: (rr: ResolvedScena
   const team = r.team.map(m => ({ ...m, panel: { ...m.panel, hp: bump(m.panel.hp, 500), atk: bump(m.panel.atk, 50), def: bump(m.panel.def, 50) } })) as unknown as ResolvedScenario['team']
   const res = run({ ...r, team }, where)
   if (!res) return []
-  if (res.error) return [{ where, what: `原轴跑得通，加了属性反而报错：${res.error.message}` }]
+  if (res.completion.status !== 'completed') {
+    const msg = res.completion.engineError?.message ?? res.completion.axisFailure?.detail ?? res.completion.status
+    return [{ where, what: `原轴跑得通，加了属性反而没跑完：${msg}` }]
+  }
   const timing = (x: SimResult) => x.log.filter(e => e.type === 'actionStart' || e.type === 'switch').map(e => `${e.f}:${e.type === 'actionStart' ? `${e.char}${e.action}` : 'switch'}`).join(',')
   if (timing(res) !== timing(base)) return [{ where, what: '出招与切人的时刻变了（伤害数值不该影响时间轴）' }]
   const hits = (x: SimResult) => x.log.filter((e): e is HitEvent => e.type === 'hit')

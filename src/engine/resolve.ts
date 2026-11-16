@@ -49,7 +49,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     if (def) env.push({ def, value: pick(def.value, 1), owner: 'env' })
     else issues.push(`environment 里的 ${id} 不存在（现有：${Object.keys(data.envBuffs).join('、') || '无'}）`)
   }
-  const rules = resolveRules(sc.options.rules, issues)
+  const rules = resolveRules(sc.options.rules, data, issues)
   // 谐破冷却按敌人 COST、按钮时长（xlsx 附页2，m0-confirm §10 H2、H4）；敌人表没有红名，不用红名那一档
   const tr = data.tuneBreak.rules
   const tuneBreakTiming = tr ? { lockFrames: tr.lockFrames[enemy.cost], buttonFrames: tr.buttonFrames } : { lockFrames: 300, buttonFrames: null }
@@ -126,7 +126,6 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   }
 
   return {
-    ...(sc.tuneBreakOmitted ? { tuneBreakOmitted: sc.tuneBreakOmitted } : {}),
     data, purpose: sc.purpose, team, enemy, buffs, effects, commands, opening,
     initial: {
       energy,
@@ -143,6 +142,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     },
     warnings,
     goal: goalOf(sc.goal, enemy),
+    ...(sc.tuneBreakOmitted ? { tuneBreakOmitted: sc.tuneBreakOmitted } : {}),
   }
 }
 
@@ -368,14 +368,21 @@ function initialCore(given: Record<string, Record<string, number>>, team: Resolv
   return out
 }
 
-/** options.rules 覆盖 DEFAULT_RULES：只认已有的键，类型要一致；对象类的键按一层合并 */
-function resolveRules(over: Record<string, unknown> | undefined, issues: string[]): Rules {
+/** options.rules 覆盖 DEFAULT_RULES：只认已有的键，类型要一致；对象类的键按一层合并。
+ *  按角色的表 forteKeepOnSwitchBy 另查每一项：键是数据里的角色名（原样比，不做模糊匹配），值是布尔（DD-04 §4.1） */
+function resolveRules(over: Record<string, unknown> | undefined, data: GameData, issues: string[]): Rules {
   const out: Rules = structuredClone(DEFAULT_RULES)
   for (const [k, v] of Object.entries(over ?? {})) {
-    if (!(k in out)) { issues.push(`options.rules.${k}：没有这条规则（现有：${Object.keys(out).join('、')}）`); continue }
+    if (!Object.hasOwn(out, k)) { issues.push(`options.rules.${k}：没有这条规则（现有：${Object.keys(out).join('、')}）`); continue }
     const cur = (out as unknown as Record<string, unknown>)[k]
-    if (typeof cur !== typeof v || Array.isArray(v)) { issues.push(`options.rules.${k}：应为 ${typeof cur}`); continue }
-    ;(out as unknown as Record<string, unknown>)[k] = typeof v === 'object' && v !== null ? { ...(cur as object), ...v } : v
+    if (typeof cur !== typeof v || Array.isArray(v) || v === null) { issues.push(`options.rules.${k}：应为 ${typeof cur}`); continue }
+    if (k === 'forteKeepOnSwitchBy') {
+      const bad = Object.entries(v as object).flatMap(([char, x]) =>
+        !Object.hasOwn(data.characters, char) ? [`options.rules.forteKeepOnSwitchBy.${char}：没有这个角色`]
+        : typeof x !== 'boolean' ? [`options.rules.forteKeepOnSwitchBy.${char}：应为 boolean`] : [])
+      if (bad.length > 0) { issues.push(...bad); continue }
+    }
+    ;(out as unknown as Record<string, unknown>)[k] = typeof v === 'object' ? { ...(cur as object), ...v } : v
   }
   return out
 }

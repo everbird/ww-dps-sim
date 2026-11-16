@@ -23,10 +23,12 @@ async function main(): Promise<number> {
   const out: string[] = []
   const ref = cards[0]!
   out.push('# 轴卡片', '', `${cards.length} 条轴，口径：${ref.goal.label}；第一条当基准。★ = 帕累托前沿（没有别的轴零帧和"熟练"都更好）。TD-10 §6.3。`, '')
-  out.push('## ① 目标', '', '| 轴 | 口径 | 比基准 | 打死 1 倍血 | 2 倍 | 3 倍 |', '|---|---:|---:|---:|---:|---:|')
+  out.push('## ① 目标', '', '| 轴 | 谐破 | 口径 | 比基准 | 打死 1 倍血 | 2 倍 | 3 倍 |', '|---|:---:|---:|---:|---:|---:|---:|')
   const secs = (k: Scorecard['kills'][number]) => (k.secs === null ? '—' : `${k.secs.toFixed(1)}${k.estimated ? '（估）' : ''}`)
-  for (const c of cards) out.push(`| ${c.pareto ? '★ ' : ''}${c.name} | ${fmt(c.goal.dps)} | ${c === ref ? '基准' : pct(c.goal.dps / ref.goal.dps - 1)} | ${c.kills.map(secs).join(' | ')} |`)
-  out.push('', '打死几倍血按战斗秒（通关计时，大招时停也停），启动轴算在内。', '')
+  for (const c of cards) out.push(`| ${c.pareto ? '★ ' : ''}${c.name}${c.scopeDiffersFromTop ? ' †' : ''} | ${c.scopeLabel} | ${fmt(c.goal.dps)} | ${c === ref ? '基准' : pct(c.goal.dps / ref.goal.dps - 1)} | ${c.kills.map(secs).join(' | ')} |`)
+  out.push('', '打死几倍血按战斗秒（通关计时，大招时停也停），启动轴算在内。')
+  if (cards.some(c => c.scopeDiffersFromTop)) out.push('† 谐度破坏口径与第一名不同，不可直接混比 DPS。')
+  out.push('')
   out.push('## ② 好不好打', '', '| 轴 | 高手（晚 3 帧） | 熟练（6） | 普通（10） | 熟练比基准 | 每轮 | 决策点 / 分 | 切人 / 分 | 抢帧 ! | 空中切人 / 轮 |', '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|')
   const refSkilled = ref.hands.find(h => h.tier === '熟练')?.dps ?? null
   for (const c of cards) {

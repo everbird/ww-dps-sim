@@ -119,7 +119,7 @@ describe('归一入口与运行身份（DD-01 §3.2、§3.3）', () => {
     expect(p.identity.execution.rules.defFloor).toBe(false)
     expect(p.resolved.rules.defFloor).toBe(false)
     const x = p.identity.execution
-    expect([x.entryMode, x.strictSource, x.gitCommit, x.scenarioDigest.length, x.outputSchemaVersion]).toEqual(['standard', 'default', 'unknown', 64, '1'])
+    expect([x.entryMode, x.strictSource, x.gitCommit, x.scenarioDigest.length, x.outputSchemaVersion]).toEqual(['standard', 'default', 'unknown', 64, '2'])
     expect(p.identity.data).toEqual({ xlsxFileDate: 'synthetic' })
     expect(p.effective).toEqual({ damageScope: { tuneBreak: { mode: 'auto' } }, strict: false, strictSource: 'default', continueAfterIntentUnmet: false, sample: null })
     // 带路径的规则覆盖只改那一项，同一层的其余项保留

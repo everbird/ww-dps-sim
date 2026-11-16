@@ -7,7 +7,8 @@
 import type { CharName } from '../data/common'
 import type { GameData } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
-import { basisOf } from './analysis'
+import { basisOf, usableBasis } from './analysis'
+import type { SimResult } from './types'
 import { resolveScenario } from './resolve'
 import { simulate } from './simulate'
 
@@ -141,6 +142,17 @@ function libraryOf(sc: Scenario, refSeq: readonly string[], vary: number, extraO
   return { library, counts, extra, minLen: Math.max(2, refSeq.length - extra), maxLen: refSeq.length + extra, usedOf }
 }
 
+function failKeyOf(res: SimResult): string | null {
+  const c = res.completion
+  if (c.status === 'axisFailed') {
+    const f = c.axisFailure
+    return f ? (f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind) : 'axisFailed'
+  }
+  if (c.status === 'truncated') return 'truncated'
+  if (c.status === 'engineError') return 'engineError'
+  return null
+}
+
 export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {}): PlanResult {
   const width = opts.width ?? 24
   const perGroup = opts.perGroup ?? 3
@@ -165,7 +177,9 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     return simulate(r)
   }
   const refRes = run(sc.rotation, sc.options.repeat)
-  if (!refRes || refRes.error) throw new Error('原轴跑不通')
+  if (!refRes) throw new Error('原轴跑不通')
+  const refU = usableBasis(refRes)
+  if (!refU.ok) throw new Error(`原轴跑不通：${refU.status}：${refU.reason}`)
   // 写了"变奏"却没变奏（轴可能有问题，TD-09 §3.5）：比原轴多的不要。补位结尾的套路后面只能写"switch X 变奏"，
   // 放错位置（协奏攒不满）就会这样
   const missed = (res: NonNullable<ReturnType<typeof run>>, loop?: number) =>
@@ -173,7 +187,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const refMissed = missed(refRes)
   // 出场技只在普通切人入场后第一个出：调度器报错 entrySkill（TD-09 §3.5），同其他跑不通的一起剪掉
   const bad = (res: NonNullable<ReturnType<typeof run>>, loop?: number) => refMissed === 0 && missed(res, loop) > 0
-  const refBasis = basisOf(refRes)
+  const refBasis = refU.basis
   const secsOf = (s: typeof refRes.summary) => (s.steady ? s.steady.frames / (s.steady.to - s.steady.from + 1) / 60 : null)
 
   // beam search：每层给每个前缀接一个还没用完的套路
@@ -210,7 +224,8 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
         const to = charOf(seq[0]!) !== last ? charOf(seq[0]!)! : sc.team.find(m => m.char !== last)!.char
         const res = run([...render(seq, false), ...(endsFiller(line) ? [`switch ${to} 变奏`] : [])], 1)
         if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
-        if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
+        const fk = failKeyOf(res)
+        if (fk) { failures[fk] = (failures[fk] ?? 0) + 1; continue }
         const loop = loop1(res)
         if (!loop) { failures['noLoop'] = (failures['noLoop'] ?? 0) + 1; continue }
         if (refMissed === 0 && missed(res, 1) > 0) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
@@ -219,7 +234,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
         if (scoring === 'rollout' && charOf(full.at(-1)!) !== charOf(full[0]!)) {
           prefixRuns++
           const rr = run(render(full), 1)
-          const l = rr && !rr.error && !bad(rr, 1) ? loop1(rr) : undefined
+          const l = rr && rr.completion.status === 'completed' && !bad(rr, 1) ? loop1(rr) : undefined
           if (l) cand = { seq, score: l.dps, tier: 1 }
         }
         next.set(key, cand)
@@ -250,7 +265,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       const rounds = extra === 0 ? 1 : 2
       prefixRuns++
       const rr = run(render(n.seq), rounds)
-      const l = rr && !rr.error && !bad(rr) ? rr.summary.perLoop?.find(p => p.loop === rounds) : undefined
+      const l = rr && rr.completion.status === 'completed' && !bad(rr) ? rr.summary.perLoop?.find(p => p.loop === rounds) : undefined
       if (l) pool.set(key, { seq: n.seq, score: l.dps, tier: 1 })
     }
   }
@@ -268,7 +283,8 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     const plain = render(node.seq)
     const res = run(plain, sc.options.repeat)
     if (!res) { failures['compile'] = (failures['compile'] ?? 0) + 1; continue }
-    if (res.error) { failures[res.error.code] = (failures[res.error.code] ?? 0) + 1; continue }
+    const u = usableBasis(res)
+    if (!u.ok) { const fk = failKeyOf(res) ?? u.status; failures[fk] = (failures[fk] ?? 0) + 1; continue }
     if (missed(res) > refMissed) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
     const introAt = new Set(res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 2 ? [e.cmd.line] : [])))
     const diff = usedOf(node.seq).map((n, i) => n - library[i]!.count)   // 另加的套路 count 为 0，用了几次就是 +几
@@ -276,7 +292,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       routines: node.seq,
       counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
       lines: plain.map((l, i) => (introAt.has(i + 1) && !l.endsWith(' 变奏') ? `${l} 变奏` : l)),
-      dps: basisOf(res).dps, loopSecs: secsOf(res.summary),
+      dps: u.basis.dps, loopSecs: secsOf(res.summary),
       introMissed: res.summary.warnings.filter(w => w.code === 'introMissed').length,
       isRef: node.seq.join(' | ') === refKey,
       same: 0,
@@ -362,7 +378,8 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
     let r
     try { r = resolveScenario({ ...sc, opening: renderOpening(seq, onField) }, data) } catch { fail('compile'); return null }
     const res = simulate(r)
-    if (res.error) { fail(res.error.code); return null }
+    const fk = failKeyOf(res)
+    if (fk) { fail(fk); return null }
     return res
   }
   const refRes = evaluate(refSeq)

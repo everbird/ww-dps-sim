@@ -43,25 +43,33 @@ dataDescribe('校准点', () => {
 
   // 每个点都取得到仿真值（名字、轮次写对了）；填了实测的要在容差内
   for (const p of points) {
-    if (p.game === null) {
-      test(`${p.id}：取得到仿真值（待测）`, () => { expect(check(p).status).toBe('todo') }, 60_000)
+    if (p.game === null && !p.gameRange) {
+      test(`${p.id}：取得到仿真值（待测）`, () => {
+        const x = check(p)
+        expect(x.comparison).toBe('unassessable')
+        expect(x.status).toBe('todo')
+      }, 60_000)
       test.todo(`${p.id}：实测（${p.record}）`)
     } else {
       test(`${p.id}：仿真与实测在容差内`, () => {
         const x = check(p)
         expect(x.error).toBeUndefined()
-        expect(x.status, `仿真 ${x.matched}，实测 ${p.game}，差 ${((x.diff ?? 0) * 100).toFixed(2)}%`).toBe('ok')
+        expect(['passed', 'ambiguous']).toContain(x.comparison)
+        expect(x.status, `仿真 ${x.matched}，实测 ${p.game ?? p.gameRange?.join('~')}，差 ${((x.diff ?? 0) * 100).toFixed(2)}%`).toBe('ok')
       }, 60_000)
     }
   }
 
-  test('比对：跳字按"不暴击 / 暴击"里接近实测的那个比；超出容差标 off', () => {
+  test('比对：跳字分支未知时返回 ambiguous，显式分支返回 passed/conflicted；超出容差标 conflicted', () => {
     const p = points.find((x): x is Extract<CalibrationPoint, { kind: 'hit' }> => x.id === '椿AAE.A1#1' && x.kind === 'hit')!
     const sim = check({ ...p, game: null }).sim!                   // [不暴击, 暴击]，记录里是 1,490 / 3,554
     expect(sim.map(Math.round)).toEqual([1490, 3554])
-    expect(check({ ...p, game: 3554 })).toMatchObject({ status: 'ok', matched: sim[1] })
-    expect(check({ ...p, game: 1490 })).toMatchObject({ status: 'ok', matched: sim[0] })
-    expect(check({ ...p, game: 1520 }).status).toBe('off')           // 差 2%
-    expect(check({ ...p, judgment: '没有这一下' }).status).toBe('error')
+    expect(check({ ...p, game: 3554 })).toMatchObject({ comparison: 'ambiguous', status: 'ok', matched: null, diff: null })
+    expect(check({ ...p, game: 1490 })).toMatchObject({ comparison: 'ambiguous', status: 'ok', matched: null, diff: null })
+    expect(check({ ...p, branch: 'crit', game: 3554 })).toMatchObject({ comparison: 'passed', status: 'ok', matched: sim[1] })
+    expect(check({ ...p, branch: 'nonCrit', game: 1490 })).toMatchObject({ comparison: 'passed', status: 'ok', matched: sim[0] })
+    expect(check({ ...p, branch: 'crit', game: 1490 })).toMatchObject({ comparison: 'conflicted', status: 'off', matched: sim[1] })
+    expect(check({ ...p, game: 1520 })).toMatchObject({ comparison: 'conflicted', status: 'off' })
+    expect(check({ ...p, judgment: '没有这一下' })).toMatchObject({ comparison: 'unmatched', status: 'error' })
   }, 60_000)
 })

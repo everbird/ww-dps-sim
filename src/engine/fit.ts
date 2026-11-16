@@ -16,13 +16,24 @@ type Video = NonNullable<Scenario['video']>
 /** 贴合度的各项；score 折成"秒"：切人、录像动作的平均差（秒）+ 切人类型对不上每次 2 秒 + 录像动作在仿真里找不到每个 5 秒 + 血条均方根差每 1% 记 0.5 秒
  *  + 协奏环均方根差每 1% 记 0.1 秒（读环比读血条粗，权重低一些；mean 是仿真减录像的平均，看整体偏高还是偏低）
  *  + 回路条上的核心资源（video.core）均方根差每 1% 记 0.1 秒（同协奏环） */
+export interface FitCoverage {
+  anchors: number
+  events: number
+  eventsMatched: number
+  hp: number
+  concerto: number
+  core: number
+}
+
 export interface Fit {
   switches: { n: number; mae: number; max: number; typeMiss: number }
   events: { n: number; matched: number; mae: number }
   hp: { n: number; rmse: number; end: number } | null
   concerto: { n: number; rmse: number; mean: number } | null
   core: { n: number; rmse: number; mean: number } | null
-  score: number
+  coverage: FitCoverage
+  assessable: boolean
+  score: number | null
 }
 export const FIT_WEIGHTS = { typeMiss: 2, unmatched: 5, hpPct: 0.5, concertoPct: 0.1, corePct: 0.1 } as const
 
@@ -90,20 +101,30 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video): Fi
       return ratioAt(t, char, x => x.key.startsWith('core') && x.name === name, `video.core 第 ${i + 1} 条（${name}）`) - Number(v)
     }))
     : null
-  const score = switches.mae + events.mae + FIT_WEIGHTS.typeMiss * typeMiss + FIT_WEIGHTS.unmatched * (events.n - events.matched)
+  const coverage: FitCoverage = {
+    anchors: cmp.rows.length,
+    events: events.n,
+    eventsMatched: events.matched,
+    hp: hp ? hp.n : 0,
+    concerto: video.concerto?.length ?? 0,
+    core: video.core?.length ?? 0,
+  }
+  const otherObs = coverage.events + coverage.hp + coverage.concerto + coverage.core
+  const assessable = coverage.anchors > 0 && !(coverage.anchors === 1 && otherObs === 0)
+  const rawScore = switches.mae + events.mae + FIT_WEIGHTS.typeMiss * typeMiss + FIT_WEIGHTS.unmatched * (events.n - events.matched)
     + (hp ? FIT_WEIGHTS.hpPct * hp.rmse * 100 : 0) + (concerto ? FIT_WEIGHTS.concertoPct * concerto.rmse * 100 : 0)
     + (core ? FIT_WEIGHTS.corePct * core.rmse * 100 : 0)
-  return { switches, events, hp, concerto, core, score }
+  return { switches, events, hp, concerto, core, coverage, assessable, score: assessable ? rawScore : null }
 }
 
 const mean = (xs: readonly number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0)
 
 export interface FitRow { desc: string; fit: Fit | null; error: string | null }
-export interface FitReport { base: Fit; rows: FitRow[]; candidates: number }
+export interface FitReport { base: Fit; rows: FitRow[]; unassessable: FitRow[]; candidates: number }
 
 /**
  * 变体：① 假设表里每个开关翻过来（敏感度矩阵同一组）；② 轴里读到的动作（不是补位的）去掉、挪到前后 near 行之内的同一角色行、与相邻的对调。
- * ② 的候选很多（长轴几千条），等距取 n 条；① 全跑。跑不通的列出原因、不排名
+ * ② 的候选很多（长轴几千条），等距取 n 条；① 全跑。跑不通或不可评估的列出原因、不进排名
  */
 export function fitVariants(r: ResolvedScenario, sc: Scenario, opts: { n?: number; near?: number } = {}): FitReport {
   const video = sc.video
@@ -111,12 +132,17 @@ export function fitVariants(r: ResolvedScenario, sc: Scenario, opts: { n?: numbe
   const run = (rr: ResolvedScenario, desc: string): FitRow => {
     try {
       const res = simulate(rr)
-      return res.error ? { desc, fit: null, error: res.error.message } : { desc, fit: replayFit(rr, res, video), error: null }
+      const c = res.completion
+      if (c.status === 'engineError') return { desc, fit: null, error: `engineError：${c.engineError?.message ?? '引擎错误'}` }
+      if (c.status === 'axisFailed') return { desc, fit: null, error: `${c.axisFailure?.kind ?? 'axisFailed'}：${c.axisFailure?.detail ?? ''}` }
+      if (c.status === 'truncated') return { desc, fit: null, error: 'truncated：到帧数上限被截断' }
+      return { desc, fit: replayFit(rr, res, video), error: null }
     } catch (e) { return { desc, fit: null, error: e instanceof Error ? e.message : String(e) } }
   }
   const base = run(r, '原场景')
   if (!base.fit) throw new Error(`原场景跑不通：${base.error}`)
-  const rows: FitRow[] = flipsOf().map(f => run(adjusted(r, f.path, f.value), `假设 ${f.label}`))
+  if (!base.fit.assessable || base.fit.score === null) throw new Error('原场景没有有效观测（不可评估）：至少需要 2 个锚点，或 1 个锚点加其他观测')
+  const allRows: FitRow[] = flipsOf().map(f => run(adjusted(r, f.path, f.value), `假设 ${f.label}`))
 
   const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
   const has = (char: string, action: string) => !!members.find(x => x.name === char && (action in x.actions || action in x.aliases))
@@ -130,11 +156,14 @@ export function fitVariants(r: ResolvedScenario, sc: Scenario, opts: { n?: numbe
   for (const ch of gen()) {
     if (!chosen(candidates, k, i++)) continue
     const compiled = compileRotation(ch.lines.map(lineText), members, r.initial.onField, r.options.repeat, [...sc.opening])
-    if (!compiled.ok) { rows.push({ desc: ch.desc, fit: null, error: compiled.issues[0]!.message }); continue }
-    rows.push(run({ ...r, commands: compiled.commands, opening: compiled.opening }, ch.desc))
+    if (!compiled.ok) { allRows.push({ desc: ch.desc, fit: null, error: compiled.issues[0]!.message }); continue }
+    allRows.push(run({ ...r, commands: compiled.commands, opening: compiled.opening }, ch.desc))
   }
-  rows.sort((a, b) => (a.fit && b.fit ? a.fit.score - b.fit.score : a.fit ? -1 : b.fit ? 1 : 0))
-  return { base: base.fit, rows, candidates }
+  const unassessable = allRows.filter(row => row.fit !== null && !row.fit.assessable)
+  const rows = allRows
+    .filter(row => row.fit === null || row.fit.assessable)
+    .sort((a, b) => (a.fit && b.fit ? a.fit.score! - b.fit.score! : a.fit ? -1 : b.fit ? 1 : 0))
+  return { base: base.fit, rows, unassessable, candidates }
 }
 
 /** 从 len 条里等距取 k 条（同 fuzz，结果可重复） */

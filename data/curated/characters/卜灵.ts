@@ -1,6 +1,7 @@
 // data/curated/characters/卜灵.ts —— 角色模块（心 · 雷主 · 卜灵 队伍，2026-10-19；待确认的条目见 docs/xin-confirm.md）
 // 原文：nanoka 3.7 的技能说明、xlsx 卜灵块「初始化」行的备注（R4533）与 characters.json 的共鸣链 / 固有文本。
 import { defineCharacter } from '../../../src/data/define'
+import { forteKept } from '../../../src/data/gamedata'
 import type { HookContext } from '../../../src/engine/types'
 
 /** 卦象（共鸣回路）：上限 4 枚，满了再得时全部左移、去掉最左边那枚。核心资源槽 1 只记枚数（数据给 +1 / −2）；
@@ -130,8 +131,9 @@ export default defineCharacter('卜灵', {
     },
     onEvent(ctx, ev) {
       const me = ctx.state.chars[ctx.self].name
-      // 切走不保留卦象、少阳 / 少阴（假设 forte-keep-on-switch 翻过来：options.rules.forteKeepOnSwitch = false，量敏感度用）
-      if (ev.type === 'switch' && ev.from === me && !ctx.rules.forteKeepOnSwitch) {
+      // 切走不保留卦象、少阳 / 少阴（假设 forte-keep-on-switch 翻过来，量敏感度用）：options.rules.forteKeepOnSwitch = false（两人一起），
+      // 或只翻卜灵 forteKeepOnSwitchBy.卜灵 = false（台账 forte-keep.卜灵-卦象，DD-04 §4.1）
+      if (ev.type === 'switch' && ev.from === me && !forteKept(ctx.rules, me)) {
         const v = ctx.vars
         const n = ctx.state.chars[ctx.self].core[0]!
         if (n > 0) ctx.addResource('core1', -n, ctx.self, '切走清卦象（forteKeepOnSwitch = false）')

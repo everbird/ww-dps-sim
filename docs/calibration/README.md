@@ -49,3 +49,12 @@
 |---|---|---|
 | `2026-10-21-跳字-心开场AAA.md` | 心的面板与开场三下普攻的跳字（全息 6 无常凶鹭），表由 `pnpm trace scenarios/xin-team-r5.yaml --loop 0 --hits --char 心` 出 | 待实测；`points.yaml` 里 22 个点 |
 | `2026-10-21-跳字-椿开场AAE.md` | 椿的面板与开场 AAE 的跳字（全息 6 朔雷之鳞），表由 `pnpm trace scenarios/m0-video-eq.yaml --loop 0 --hits --char 椿` 出 | 待实测；`points.yaml` 里 15 个点 |
+
+
+## 时钟、跳字分支、区间与用途（DD-03 §3–4）
+
+- **`loop.clock`**：`battle`（缺省，受大招全局时停影响，对深塔倒计时等战斗内秒表）或 `world`（`(endF - f) / 60`，对视频时间轴量的墙钟秒）。`clock: world` 与 `clock: battle` 不混比。
+- **`hit.branch`**：`crit` | `nonCrit` | `unknown`（缺省）。未知分支且实测落入任一分支容差时状态为 `ambiguous`（CLI 显示`相容（分支未知）`），只有显式指定分支并命中才记 `passed`（`通过`）。
+- **`gameRange: [lo, hi]`**：实测只能读取区间时填写，与 `game`（非 `null`）互斥；仿真值落入区间内相对差为 `0`。
+- **`purpose`**：`given` | `formulation` | `selection` | `independent_validation` | `unspecified`（缺省）；`pnpm calibrate` 统计时把 `independent_validation` 单列。
+- **`condition`**：可选元数据 `{ gameVersion, recordedAt?, note?, unknowns }`，记录采样版本与未控条件。

@@ -6,7 +6,7 @@ import { STAT_KEYS, STAT_TO_ZONE, type Slot, type StatKey, type ZoneId } from '.
 import type { GameData } from '../data/gamedata'
 import type { InvPiece } from '../data/inventory.schema'
 import type { Scenario } from '../data/scenario.schema'
-import { basisOf, tierValue, type Basis } from './analysis'
+import { basisOf, tierValue, usableBasis, type Basis } from './analysis'
 import type { HitRecord } from './context'
 import { accumulate, computeHit, matchesFilter, type HitContext } from './formula'
 import { echoSpecies, resolveScenario, setPieces } from './resolve'
@@ -209,8 +209,9 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   const scOf = (b: readonly InvPiece[]) => withEchoes(sc, o.slot, b)
 
   const run0 = runRecorded(sc, data)
-  if (run0.res.error) throw new Error(`现在的配装跑不通（${run0.res.error.code}）：${run0.res.error.message}`)   // R6
-  const base = basisOf(run0.res)
+  const u0 = usableBasis(run0.res)
+  if (!u0.ok) throw new Error(`现在的配装跑不通（${u0.status}）：${u0.reason}`)   // R6
+  const base = u0.basis
   let evaluated = 0
   const found = new Map<string, Build>()
 
@@ -267,8 +268,9 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
     const todo = [...found.values()].filter(b => b.dps === null && b.error === undefined).sort((a, b) => b.est - a.est).slice(0, n)
     for (const b of todo) {
       const run = runRecorded(scOf(b.pieces), data)
-      if (run.res.error) { b.error = run.res.error.message; continue }
-      b.dps = basisOf(run.res).dps
+      const u = usableBasis(run.res)
+      if (!u.ok) { b.error = u.reason; continue }
+      b.dps = u.basis.dps
     }
     return todo.length
   }
@@ -279,7 +281,7 @@ export function optimize(sc: Scenario, data: GameData, pieces: readonly InvPiece
   let verified = verify(top * 2)
   const best1 = [...found.values()].filter(b => b.dps !== null).sort((a, b) => b.dps! - a.dps!)[0]
   const run1 = best1 ? runRecorded(scOf(best1.pieces), data) : null
-  if (run1 && !run1.res.error) {
+  if (run1 && usableBasis(run1.res).ok) {
     search(buildReplayer(run1.r, run1.res, run1.recs, o.slot))
     verified += verify(top * 2)
   }

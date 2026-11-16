@@ -218,7 +218,10 @@ export const ResourceEffectSchema = z.strictObject({
 
 ### 10.1 覆盖率
 
-`Summary.buffUptime`：键"`buffId`→目标名"（`散华.延奏→椿`），值 = 统计窗口内该实例存在的战斗帧数 / 窗口帧数，由 `buffApply` / `buffExpire` 事件算出；常驻 = 1；标记型也算。到期（`timeout`）的实例在那一 tick 的 P6 才移除，那一帧算在内（`duration` = 30 的正好 30 帧）。按层数加权的版本留给 TD-10。
+`buffApply` 与 `buffExpire` 事件带提供者 `owner`（角色名或 `'env'`）和实例号 `instanceId`（DD-03 §5）：
+- **`Summary.buffUptime`**：键"`buffId`→目标名"（`散华.延奏→椿`），按实例跟踪 `[applyFrame, expireFrame + (reason === 'timeout' ? 1 : 0))` 区间，裁剪到统计窗口 `[lo, hi)` 后对同一 `(buff, target)` 跨提供者取区间并集总帧数 / 窗口帧数（同帧到期再重挂也不重计，总比例不超过 `1`）；常驻 = 1；标记型也算。到期（`timeout`）的实例在那一 tick 的 P6 才移除，那一帧算在内（`duration` = 30 的正好 30 帧）。
+- **`Summary.buffUptimeBy`**：`BuffUptimeRow[]`（`{ buff, owner, target, uptime }`），按提供者细分各组区间并集覆盖率，固定按 `buff` 码点 → 队伍槽位顺序（`'env'` 在后）→ `target` 码点排序。
+- 按层数加权的版本留给 TD-10。
 
 ### 10.2 测试用例
 
@@ -340,3 +343,4 @@ AI 起草（带 `source` 原文）→ 人工核对乘区与触发条件（有 xl
 - **v0.1（2026-09-30 修订，随实现）**：模块字段 `effects` 改名 `resourceEffects`；§4.3 技能归类只认 0–5，延奏按组名（12 里有非延奏的组）；内置冷却记在 `SimState.lastTrigger`；`nextIn` 挂起时再次触发累加层数；部分消耗记 `buffApply`；连锁报错走 `SimResult.error`，钩子生成的判定接在原链上；覆盖率的到期帧算在内；T07-2 改轴、T07-4 / T07-5 改用人造角色，补 nextIn 挂起、`where.by`、标记型的用例；§12 更新状态；新增 Q8、Q9。
 - **v0.1.1（2026-10-04）**：并回声骸用到的两处（AGENTS.md 差异 2）：触发事件目录新增 `heal`（治疗事件：判定标 `heals`、钩子 `ctx.heal`），`where` 新增 `ownerHas`（§4.1）；登记顺序补"首位声骸"（§5）；§12 补 M0 三人的首位声骸与套装。
 - **v0.1.2（2026-10-20）**：并回心 · 雷主 · 卜灵带来的决定。§1 新增 `ownerOnField`（给的人在前台时才算；玉阙玄华第 4 条）；§4.1 `enemyState` 的异常效应事件（`effectApplied`、`effectEnd`、`effectConsumed`，TD-06 v0.2.4 §18）与 `by: 'team'`，异常效应自身的伤害不触发 `judgmentSettle`；§9 行进序曲 / 奇幻变奏的协奏按阶（8 / 10 / 12 / 14 / 16，原来当成各阶 8 点，是数据错误：xlsx 武器表只有 1 阶的文本；用例 TD-05 T05-1、TD-06 T06-7、T07-3 的 +8 改成 +16）。
+- **v0.1.2 补记（2026-11-15，并回 DD-03 §5）**：`buffApply` / `buffExpire` 事件带提供者 `owner` 与实例号 `instanceId`；§10.1 明确 `Summary.buffUptime` 按 `instanceId` 追踪并跨提供者取区间并集，新增 `Summary.buffUptimeBy` 按 `(buff, owner, target)` 细分覆盖率。

@@ -92,8 +92,9 @@ export function prepareResolved(r: ResolvedScenario, opts: { sample?: SimOptions
   })
 }
 
-/** 把 { 'energyShare.dealer': 2, defFloor: true } 展开并合并进 options.rules 的输入对象（DD-01 §3.2；DD-04 §4.2）。
- *  父对象逐层浅拷贝后设值，不整体替换；路径的第一段不是 Rules 的键时返回问题。合并结果仍交给装配时的逐项校验，类型不对在那里报。
+/** 把 { 'forteKeepOnSwitchBy.心': false, 'energyShare.dealer': 2, defFloor: true } 展开并合并进 options.rules 的输入对象（DD-01 §3.2；DD-04 §4.2）。
+ *  父对象逐层浅拷贝后设值，不整体替换：场景里已有的 forteKeepOnSwitchBy: { 卜灵: false } 再合并 'forteKeepOnSwitchBy.心'，两个键都在。
+ *  路径的第一段不是 Rules 自己的键时返回问题。合并结果仍交给装配时的逐项校验（角色名、类型不对在那里报）。
  *  装配对对象类的规则只合并一层（resolve.ts 的 resolveRules）：三段以上的路径会把第二层的对象整个换掉，现在没有这样的规则在用 */
 export function mergeRulePaths(base: Record<string, unknown> | undefined, paths: Readonly<Record<string, number | boolean | string>>):
   { ok: true; rules: Record<string, unknown> } | { ok: false; issues: string[] } {
@@ -101,7 +102,7 @@ export function mergeRulePaths(base: Record<string, unknown> | undefined, paths:
   const out: Record<string, unknown> = { ...base }
   for (const [path, value] of Object.entries(paths)) {
     const segs = path.split('.')
-    if (segs.some(s => s === '') || !(segs[0]! in DEFAULT_RULES)) {
+    if (segs.some(s => s === '') || !Object.hasOwn(DEFAULT_RULES, segs[0]!)) {
       issues.push(`rules.${path}：没有这条规则（现有：${Object.keys(DEFAULT_RULES).join('、')}）`)
       continue
     }
@@ -194,6 +195,7 @@ export function resolvedDigestOf(r: ResolvedScenario, fresh = false): string {
     effects: of(r.effects, es => es.map(x => ({ ...x, def: of(x.def) }))),
     commands: digestOf(r.commands), opening: digestOf(r.opening),
     initial: r.initial, tuneBreakTiming: r.tuneBreakTiming, goal: r.goal,
+    ...(r.tuneBreakOmitted ? { tuneBreakOmitted: r.tuneBreakOmitted } : {}),
   })
 }
 
@@ -248,10 +250,11 @@ function strictReportOf(p: PreparedRun, execution: Execution): StrictReport {
  *  省略原因来自场景声明；没有声明则记 undeclared */
 export function damageScopeOf(r: ResolvedScenario): DamageScope {
   const written = [...r.opening, ...r.commands].some(c => c.kind === 'act' && r.team[c.slot].actions[c.action]?.kind === 'tuneBreak')
+  const omittedReason = r.tuneBreakOmitted?.reason ?? 'undeclared'
   switch (r.options.tuneBreak) {
     case 'auto': return { tuneBreak: { mode: written ? 'writtenPlusAuto' : 'auto' } }
-    case 'manual': return { tuneBreak: written ? { mode: 'written' } : { mode: 'omitted', reason: r.tuneBreakOmitted?.reason ?? 'undeclared', gauge: 'accumulates' } }
-    case 'off': return { tuneBreak: { mode: 'omitted', reason: written ? 'disabledByOption' : r.tuneBreakOmitted?.reason ?? 'undeclared', gauge: 'off' } }
+    case 'manual': return { tuneBreak: written ? { mode: 'written' } : { mode: 'omitted', reason: omittedReason, gauge: 'accumulates' } }
+    case 'off': return { tuneBreak: { mode: 'omitted', reason: written ? 'disabledByOption' : omittedReason, gauge: 'off' } }
   }
 }
 

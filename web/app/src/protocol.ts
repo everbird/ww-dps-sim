@@ -5,6 +5,7 @@ import type { Insight } from '../../../src/engine/insight'
 import type { OptimizeResult } from '../../../src/engine/optimize'
 import type { OpeningResult, PlanResult } from '../../../src/engine/plan'
 import type { Candidate, SearchResult } from '../../../src/engine/search'
+import type { RunStatus } from '../../../src/engine/run-types'
 import type { Summary } from '../../../src/engine/types'
 import type { DiffTimeline } from '../../../src/report/diff-timeline'
 
@@ -14,7 +15,12 @@ export interface Requests {
   info: { req: Record<string, never>; res: { version: string; characters: string[]; xlsx: string } }
   run: {
     req: { scenario: Source; view?: string }
-    res: { html: string; dps: number; steady: number | null; label: string; error: string | null; alerts: string[]; warnings: string[]; assumptions: Summary['assumptions'] }
+    res: {
+      html: string; dps: number; steady: number | null; label: string
+      completionStatus: RunStatus; truncationNote: string | null; usable: boolean; basisReason: string | null
+      scopeNote: string | null; error: string | null
+      alerts: string[]; warnings: string[]; assumptions: Summary['assumptions']
+    }
   }
   design: { req: { scenario: Source; file: string }; res: { html: string } }
   insight: { req: { scenario: Source }; res: Insight }

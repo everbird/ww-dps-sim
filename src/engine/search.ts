@@ -6,10 +6,10 @@
 //   跑不通的（编译不过、运行报错：连段中断、等超时…）记下原因丢掉。
 //   用途是检验与启发：比原轴好的改法是"游戏里也该更好"的假设，要拿实战核对。纯函数，输入装配结果与轴的原文。
 import { parseRotationLine, type RotationItem } from '../data/scenario.schema'
-import { basisOf, type Basis } from './analysis'
+import { usableBasis, type Basis } from './analysis'
 import { compileRotation, type CompileMember } from './scheduler'
 import { simulate } from './simulate'
-import type { ResolvedScenario } from './types'
+import type { ResolvedScenario, SimResult } from './types'
 
 type Act = Extract<RotationItem, { kind: 'act' }>
 /** 轴的一行：同一角色的出招（可以改），或切人、等待（原样保留） */
@@ -167,20 +167,28 @@ function edit(lines: readonly Line[], li: number, ii: number, to: { line: number
 /** 跑一条轴：只重新编译循环轴，启动轴与其余装配结果照用。basis 是这次的比较口径（跑不通时 null） */
 function evaluate(
   r: ResolvedScenario, members: CompileMember[], opening: readonly string[], lines: Line[], steps: string[],
-): { c: Candidate; basis: Basis | null } {
+): { c: Candidate; basis: Basis | null; res?: SimResult } {
   const text = lines.map(lineText)
   const blank = { lines: text, steps, dps: null, loopSecs: null, introMissed: 0 }
   const compiled = compileRotation(text, members, r.initial.onField, r.options.repeat, [...opening])
   if (!compiled.ok) return { c: { ...blank, error: { code: 'compile', message: compiled.issues[0]!.message } }, basis: null }
   const res = simulate({ ...r, commands: compiled.commands, opening: compiled.opening })
-  if (res.error) return { c: { ...blank, error: { code: res.error.code, message: res.error.message } }, basis: null }
-  const st = res.summary.steady, basis = basisOf(res)
+  const u = usableBasis(res)
+  if (!u.ok) {
+    const f = res.completion.axisFailure
+    const code = res.completion.status === 'axisFailed'
+      ? (f ? (f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind) : 'axisFailed')
+      : u.status
+    return { c: { ...blank, error: { code, message: u.reason } }, basis: null, res }
+  }
+  const st = res.summary.steady, basis = u.basis
   return {
     c: {
       ...blank, dps: basis.dps, loopSecs: st ? st.frames / 60 / (st.to - st.from + 1) : null,
       introMissed: res.summary.warnings.filter(w => w.code === 'introMissed').length, error: null,
     },
     basis,
+    res,
   }
 }
 
@@ -188,7 +196,7 @@ const byDps = (a: Candidate, b: Candidate) => b.dps! - a.dps!
 
 /** 跑不通的原因（SearchResult.failures 的键）怎么说；命令行与网页共用 */
 export const FAILURE_LABEL: Readonly<Record<string, string>> = {
-  compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', notOnField: '不在前台', switchSelf: '切到自己', entrySkill: '出场技不是从地面普通切人入场后第一个出', airEntry: '空中 / 地面入场对不上',
+  compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', truncated: '到帧数上限被截断', engineError: '引擎报错', notOnField: '不在前台', switchSelf: '切到自己', entrySkill: '出场技不是从地面普通切人入场后第一个出', airEntry: '空中 / 地面入场对不上',
 }
 
 export function searchRotation(
@@ -209,7 +217,8 @@ export function searchRotation(
   const first = evaluate(r, members, opening, lines0, [])
   const base = first.c
   runs++
-  if (base.error || !first.basis) throw new Error(`原轴跑不通，先把轴修好再搜：${base.error?.message}`)
+  const baseU = first.res ? usableBasis(first.res) : null
+  if (!baseU || !baseU.ok || !first.basis) throw new Error(`原轴跑不通，先把轴修好再搜：${baseU && !baseU.ok ? baseU.reason : base.error?.message}`)
   const seen = new Set<string>([rotationKey(lines0)])
   const ok: Candidate[] = [base]
   const failures: Record<string, number> = {}

@@ -3,7 +3,7 @@
 // 处理中产生的新事件排到队尾，同一 tick 内处理完；一条事件引出的事件链超过 rules.maxChainDepth 层报错。
 import type { ActionId, ActionKind, DamageTag, EffectName, Element, ResourceKind, Slot } from '../data/common'
 import type { BuffDef, EnemyStateChange, TriggerFilter, TriggerSpec } from '../data/buff.schema'
-import { applyTriggered, bookKey, extendBuff, removeBuff } from './buffs'
+import { applyTriggered, bookKey, extendBuff, ownerName, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { log } from './kernel'
 import { grant } from './resources'
@@ -170,7 +170,7 @@ function consume(sim: Sim, s: SimState, occs: Occurrence[]): void {
     if (c.stacks === 'all' || b.stacks <= c.stacks) removeBuff(s, b, 'removed')
     else {
       b.stacks -= c.stacks                   // 只消耗几层：记一条 buffApply 说明现在的层数
-      log(s, { type: 'buffApply', buff: b.defId, target: b.target === 'enemy' ? 'enemy' : s.chars[b.target].name, stacks: b.stacks, remaining: b.remaining })
+      log(s, { type: 'buffApply', buff: b.defId, owner: ownerName(s, b.owner), target: b.target === 'enemy' ? 'enemy' : s.chars[b.target].name, instanceId: b.id, stacks: b.stacks, remaining: b.remaining })
     }
   }
 }

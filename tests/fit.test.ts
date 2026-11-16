@@ -51,9 +51,34 @@ dataDescribe('录像剖析的贴合度', () => {
 
   test('变体按贴合度从好到差排（跑不通的放最后）；有假设开关的变体', () => {
     const x = fitVariants(r, sc, { n: 4 })
-    const scores = x.rows.flatMap(row => (row.fit ? [row.fit.score] : []))
+    const scores = x.rows.flatMap(row => (row.fit && row.fit.score !== null ? [row.fit.score] : []))
     expect(scores).toEqual([...scores].sort((a, b) => a - b))
     expect(x.rows.some(row => row.desc.startsWith('假设 '))).toBe(true)
     expect(x.candidates).toBeGreaterThan(4)
   }, 30_000) // 多个变体各跑完整仿真；验证排序与假设覆盖，不把默认 5 秒当性能门槛。
+
+  test('C03-15：锚点全部失配且无有效锚点时 assessable 为 false、score 为 null', () => {
+    const f = replayFit(r, simulate(r), { loop: sc.video!.loop, marks: { '9999': '0:01' } })
+    expect(f.assessable).toBe(false)
+    expect(f.score).toBeNull()
+    expect(f.coverage.anchors).toBe(0)
+  })
+
+  test('C03-16：fitVariants 中把所有带锚点的行挪没的变体归入 unassessable、不进 rows 排名', () => {
+    const sc2 = ScenarioSchema.parse({
+      team: sc.team,
+      enemy: sc.enemy,
+      initial: { onField: sc.team.findIndex(m => m.char === '卜灵') },
+      opening: [],
+      rotation: ['卜灵 A1', '卜灵 A1', '卜灵 A1'],
+      options: { repeat: 1 },
+      video: { loop: 1, marks: { '3': '0:02' }, events: ['0:01 卜灵 A1'] },
+    })
+    const r2 = resolveScenario(sc2, r.data)
+    const x = fitVariants(r2, sc2, { n: 60, near: 4 })
+    expect(x.base.assessable).toBe(true)
+    expect(x.unassessable.length).toBeGreaterThan(0)
+    expect(x.unassessable.every(u => u.fit !== null && !u.fit.assessable && u.fit.score === null)).toBe(true)
+    expect(x.rows.every(row => row.fit === null || (row.fit.assessable && row.fit.score !== null))).toBe(true)
+  })
 })
