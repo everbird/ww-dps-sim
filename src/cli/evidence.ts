@@ -18,6 +18,7 @@ import {
   EvidenceError, evidenceFromClosure, judgeClosure, observationsOf, predictClosure, registerClosure, registrationProblems, rerunClosure,
   verifyPredictions, type EvidenceContext,
 } from '../engine/evidence'
+import { hasReading } from '../engine/observations'
 import { PROPOSITIONS, propositionOf, type Proposition } from '../engine/propositions'
 import { conclusionText, evidenceTable, summarizeClosure, VERDICT_LABEL } from '../report/evidence'
 import { EVIDENCE_DIR, readClosure, readIdentities, RUNS_DIR, writeClosure, writeIdentities, type ClosureFile } from './evidence-file'
@@ -92,6 +93,9 @@ async function judge(f: ClosureFile, verify: boolean): Promise<number> {
     for (const l of v.lines) console.log(l)
     if (!v.ok) { console.error(`${f.record.id}：预测已过期，不判；需另开一条记录`); return 1 }
   }
+  // 观测填好之后才判（DD-08 §4.2）：评分观测一条读数都没有时不写（不然会存下一个"未验证"的空结论）
+  const scored = observationsOf(f.record, points).filter(o => o.purpose !== 'given')
+  if (!scored.some(hasReading)) { console.error(`${f.record.id}：观测还没有读数（points.yaml 的 game / gameRange，切人类型的 expect），先读数再 judge`); return 1 }
   const j = judgeClosure(f.record, p, points)
   if (j.conclusion.proposition === 'ambiguous' && !f.record.discriminatingObservationNeeded) {
     console.error(`${f.record.id}：结论是${conclusionText(j.conclusion)}，要先在记录里写 discriminatingObservationNeeded（下一项能区分的观测），再 judge`)

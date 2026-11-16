@@ -231,6 +231,15 @@ export const PROPOSITIONS = [
     ],
     evidence: [legacy('echo-input-priority', 'echo-input-priority')], conclusion: 'unverified',
     impact: { dps: dpsOf('echo-input-priority'), ...UNKNOWN },
+    // DD-08 §7：第一条新闭环 echo-input-priority.2026-11 涉及的字段
+    fieldProvenance: {
+      fieldKey: 'ActionDef.inputPriority（首位声骸动作起手时拿来比的优先级）',
+      rawSources: [
+        { sourceKind: 'xlsx', dataIdentityRef: 'xlsx 20261019（sha256 8b8c9c07…）', locator: '体型通用块 / "召唤声骸"、"变身声骸"组 / 「优先级」列（第 0 帧）', rawValue: 5 },
+        { sourceKind: 'xlsx', dataIdentityRef: 'xlsx 20261019（sha256 8b8c9c07…）', locator: '声骸表 / 各声骸的动作行 / 「优先级」列', rawValue: '多为 0' },
+      ],
+      transform: { curatedSymbol: 'src/engine/resolve.ts（装配首位声骸动作时填 inputPriority = 通用块那组第 0 帧的优先级）；kernel.ts gate 的 echoInput', rationale: '声骸表各行写的是放出来之后的优先级，起手时按通用块的那一行比（TD-04 §6.1，AGENTS 差异 21）；rules.echoInputPriority false 时不用它' },
+    },
   },
   {
     id: 'interference-frames', assumptionId: 'resonance-rules', scope: 'shared',
@@ -369,7 +378,7 @@ export const PROPOSITIONS = [
       { id: 'at-first-hit', label: '末项也随这个动作的第一段命中才给', implemented: false, changes: 'data', binding: { kind: 'unimplemented' } },
     ],
     evidence: [
-      { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-0e455b22b15b1b40', summary: '4 条观测：at-start passed ×4；at-first-hit 没实现', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
+      { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-d14eaf8f7452f6a0', summary: '4 条观测：at-start passed ×4；at-first-hit 没实现', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
     ], conclusion: 'provisional',
     impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },   // 切出者协奏差一点满不满，就是变奏还是普通切人
     fieldProvenance: {
@@ -390,7 +399,7 @@ export const PROPOSITIONS = [
       { id: 'xlsx-three-sentences', label: '按 xlsx 拆成的三句：没有"最多可延长1次"与"成功延长效果时"，每次重击都给全队热熔（2026-10-27 之前的写法）', implemented: false, changes: 'data', binding: { kind: 'unimplemented' } },
     ],
     evidence: [
-      { id: 'yanhen.backfill:fire-tower2:1', supports: [], refutes: [], consistentWith: ['nanoka-text'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '焰痕.破敌#2、焰痕.狼舞的决意·极#2、焰痕.狼舞的决意·极#3（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-2f938e0489637812', summary: '3 条观测：nanoka-text passed ×3；xlsx-three-sentences 没实现', ref: 'docs/evidence/yanhen.backfill.yaml' },
+      { id: 'yanhen.backfill:fire-tower2:1', supports: [], refutes: [], consistentWith: ['nanoka-text'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '焰痕.破敌#2、焰痕.狼舞的决意·极#2、焰痕.狼舞的决意·极#3（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-dd88d9512411945b', summary: '3 条观测：nanoka-text passed ×3；xlsx-three-sentences 没实现', ref: 'docs/evidence/yanhen.backfill.yaml' },
     ], conclusion: 'provisional',
     impact: { dps: 'unknown', threshold: 'none', timingFrames: 0 },   // 只动伤害的乘区
     fieldProvenance: {
@@ -412,10 +421,18 @@ export const PROPOSITIONS = [
       { id: 'later-split', label: '到账更晚：E 的 23 分摊到 E-2 的各次结算、A3 每段只给一次、或没有奇幻变奏放 E 的 +8（2026-10-28 试过，没留开关）', implemented: false, changes: 'mechanism', binding: { kind: 'unimplemented' } },
     ],
     evidence: [
-      { id: 'buling-concerto-timing.backfill:tower3:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中3.切雷主#1、卜灵协奏.中3.切雷主#3、卜灵协奏.中3.切雷主#5、卜灵协奏.中3.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-bf6b7e9239634661', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
-      { id: 'buling-concerto-timing.backfill:tower4:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中4.切雷主#1、卜灵协奏.中4.切雷主#3、卜灵协奏.中4.切雷主#5、卜灵协奏.中4.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-e6dd7ba6206e0884', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
+      { id: 'buling-concerto-timing.backfill:tower3:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中3.切雷主#1、卜灵协奏.中3.切雷主#3、卜灵协奏.中3.切雷主#5、卜灵协奏.中3.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-bc50f77fc8c7c803', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
+      { id: 'buling-concerto-timing.backfill:tower4:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中4.切雷主#1、卜灵协奏.中4.切雷主#3、卜灵协奏.中4.切雷主#5、卜灵协奏.中4.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-8da5159ef206018a', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
     ], conclusion: 'ambiguous',
     impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },
+    fieldProvenance: {
+      fieldKey: '卜灵.协奏（E-前置 23、重击 15、大招-前置 20、QTE 10 是起手即得；普攻、空中攻击逐段）',
+      rawSources: [
+        { sourceKind: 'xlsx', dataIdentityRef: 'xlsx 20261019（sha256 8b8c9c07…）', locator: '角色-女 / A 列块"卜灵" / E 组"E-前置"、重击各组、大招组"大招-前置"、QTE 组、A1–A4 组 / 「协奏回收」列', rawValue: '23、15、20、10（公式末项）；A1 1.67、A2 2.7、A3 1.9 × 3、A4 7.54（逐段）' },
+        { sourceKind: 'nanoka', dataIdentityRef: 'nanoka 3.7', locator: 'characters.卜灵.skills / 共鸣技能"遁影牵雷"、共鸣解放"飞雷诀"、变奏技能"召劾鬼神"、常态攻击"卦起雷动"（重击） / values"回复协奏能量"', rawValue: '23、20、10、15' },
+      ],
+      transform: { buildRule: 'tools/build/parse.py parse_gain：公式末项记为 onAction（起手即得），前面各项是逐段所得', rationale: '起手即得在动作开始时给（TD-01 §3.7）；逐段所得按命中给（rules.concertoTiming onHit，2026-10-03 实测的共享规则）；奇幻变奏 1 精放 E 时另 +8 来自武器效果' },
+    },
   },
 ] as const satisfies readonly Proposition[]
 

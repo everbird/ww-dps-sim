@@ -4,6 +4,18 @@ id: echo-input-priority.2026-11
 propositionId: echo-input-priority
 question: 技能（E）之后马上按声骸，声骸是按通用块的优先级 5 打断 E 的后摇（隔几十帧就出），还是按声骸表各行的优先级等 E 结束或进派生窗口
 kind: experiment
+preRegistration:
+  commit: d4c0221d9cb23bb79b112e3d47e9e2c84169d8fa
+  date: 2026-11-16
+  identities:
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-1801e8db1cc1e7c9
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-580b5d08d29df013
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-5bc529fb98aa2e53
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-94b65c9a7c9be110
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-8db94ee67a3d822a
+    - docs/evidence/runs/echo-input-priority.2026-11.predict.json#run-5826243b82f6335a
+  observationsDigest: ee467856ac4cdd82674f3ffa60d67a9c471b2ed492abae69e58ed5ca30f8aefe
+  predictionsDigest: 11ff5a8348e4d547ce5a6c5dd3e3b42c1a71665aa9a562b820ee46cad907b9b5
 setups:
   - id: 散华EQ
     scenario: evidence/echo-input-priority-散华EQ.yaml
@@ -19,13 +31,13 @@ candidates:
     conditions: 声骸起手时拿通用块"召唤声骸 / 变身声骸"行的优先级 5 与当前动作比（rules.echoInputPriority true）：高于 E 当时的优先级就能打断后摇，照样等 E 的判定出手；E 的冷却、声骸的冷却都好时，按 Q 到声骸起手只隔"等出手"的那几帧
     runs:
       - setupId: 散华EQ
-        runId: run-51cd25e481fd1ad7
+        runId: run-1801e8db1cc1e7c9
         status: completed
       - setupId: 维里奈EQ
-        runId: run-105938db9da5ca6d
+        runId: run-580b5d08d29df013
         status: completed
       - setupId: 椿E1Q
-        runId: run-a465c67f5d1f5a71
+        runId: run-5bc529fb98aa2e53
         status: completed
     predictions:
       - observationId: 声骸起手.散华EQ
@@ -41,13 +53,13 @@ candidates:
     conditions: 声骸起手按声骸表各行的优先级（多为 0，rules.echoInputPriority false）：要等 E 结束或进同级派生窗口才出
     runs:
       - setupId: 散华EQ
-        runId: run-a69eec487412ff0f
+        runId: run-94b65c9a7c9be110
         status: completed
       - setupId: 维里奈EQ
-        runId: run-ed3595f4a66118fa
+        runId: run-8db94ee67a3d822a
         status: completed
       - setupId: 椿E1Q
-        runId: run-994013521e1ac5d0
+        runId: run-5826243b82f6335a
         status: completed
     predictions:
       - observationId: 声骸起手.散华EQ

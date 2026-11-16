@@ -14,7 +14,7 @@ candidates:
     conditions: 散华 E 起手那一帧（动作局部第 0 帧，TD-04 §1 第 9 条、TD-06 §7）协奏 +15，与打没打中无关；适用于资源公式末项是常数的格子（TD-01 §3.7）
     runs:
       - setupId: m0-video-eq
-        runId: run-0e455b22b15b1b40
+        runId: run-d14eaf8f7452f6a0
         status: completed
     predictions:
       - observationId: 散华E.散EQ变奏椿.启动轴
@@ -79,15 +79,6 @@ verdicts:
     overall: notAssessed
     notAssessedReason: unimplemented
     runStatuses: []
-scopeTested: 游戏版本不详（视频 2026-06-18 发布）；椿 0 链 · 散华 6 链（行进序曲 5 阶）· 维里奈 3 链，m0-video-eq.yaml 的配装；只覆盖视频轴里"散EQ→椿"这几次切人
-discriminatingObservationNeeded: 训练场（Evariste 账号）：散华先把协奏攒到差一两格满（入场后打几下 A），按 E 后立刻切人（E 起手后、第 19 帧命中之前），看下一位是不是变奏入场——起手即得则变奏，随第一段命中给则普通切人。录 60 帧，读 E 起手到切人隔几帧（要少于 19 帧才算在命中之前）
-decision:
-  adoptedBefore: at-start
-  adopted: at-start
-  defaultChanged: false
-  note: 回填：沿用现在的读法（起手即得）。结论只是暂定，另一种读法没有开关、现有观测也区分不了，不改缺省。这一项由实现者按现状填写，用户可以改
-reruns: []
-notes: 回填的意义在于把"起手即得"这条读法和它现有的证据关系写清楚：现有的视频材料与它相容，但另一种读法（随第一段命中给）现在没有开关、没有评估，而且这几条观测在两种读法下本来就预测相同。
 conclusion:
   proposition: provisional
   about: at-start
@@ -99,3 +90,12 @@ conclusion:
       - 散华E.散EQ变奏椿.第2轮
       - 散华E.散EQ变奏椿.第3轮
   rule: 5
+scopeTested: 游戏版本不详（视频 2026-06-18 发布）；椿 0 链 · 散华 6 链（行进序曲 5 阶）· 维里奈 3 链，m0-video-eq.yaml 的配装；只覆盖视频轴里"散EQ→椿"这几次切人
+discriminatingObservationNeeded: 训练场（Evariste 账号）：散华先把协奏攒到差一两格满（入场后打几下 A），按 E 后立刻切人（E 起手后、第 19 帧命中之前），看下一位是不是变奏入场——起手即得则变奏，随第一段命中给则普通切人。录 60 帧，读 E 起手到切人隔几帧（要少于 19 帧才算在命中之前）
+decision:
+  adoptedBefore: at-start
+  adopted: at-start
+  defaultChanged: false
+  note: 回填：沿用现在的读法（起手即得）。结论只是暂定，另一种读法没有开关、现有观测也区分不了，不改缺省。这一项由实现者按现状填写，用户可以改
+reruns: []
+notes: 回填的意义在于把"起手即得"这条读法和它现有的证据关系写清楚：现有的视频材料与它相容，但另一种读法（随第一段命中给）现在没有开关、没有评估，而且这几条观测在两种读法下本来就预测相同。

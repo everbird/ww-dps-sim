@@ -17,10 +17,10 @@ candidates:
     conditions: 卜灵的普攻、重击逐段命中时给协奏（rules.concertoTiming onHit，2026-10-03 用户实测的共享规则），E 23、大招 20、变奏 10 的起手即得在动作开始时给；奇幻变奏 1 精放 E 时 +8。段中协奏环读数偏低，归于读环没标定、环的显示与仿真时刻没对齐
     runs:
       - setupId: tower3
-        runId: run-bf6b7e9239634661
+        runId: run-bc50f77fc8c7c803
         status: completed
       - setupId: tower4
-        runId: run-e6dd7ba6206e0884
+        runId: run-8da5159ef206018a
         status: completed
     predictions:
       - observationId: 卜灵协奏.中3.切雷主#1
@@ -60,10 +60,10 @@ candidates:
     conditions: 到账更早：卜灵每个动作的逐段所得在动作起手那一帧一次给全（rules.concertoTimingBy.卜灵 = onCast）；总量不变，动作被取消时也照给
     runs:
       - setupId: tower3
-        runId: run-0ef6c76a7382c399
+        runId: run-30cef6485f338d97
         status: completed
       - setupId: tower4
-        runId: run-2425ff08b38439d8
+        runId: run-7c4fa48939123b76
         status: completed
     predictions:
       - observationId: 卜灵协奏.中3.切雷主#1
@@ -244,307 +244,6 @@ verdicts:
     overall: notAssessed
     notAssessedReason: unimplemented
     runStatuses: []
-scopeTested: 游戏版本 3.7；卜灵 6 链、奇幻变奏 1 精，xin-tower3-video.yaml / xin-tower4-video.yaml 的配装，深塔 41 期中 3、中 4 实战
-discriminatingObservationNeeded: 训练场单放卜灵的一招（E、重击、大招各一次，切到卜灵后协奏从 0 起），60 帧逐帧读协奏环在起手与各段命中前后的变化；同一段录像顺带标定读环的方法（环的显示有没有滞后、心的环为什么稳定高约 5%）。能区分"起手一次给全""随命中逐段给""E 的 23 分摊到 E-2"
-decision:
-  adoptedBefore: as-data
-  adopted: as-data
-  defaultChanged: false
-  note: 回填：分不清时不选赢家（DD-08 §4.1），沿用按数据的到账时机，不改缺省。这一项由实现者按现状填写，用户可以改
-reruns:
-  - scenario: xin-team-r5-卜灵Q先放.yaml
-    before:
-      runId: run-2dbe5e2bb89d6411
-      status: completed
-      dps: 61489.60395806032
-      steadyLoopBattleFrames:
-        - 1716
-        - 1756
-        - 1761
-        - 1749
-        - 1662
-        - 1679
-        - 1749
-        - 1662
-    after:
-      runId: run-2dbe5e2bb89d6411
-      status: completed
-      dps: 61489.60395806032
-      steadyLoopBattleFrames:
-        - 1716
-        - 1756
-        - 1761
-        - 1749
-        - 1662
-        - 1679
-        - 1749
-        - 1662
-    changed: false
-  - scenario: xin-team-r5-心共鸣效率.yaml
-    before:
-      runId: run-b7c6d244b029e47f
-      status: completed
-      dps: 68615.16281232281
-      steadyLoopBattleFrames:
-        - 1510
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-    after:
-      runId: run-b7c6d244b029e47f
-      status: completed
-      dps: 68615.16281232281
-      steadyLoopBattleFrames:
-        - 1510
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-        - 1512
-    changed: false
-  - scenario: xin-team-r5-按套路重排-心补EQ-共鸣效率副词条.yaml
-    before:
-      runId: run-54bcfdaf2d293fbf
-      status: completed
-      dps: 69463.93304969741
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    after:
-      runId: run-54bcfdaf2d293fbf
-      status: completed
-      dps: 69463.93304969741
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    changed: false
-  - scenario: xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml
-    before:
-      runId: run-75618b3243b332be
-      status: completed
-      dps: 69424.71901705484
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    after:
-      runId: run-75618b3243b332be
-      status: completed
-      dps: 69424.71901705484
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    changed: false
-  - scenario: xin-team-r5-按套路重排-心补EQ.yaml
-    before:
-      runId: run-49f2074471f9099d
-      status: completed
-      dps: 69463.93304969741
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    after:
-      runId: run-49f2074471f9099d
-      status: completed
-      dps: 69463.93304969741
-      steadyLoopBattleFrames:
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-        - 1558
-    changed: false
-  - scenario: xin-team-r5-按套路重排-雷主多一次E.yaml
-    before:
-      runId: run-ea8d0485ae3e1f60
-      status: completed
-      dps: 70386.49977468522
-      steadyLoopBattleFrames:
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-    after:
-      runId: run-ea8d0485ae3e1f60
-      status: completed
-      dps: 70386.49977468522
-      steadyLoopBattleFrames:
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-        - 1509
-    changed: false
-  - scenario: xin-team-r5-按套路重排.yaml
-    before:
-      runId: run-14512cb40f9ac8ac
-      status: completed
-      dps: 62874.65697534525
-      steadyLoopBattleFrames:
-        - 1699
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-    after:
-      runId: run-14512cb40f9ac8ac
-      status: completed
-      dps: 62874.65697534525
-      steadyLoopBattleFrames:
-        - 1699
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-        - 1684
-    changed: false
-  - scenario: xin-team-r5-绝息魄.yaml
-    before:
-      runId: run-5810882056274bc4
-      status: completed
-      dps: 61804.54248067617
-      steadyLoopBattleFrames:
-        - 1738
-        - 1778
-        - 1716
-        - 1771
-        - 1684
-        - 1701
-        - 1771
-        - 1684
-    after:
-      runId: run-5810882056274bc4
-      status: completed
-      dps: 61804.54248067617
-      steadyLoopBattleFrames:
-        - 1738
-        - 1778
-        - 1716
-        - 1771
-        - 1684
-        - 1701
-        - 1771
-        - 1684
-    changed: false
-  - scenario: xin-team-r5.yaml
-    before:
-      runId: run-4948f0f54bd08989
-      status: completed
-      dps: 61891.20284331433
-      steadyLoopBattleFrames:
-        - 1738
-        - 1778
-        - 1716
-        - 1771
-        - 1684
-        - 1701
-        - 1771
-        - 1684
-    after:
-      runId: run-4948f0f54bd08989
-      status: completed
-      dps: 61891.20284331433
-      steadyLoopBattleFrames:
-        - 1738
-        - 1778
-        - 1716
-        - 1771
-        - 1684
-        - 1701
-        - 1771
-        - 1684
-    changed: false
-  - scenario: xin-team.yaml
-    before:
-      runId: run-1bf2906feae8d880
-      status: completed
-      dps: 57041.28847872493
-      steadyLoopBattleFrames:
-        - 1755
-        - 1769
-        - 1743
-        - 1709
-        - 1770
-        - 1723
-        - 1816
-        - 1769
-    after:
-      runId: run-1bf2906feae8d880
-      status: completed
-      dps: 57041.28847872493
-      steadyLoopBattleFrames:
-        - 1755
-        - 1769
-        - 1743
-        - 1709
-        - 1770
-        - 1723
-        - 1816
-        - 1769
-    changed: false
-  - scenario: xin-轮椅.yaml
-    before:
-      runId: run-4b96869578919790
-      status: completed
-      dps: 74532.35421032796
-      steadyLoopBattleFrames:
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-    after:
-      runId: run-4b96869578919790
-      status: completed
-      dps: 74532.35421032796
-      steadyLoopBattleFrames:
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-        - 1516
-    changed: false
-notes: 候选未列全（candidatesExhaustive false）。on-cast 是现在唯一能跑的"到账时机不同"的读法，方向与录像的提示（给得偏早）相反；录像提示的更晚的读法（later-split）没有开关，记为未实现。
 conclusion:
   proposition: ambiguous
   about: as-data
@@ -560,3 +259,304 @@ conclusion:
       - 卜灵协奏.中4.切雷主#5
       - 卜灵协奏.中4.切雷主#7
   rule: 3
+scopeTested: 游戏版本 3.7；卜灵 6 链、奇幻变奏 1 精，xin-tower3-video.yaml / xin-tower4-video.yaml 的配装，深塔 41 期中 3、中 4 实战
+discriminatingObservationNeeded: 训练场单放卜灵的一招（E、重击、大招各一次，切到卜灵后协奏从 0 起），60 帧逐帧读协奏环在起手与各段命中前后的变化；同一段录像顺带标定读环的方法（环的显示有没有滞后、心的环为什么稳定高约 5%）。能区分"起手一次给全""随命中逐段给""E 的 23 分摊到 E-2"
+decision:
+  adoptedBefore: as-data
+  adopted: as-data
+  defaultChanged: false
+  note: 回填：分不清时不选赢家（DD-08 §4.1），沿用按数据的到账时机，不改缺省。这一项由实现者按现状填写，用户可以改
+reruns:
+  - scenario: xin-team-r5-卜灵Q先放.yaml
+    before:
+      runId: run-b46c82f77e8f9b70
+      status: completed
+      dps: 61489.60395806032
+      steadyLoopBattleFrames:
+        - 1716
+        - 1756
+        - 1761
+        - 1749
+        - 1662
+        - 1679
+        - 1749
+        - 1662
+    after:
+      runId: run-b46c82f77e8f9b70
+      status: completed
+      dps: 61489.60395806032
+      steadyLoopBattleFrames:
+        - 1716
+        - 1756
+        - 1761
+        - 1749
+        - 1662
+        - 1679
+        - 1749
+        - 1662
+    changed: false
+  - scenario: xin-team-r5-心共鸣效率.yaml
+    before:
+      runId: run-4901c98382d0589a
+      status: completed
+      dps: 68615.16281232281
+      steadyLoopBattleFrames:
+        - 1510
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+    after:
+      runId: run-4901c98382d0589a
+      status: completed
+      dps: 68615.16281232281
+      steadyLoopBattleFrames:
+        - 1510
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ-共鸣效率副词条.yaml
+    before:
+      runId: run-4d152a46e92869f6
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-4d152a46e92869f6
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml
+    before:
+      runId: run-6dd3a153d6bde27d
+      status: completed
+      dps: 69424.71901705484
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-6dd3a153d6bde27d
+      status: completed
+      dps: 69424.71901705484
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ.yaml
+    before:
+      runId: run-3fa589a5d7b655a0
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-3fa589a5d7b655a0
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-雷主多一次E.yaml
+    before:
+      runId: run-190ebeed6f48d60e
+      status: completed
+      dps: 70386.49977468522
+      steadyLoopBattleFrames:
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+    after:
+      runId: run-190ebeed6f48d60e
+      status: completed
+      dps: 70386.49977468522
+      steadyLoopBattleFrames:
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+    changed: false
+  - scenario: xin-team-r5-按套路重排.yaml
+    before:
+      runId: run-f3e4a137ded68d0d
+      status: completed
+      dps: 62874.65697534525
+      steadyLoopBattleFrames:
+        - 1699
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+    after:
+      runId: run-f3e4a137ded68d0d
+      status: completed
+      dps: 62874.65697534525
+      steadyLoopBattleFrames:
+        - 1699
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+    changed: false
+  - scenario: xin-team-r5-绝息魄.yaml
+    before:
+      runId: run-4063eae0649f8f45
+      status: completed
+      dps: 61804.54248067617
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    after:
+      runId: run-4063eae0649f8f45
+      status: completed
+      dps: 61804.54248067617
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    changed: false
+  - scenario: xin-team-r5.yaml
+    before:
+      runId: run-590a1807c07e0a98
+      status: completed
+      dps: 61891.20284331433
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    after:
+      runId: run-590a1807c07e0a98
+      status: completed
+      dps: 61891.20284331433
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    changed: false
+  - scenario: xin-team.yaml
+    before:
+      runId: run-579d19cc215f7df0
+      status: completed
+      dps: 57041.28847872493
+      steadyLoopBattleFrames:
+        - 1755
+        - 1769
+        - 1743
+        - 1709
+        - 1770
+        - 1723
+        - 1816
+        - 1769
+    after:
+      runId: run-579d19cc215f7df0
+      status: completed
+      dps: 57041.28847872493
+      steadyLoopBattleFrames:
+        - 1755
+        - 1769
+        - 1743
+        - 1709
+        - 1770
+        - 1723
+        - 1816
+        - 1769
+    changed: false
+  - scenario: xin-轮椅.yaml
+    before:
+      runId: run-153e46c5e1f7b285
+      status: completed
+      dps: 74532.35421032796
+      steadyLoopBattleFrames:
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+    after:
+      runId: run-153e46c5e1f7b285
+      status: completed
+      dps: 74532.35421032796
+      steadyLoopBattleFrames:
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+    changed: false
+notes: 候选未列全（candidatesExhaustive false）。on-cast 是现在唯一能跑的"到账时机不同"的读法，方向与录像的提示（给得偏早）相反；录像提示的更晚的读法（later-split）没有开关，记为未实现。

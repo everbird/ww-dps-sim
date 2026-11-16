@@ -3,7 +3,7 @@
 // 其余人写的字段与注释原样保留（yaml 的 Document 接口）。同样的内容写出同样的文本：重复运行结果不变（C08-12）。
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { parseDocument, type Document } from 'yaml'
+import { isMap, isScalar, parseDocument, type Document } from 'yaml'
 import { ClosureRecordSchema, type ClosureRecord } from '../data/evidence.schema'
 import type { RunIdentity } from '../engine/run-types'
 import { toWire } from '../engine/wire'
@@ -26,6 +26,12 @@ export function readClosure(path: string): ClosureFile {
   return { path, ...parseClosure(readFileSync(path, 'utf8'), path) }
 }
 
+/** 记录格式里键的顺序（src/data/evidence.schema.ts） */
+const KEY_ORDER = [
+  'id', 'propositionId', 'question', 'kind', 'preRegistration', 'setups', 'candidates', 'criteria', 'observationIds', 'verdicts', 'conclusion',
+  'scopeTested', 'discriminatingObservationNeeded', 'decision', 'reruns', 'notes',
+]
+
 /** 命令负责的字段 */
 export type OwnedFields = Partial<Pick<ClosureRecord, 'candidates' | 'preRegistration' | 'verdicts' | 'conclusion' | 'reruns'>>
 
@@ -42,6 +48,11 @@ export function closureText(doc: Document, fields: OwnedFields): string {
   }
   for (const k of ['preRegistration', 'verdicts', 'conclusion', 'reruns'] as const) {
     if (fields[k] !== undefined) d.set(k, d.createNode(plain(fields[k])))
+  }
+  // 新加的键按记录格式的顺序放（preRegistration 在 kind 后面、conclusion 在 verdicts 后面），注释跟着它所在的键走
+  if (isMap(d.contents)) {
+    const rank = (k: unknown) => { const i = KEY_ORDER.indexOf(String(isScalar(k) ? k.value : k)); return i < 0 ? KEY_ORDER.length : i }
+    d.contents.items.sort((a, b) => rank(a.key) - rank(b.key))
   }
   const text = d.toString({ lineWidth: 0 })
   parseClosure(text)                                     // 写出去的要能读回来、过 schema
