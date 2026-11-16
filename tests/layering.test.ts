@@ -14,11 +14,11 @@ const ANALYSIS = [
   'analysis', 'calibration', 'cards', 'fit', 'fuzz', 'insight', 'matrix', 'optimize', 'plan', 'sample', 'scorecard', 'search', 'sensitivity', 'trace',
   'candidates', 'observations',
 ]
-/** ① 执行核心、①D 查询与诊断、② 台账：架构 §1.1 的 18 个，加 DD-01 新增的 run、run-types、digest。新文件先在这里归层 */
+/** ① 执行核心、①D 查询与诊断、② 台账：架构 §1.1 的 18 个，加 DD-01 新增的 run、run-types、digest，DD-04 新增的 propositions（② 台账）。新文件先在这里归层 */
 const CORE = [
   'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula', 'simulate', 'context', 'num', 'rng',
   'resolve', 'portable', 'types', 'summary', 'invariants', 'assumptions',
-  'run', 'run-types', 'digest', 'basis',
+  'run', 'run-types', 'digest', 'basis', 'propositions',
 ]
 const NODE_ONLY = ['fs', 'path', 'child_process', 'crypto']
 const CONSUMERS = ['../cli/', '../report/', '../../web/']

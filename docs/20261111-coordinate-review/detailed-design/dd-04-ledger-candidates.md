@@ -1,7 +1,7 @@
 # DD-04 规则台账、候选检查、代表轴与第一份有条件结论
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-05、DF-20、DF-24）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**T04-1、T04-2 已实现（2026-11-16）**：用例 C04-1～C04-4 在 `tests/propositions.test.ts`；实现时的决定记在 AGENTS.md"与设计文档的差异"第 53 条。T04-3～T04-10 还没做。
 **阶段**：一（台账的证据部分在 DD-08 接着做）。**前置**：DD-01、DD-02、DD-03 的 §7。**被依赖**：DD-08、阶段一、二的汇合验收。
 
 ## 1. 范围与依据

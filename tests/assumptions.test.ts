@@ -12,9 +12,9 @@ import { simulate } from '../src/engine/simulate'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
-// 记录点：引擎里的 assume()，角色模块里的 ctx.assume()
-const codeOf = (dir: URL, skip = '') => readdirSync(dir).filter(f => f.endsWith('.ts') && f !== skip).map(f => readFileSync(new URL(f, dir), 'utf8'))
-const engineCode = [...codeOf(new URL('../src/engine/', import.meta.url), 'assumptions.ts'), ...codeOf(new URL('../data/curated/characters/', import.meta.url))].join('\n')
+// 记录点：引擎里的 assume()，角色模块里的 ctx.assume()。假设表自己、规则台账（propositions.ts 按 assumptionId 引用假设，DD-04 §3.1）不算
+const codeOf = (dir: URL, skip: readonly string[] = []) => readdirSync(dir).filter(f => f.endsWith('.ts') && !skip.includes(f)).map(f => readFileSync(new URL(f, dir), 'utf8'))
+const engineCode = [...codeOf(new URL('../src/engine/', import.meta.url), ['assumptions.ts', 'propositions.ts']), ...codeOf(new URL('../data/curated/characters/', import.meta.url))].join('\n')
 
 describe('假设登记表', () => {
   test('编号不重复；碰到才记的在引擎或角色模块里有记录点，每次都适用的没有', () => {
