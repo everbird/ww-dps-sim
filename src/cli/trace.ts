@@ -1,5 +1,6 @@
 // src/cli/trace.ts —— pnpm trace <场景.yaml> [--loop k] [--seg] [--res <资源>] [--hits] [--char <角色>] [--md] [--out <文件.md>]
-// 调试用的表（TD-11 §3）：缺省打印第 k 轮的分段与逐条；--seg 只打印分段；--res 协奏 / 能量 / <核心资源名> 打印资源逐步表；
+// 调试用的表（TD-11 §3）：缺省打印第 k 轮的分段与逐条；--seg 只打印分段；--res 协奏 / 能量 / <核心资源名> 打印资源逐步表
+// （带资源账本跑，值取账本，多一列"被截"：到上限、扣到 0 被截掉的量，整次被截掉的请求也列一行，DD-06 §3.5）；
 // --hits 打印面板与逐下伤害（不暴击 / 暴击，对游戏的跳字，TD-11 §2）；--char 只看一个角色。
 // --md 另写一份 Markdown（缺省 out/<场景名>.trace.md），方便贴出来讨论。
 // 轮次缺省取稳态的第一轮（没有稳态时取最后一轮）；启动轴是第 0 轮。仿真报错时照样打印到出错为止。
@@ -27,7 +28,8 @@ const signed2 = (x: number) => (Math.abs(x) < 0.005 ? '±0.00' : `${x > 0 ? '+' 
 export interface TraceOpts { seg?: boolean; res?: string; hits?: boolean; char?: string; marks?: Record<string, string | number> }
 
 /** 要打印的表与说明（对照视频的小结、对不上的时间点）；参数有错时返回错误说明。
- *  资源逐步表的出处按记录下来的事件来源算（DD-05 §3.4）：res 要带 diag: { eventMeta: true } 跑 */
+ *  资源逐步表的出处按记录下来的事件来源算（DD-05 §3.4）：res 要带 diag: { eventMeta: true } 跑；另带 resourceLedger 时
+ *  值取账本、多一列"被截"（DD-06 §3.5），没带时按日志重放、没有这一列 */
 export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: TraceOpts): { tables: Table[]; notes: string[] } | string {
   const log = res.log
   const span = loopSpan(log, loop) as LoopSpan
@@ -57,16 +59,21 @@ export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: 
   if (opts.res) {
     const sel = resourceSel(r, opts.res)
     if (typeof sel === 'string') return sel
-    const rows = traceLedger(log, gainSteps(log, r, metaOf(res)), r, loop, sel, opts.char)
+    const ledger = res.diag?.resourceLedger
+    const rows = traceLedger(log, gainSteps(log, r, metaOf(res), ledger), r, loop, sel, opts.char)
     const shown = rows[0] ? Object.keys(rows[0].values) : []
     if (rows.length === 0) notes.push(`${sel.label}这一轮没有变化`)
+    // 被截：只列一个人时写数，几个人时写"名字 数"；正数是到上限被截掉的，负数是扣到 0 以下被截掉的
+    const clip = (x: (typeof rows)[number]) => Object.entries(x.clipped ?? {}).map(([n, v]) => (shown.length > 1 ? `${n} ${signed(v!)}` : signed(v!))).join('、')
+    const clipHead = ledger ? ['被截'] : []
     out.push({
       title: `${sel.label}逐步`,
-      head: ['世界秒', '战斗秒', '事件', '来源', ...shown],
+      head: ['世界秒', '战斗秒', '事件', '来源', ...shown, ...clipHead],
       rows: rows.map(x => [s2(x.f - span.f), t2(x.t - span.t), x.label, x.source,
-        ...shown.map(n => (x.deltas[n] !== undefined ? `${signed(x.deltas[n]!)} → ${num(x.values[n]!)}` : num(x.values[n]!)))]),
-      right: [true, true, false, false, ...shown.map(() => true)],
+        ...shown.map(n => (x.deltas[n] !== undefined ? `${signed(x.deltas[n]!)} → ${num(x.values[n]!)}` : num(x.values[n]!))), ...(ledger ? [clip(x)] : [])]),
+      right: [true, true, false, false, ...shown.map(() => true), ...clipHead.map(() => true)],
     })
+    if (ledger && rows.some(x => x.clipped)) notes.push('被截：请求了、但到上限（正数）或扣到 0（负数）被截掉的量；变化 ±0 的行是整次被截掉的请求（资源账本，DD-06）')
     return { tables: out, notes }
   }
   const cmds = traceCommands(log, r, loop)
@@ -129,7 +136,8 @@ async function main(): Promise<number> {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
-  const res = simulate(r, { diag: { eventMeta: true } })         // 资源出处按记录下来的事件来源（DD-05 §3.4）
+  // 资源出处按记录下来的事件来源（DD-05 §3.4）；--res 另带资源账本（DD-06 §3.5）
+  const res = simulate(r, { diag: { eventMeta: true, ...(opt.res ? { resourceLedger: true } : {}) } })
   const loops = loopsOf(res.log)
   const loop = opt.loop !== undefined ? Number(opt.loop) : res.summary.steady?.from ?? loops.at(-1) ?? 1
   if (!loops.includes(loop)) { console.error(`没有第 ${opt.loop} 轮（有：${loops.map(k => (k === 0 ? '0（启动）' : k)).join('、')}）`); return 2 }

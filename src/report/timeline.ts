@@ -40,8 +40,9 @@ export function timelineModel(file: string, sc: Scenario, r: ResolvedScenario, r
     }])),
     // 每个动作给的协奏、能量，各从哪来（视图 D 的检查器、动作条的提示）；资源型效果的原文；能量的分配比例（出伤者 / 队友）
     gains: actionGains(steps),
-    // 视图 D 的检查器：光标那一帧每人的能量、协奏与共鸣回路（核心资源，只列有变化的槽）的值，与钩子给的共鸣回路状态说明（同一帧取最后的值）
-    resources: resourceTracks(steps, r),
+    // 视图 D 的检查器：光标那一帧每人的能量、协奏与共鸣回路（核心资源，只列有变化的槽）的值，与钩子给的共鸣回路状态说明（同一帧取最后的值）。
+    // 带了资源账本跑的用账本（DD-06 §3.5），否则按日志重放（每人标 fromLog；两种的逐点值相同）
+    resources: resourceTracks(steps, r, res.diag?.resourceLedger),
     forte: res.forte,
     // 视图 E 的帧画面：技能冷却（"什么时候好"，战斗帧）
     cooldowns: res.cooldowns,

@@ -64,10 +64,16 @@ export function outroTrigger(sim: Sim, s: SimState, slot: Slot, src: EventSource
   const { from } = s.outroLinks[i]!
   s.outroLinks.splice(i, 1)
   const c = s.chars[from]
+  const k = sim.k
   if (c.concerto !== 0) {
     const before = c.concerto
     c.concerto = 0                                                // 清零是"设为 0"，不是"减 100"
     log(s, { type: 'resource', char: c.name, resource: 'concerto', delta: -before, value: 0, cause: 'outro' })
+    // 资源账本（DD-06 §3.2 ②）：不经 add 的第二个写入点；关联到刚写的这条 resource（cause outro）。before 为 0 时不清也不记
+    k.diag?.ledger({
+      f: s.frame, battleFrame: s.battleFrames, slot: from, resource: 'concerto', kind: 'outroReset', causeKind: 'outro', cause: 'outro',
+      before, requestedDelta: -before, actualDelta: -before, clippedDelta: 0, after: 0, cap: sim.r.rules.concertoMax, relatedEventSeq: s.log.length - 1,
+    }, k.at.phase)
   }
   const def = outroOf(sim.r.team[from])
   let tail: TailRuntime | undefined
@@ -78,7 +84,6 @@ export function outroTrigger(sim: Sim, s: SimState, slot: Slot, src: EventSource
     s.tails.push(tail)
   }
   log(s, { type: 'outro', char: c.name, to: s.chars[slot].name, ...(tail ? { instance: tail.instance } : {}) })
-  const k = sim.k
   if (tail) k.diag?.tailCreated(tail.instance, s.log.length - 1, s.frame)   // 延奏的尾部：创建事件是这条 outro（DD-05 §3.3）
   drain(sim, s)
   if (tail) {

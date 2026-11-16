@@ -221,8 +221,8 @@ export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: Si
  *  S[0]（初始化全部做完之后、第 0 帧 P1 之前）与 S[f + 1]（tick 走完 P7 之后、帧数上限检查之前，所以 S[maxFrames] 取得到） */
 export interface BoundaryObserver {
   readonly frames: ReadonlySet<Frame>
-  /** 到了 S[f]：s 是本体，只读；要留就自己拷贝（DD-07 的 viewOf）。返回 'stop' 就在这里停下。ledgerLength：开了账本诊断时这个边界的
-   *  ledgerEndExclusive（DD-06），现在总是 null */
+  /** 到了 S[f]：s 是本体，只读；要留就自己拷贝（DD-07 的 viewOf）。返回 'stop' 就在这里停下。ledgerLength：开了账本诊断（diag.resourceLedger）时
+   *  这个边界的 ledgerEndExclusive（DD-06 §3.3，与 prefix 同一刻取，等于 ledgerPrefixForBoundary(账本, f) 的长度），没开时 null */
   onBoundary(f: Frame, s: SimState, prefix: StatePrefix, ledgerLength: number | null): void | 'stop'
 }
 

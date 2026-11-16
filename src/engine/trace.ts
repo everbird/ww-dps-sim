@@ -1,12 +1,12 @@
 // src/engine/trace.ts —— 调试用的表（TD-11 §3）：分段（每次上场多久）、逐条（每条指令的开始、到下一条多久、之前在等什么）、
 // 资源逐步（某种资源每次怎么变、为什么变），以及对游戏跳字用的面板与逐下伤害（TD-11 §2 的前两层）。都从装配结果与事件日志算，
 // 不改仿真；时刻按本轮开始算，世界帧与战斗秒都给（视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
-import { FLAT_STATS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
+import { FLAT_STATS, RESOURCE_KINDS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
 import { composeStat } from './formula'
 import type { Scenario } from '../data/scenario.schema'
-import type { EventMeta } from './diagnostics'
+import type { EventMeta, ResourceLedgerEntry } from './diagnostics'
 import type { ResolvedScenario, SimEvent, SimResult } from './types'
-import { round, roundTo } from './num'
+import { round, roundTo, snap9 } from './num'
 import { outroOf } from './switch'
 
 /** 第 k 轮：[本轮 loop 事件, 下一轮 loop 事件)；最后一轮到日志里最后一个事件 */
@@ -135,6 +135,7 @@ export interface LedgerRow {
   source: string                             // 命中 / 起手即得 / 扣除 / 角色钩子（说明）/ 破盾回能 / 延奏清零 / 效果 <id>
   deltas: Partial<Record<CharName, number>>  // 这次的变化
   values: Partial<Record<CharName, number>>  // 变化之后的值（列出的角色都给）
+  clipped?: Partial<Record<CharName, number>>   // 被截掉的量（给了账本才有，只列出的角色里不是 0 的；正数是到上限被截，负数是扣到 0 以下被截）
 }
 
 const CAUSE: Record<string, string> = {
@@ -142,7 +143,8 @@ const CAUSE: Record<string, string> = {
 }
 
 /** 从开场按日志重放（同 TD-06 §6.1 的资源曲线：命中的 gains 是实际增减，resource 事件给出变化后的值），列出本轮每次变化。
- *  steps 是这份日志的 gainSteps（出处按记录下来的事件来源，DD-05 §3.4）；一次算好，几张表共用 */
+ *  steps 是这份日志的 gainSteps（出处按记录下来的事件来源，DD-05 §3.4）；一次算好，几张表共用。
+ *  gainSteps 给了账本时（DD-06 §3.5），值取账本的 after，另列被截掉的量（clipped），整次被截掉的请求也有一行（变化 ±0） */
 export function traceLedger(
   log: readonly SimEvent[], steps: readonly GainStep[], r: ResolvedScenario, loop: number, sel: ResourceSel, only?: CharName,
 ): LedgerRow[] {
@@ -159,10 +161,15 @@ export function traceLedger(
   for (const g of steps) {
     if (g.f >= span.endF) break
     if (g.resource !== kind || (core && !(names[core.slot]! in g.deltas))) continue
-    for (const [n, v] of Object.entries(g.deltas)) val[slotOf.get(n)!] = g.value ?? val[slotOf.get(n)!]! + v!
+    // 按日志累加时同引擎一样每步取整到 1e-9（num.ts 的 snap9），否则浮点误差在两位小数的 .xx5 边界上会舍错（DD-06 §9）
+    for (const [n, v] of Object.entries(g.deltas)) val[slotOf.get(n)!] = g.values?.[n] ?? g.value ?? snap9(val[slotOf.get(n)!]! + v!)
     if (g.f < span.f || !Object.keys(g.deltas).some(n => shown.includes(n))) continue
     const source = g.how === 'effect' ? `效果 ${g.what}` : g.how === 'hook' && g.what ? `角色钩子：${g.what}` : CAUSE[g.how]!
-    out.push({ f: g.f, t: g.t, label: g.label, source, deltas: g.deltas, values: Object.fromEntries(shown.map(n => [n, val[slotOf.get(n)!]!])) })
+    const clipped = Object.entries(g.clipped ?? {}).filter(([n]) => shown.includes(n))
+    out.push({
+      f: g.f, t: g.t, label: g.label, source, deltas: g.deltas, values: Object.fromEntries(shown.map(n => [n, val[slotOf.get(n)!]!])),
+      ...(clipped.length ? { clipped: Object.fromEntries(clipped) } : {}),
+    })
   }
   return out
 }
@@ -171,28 +178,43 @@ export function traceLedger(
  *  只在值变了的帧记；cap 是上限（能量 = 大招耗能，协奏 = concertoMax，核心资源 = 上限），没有时为 null */
 export interface ResourceTrack { key: ResourceKind; name: string; cap: number | null; steps: [number, number][] }
 
-/** 每人的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）逐帧值：从开局值出发按资源变化逐步重放（gainSteps 或只要数值的 resourceSteps，
- *  同 traceLedger），值取两位小数 */
-export function resourceTracks(steps: readonly ResourceStep[], r: ResolvedScenario): { char: CharName; tracks: ResourceTrack[] }[] {
+/** 一个人的资源轨道。fromLog：没给账本、是按日志重放出来的（DD-06 §3.5）；由账本生成时没有这一项 */
+export interface CharResourceTracks { char: CharName; tracks: ResourceTrack[]; fromLog?: true }
+
+/** 每人的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）逐帧值，值取两位小数。
+ *  给了账本（diag.resourceLedger，DD-06 §3.5）就直接由账本生成：每条的 f 与 after，steps 不用；
+ *  没给时从开局值出发按资源变化逐步重放（gainSteps 或只要数值的 resourceSteps，同 traceLedger），每人标 fromLog */
+export function resourceTracks(steps: readonly ResourceStep[], r: ResolvedScenario, ledger?: readonly ResourceLedgerEntry[]): CharResourceTracks[] {
   const slotOf = new Map(r.team.map(m => [m.def.name, m.slot]))
   const all = r.team.map(m => [
     { key: 'energy' as ResourceKind, name: '能量', cap: m.def.energyCost ?? null, v: r.initial.energy[m.slot] },
     { key: 'concerto' as ResourceKind, name: '协奏', cap: r.rules.concertoMax, v: r.initial.concerto[m.slot] },
     ...m.def.coreResources.map(c => ({ key: `core${c.slot}` as ResourceKind, name: c.name, cap: c.cap ?? null, v: r.initial.core[m.slot]![c.slot - 1] ?? 0 })),
   ].map(t => ({ ...t, steps: [[0, roundTo(t.v, 100)]] as [number, number][] })))
-  for (const g of steps) {
-    for (const [n, d] of Object.entries(g.deltas)) {
-      const t = all[slotOf.get(n)!]!.find(x => x.key === g.resource)
-      if (!t) continue
-      t.v = g.value ?? t.v + d!
-      const last = t.steps[t.steps.length - 1]!, v = roundTo(t.v, 100)
-      if (last[0] === g.f) last[1] = v                       // 同一帧几次变化，只留最后的值
-      else if (v !== last[1]) t.steps.push([g.f, v])
+  type Track = (typeof all)[number][number]
+  const put = (t: Track, f: number, value: number) => {
+    t.v = value
+    const last = t.steps[t.steps.length - 1]!, v = roundTo(value, 100)
+    if (last[0] === f) last[1] = v                           // 同一帧几次变化，只留最后的值
+    else if (v !== last[1]) t.steps.push([f, v])
+  }
+  if (ledger) {
+    for (const e of ledger) {
+      const t = all[e.slot]?.find(x => x.key === e.resource)
+      if (t) put(t, e.f, e.after)                            // 期初条目在帧 0，就是开局值
+    }
+  } else {
+    for (const g of steps) {
+      for (const [n, d] of Object.entries(g.deltas)) {
+        const t = all[slotOf.get(n)!]!.find(x => x.key === g.resource)
+        if (t) put(t, g.f, g.value ?? snap9(t.v + d!))           // 同引擎每步取整到 1e-9，与账本的 after 逐位相同
+      }
     }
   }
   return r.team.map(m => ({
     char: m.def.name,
     tracks: all[m.slot]!.filter(t => !t.key.startsWith('core') || t.steps.length > 1).map(({ key, name, cap, steps }) => ({ key, name, cap, steps })),
+    ...(ledger ? {} : { fromLog: true as const }),
   }))
 }
 
@@ -209,8 +231,10 @@ export type GainHow = 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'o
 export interface ResourceStep {
   f: number
   resource: ResourceKind
-  deltas: Partial<Record<CharName, number>>  // 实际变化（满了就不再加）
+  deltas: Partial<Record<CharName, number>>  // 实际变化（满了就不再加；给了账本时整次被截掉的人记 0）
   value?: number                             // resource 事件：变化之后的值
+  values?: Partial<Record<CharName, number>> // 给了账本：每人变化之后的值（账本的 after，DD-06 §3.5）
+  clipped?: Partial<Record<CharName, number>>   // 给了账本：被截掉的量，只列不是 0 的（正数到上限被截，负数扣到 0 以下被截）
 }
 
 export interface GainStep extends ResourceStep {
@@ -268,8 +292,8 @@ export function resourceSteps(log: readonly SimEvent[]): ResourceStep[] {
  *    （"散华.冰棱 到时""丁 Q 开始""椿 盛绽·A3 命中"），note 是钩子附的说明。
  *  同帧几个 buff 一起到时、队列交错（E1、E2 先后入队，E1 引出的事件写在 E2 之后）都按各自记下的父事件归，不串到最后一个头上 */
 function walkCauses(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[], visit: {
-  hit(e: HitEvent, owner: GainOwner | null, trigger: HitTrigger | null, origin: HitOrigin | null): void
-  resource(e: ResourceEvent, how: GainHow, owner: GainOwner | null, label: string): void
+  hit(e: HitEvent, owner: GainOwner | null, trigger: HitTrigger | null, origin: HitOrigin | null, seq: number): void
+  resource(e: ResourceEvent, how: GainHow, owner: GainOwner | null, label: string, seq: number): void
 }): void {
   if (meta.length !== log.length) throw new Error(`事件来源 ${meta.length} 条，日志 ${log.length} 条，对不上（DD-05 §3.2）`)
   const members = new Map(r.team.map(m => [m.def.name, m]))
@@ -352,45 +376,97 @@ function walkCauses(log: readonly SimEvent[], r: ResolvedScenario, meta: readonl
         const fromCause = e.effect ? mine(cause(anchorOf(i)).owner, e.char) : null
         const owner = fromSpawn ?? fromCause ?? latest.get(`${e.char}|${e.action}`) ?? last.get(e.char) ?? null
         hitOwner.set(i, owner)
-        visit.hit(e, owner, triggers.get(e.id) ?? null, origins.get(e.id) ?? null)
+        visit.hit(e, owner, triggers.get(e.id) ?? null, origins.get(e.id) ?? null, i)
         break
       }
       case 'resource': {
         const how = (CAUSES.has(e.cause) ? e.cause : 'effect') as GainHow
-        if (how === 'outro') { visit.resource(e, how, null, `${e.char} 延奏`); break }
+        if (how === 'outro') { visit.resource(e, how, null, `${e.char} 延奏`, i); break }
         const c = cause(anchorOf(i))
         if (how === 'cast' || how === 'cost') {
           const own = mine(c.owner, e.char) ?? last.get(e.char) ?? null
-          visit.resource(e, how, own, own ? startedText(own) : c.label || e.char)
-        } else visit.resource(e, how, c.owner, c.label || e.char)
+          visit.resource(e, how, own, own ? startedText(own) : c.label || e.char, i)
+        } else visit.resource(e, how, c.owner, c.label || e.char, i)
         break
       }
     }
   }
 }
 
-/** 资源变化逐步，每步归到引起它的动作（规则见 walkCauses）；meta 是这份日志的事件来源（metaOf(res)） */
-export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[]): GainStep[] {
+/** 资源变化逐步，每步归到引起它的动作（规则见 walkCauses）；meta 是这份日志的事件来源（metaOf(res)）。
+ *  给了账本（diag.resourceLedger，DD-06 §3.5）：每步的增减、变化之后的值（values）、被截掉的量（clipped）取关联到这条事件的账本条目，
+ *  整次被截掉的人增减记 0（命中时满了的人，日志的 gains 里不列）；实际变化为 0、没有写事件的单人写入（满了的钩子、效果…）另起一步，
+ *  排在它之前最近一条有事件的条目的那一步后面，不归动作。没给账本时只按日志，没有 values / clipped */
+export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[], ledger?: readonly ResourceLedgerEntry[]): GainStep[] {
   const members = new Map(r.team.map(m => [m.def.name, m]))
+  const names = r.team.map(m => m.def.name)
+  const byEvent = new Map<number, ResourceLedgerEntry[]>()
+  const loose: { anchor: number; e: ResourceLedgerEntry }[] = []      // 没有事件的写入：anchor = 它之前最近一条有事件的条目的事件
+  let anchor = -1
+  for (const e of ledger ?? []) {
+    if (e.relatedEventSeq !== undefined) {
+      anchor = e.relatedEventSeq
+      let list = byEvent.get(anchor)
+      if (!list) byEvent.set(anchor, (list = []))
+      list.push(e)
+    } else if (e.kind === 'change') loose.push({ anchor, e })
+  }
+  const fromLedger = (es: readonly ResourceLedgerEntry[]) => ({
+    deltas: Object.fromEntries(es.map(x => [names[x.slot]!, x.actualDelta])),
+    values: Object.fromEntries(es.map(x => [names[x.slot]!, x.after])),
+    ...(es.some(x => x.clippedDelta !== 0) ? { clipped: Object.fromEntries(es.filter(x => x.clippedDelta !== 0).map(x => [names[x.slot]!, x.clippedDelta])) } : {}),
+  })
   const out: GainStep[] = []
+  const seqs: number[] = []                                           // out[i] 是哪条事件的
   walkCauses(log, r, meta, {
-    hit(e, owner, _trigger, origin) {
+    hit(e, owner, _trigger, origin, seq) {
       const of = owner && owner.action !== e.action ? { of: e.action } : {}
       const why = origin ? { ...(origin.note ? { note: origin.note } : {}), ...(origin.via ? { via: origin.via } : {}) } : {}
       const g = members.get(e.char)?.actions[e.action]?.judgments.find(j => j.name === e.judgment)?.gains
       const c = origin ? causeText(origin.note, origin.via) : ''
       const label = `${e.char} ${e.action} 命中（${e.judgment}${c ? `；${c}` : ''}）`
-      for (const d of hitDeltas(e)) {
+      const es = byEvent.get(seq)
+      const parts = es && es.length > 0
+        ? RESOURCE_KINDS.flatMap(res => {
+          const x = es.filter(y => y.resource === res)
+          return x.length ? [{ resource: res, ...fromLedger(x), ...(res.startsWith('core') ? { k: Number(res.slice(4)) - 1 } : {}) }] : []
+        })
+        : hitDeltas(e)
+      for (const d of parts) {
         const base = d.resource === 'energy' ? g?.energy : d.resource === 'concerto' ? g?.concerto : g?.core[d.k!]
-        out.push({ f: e.f, t: e.t, resource: d.resource, deltas: d.deltas, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, ...why, label, owner })
+        const { k: _k, ...step } = d
+        out.push({ f: e.f, t: e.t, ...step, how: 'hit', what: e.judgment, ...(base !== undefined ? { base } : {}), ...of, ...why, label, owner })
+        seqs.push(seq)
       }
     },
-    resource(e, how, owner, label) {
+    resource(e, how, owner, label, seq) {
       const what = how === 'effect' ? e.cause : how === 'hook' ? e.note ?? '' : ''
-      out.push({ f: e.f, t: e.t, resource: e.resource, deltas: { [e.char]: e.delta }, value: e.value, how, what, label, owner })
+      const x = byEvent.get(seq)?.filter(y => y.resource === e.resource && names[y.slot] === e.char) ?? []
+      const { deltas: _d, ...extra } = x.length ? fromLedger(x) : { deltas: {} }   // 增减照事件；账本给变化之后的值与被截的量
+      out.push({ f: e.f, t: e.t, resource: e.resource, deltas: { [e.char]: e.delta }, value: e.value, ...extra, how, what, label, owner })
+      seqs.push(seq)
     },
   })
-  return out
+  if (loose.length === 0) return out
+  // 没有事件的写入：插在那条事件的各步之后、下一条事件之前（账本与日志同序：条目都在自己的事件写出之前、前一条事件之后记）
+  const merged: GainStep[] = []
+  let j = 0
+  const flush = (upTo: number) => { while (j < loose.length && loose[j]!.anchor < upTo) merged.push(looseStep(loose[j++]!.e, names)) }
+  out.forEach((g, i) => { flush(seqs[i]!); merged.push(g) })
+  flush(Infinity)
+  return merged
+}
+
+/** 没有事件的一次写入（实际变化为 0，只在账本里，DD06-Q4）写成一步：来源按 causeKind，不归动作 */
+function looseStep(e: ResourceLedgerEntry, names: readonly CharName[]): GainStep {
+  const name = names[e.slot]!
+  const how: GainHow = CAUSES.has(e.causeKind) ? e.causeKind as GainHow : e.causeKind === 'hit' ? 'hit' : 'effect'
+  const what = how === 'effect' ? e.cause : how === 'hook' ? e.cause.replace(/^hook(：)?/, '') : ''
+  return {
+    f: e.f, t: e.battleFrame / 60, resource: e.resource, deltas: { [name]: e.actualDelta }, value: e.after, values: { [name]: e.after },
+    ...(e.clippedDelta !== 0 ? { clipped: { [name]: e.clippedDelta } } : {}),
+    how, what, label: `（${e.clippedDelta > 0 ? '已满' : '已空'}，没有事件，只在账本里）`, owner: null,
+  }
 }
 
 /** 触发钩子生成这个判定的那次命中：维里奈的协同攻击由谁的命中触发（可能是队友的） */

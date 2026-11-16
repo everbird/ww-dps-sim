@@ -1,7 +1,10 @@
 // src/engine/fuzz.ts —— 模糊测试（docs/engine-quality-plan.md P1）：拿轴搜索的改法（挪动、去掉、对调）生成变体轴，
 // 每条跑完查日志自洽（invariants.ts checkLog）；原轴另查两条变形关系：同样的输入两次结果相同、各项属性加一点伤害不降（时间轴不变）。
-// 跑不通（连段中断、等超时…）是轴的问题，不算；抛异常、invariant 报错、日志不自洽才是引擎的问题
+// 跑不通（连段中断、等超时…）是轴的问题，不算；抛异常、invariant 报错、日志不自洽才是引擎的问题。
+// 带账本（ledger，pnpm fuzz --ledger，DD-06 §3.6、T06-4）：每条轴都开资源账本跑，另查终态闭合、相邻条目不变式、账本与日志的交叉检查
+import { checkLedgerClosure, crossCheckLedger } from './diagnostics'
 import { checkLog } from './invariants'
+import { prepareResolved, runForInspection } from './run'
 import { neighborIter, parseLines, lineText, type Change, type Line } from './search'
 import { compileRotation, type CompileMember } from './scheduler'
 import { simulate } from './simulate'
@@ -17,13 +20,38 @@ export interface FuzzReport {
   problems: FuzzProblem[]
 }
 
-/** n：最多跑几条变体（从全部候选里等距取，结果可重复） */
-export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], opening: readonly string[], n = 60): FuzzReport {
+export interface FuzzOptions {
+  /** 每条轴带资源账本跑，查终态闭合、相邻条目不变式、与日志的交叉检查（DD-06 §3.6） */
+  readonly ledger?: boolean
+}
+
+/** 带账本跑一条轴，返回结果与账本的问题（DD-06 §3.6）：终态闭合（用 ledgerMarks.terminalEndExclusive，初始化没走完的不做）、
+ *  相邻条目不变式（闭合检查里一起查）、账本与日志的交叉检查。引擎与钩子里的异常记在 completion 里（不抛），由调用方当引擎错误算 */
+export function ledgerRun(rr: ResolvedScenario): { res: SimResult; problems: string[] } {
+  const x = runForInspection(prepareResolved(rr), { diag: { resourceLedger: true } })
+  const res = x.result!                                           // 没有观察点，不会停在中途
+  const ledger = res.diag?.resourceLedger, marks = res.diag?.ledgerMarks
+  if (!ledger || !marks) return { res, problems: ['带账本跑，结果里却没有账本'] }
+  const problems: string[] = []
+  if (res.completion.coverage.terminal.kind !== 'initIncomplete')
+    for (const m of checkLedgerClosure(ledger, marks.terminalEndExclusive, x.terminal)) problems.push(`账本闭合：${m.message}`)
+  for (const w of crossCheckLedger(res.log, ledger, x.terminal.chars.map(c => c.name))) problems.push(`账本与日志：${w}`)
+  return { res, problems }
+}
+
+/** n：最多跑几条变体（从全部候选里等距取，结果可重复）；opts.ledger：每条轴带账本跑并查账本（DD-06 T06-4） */
+export function fuzzScenario(r: ResolvedScenario, rotation: readonly string[], opening: readonly string[], n = 60, opts: FuzzOptions = {}): FuzzReport {
   const problems: FuzzProblem[] = []
   let engineErrors = 0
   const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
   const has = (char: string, action: string) => !!members.find(x => x.name === char && (action in x.actions || action in x.aliases))
   const run = (rr: ResolvedScenario, where: string): SimResult | null => {
+    if (opts.ledger) {
+      // 引擎与钩子里的异常在这条路上不抛，记成 completion.status === 'engineError'，由 audit 当引擎错误算
+      const { res, problems: bad } = ledgerRun(rr)
+      for (const what of bad) problems.push({ where, what })
+      return res
+    }
     try { return simulate(rr) } catch (e) {
       engineErrors++
       problems.push({ where, what: `抛异常：${e instanceof Error ? e.message : String(e)}` })

@@ -17,7 +17,7 @@ import {
 import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
-import { canAfford, castGainAt, castResources, grant, payCost, settleGains } from './resources'
+import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains } from './resources'
 import { prepareResolved, runWithFailure, type BoundaryObserver } from './run'
 import type { InterventionRecord, StatePrefix, TickPhase } from './run-types'
 import type { HookRulePointId } from './rule-points'
@@ -163,7 +163,10 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     onIntentUnmet: (st, d) => {
       const continued = opts.continueAfterIntentUnmet ?? false
       sim.unmetIntents.push({ ...d, worldFrame: st.frame, continued })
-      if (continued) sim.continuationFrom ??= { worldFrame: st.frame, prefix: { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length } }
+      if (continued && !sim.continuationFrom) {
+        sim.continuationFrom = { worldFrame: st.frame, prefix: { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length } }
+        k.diag?.markContinuation()                                // 账本的续跑上界（DD-06 §3.2 ⑤）：与 diagnosticContinuationFrom 同一刻取
+      }
       return continued ? 'continue' : 'fail'
     },
     // 操作延迟：期望模式是固定的 options.inputDelay（卡帧点另给某几条加 inputDelayAt）；抽样模式另加 [0, jitter] 帧的抖动（调度器里唯一的随机注入点）
@@ -187,7 +190,9 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       const before = st.chars[slot].energy, adopted = r.team[slot]!.def.energyCost
       intervene(sim, st, { kind: 'fill', target: { slot, resource: 'energy' }, before, adopted, delta: adopted - before })
       assume(st, 'forced-energy', `${st.chars[slot].name} 第 ${st.frame} 帧`)
+      const mark = k.diag?.ledgerMark()
       grant(sim, st, slot, 'energy', adopted - before, 'forced')
+      if (mark !== undefined) k.diag!.ledgerRelateIntervention(mark, sim.interventions.length - 1)   // 账本：这条写入是哪条干预引起的
     },
     // 目标失谐：前台角色在下一条指令之前放自己的谐度破坏（options.tuneBreak = auto，TD-06 §13.4）
     // 规则使用（DD-05 §4.1）：每次问都读 options.tuneBreak；插入了一次自动谐度破坏才算决定了分支（不为换个读法多调钩子）
@@ -210,9 +215,11 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
   const boundary = observer && ((st: SimState): 'stop' | void => {
     if (!observer.frames.has(st.frame)) return
     const prefix: StatePrefix = { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length }
-    try { return observer.onBoundary(st.frame, st, prefix, null) } catch (e) { throw new ObserverThrow(e) }
+    // ledgerLength：这个边界的账本上界（DD-06 §3.3），与 prefix 同一刻取；没开账本时 null
+    try { return observer.onBoundary(st.frame, st, prefix, k.diag?.ledgerLength() ?? null) } catch (e) { throw new ObserverThrow(e) }
   })
   try {
+    openingLedger(sim, s)                                         // 资源账本的期初（DD-06 §3.2 ③）：挂常驻 buff 之前；诊断关着时什么都不做
     // 初始化的两个来源（DD-05 §3.2）：挂常驻 buff；每个角色的 onResolve
     const ab = k.diag?.open({ kind: 'init', sourceId: 'alwaysBuffs' }, s.log.length)
     for (const reg of r.buffs) {                                 // 常驻 buff 开场即有（总设计 §3.3 第 3 步）
@@ -330,12 +337,14 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
   }
+  const mark = sim.k.diag?.ledgerMark()                           // 资源账本（DD-06 §3.2 ④）：这次结算的条目写完 hit 后关联到它
   const { gains, full } = settleGains(sim, s, j, draft.selfEnergyScale)
   const hitIndex = s.log.length
   log(s, {
     type: 'hit', char: m.def.name, action: j.action, judgment: d.name, id: j.id, tick: n,
     element: draft.element, tags: draft.tags, dmg, ...(factors ? { factors } : {}), buffs: used, gains,
   })
+  if (mark !== undefined) sim.k.diag!.ledgerRelate(mark, hitIndex)   // 直接关联到 hitIndex：hit 后面还可能紧跟 resourceFull 与 heal（DF-07）
   if (rec) sim.onHit!({ ...rec, index: hitIndex })
   const link = sim.bus.spawned.get(j.id)                           // 钩子生成的判定：结算接在生成它的那条事件链上
   if (link) sim.bus.chain.set(s.log.length - 1, link)
