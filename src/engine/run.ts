@@ -16,7 +16,7 @@ import {
 } from './run-types'
 import { checkStrictSource, checkStrictResolved, STRICT_CHECKS } from './strict'
 import { INTENT_WAITS, ScheduleError, type ScheduleErrorCode } from './scheduler'
-import { execute, type Execution } from './simulate'
+import { execute, type Execution, type Inspect } from './simulate'
 import { battleFrameOf, summarize, windowEnd } from './summary'
 import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, SimState, Summary } from './types'
 
@@ -226,9 +226,10 @@ export interface BoundaryObserver {
   onBoundary(f: Frame, s: SimState, prefix: StatePrefix, ledgerLength: number | null): void | 'stop'
 }
 
-/** runForInspection 的选项：RunOptions 之外加边界观察点；sink 是测试用的，换一个收集器（零干扰的反向用例，DD-05 §6.2），给了就用它 */
+/** runForInspection 的选项：RunOptions 之外加边界观察点与求值检查点；sink 是测试用的，换一个收集器（零干扰的反向用例，DD-05 §6.2），给了就用它 */
 export interface InspectOptions extends RunOptions {
   readonly observer?: BoundaryObserver
+  readonly afterEvaluate?: Inspect['afterEvaluate']
   readonly sink?: (s: Readonly<SimState>) => DiagSink
 }
 
@@ -244,6 +245,15 @@ export function runForInspection(p: PreparedRun, opts: InspectOptions = {}): {
   return { result: res, stoppedAt: x.stoppedAt, terminal: x.s, busCursor: x.sim.bus.cursor }
 }
 
+/** 内部入口（DD-07 §3.2）：供 query.ts 的 replayTo 使用，交出完整运行体（含 sim、diag）与结果 */
+export function runToExecution(p: PreparedRun, opts: InspectOptions = {}): {
+  readonly x: Execution
+  readonly result: SimResult | null
+} {
+  const { x, res } = runCore(p, opts)
+  return { x, result: res }
+}
+
 function runCore(p: PreparedRun, opts: InspectOptions): { x: Execution; res: SimResult | null; uncaught: { error: unknown } | null } {
   const r = p.resolved
   const diag = opts.diag
@@ -251,7 +261,7 @@ function runCore(p: PreparedRun, opts: InspectOptions): { x: Execution; res: Sim
   const x = execute(
     r,
     { continueAfterIntentUnmet: p.effective.continueAfterIntentUnmet, ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) },
-    { ...(sink ? { sink } : {}), ...(opts.observer ? { observer: opts.observer } : {}) },
+    { ...(sink ? { sink } : {}), ...(opts.observer ? { observer: opts.observer } : {}), ...(opts.afterEvaluate ? { afterEvaluate: opts.afterEvaluate } : {}) },
   )
   if (x.stoppedAt !== null) return { x, res: null, uncaught: null }
   x.k.diag?.finish(x.s.log, x.k.at.phase)

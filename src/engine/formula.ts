@@ -209,8 +209,9 @@ export function computeHeal(ctx: HealContext, acc: ZoneAccumulator): number {
 // ---------------------------------------------------------------------------
 // §4 收集：哪些 buff 进这一次结算、怎么累加
 
-/** 对本次结算有效的 buff 实例（引擎已按作用对象筛过：挂在出伤者身上，或挂在目标身上） */
-export interface ActiveBuff { def: BuffDef; value: number; stacks: number; owner: Slot | 'env' }
+/** 对本次结算有效的 buff 实例（引擎已按作用对象筛过：挂在出伤者身上，或挂在目标身上）。
+ *  instanceId / remaining 供事件解释绑定具体实例（DD-07 §7），公式不读它们 */
+export interface ActiveBuff { def: BuffDef; value: number; stacks: number; owner: Slot | 'env'; instanceId?: number; remaining?: number | 'inf' }
 
 /** 过滤条件要看的信息 */
 export interface HitView {

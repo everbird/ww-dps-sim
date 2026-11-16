@@ -5,16 +5,17 @@
 import { EFFECT_NAMES, type ActionId, type DamageTag, type EffectName, type Slot } from '../data/common'
 import { forteKept, type ActionDef, type JudgmentDef, type Rules } from '../data/gamedata'
 import type { CharName, Frame } from '../data/common'
+import type { Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
 import { roundTo } from './num'
 import { nextFloat, nextInt, nextNormal, seedRng } from './rng'
 import { activeFor, applyBuff, applyTriggered, bookKey, makeBook, removeBuff, targetsOf, tickBuffs } from './buffs'
 import { newBus, type HitRecord, type Sim, type SimOptions } from './context'
-import { ProbeStop, RuleCounter, type DiagSink } from './diagnostics'
+import { ProbeStop, RuleCounter, type ActiveBuffContribution, type CommandVerdict, type DiagSink } from './diagnostics'
 import {
   applyEffect, applyShift, canTuneBreak, forceDisharmony, freshEnemy, swapEnemy, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
-import { accumulate, computeHit, computeTuneBreak, hitView, matchesFilter, tuneBase } from './formula'
+import { accumulate, computeHit, computeTuneBreak, contributes, hitView, matchesFilter, tuneBase } from './formula'
 import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains } from './resources'
@@ -25,7 +26,7 @@ import { createScheduler, newQueue, runLoop } from './scheduler'
 import { selectIntro, onSwitch, outroTrigger } from './switch'
 import { drain } from './triggers'
 import type {
-  CharRuntime, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
+  CharRuntime, CommandRef, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
 
 /** 兼容外壳（DD-01 §3.7）：还拿着 ResolvedScenario 的调用方用。行为同改之前：调度错误（等不来、超时、帧数上限、连锁过深、
@@ -54,13 +55,16 @@ export interface Execution {
   failure: { error: unknown } | null        // 抛出来的东西（调度错误或别的异常）；没抛错为 null
   /** 边界观察点要求停下时停在哪个 S[f]（DD-05 §6.1）：这时不是一次运行的结果，没有完成状态；否则为 null */
   stoppedAt: Frame | null
+  /** 检查点停在第几次真实求值之后（DD-07 §4.4）；没停在求值检查点时为 null */
+  stoppedAtEvaluation: number | null
   ruleCounter: RuleCounter                  // Kernel.rule 的实现：运行结束时汇总成 ruleUsage（DD-05 §4.2）
 }
 
-/** 运行体的观察项（DD-05 §6.1）：都不进运行身份，也不改执行。sink：建诊断收集器（诊断全关时不给）；observer：边界观察点 */
+/** 运行体的观察项（DD-05 §6.1；DD-07 §4.4）：都不进运行身份，也不改执行 */
 export interface Inspect {
   readonly sink?: (s: Readonly<SimState>) => DiagSink
   readonly observer?: BoundaryObserver
+  readonly afterEvaluate?: (s: SimState, c: Command, ref: CommandRef, verdict: NonNullable<CommandVerdict['verdict']>, evaluationIndex: number) => void | 'stop'
 }
 
 /** 观察回调（onHit）自己抛的异常：不算这次运行的状态，execute 接住后把原异常抛给调用方（DD-01 §3.4；总览 §6 的 S-04） */
@@ -84,6 +88,7 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     at,
     diag,
     rule: ruleCounter,
+    settleQueue: null,
     hooks: {
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
@@ -207,8 +212,14 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       k.rule.note('sched.interject.tuneBreak', r.options.tuneBreak, def !== undefined)
       return def ? { slot, def, why: '谐度破坏' } : null
     },
+    ...(inspect.afterEvaluate ? {
+      afterEvaluate: (st, c, ref, verdict, evaluationIndex) => {
+        try { return inspect.afterEvaluate!(st, c, ref, verdict, evaluationIndex) }
+        catch (err) { throw new ObserverThrow(err) }
+      },
+    } : {}),
   })
-  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null, stoppedAt: null, ruleCounter }
+  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null, stoppedAt: null, stoppedAtEvaluation: null, ruleCounter }
   // 边界观察点（DD-05 §6.1）：S[0] 在初始化做完之后、第 0 帧 P1 之前；S[f + 1] 在 tick 走完 P7 之后、帧数上限检查之前（runLoop 的 afterTick）。
   // 回调只读收到的状态；它自己抛的异常原样抛给调用方（同 onHit）
   const observer = inspect.observer
@@ -244,8 +255,8 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     x.postDrainCompleted = true
   } catch (e) {
     if (e instanceof ObserverThrow) throw e.thrown
-    // 观察点要求停下（DD-05 §6.1）：不是运行状态，不记 failure，也不做收尾
-    if (e instanceof ProbeStop) { x.stoppedAt = e.frame; return x }
+    // 观察点要求停下（DD-05 §6.1；DD-07 §4.4）：不是运行状态，不记 failure，也不做收尾
+    if (e instanceof ProbeStop) { x.stoppedAt = e.frame; x.stoppedAtEvaluation = e.evaluationIndex ?? null; return x }
     x.failure = { error: e }
   }
   return x
@@ -316,12 +327,22 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       // 谐度破坏（TD-03 §6）：基础值按角色等级与敌人 COST，物理抗性，不暴击；没有消耗这次失谐的（不是对失谐放的）× 0.0001。
       // 震谐响应（伤害类型 12，含爱弥斯光翼共奏追加的震谐伤害）同一公式：按行上的元素算抗性，没有"目标未失谐"这一项（TD-03 §6、TD-06 §19）
       const tb = draft.tags.includes('谐度破坏')
-      const v = computeTuneBreak({
+      const tuneCtx = {
         base: tuneBase(r.data.tuneBreak, r.rules.charLevel, s.enemy.preset.cost), rate: draft.multiplier, level: r.rules.charLevel,
         enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[tb ? '物理' : draft.element] }, harmonyBreakBoost: m.panel.harmonyBreakBoost + acc.zones.harmonyBreakBoost,
         ...(tb && s.enemy.tuneBreakBy !== j.actionInstance ? { vsNormal: true } : {}),
-      }, acc, r.rules, sim.k.rule)
+      }
+      const v = computeTuneBreak(tuneCtx, acc, r.rules, sim.k.rule)
       dmg = { nonCrit: v, crit: v, expected: v }
+      if (sim.k.diag?.opts.hitInputs) {
+        sim.k.diag.hitInput(s.log.length, {
+          path: 'tuneBreak',
+          ctx: { ...tuneCtx, enemy: { ...tuneCtx.enemy } },
+          acc: { zones: { ...acc.zones }, critOnly: { ...acc.critOnly } },
+          output: { nonCrit: v, crit: v, expected: v },
+          notRecorded: ['modifyHit 内部的分支', '面板的装配来源'],
+        })
+      }
     } else {
       const hc = {
         rate: draft.multiplier, attr: d.relatedAttr, extraFlat: draft.extraFlat, level: r.rules.charLevel,
@@ -332,6 +353,54 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       dmg = { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected }
       if (s.rng) dmg.isCrit = nextFloat(s.rng) < res.critRate          // 抽样模式：这一段暴击了没有（结算时的随机注入点）
       factors = res.factors
+      if (sim.k.diag?.opts.hitInputs) {
+        const contrib: ActiveBuffContribution[] = active
+          .filter(b => contributes(b, view))
+          .map(b => ({
+            instanceId: b.instanceId!,
+            defId: b.def.id,
+            owner: b.owner === 'env' ? 'env' : s.chars[b.owner].name,
+            stacks: b.stacks,
+            zone: b.def.zone!,
+            value: b.value,
+            remainingBattleFrames: b.remaining!,
+          }))
+        sim.k.diag.hitInput(s.log.length, {
+          path: 'direct',
+          ctx: { ...hc, panel: structuredClone(m.panel), enemy: { ...hc.enemy } },
+          acc: { zones: { ...acc.zones }, critOnly: { ...acc.critOnly } },
+          view: { ...view, tags: [...view.tags], enemyEffects: new Set(view.enemyEffects) },
+          multiplier: { base: d.multiplier, afterModifyHit: draft.multiplier },
+          buffs: contrib,
+          factors: { ...res.factors },
+          output: { nonCrit: res.nonCrit, crit: res.crit, expected: res.expected },
+          notRecorded: ['modifyHit 内部的分支', '面板的装配来源'],
+        })
+      }
+    }
+    if (sim.k.diag?.opts.hitMargins) {
+      const matchingDefs = sim.r.buffs.flatMap(reg => {
+        if (reg.def.zone === undefined || !matchesFilter(reg.def.filter, view)) return []
+        const t = reg.def.target
+        const reaches = t === 'enemy' || t === 'team' || t === 'onField' || t === 'nextIn'
+          || (t === 'self' && (reg.owner === 'env' || reg.owner === j.owner))
+          || (t === 'teamExceptSelf' && reg.owner !== j.owner)
+        return reaches ? [{ defId: reg.def.id, owner: reg.owner === 'env' ? 'env' as const : s.chars[reg.owner].name }] : []
+      })
+      const matchingKeys = new Set(matchingDefs.map(md => `${md.owner}|${md.defId}`))
+      const present = s.buffs.flatMap(b => {
+        if (b.target !== j.owner && b.target !== 'enemy') return []
+        const owner = b.owner === 'env' ? 'env' as const : s.chars[b.owner].name
+        if (!matchingKeys.has(`${owner}|${b.defId}`)) return []
+        return [{
+          instanceId: b.id,
+          defId: b.defId,
+          owner,
+          target: b.target === 'enemy' ? 'enemy' as const : s.chars[b.target].name,
+          remainingBattleFrames: b.remaining,
+        }]
+      })
+      sim.k.diag.hitMargin(s.log.length, { dealer: m.def.name, hitBattleFrame: s.battleFrames, matchingDefs, present })
     }
     checkHit(s, dmg, m.def.name, d.name)
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
@@ -374,7 +443,7 @@ function spawnLinked(sim: Sim, s: SimState, j: JudgmentRuntime, why: string): vo
   const a = sim.r.team[j.owner]!.actions[j.action]
   for (const name of j.def.spawns!.judgments) {
     const def = a?.judgments.find(x => x.name === name)
-    if (def) spawnJudgment(s, j.owner, j.action, j.actionInstance, def, j.detached, `${j.def.name} ${why}`)
+    if (def) spawnJudgment(s, sim.k, j.owner, j.action, j.actionInstance, def, j.detached, `${j.def.name} ${why}`)
   }
 }
 
@@ -416,7 +485,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
       const hit = findJudgment(name, opts.action)
       if (!hit) throw new Error(`${m.def.name} 的钩子要生成的判定"${name}"不存在`)
       const running = s.chars[self].action
-      const j = spawnJudgment(s, self, hit.action.id, running?.id === hit.action.id ? running.instance : s.nextId++, hit.j, undefined, opts.note)
+      const j = spawnJudgment(s, sim.k, self, hit.action.id, running?.id === hit.action.id ? running.instance : s.nextId++, hit.j, undefined, opts.note)
       const cur = sim.bus.current
       if (cur) sim.bus.spawned.set(j.id, { depth: cur.depth + 1, root: cur.root })
     },

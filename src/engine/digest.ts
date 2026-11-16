@@ -3,7 +3,7 @@
 // sha256Hex：纯 TypeScript、同步。不用 node:crypto（引擎要在浏览器 Worker 里跑），不用 crypto.subtle（异步，会把 prepareRun 变成异步）。
 
 /** 按码点比较（JS 默认按 UTF-16 码元排，代理对会排到 U+E000–U+FFFF 前面） */
-function byCodePoint(a: string, b: string): number {
+export function byCodePoint(a: string, b: string): number {
   const n = Math.min(a.length, b.length)
   for (let i = 0; i < n; i++) {
     const x = a.charCodeAt(i), y = b.charCodeAt(i)

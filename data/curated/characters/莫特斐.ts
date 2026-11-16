@@ -2,7 +2,7 @@
 // 原文：nanoka 3.7 的技能说明、xlsx 莫特斐块（20261019 版角色-男 R383–R402）。确认清单见 docs/jms-confirm.md。
 import type { BuffDefInput } from '../../../src/data/buff.schema'
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 协同攻击的公用冷却：xlsx 大招-协同状态"全队共用【冷却+总冷却】 = 0.38秒"（冷却 2 帧 + 总冷却 21 帧；nanoka"每0.35秒可进行1次"） */
 const COORD_CD = 23
@@ -13,8 +13,9 @@ const BLASTS: Readonly<Record<string, string>> = { 'E1-前置': 'E1-爆炸', 'E2
 const NOTE = '浮翼狂想期间普攻命中给 1 发加强音、重击命中给 2 发'
 const VARS = { 协同冷却到: -1 }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 
-const inState = (ctx: Ctx): boolean => STATES.some(id => ctx.buffStacks(id) > 0)
+const inState = (ctx: RoCtx): boolean => STATES.some(id => ctx.buffStacks(id) > 0)
 /** 打出 n 发加强音（action：1 链 / 5 链的额外加强音另有动作，见 actionOverrides 的 copyAs） */
 function shoot(ctx: Ctx, n: number, action: string, note: string): void {
   for (let k = 0; k < n; k++) ctx.spawnJudgment('协同-加强音', { action, note })

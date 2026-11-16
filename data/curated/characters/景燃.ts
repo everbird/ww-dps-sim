@@ -2,15 +2,16 @@
 // 原文：nanoka 3.7 的技能说明、xlsx 景燃块（20261019 版角色-男 R1041–R1149，"特殊能量"行的备注写了炁、命火、鬼护、行途、荧惑）。只写 0 链。
 // 按生命上限换算的（幽而复明、阳变阴合、祸兮福兮、命火的倍率）都按装配时的生命上限（假设 stat-scaling-static）。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 阳：true 抱阳、false 负阴（"景燃初始处于抱阳状态"）。鬼护（上限 50）、敛神记在状态量里；
  *  命火生效：这次重击起手时在荧惑里、命火不为 0（施放资源扣命火之前判断），本次重击各段按生命上限加倍率 */
 const VARS = { 阳: true, 鬼护: 25, 敛神: true, 行途: 0, 命火生效: false, 魑魅已召: false, 鬼护上次: -30, 队友盾上次: -30, 画地盾上次: -30 }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 const HEAVY = new Set(['阳重击', '阴重击'])
-const 炁 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const 命火 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[1]!
+const 炁 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const 命火 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[1]!
 
 function gainGuard(ctx: Ctx, n: number): void {
   ctx.vars.鬼护 = Math.min(50, ctx.vars.鬼护 + n)

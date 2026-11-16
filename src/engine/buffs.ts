@@ -121,7 +121,7 @@ export function activeFor(s: SimState, book: BuffBook, dealer: Slot): ActiveBuff
     if (!reg) continue
     if (reg.def.target === 'onField' && dealer !== s.onField) continue
     if (reg.def.ownerOnField && b.owner !== s.onField) continue
-    out.push({ def: reg.def, value: reg.value, stacks: b.stacks, owner: b.owner })
+    out.push({ def: reg.def, value: reg.value, stacks: b.stacks, owner: b.owner, instanceId: b.id, remaining: b.remaining })
   }
   return out
 }

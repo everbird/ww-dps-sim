@@ -426,18 +426,35 @@ export interface CooldownStep { f: number; char: CharName; key: string; ready: n
 /** 钩子的状态量：名字 → 数或布尔。在角色模块的 vars 里声明初值，仿真中不能加新键（对应 Rust 的结构体字段，总设计 §10.1） */
 export type HookVars = Record<string, number | boolean>
 
+/** 深只读视图（DD-07 §4.3；架构 §7.1）：保留函数原样，其余对象、数组、元组递归只读 */
+export type DeepReadonly<T> =
+  T extends (...args: never[]) => unknown ? T
+  : T extends object ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+  : T
+
+/** 钩子的只读上下文（DD-07 §4.3；S-14）：供 canStart、introAction、forte 使用，不含写入方法，state 不带 log */
+export interface ReadonlyHookContext<V extends HookVars = HookVars> {
+  readonly self: Slot
+  readonly chain: Chain
+  readonly rules: Readonly<Rules>
+  readonly state: DeepReadonly<Omit<SimState, 'log'>>
+  buffStacks(id: string, target?: Slot | 'enemy'): number
+  readonly vars: DeepReadonly<V>
+  stat(stat: keyof StaticStats): number
+}
+
 export interface CharacterHooks<V extends HookVars = HookVars> {
   onResolve?(ctx: HookContext<V>): void
   /** 返回 true 表示允许；返回字符串表示不允许及原因（会写进等待日志） */
-  canStart?(ctx: HookContext<V>, action: ActionId): true | string
+  canStart?(ctx: ReadonlyHookContext<V>, action: ActionId): true | string
   onEvent?(ctx: HookContext<V>, ev: SimEvent): void
   /** 在收集 buff 之前调用（TD-03 §4）：可改倍率、附加值、元素 / 标签，或直接补乘区值 */
   modifyHit?(ctx: HookContext<V>, hit: HitDraft): void
   /** 变奏切入时用哪个变奏动作（守岸人解限星域里是洞悉 = 强化QTE）；不写或返回 undefined 按别名 QTE */
-  introAction?(ctx: HookContext<V>): ActionId | undefined
+  introAction?(ctx: ReadonlyHookContext<V>): ActionId | undefined
   /** 共鸣回路的状态说明（只读，不能改状态）：每个 tick 结束调用，返回一行短文本，时间轴的检查器显示。
    *  核心资源的数值检查器按日志另算，这里写状态量、状态 buff 里才有的（卜灵卦象的排列、心是应世相还是照世相…）；不随帧变的才写，免得每帧一条 */
-  forte?(ctx: HookContext<V>): string
+  forte?(ctx: ReadonlyHookContext<V>): string
 }
 
 export interface HookContext<V extends HookVars = HookVars> {

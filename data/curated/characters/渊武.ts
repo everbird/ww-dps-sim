@@ -1,7 +1,7 @@
 // data/curated/characters/渊武.ts —— 渊武（4 星，导电，臂铠）。格式以 TD-08 为准
 // 原文：nanoka 3.7 的技能说明、xlsx 渊武块（20261019 版）的备注与"基础"页的共鸣链 / 固有技能文本。确认清单见 docs/tys-confirm.md。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 雷之楔（雷柱）：存在 12 秒（xlsx 雷柱-召唤"立即获得12秒存在时间，期间每秒获得6核心能量"）。只建一根：再放刷新 */
 const PILLAR = 720
@@ -9,10 +9,11 @@ const PILLAR = 720
 const COORD_CD = 72
 const VARS = { 雷柱到: -1, 协同冷却到: -1, 掀雷已放: false }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 
-const pillarUp = (ctx: Ctx): boolean => ctx.state.battleFrames < ctx.vars.雷柱到
-const rage = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const thunder = (ctx: Ctx): boolean => ctx.buffStacks('渊武.雷厉风行') > 0
+const pillarUp = (ctx: RoCtx): boolean => ctx.state.battleFrames < ctx.vars.雷柱到
+const rage = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const thunder = (ctx: RoCtx): boolean => ctx.buffStacks('渊武.雷厉风行') > 0
 
 /** 立起一根雷柱（E 的第 18 帧、或敛光切走时自动留下） */
 function plant(ctx: Ctx, note: string): void {

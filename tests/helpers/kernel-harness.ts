@@ -77,6 +77,7 @@ export function tryRun(team: Record<ActionId, ActionDef>[], cmds: Cmd[] | Comman
     at,
     diag: null,
     rule: new RuleCounter(s, at, null),           // 规则使用（DD-05 §4.2）：测试台也记，k.rule 总是有
+    settleQueue: null,
     hooks: {
       settle: (st, j, n) => { hits.push({ f: st.frame, char: st.chars[j.owner].name, judgment: j.def.name, tick: n }) },
       outroTrigger: (st, slot) => { outros.push({ f: st.frame, char: st.chars[slot].name }) },

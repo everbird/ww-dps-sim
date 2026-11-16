@@ -2,7 +2,7 @@
 // 原文：nanoka 3.7 的技能说明，xlsx 露帕块（20261019 版）各行备注与「追猎状态」「荣光状态」两行。确认清单见 docs/tower-20261026.md。
 // 只写到 0 链。核心资源槽 1 狼焰（上限 100）；狼魂（上限 2，10 秒）记在状态量里。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 追猎、荣光 35 秒；赛点沸腾 12 秒；狼魂 10 秒；围猎后 8 秒内能放凶噬（标记也是 8 秒）；狼舞的决意后 8 秒内监听队友大招 */
 const 追猎帧 = 2100
@@ -23,10 +23,11 @@ const VARS = {
   追猎层冷却至: -1,         // 追猎每次加层冷却 0.2 秒
 }
 type Ctx = HookContext<typeof VARS>
-const me = (ctx: Ctx): string => ctx.state.chars[ctx.self].name
-const 狼焰 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const now = (ctx: Ctx): number => ctx.state.battleFrames
-const boiling = (ctx: Ctx): boolean => ctx.buffStacks('露帕.赛点沸腾') > 0
+type RoCtx = ReadonlyHookContext<typeof VARS>
+const me = (ctx: RoCtx): string => ctx.state.chars[ctx.self].name
+const 狼焰 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const now = (ctx: RoCtx): number => ctx.state.battleFrames
+const boiling = (ctx: RoCtx): boolean => ctx.buffStacks('露帕.赛点沸腾') > 0
 
 function gainSoul(ctx: Ctx): void {
   ctx.vars.狼魂 = Math.min(2, ctx.vars.狼魂 + 1)

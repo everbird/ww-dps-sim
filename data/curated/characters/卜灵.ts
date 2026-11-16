@@ -2,7 +2,7 @@
 // 原文：nanoka 3.7 的技能说明、xlsx 卜灵块「初始化」行的备注（R4533）与 characters.json 的共鸣链 / 固有文本。
 import { defineCharacter } from '../../../src/data/define'
 import { forteKept } from '../../../src/data/gamedata'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 卦象（共鸣回路）：上限 4 枚，满了再得时全部左移、去掉最左边那枚。核心资源槽 1 只记枚数（数据给 +1 / −2）；
  *  哪枚是艮、哪枚是震记在状态量里：卦象位的第 i 位（最左边是第 0 位）为 1 = 震。重击按最左边两枚选式子（canStart） */
@@ -16,6 +16,7 @@ const VARS = {
   震为雷跳数: 0, 延奏跳数: 0,               // 两种持续回复各跳了几次
 }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 /** 持续回复（治疗量不建模，每跳记一次治疗事件，触发隐世回光等"提供治疗时"的效果；同维里奈）：每秒一跳 */
 const HOT = {
   '卜灵.震为雷计时': { source: '重击·震为雷', count: '震为雷跳数', ticks: 8 },   // "持续回复附近队伍中所有角色的生命值，每秒回复1次，持续8秒"
@@ -48,7 +49,7 @@ function push(ctx: Ctx, sym: number): void {
   if (v.卦象数 < 4) { v.卦象位 |= sym << v.卦象数; v.卦象数 += 1 }
   else v.卦象位 = (v.卦象位 >> 1) | (sym << 3)                  // 满了：左移，去掉最左边那枚
 }
-const leftTwo = (ctx: Ctx): [number, number] => [ctx.vars.卦象位 & 1, (ctx.vars.卦象位 >> 1) & 1]
+const leftTwo = (ctx: RoCtx): [number, number] => [ctx.vars.卦象位 & 1, (ctx.vars.卦象位 >> 1) & 1]
 
 /** 重击用掉最左边两枚，得少阳 / 少阴；两者都有时进入阴阳相生 */
 function divine(ctx: Ctx, gain: '少阳' | '少阴'): void {

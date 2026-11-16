@@ -6,7 +6,7 @@
 // 钩子主动触发的效应伤害（心的踏月归心）与消耗电磁爆发（心的霆心域）也在这里。
 // 偏移 / 干涉 / 响应（§19）：钩子 applyShift 挂偏移；对挂着震谐·偏移的目标谐度破坏命中 → 震谐·干涉（期间偏谐值不累积），
 // 队里有"震谐响应"动作的角色各出一次响应判定（在后台也算，同一角色对同一目标 8 秒一次）。
-import { EFFECT_NAMES, type EffectName, type Slot } from '../data/common'
+import { EFFECT_NAMES, type EffectName, type Frame, type Slot } from '../data/common'
 import type { ActionDef, EffectDef } from '../data/gamedata'
 import { assume } from './assumptions'
 import { activeFor, bookKey, removeBuff } from './buffs'
@@ -32,15 +32,19 @@ export function tuneBreakPending(s: SimState): boolean {
   return s.chars.some(c => c.action?.instance === by) || s.judgments.some(j => j.actionInstance === by) || s.tails.some(t => t.instance === by)
 }
 
+/** 现在能不能放谐度破坏（纯检查，供查询与调度共用）：目标失谐、按钮亮着、且没有正在放的 */
+export function canTuneBreakWith(tuneBreak: 'auto' | 'manual' | 'off', buttonFrames: Frame | null, s: Readonly<SimState>): true | string {
+  if (tuneBreak === 'off') return '谐度破坏已关闭（options.tuneBreak: off）'
+  if (!s.enemy.disharmony) return '目标没有失谐'
+  if (tuneBreakPending(s as SimState)) return '正在放谐度破坏'
+  if (buttonFrames !== null && s.battleFrames >= s.enemy.tuneButtonUntil)
+    return `谐度破坏按钮没亮：要由前台角色对失谐目标打出偏谐值不为 0 的伤害，之后亮 ${buttonFrames / 60} 秒`
+  return true
+}
+
 /** 现在能不能放谐度破坏（排轴里手写的、自动插的都按它）：目标失谐、按钮亮着、且没有正在放的 */
 export function canTuneBreak(sim: Sim, s: SimState): true | string {
-  if (sim.r.options.tuneBreak === 'off') return '谐度破坏已关闭（options.tuneBreak: off）'
-  if (!s.enemy.disharmony) return '目标没有失谐'
-  if (tuneBreakPending(s)) return '正在放谐度破坏'
-  const button = sim.r.tuneBreakTiming.buttonFrames
-  if (button !== null && s.battleFrames >= s.enemy.tuneButtonUntil)
-    return `谐度破坏按钮没亮：要由前台角色对失谐目标打出偏谐值不为 0 的伤害，之后亮 ${button / 60} 秒`
-  return true
+  return canTuneBreakWith(sim.r.options.tuneBreak, sim.r.tuneBreakTiming.buttonFrames, s)
 }
 
 /** 轴里写的"敌人 失谐"（录像剖析，假设 forced-disharmony）：目标此刻失谐、谐度破坏按钮亮（不管谐破冷却）；已经失谐的只把按钮再点亮 */
@@ -160,7 +164,7 @@ function interfere(sim: Sim, s: SimState, by: Slot): void {
     if (s.battleFrames < (e.responseCd[name] ?? 0)) continue
     e.responseCd[name] = s.battleFrames + sim.r.rules.responseCooldown
     const instance = s.nextId++
-    for (const jd of act.judgments) spawnJudgment(s, slot, act.id, instance, jd, true, `${kind}·干涉的响应`)   // 脱手：不随谁的动作取消
+    for (const jd of act.judgments) spawnJudgment(s, sim.k, slot, act.id, instance, jd, true, `${kind}·干涉的响应`)   // 脱手：不随谁的动作取消
     log(s, { type: 'enemyState', change: 'response', by: name, detail: `${kind}响应` })
   }
 }

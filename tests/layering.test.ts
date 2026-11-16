@@ -20,7 +20,7 @@ const CORE = [
   'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula', 'simulate', 'context', 'num', 'rng',
   'resolve', 'portable', 'types', 'summary', 'invariants', 'assumptions',
   'run', 'run-types', 'digest', 'strict', 'basis', 'propositions', // DD-02 编译检查属于执行入口
-  'diagnostics', 'rule-points',
+  'diagnostics', 'rule-points', 'wire', 'probe', 'query',
 ]
 const NODE_ONLY = ['fs', 'path', 'child_process', 'crypto']
 const CONSUMERS = ['../cli/', '../report/', '../../web/']

@@ -4,7 +4,7 @@
 // 核心资源（构建出的槽名与各行实际加的对不上，按各行改）：1 同步率（上限 200，A / E2 命中、变奏 +40、过载 +30，光翼共奏 −100，终结清空）、
 // 2 共鸣率（上限 4，光翼共奏、过载各 +1，流光增幅时过载再 +1，终结清空；数据里没有，钩子加）。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 const P = '机兵·'
 /** 机兵：现在是机兵形态。光翼至：光翼共奏之时（"强化E解锁前置"，A4 后 5 秒）到哪个战斗帧。流光增幅至：变奏给的流光增幅（15 秒）。
@@ -19,9 +19,10 @@ const VARS = {
 }
 type V = typeof VARS
 type Ctx = HookContext<V>
-const now = (ctx: Ctx): number => ctx.state.battleFrames
-const 同步率 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const 共鸣率 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[1]!
+type RoCtx = ReadonlyHookContext<V>
+const now = (ctx: RoCtx): number => ctx.state.battleFrames
+const 同步率 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const 共鸣率 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[1]!
 const 偏移帧 = 1500                       // 爱弥斯挂的偏移持续多久没写，按琳奈光致变染的 25 秒（推断）
 
 /** 只能在人形 / 机兵形态用的（并入的动作带前缀；大招、声骸 Q、通用块的闪避两种形态都能用） */

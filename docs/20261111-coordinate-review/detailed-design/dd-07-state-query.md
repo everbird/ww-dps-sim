@@ -1,7 +1,7 @@
 # DD-07 状态查询、试算会话、"为什么没发生"、事件解释、跨运行比较与命令行 JSON
 
 **版本**：v0.3，2026-11-14，Claude。v0.2 按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10）；v0.3 按 Codex 第二轮复核修订（意见文件 §13：DF-14 的覆盖判定，§12.5 的类型与措辞两处）。
-**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）；**已实现（2026-11-16）**。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。已完成 T07-1～T07-10、`tests/state-query.test.ts`、`tests/wire-json.test.ts`、§3.5 耗时实测、§13 代表轴验收与 §15 文档同步。
 **阶段**：二（§9 的指标级比较在阶段一就要，可以先做）。**前置**：DD-01、DD-05、DD-06。**被依赖**：DD-08、DD-09、DD-10。
 
 ## 1. 范围与依据
@@ -143,6 +143,11 @@ export function eventsBetween(res: SimResult, loBattleFrame: number, hiBattleFra
 ### 3.5 成本
 
 T07-3 实测并把数字写进提交说明与本文的修订记录：`m0-video-eq.yaml`（约 6,600 帧）与 `xin-tower4-video.yaml`（最长的录像场景）上，`stateAt` 取首、中、尾三个帧各要多久，`statesAt` 一次取 100 个帧要多久。超过 2 秒的查询在 `pnpm query` 里打印一行提示。缓存留给 DD-10，键用 `runId`。
+
+- **2026-11-16 实测记录**：
+  - `scenarios/m0-video-eq.yaml`（`completedTicks = 10001`）：`stateAt(0) = 1.69 ms`，`stateAt(5000) = 227.11 ms`，`stateAt(10001) = 193.86 ms`，`statesAt(100 个均匀帧) = 187.27 ms`。
+  - `scenarios/xin-tower4-video.yaml`（`completedTicks = 13521`）：`stateAt(0) = 0.69 ms`，`stateAt(6760) = 148.88 ms`，`stateAt(13521) = 277.16 ms`，`statesAt(100 个均匀帧) = 276.09 ms`。
+  - `pnpm query` 对单次耗时 > 2000 ms（例如带双份完整诊断的 `diff --target commands`，实测 `2064 ms`）在 `stderr` 打印提示，不污染 `stdout` JSON。
 
 ## 4. 试算会话与纯检查
 
@@ -591,26 +596,26 @@ T07-5 的插桩与 T07-7、T07-8 的记录都走 DD-05 的收集器，每步之�
 
 在 `m0-video-eq-不打谐破.yaml` 上（它还没就绪时先用 `m0-video-eq.yaml`，就绪后重做一遍）。每项用 `pnpm query` 跑，输出存到 `out/query/`：
 
-- [ ] **状态**：`state --frames` 取 5 个帧，与同一次 `boundaries` 重放的视图相同；每个帧的账本闭合（DD-06）。
-- [ ] **资源**：`ledger --totals` 给出三人每轮的能量与协奏两个口径；散华"切维里奈时协奏 76、在后台满 100"能从账本条目里逐笔读出来。
-- [ ] **切人**：对循环轴里两处 `switch 椿 变奏` 调 `command`，得到等待（如有）与逐条件结果；对散华切维里奈那一处，`explain` 那条 `switch` 事件，父链回到指令。
-- [ ] **冷却**：对"椿 E1"调 `command`，`waits` 里有 `cooldown`，与 DD-04 报告里 `observedWaits` 的同一条一致。
-- [ ] **buff**：挑一下吃到散华延奏的伤害 `explain`，`hitInputs.buffs` 里有它且带提供者；挑一下没吃到的，`windowMargins` 给出差几帧与离开原因；对"为什么这次没触发轻云出月"类的问题调一次 `why-not`。
-- [ ] **比较**：`diff` 基准与一个候选（DD-04 报告里让轮长变了的那个），`commands` 给出第一条变了的指令。
-- [ ] **零干扰**：conformance 的对拍通过；上面每个查询前后，再跑一次不带诊断的运行，`runId` 与日志摘要不变。
-- [ ] 每份输出都有信封，`unsupported` 如实列出。
+- [x] **状态**：`state --frames` 取 5 个帧，与同一次 `boundaries` 重放的视图相同；每个帧的账本闭合（DD-06）。
+- [x] **资源**：`ledger --totals` 给出三人每轮的能量与协奏两个口径；散华"切维里奈时协奏 76、在后台满 100"能从账本条目里逐笔读出来。
+- [x] **切人**：对循环轴里两处 `switch 椿 变奏` 调 `command`，得到等待（如有）与逐条件结果；对散华切维里奈那一处，`explain` 那条 `switch` 事件，父链回到指令。
+- [x] **冷却**：对"椿 E1"调 `command`，`waits` 里有 `cooldown`，与 DD-04 报告里 `observedWaits` 的同一条一致。
+- [x] **buff**：挑一下吃到散华延奏的伤害 `explain`，`hitInputs.buffs` 里有它且带提供者；挑一下没吃到的，`windowMargins` 给出差几帧与离开原因；对"为什么这次没触发轻云出月"类的问题调一次 `why-not`。
+- [x] **比较**：`diff` 基准与一个候选（DD-04 报告里让轮长变了的那个：`--cand-rule echoInputPriority=false`），`commands` 给出第一条变了的指令（`0:5:5`）。
+- [x] **零干扰**：conformance 的对拍通过；上面每个查询前后，再跑一次不带诊断的运行，`runId` 与日志摘要不变。
+- [x] 每份输出都有信封，`unsupported` 如实列出。
 
 这对应路线图 §9.3 的"第一份可解释运行"：支持字段的 `stateAt`、收支对平、直接父来源、最小的命令行 JSON。全量事件的解释、所有条件的逐项试算，在此之后逐步补。
 
 ## 14. 验收清单
 
-- [ ] `tests/state-query.test.ts`、`tests/wire-json.test.ts` 全过。
-- [ ] `stateAt` 与直接执行一致（C07-2）；查询没有副作用（C07-7）；`commandCheck` 与真实执行一致（C07-9），含 `!` 与 `+N`（C07-11）。
-- [ ] 三种状态分得开（C07-3～C07-5）。
-- [ ] `src/engine/` 没有模块级的可变状态：`grep -n "^let " src/engine/*.ts` 的结果逐条说明（预期为空）。
-- [ ] §13 的集成清单全部完成，输出存档。
-- [ ] 查询成本的实测数字已记录。
-- [ ] `pnpm fuzz`、conformance（含零干扰对拍）通过。
+- [x] `tests/state-query.test.ts`、`tests/wire-json.test.ts` 全过。
+- [x] `stateAt` 与直接执行一致（C07-2）；查询没有副作用（C07-7）；`commandCheck` 与真实执行一致（C07-9），含 `!` 与 `+N`（C07-11）。
+- [x] 三种状态分得开（C07-3～C07-5）。
+- [x] `src/engine/` 没有模块级的可变状态：`grep -n "^let " src/engine/*.ts` 的结果逐条说明（预期为空）。
+- [x] §13 的集成清单全部完成，输出存档（`out/query/`）。
+- [x] 查询成本的实测数字已记录（§3.5）。
+- [x] `pnpm fuzz`、conformance（含零干扰对拍）通过。
 
 ## 15. 要同步的正式文档
 

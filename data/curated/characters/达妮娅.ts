@@ -5,7 +5,7 @@
 // 核心资源：槽 1 虚质粒子、槽 2 共形能量（动作表的列）、槽 3 黯核（上限 3）。主表的槽名是"虚质粒子、黯核、共形能量"，和动作表的列对不上（黑A 加的是
 // 第 2 列、数值是共形能量的；黑大招第 2 列 −100 是"清空共形能量"），按动作表改名。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 熵变强化·幻灭之形 12.1 秒、熵变强化·布景之形 30.1 秒（xlsx 特殊能量） */
 const 幻灭帧 = 726
@@ -40,9 +40,10 @@ const VARS = {
   冷却白A3: -1, 冷却白A4: -1, 冷却黑A3: -1, 冷却黑A4: -1,
 }
 type Ctx = HookContext<typeof VARS>
-const me = (ctx: Ctx): string => ctx.state.chars[ctx.self].name
-const 虚质 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const 共形 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[1]!
+type RoCtx = ReadonlyHookContext<typeof VARS>
+const me = (ctx: RoCtx): string => ctx.state.chars[ctx.self].name
+const 虚质 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const 共形 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[1]!
 const SLOTS = [0, 1, 2] as const
 
 /** 熵变强化（两种互斥）：获得一种时移除另一种；固有2 蚀刻繁彩（聚爆）跟着熵变走，给全队热熔 +30% */
@@ -56,7 +57,7 @@ function entropy(ctx: Ctx, kind: '幻灭' | '布景'): void {
   if (ctx.buffStacks('达妮娅.黯核计时') === 0) ctx.addBuff('达妮娅.黯核计时')
 }
 const inEntropy = (ctx: Ctx): boolean => ctx.buffStacks('达妮娅.熵变·幻灭') + ctx.buffStacks('达妮娅.熵变·布景') > 0
-const 黯核 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[2]!
+const 黯核 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[2]!
 function addCore(ctx: Ctx, n: number, why: string): void { ctx.addResource('core3', Math.min(n, 黯核上限 - 黯核(ctx)), ctx.self, why) }
 
 /** 生成蚀域（黑大招）：已有的销毁，30 秒；第一次出伤害等"蚀域首次"计时到，之后每 4 秒 */

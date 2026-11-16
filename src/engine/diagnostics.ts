@@ -13,10 +13,13 @@
 // switch.ts 的延奏清零、simulate.ts 的期初写进来；闭合检查 checkLedgerClosure、两个口径的合计 ledgerTotals、与日志的交叉检查
 // crossCheckLedger 是这里的纯函数。账本是可选诊断，它的上界（LedgerMarks）不进完成状态（架构 §2.3）。
 import { RESOURCE_KINDS, type ActionId, type CharName, type Frame, type ResourceKind, type Slot } from '../data/common'
+import type { HitContext, HitView, TuneContext } from './formula'
 import { roundTo, snap9 } from './num'
+import type { TriggerCheckGroup, TriggerOutcome, TriggerTarget } from './probe'
 import { RULE_POINTS, type RulePointId } from './rule-points'
 import type { RuleUsageReport, TickPhase } from './run-types'
-import type { CommandRef, SimEvent, SimState } from './types'
+import type { ScheduleErrorCode } from './scheduler'
+import type { CommandRef, HitFactors, SimEvent, SimState, WaitCode, ZoneAccumulator } from './types'
 
 // ---------------------------------------------------------------------------
 // 类型（架构 §3.3；总览 §6 的 S-05、S-08、S-12）
@@ -73,6 +76,95 @@ export interface RuleTraceEntry {
   readonly value: number | boolean | string
   readonly decisive: boolean
   readonly scope?: number                   // 这一刻所在的作用域（同 EventMeta.scope）
+  readonly cmd?: CommandRef                 // 若位于指令作用域内，记下该指令出处（DD-07 §7）
+}
+
+// ---------------------------------------------------------------------------
+// DD-07 诊断类型（S-08、S-10、DF-11、DF-12、DF-15）
+
+/** 调度器真实求值与指令生命周期记录（DD-07 §4.4；S-10） */
+export interface CommandVerdict {
+  readonly evaluationIndex: number
+  readonly f: Frame
+  readonly battleFrame: number
+  readonly cmd: CommandRef
+  readonly kind: 'head' | 'interject' | 'evaluate' | 'execute' | 'skip'
+  readonly verdict?:
+    | { readonly go: true }
+    | { readonly go: false; readonly code: WaitCode; readonly reason: string }
+    | { readonly threw: ScheduleErrorCode }
+  readonly context?: {
+    readonly readyAt: number | null
+    readonly extra: number | null
+    readonly until: number | null
+    readonly waited: number
+    readonly force: boolean
+    readonly delay: number
+  }
+  readonly interject?: { readonly slot: Slot; readonly action: ActionId }
+}
+
+/** 触发检查在 handle 当场记下的一条（DD-07 §6；DF-12） */
+export interface TriggerCheckRecord {
+  readonly eventSeq: number
+  readonly target: TriggerTarget
+  readonly outcome: Exclude<TriggerOutcome, 'handlerNotRun'>
+  readonly notEnteredReason?: 'noOccurrence' | 'noInstance' | 'targetMismatch'
+  readonly groups: readonly TriggerCheckGroup[]
+  readonly afterFiring?: string
+}
+
+/** 结算那一刻绑定到具体实例的 buff 贡献（架构 §3.4；DD-07 §7） */
+export interface ActiveBuffContribution {
+  readonly instanceId: number
+  readonly defId: string
+  readonly owner: CharName | 'env'
+  readonly stacks: number
+  readonly zone: string
+  readonly value: number
+  readonly remainingBattleFrames: number | 'inf'
+}
+
+/** 伤害结算的实际公式输入（DD-07 §7；DF-15） */
+export type HitInputs =
+  | {
+      readonly path: 'direct'
+      readonly ctx: HitContext
+      readonly acc: ZoneAccumulator
+      readonly view: HitView
+      readonly multiplier: { readonly base: number; readonly afterModifyHit: number }
+      readonly buffs: readonly ActiveBuffContribution[]
+      readonly factors: HitFactors
+      readonly output: { readonly nonCrit: number; readonly crit: number; readonly expected: number }
+      readonly notRecorded: readonly string[]
+    }
+  | {
+      readonly path: 'tuneBreak'
+      readonly ctx: TuneContext
+      readonly acc: ZoneAccumulator
+      readonly output: { readonly nonCrit: number; readonly crit: number; readonly expected: number }
+      readonly notRecorded: readonly string[]
+    }
+
+export interface MatchingBuffDef {
+  readonly defId: string
+  readonly owner: CharName | 'env'
+}
+
+export interface PresentBuffSnapshot {
+  readonly instanceId: number
+  readonly defId: string
+  readonly owner: CharName | 'env'
+  readonly target: CharName | 'enemy'
+  readonly remainingBattleFrames: number | 'inf'
+}
+
+/** 结算那一刻的相符 buff 定义与在场实例（DD-07 §8） */
+export interface HitMarginRecord {
+  readonly dealer: CharName
+  readonly hitBattleFrame: number
+  readonly matchingDefs: readonly MatchingBuffDef[]
+  readonly present: readonly PresentBuffSnapshot[]
 }
 
 /** 资源账本条目的种类（DD-06 §3.1）：期初余额、一次写入、延奏清零（"设为 0"，不是减法）、状态同步（DD-09） */
@@ -118,8 +210,7 @@ export interface LedgerMarks {
   readonly continuationFromEndExclusive?: number    // 降级续跑起点（DD-02 §3.3）那一刻的账本长度
 }
 
-/** 可选诊断的开关（DD-05 §3.1）。观察选项，不进运行身份。resourceLedger 是 DD-06 的资源账本；hitInputs、hitMargins、commandVerdicts 由 DD-07 做，
- *  现在给了也不产出记录 */
+/** 可选诊断的开关（DD-05 §3.1；DD-06；DD-07）。观察选项，不进运行身份 */
 export interface DiagOptions {
   readonly eventMeta?: boolean
   readonly resourceLedger?: boolean
@@ -127,21 +218,27 @@ export interface DiagOptions {
   readonly hitInputs?: boolean
   readonly hitMargins?: boolean
   readonly commandVerdicts?: boolean
+  readonly triggerChecks?: readonly TriggerTarget[]
 }
 
-/** 可选诊断的产出（SimResult.diag）。eventMeta 与 entityOrigins 一起给（开了 eventMeta）；ruleTrace 开了才有；
- *  resourceLedger 与 ledgerMarks 一起给（开了 resourceLedger，DD-06） */
+/** 可选诊断的产出（SimResult.diag） */
 export interface Diagnostics {
   readonly eventMeta?: readonly EventMeta[]
   readonly entityOrigins?: { readonly judgments: readonly EntityOrigin[]; readonly tails: readonly EntityOrigin[] }
   readonly ruleTrace?: readonly RuleTraceEntry[]
   readonly resourceLedger?: readonly ResourceLedgerEntry[]
   readonly ledgerMarks?: LedgerMarks
+  readonly commandVerdicts?: readonly CommandVerdict[]
+  readonly triggerChecks?: readonly TriggerCheckRecord[]
+  readonly hitInputs?: Readonly<Record<number, HitInputs>>
+  readonly hitMargins?: Readonly<Record<number, HitMarginRecord>>
+  readonly businessRoots?: Readonly<Record<number, number>>
 }
 
 /** 全部诊断都开（零干扰对拍用，DD-05 §6） */
 export const ALL_DIAG: DiagOptions = { eventMeta: true, resourceLedger: true, ruleTrace: true, hitInputs: true, hitMargins: true, commandVerdicts: true }
-export const anyDiag = (o: DiagOptions | undefined): boolean => o !== undefined && Object.values(o).some(v => v === true)
+export const anyDiag = (o: DiagOptions | undefined): boolean =>
+  o !== undefined && (Object.values(o).some(v => v === true) || (o.triggerChecks !== undefined && o.triggerChecks.length > 0))
 
 const UNATTRIBUTED: OriginContext = { kind: 'unattributed' }
 
@@ -165,6 +262,11 @@ export class DiagSink {
   private readonly tails: EntityOrigin[] = []
   private readonly trace: RuleTraceEntry[] = []
   private readonly entries: Writable<ResourceLedgerEntry>[] = []   // 资源账本（DD-06）：只追加；关联字段由 ledgerRelate 事后补上
+  private readonly verdicts: CommandVerdict[] = []                 // 调度求值记录（DD-07 §4.4）
+  private readonly triggers: TriggerCheckRecord[] = []             // 触发检查记录（DD-07 §6）
+  private readonly hits: Record<number, HitInputs> = {}            // 伤害输入记录（DD-07 §7）
+  private readonly margins: Record<number, HitMarginRecord> = {}   // buff 窗口记录（DD-07 §8）
+  private readonly roots: Record<number, number> = {}              // 业务链根事件下标（DD-07 §7，S-08）
   private continuation: number | undefined                         // 降级续跑起点的账本长度
   private post = false
   private done: Diagnostics | null = null
@@ -200,7 +302,41 @@ export class DiagSink {
   ): void {
     if (!this.opts.ruleTrace) return
     const top = this.stack[this.stack.length - 1]
-    this.trace.push({ point, propositionId, f, battleFrame, phase: this.phaseOf(phase), afterEventSeq, value, decisive, ...(top ? { scope: top.id } : {}) })
+    let cmd: CommandRef | undefined
+    for (let i = this.stack.length - 1; i >= 0; i--) {
+      const o = this.stack[i]!.origin
+      if (o.kind === 'command') { cmd = o.cmd; break }
+    }
+    this.trace.push({
+      point, propositionId, f, battleFrame, phase: this.phaseOf(phase), afterEventSeq, value, decisive,
+      ...(top ? { scope: top.id } : {}),
+      ...(cmd ? { cmd } : {}),
+    })
+  }
+
+  /** 记一条调度求值/生命周期记录（DD-07 §4.4） */
+  commandVerdict(v: CommandVerdict): void {
+    if (this.opts.commandVerdicts) this.verdicts.push(v)
+  }
+
+  /** 记一条触发检查记录（DD-07 §6） */
+  triggerCheck(rec: TriggerCheckRecord): void {
+    if (this.opts.triggerChecks?.length) this.triggers.push(rec)
+  }
+
+  /** 记一条伤害输入（DD-07 §7） */
+  hitInput(seq: number, input: HitInputs): void {
+    if (this.opts.hitInputs) this.hits[seq] = input
+  }
+
+  /** 记一条 buff 窗口快照（DD-07 §8） */
+  hitMargin(seq: number, margin: HitMarginRecord): void {
+    if (this.opts.hitMargins) this.margins[seq] = margin
+  }
+
+  /** 记下处理事件 i 时业务链的根事件下标（DD-07 §7，S-08） */
+  eventRoot(seq: number, rootSeq: number): void {
+    if (this.opts.eventMeta) this.roots[seq] = rootSeq
   }
 
   /** 循环已经退出：之后（收尾的 drain）写的事件记 'post'。k.at.phase 在空闲退出时停在 P2，靠它区分 */
@@ -244,12 +380,16 @@ export class DiagSink {
     while (this.stack.length > 0) this.fill(this.stack.pop()!, log.length, phase)
     const want = this.opts.eventMeta === true
     this.done = {
-      ...(want ? this.origins(log, phase) : {}),
+      ...(want ? { ...this.origins(log, phase), businessRoots: this.roots } : {}),
       ...(this.opts.ruleTrace ? { ruleTrace: this.trace } : {}),
       ...(this.opts.resourceLedger ? {
         resourceLedger: this.entries,
         ledgerMarks: { terminalEndExclusive: this.entries.length, ...(this.continuation !== undefined ? { continuationFromEndExclusive: this.continuation } : {}) },
       } : {}),
+      ...(this.opts.commandVerdicts ? { commandVerdicts: this.verdicts } : {}),
+      ...(this.opts.triggerChecks?.length ? { triggerChecks: this.triggers } : {}),
+      ...(this.opts.hitInputs ? { hitInputs: this.hits } : {}),
+      ...(this.opts.hitMargins ? { hitMargins: this.margins } : {}),
     }
   }
 
@@ -569,12 +709,14 @@ export class RuleCounter implements RuleRecorder {
   }
 }
 
-/** 运行观察点要求停下（DD-05 §6.1）：内部异常，不经 fail，不做失败收尾，也不做收尾的 drain；run.ts 接住它，不交给 buildCompletion */
+/** 运行观察点要求停下（DD-05 §6.1；DD-07 §4.4）：内部异常，不经 fail，不做失败收尾，也不做收尾的 drain；run.ts 接住它，不交给 buildCompletion */
 export class ProbeStop extends Error {
   readonly frame: Frame
-  constructor(frame: Frame) {
-    super(`观察点要求停在 S[${frame}]`)
+  readonly evaluationIndex?: number
+  constructor(frame: Frame, evaluationIndex?: number) {
+    super(evaluationIndex !== undefined ? `观察点要求停在求值 #${evaluationIndex}（第 ${frame} 帧）` : `观察点要求停在 S[${frame}]`)
     this.name = 'ProbeStop'
     this.frame = frame
+    if (evaluationIndex !== undefined) this.evaluationIndex = evaluationIndex
   }
 }
