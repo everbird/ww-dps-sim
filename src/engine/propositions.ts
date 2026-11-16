@@ -15,7 +15,11 @@
 //
 // 证据：先只迁移假设表的"依据"（why）原文（DD-04 §1），一条命题一条，id 为 legacy:<命题 ID>。原文没拆成逐条观测，不分支持的是哪个候选，
 // 用途也没标，所以三种关系都空、用途 unspecified（未查明用途的旧依据不计入独立检验）、游戏版本"未知"（路线图 §5.4）。
-// 正式的证据条目由 DD-08 的闭环判定后另加；结论因此一律 unverified（DD-08 §4.1 决策表第 1 行：没有可评估的观测）。
+// 正式的证据条目由 DD-08 的闭环（docs/evidence/）判定后另加：pnpm evidence ledger <闭环> 打印（evidence.ts 的 evidenceFromClosure），
+// 结论照闭环按 DD-08 §4.1 的决策表算出的写；tests/propositions.test.ts 核对台账与闭环记录一致、supported 有独立支持的证据（DD-08 §4.3）。
+// 没有闭环的命题结论仍是 unverified（DD-08 §4.1 决策表第 1 行：没有可评估的观测）。
+//
+// 第 ③ 组是 DD-08 §6 三个回填案例的命题：假设表里没有（没有 assumptionId、没有迁移来的依据），证据只有闭环判出来的。
 import type { CharName } from '../data/common'
 import { assumptionOf, type AssumptionId, type Impact } from './assumptions'
 
@@ -350,6 +354,68 @@ export const PROPOSITIONS = [
     ],
     evidence: [legacy('burst-release', 'burst-release')], conclusion: 'unverified',
     impact: { dps: dpsOf('burst-release'), ...UNKNOWN },
+  },
+
+  // ---------------------------------------------------------------------------
+  // ③ DD-08 §6 三个回填案例的命题（证据闭环 docs/evidence/*.backfill.yaml）。假设表里没有对应的条目（没有 assumptionId），证据只有闭环判出来的；
+  //   结论由闭环按 DD-08 §4.1 的决策表算（tests/propositions.test.ts 核对台账与闭环记录一致）
+  {
+    id: 'cast-gain-at-start', scope: 'data',
+    proposition: '资源公式的末项（起手即得）在动作开始那一帧就给，不等命中：散华 E 的协奏 15（角色-女"协奏回收"公式的 +15）就是这一项',
+    executionConvention: 'castGains 里 atFrame = 0 的项在动作开始时由资源模块发（TD-04 §1 第 9 条、TD-06 §7）：起手后立刻切人，这笔协奏已经在切出者身上',
+    adopted: 'at-start', candidatesExhaustive: false,       // 末项可能只对一部分格子成立（TD-01 Q7：434 格没有逐一实测），按格子分的读法没列
+    candidates: [
+      { id: 'at-start', label: '动作开始那一帧给', implemented: true, changes: 'data', binding: { kind: 'curated', path: 'tools/build/parse.py parse_gain（末项 → onAction）；src/data/assemble-action.ts castGains；src/engine/resources.ts castResources' } },
+      { id: 'at-first-hit', label: '末项也随这个动作的第一段命中才给', implemented: false, changes: 'data', binding: { kind: 'unimplemented' } },
+    ],
+    evidence: [
+      { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-0e455b22b15b1b40', summary: '4 条观测：at-start passed ×4；at-first-hit 没实现', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
+    ], conclusion: 'provisional',
+    impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },   // 切出者协奏差一点满不满，就是变奏还是普通切人
+    fieldProvenance: {
+      fieldKey: '散华.E.castGains（协奏）',
+      rawSources: [
+        { sourceKind: 'xlsx', dataIdentityRef: 'xlsx 20261019（sha256 8b8c9c07…）', locator: '角色-女 / A 列块"散华" / E 组的"E"行 / 「协奏回收」列', rawValue: '=INDEX(dmg!$BK$515:$BK$535,MATCH(…),1)*0.01+15' },
+        { sourceKind: 'nanoka', dataIdentityRef: 'nanoka 3.7', locator: 'characters.散华.skills / 共鸣技能"朔雪永冻" / values"回复协奏能量"', rawValue: '15' },
+      ],
+      transform: { buildRule: 'tools/build/parse.py parse_gain：公式 f(…)+N 的末项 N 记为 onAction（起手即得，TD-01 §3.7）', rationale: '按数据作者的说明：BK 列对 E 是 0，E 的协奏全是这 15；开始动作的那一刻发（TD-04 §1 第 9 条）' },
+    },
+  },
+  {
+    id: 'yanhen-extend', scope: 'data', appliesToChars: ['露帕'],
+    proposition: '焰痕的被动：变奏 / 大招后共鸣解放伤害 +24% 6 秒，造成重击伤害时延长 4 秒、最多 1 次，延长成功时才给全队热熔 +24% 30 秒',
+    adopted: 'nanoka-text', candidatesExhaustive: false,     // 只列了改之前的读法；比如"延长从当前剩余时间算还是从 6 秒算"没列
+    candidates: [
+      { id: 'nanoka-text', label: '按 nanoka 3.7 原文：最多延长 1 次，延长成功时才给全队热熔', implemented: true, changes: 'data', binding: { kind: 'curated', path: 'data/curated/weapons.ts 焰痕（焰痕.大招 的 extend、焰痕.热熔）' } },
+      { id: 'xlsx-three-sentences', label: '按 xlsx 拆成的三句：没有"最多可延长1次"与"成功延长效果时"，每次重击都给全队热熔（2026-10-27 之前的写法）', implemented: false, changes: 'data', binding: { kind: 'unimplemented' } },
+    ],
+    evidence: [
+      { id: 'yanhen.backfill:fire-tower2:1', supports: [], refutes: [], consistentWith: ['nanoka-text'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '焰痕.破敌#2、焰痕.狼舞的决意·极#2、焰痕.狼舞的决意·极#3（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-2f938e0489637812', summary: '3 条观测：nanoka-text passed ×3；xlsx-three-sentences 没实现', ref: 'docs/evidence/yanhen.backfill.yaml' },
+    ], conclusion: 'provisional',
+    impact: { dps: 'unknown', threshold: 'none', timingFrames: 0 },   // 只动伤害的乘区
+    fieldProvenance: {
+      fieldKey: '焰痕.被动（延长与全队热熔）',
+      rawSources: [
+        { sourceKind: 'nanoka', dataIdentityRef: 'nanoka 3.7 网站的武器页（武器没进 nanoka.json）', locator: '武器"焰痕"的被动说明（1 阶）', rawValue: '施放变奏技能或共鸣解放时，共鸣解放伤害提升24%，持续6秒；造成重击伤害时，该效果延长4秒，最多可延长1次。成功延长效果时，使队伍中的角色热熔伤害加成提升24%，持续30秒，同名效果之间不可叠加。' },
+        { sourceKind: 'xlsx', dataIdentityRef: 'xlsx 20261019（sha256 8b8c9c07…）', locator: '武器表 / 焰痕 / 被动的三句说明', rawValue: null },
+      ],
+      transform: { curatedSymbol: 'data/curated/weapons.ts 焰痕', rationale: 'xlsx 拆成三句、漏了"最多可延长1次"与"成功延长效果时"，照 nanoka 原文写成 BuffDef.extend（AGENTS 差异 38）' },
+    },
+  },
+  {
+    id: 'buling-concerto-timing', scope: 'character', appliesToChars: ['卜灵'],
+    proposition: '卜灵的协奏按数据的时刻到账：普攻、重击逐段命中给，E、大招、变奏的起手即得在动作开始时给（总量是 nanoka 的 E 23、重击 15、大招 20、变奏 10）',
+    adopted: 'as-data', candidatesExhaustive: false,         // 到账时机的写法很多，中 4 第 9 条试过的三种并成 later-split，其余没列
+    candidates: [
+      { id: 'as-data', label: '按数据：逐段所得命中时给（段中协奏环读数偏低归于读环与时刻对齐）', implemented: true, changes: 'mechanism', binding: { kind: 'rule', path: 'concertoTimingBy.卜灵', value: 'onHit' } },
+      { id: 'on-cast', label: '到账更早：卜灵的逐段所得也在动作起手时一次给全', implemented: true, changes: 'mechanism', binding: { kind: 'rule', path: 'concertoTimingBy.卜灵', value: 'onCast' } },
+      { id: 'later-split', label: '到账更晚：E 的 23 分摊到 E-2 的各次结算、A3 每段只给一次、或没有奇幻变奏放 E 的 +8（2026-10-28 试过，没留开关）', implemented: false, changes: 'mechanism', binding: { kind: 'unimplemented' } },
+    ],
+    evidence: [
+      { id: 'buling-concerto-timing.backfill:tower3:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中3.切雷主#1、卜灵协奏.中3.切雷主#3、卜灵协奏.中3.切雷主#5、卜灵协奏.中3.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-bf6b7e9239634661', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
+      { id: 'buling-concerto-timing.backfill:tower4:1', supports: [], refutes: [], consistentWith: ['as-data', 'on-cast'], purpose: 'selection', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵协奏.中4.切雷主#1、卜灵协奏.中4.切雷主#3、卜灵协奏.中4.切雷主#5、卜灵协奏.中4.切雷主#7（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-e6dd7ba6206e0884', summary: '4 条观测：as-data passed ×4；on-cast passed ×4；later-split 没实现', ref: 'docs/evidence/buling-concerto-timing.backfill.yaml' },
+    ], conclusion: 'ambiguous',
+    impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },
   },
 ] as const satisfies readonly Proposition[]
 

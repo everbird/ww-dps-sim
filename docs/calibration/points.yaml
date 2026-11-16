@@ -1,6 +1,6 @@
-# 校准点（docs/engine-quality-plan.md P4；写法见 src/data/calibration.schema.ts，用法见 docs/calibration/README.md）。
-# game 填游戏里看到的数（比例写小数：90% 写 0.9；跳字照抄，暴击与否不用写）；空着的是待测。
-# 填了的点由 tests/calibration.test.ts 按容差检查，pnpm calibrate 列出全部点的仿真值与对照。
+# 观测（原名校准点；docs/engine-quality-plan.md P4、DD-08 §3；写法见 src/data/calibration.schema.ts，用法见 docs/calibration/README.md）。
+# game 填游戏里看到的数（比例写小数：90% 写 0.9；跳字照抄，暴击与否写在 branch，不知道就不写）；空着的是待测。切人类型的读数写在 expect。
+# 填了的点由 tests/calibration.test.ts 按容差检查，pnpm calibrate 列出全部点的仿真值与对照；证据闭环（docs/evidence/）引用这里的 id。
 points:
   # 2026-10-21-跳字-椿开场AAE.md：面板
   - { id: 椿AAE.面板.生命, kind: panel, record: 2026-10-21-跳字-椿开场AAE.md, scenario: m0-video-eq.yaml, char: 椿, item: 生命, game: null }
@@ -43,3 +43,44 @@ points:
   - { id: 心AAA.A3-2#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-2, nth: 1, game: null }
   - { id: 心AAA.A3-2#2, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-2, nth: 2, game: null }
   - { id: 心AAA.A3-3#1, kind: hit, record: 2026-10-21-跳字-心开场AAA.md, scenario: xin-team-r5.yaml, loop: 0, char: 心, judgment: A3-3, nth: 1, game: null }
+
+  # ---------------------------------------------------------------------------
+  # DD-08 证据闭环用的观测（docs/evidence/）。DD-08 §3.1 加了三种：interval（两个事件隔多久）、resourceAt（某时刻的资源）、switchType（切人类型）。
+  # purpose 照实标：selection = 当时参与过"挑哪种读法"，不能再当独立检验；independent_validation = 另外独立对上的；given = 输入。
+  # 读不准、缺条件的不硬填：读成区间（gameRange），或在 requires / condition.unknowns 里写明缺什么（比较结果是 insufficientCondition）。
+
+  # 回填 sanhua-e.backfill（2026-10-20-回填-散华E-视频轴.md）：命题 cast-gain-at-start（散华 E 的协奏 15 起手即得）。
+  # 原文"散AQ变奏椿"的"变奏"：V7 拿它挑过 AQ / EQ 两种转写（m0-confirm §11），所以标 selection
+  - { id: 散华E.散EQ变奏椿.启动轴, kind: switchType, record: 2026-10-20-回填-散华E-视频轴.md, scenario: m0-video-eq.yaml, at: { type: switch, char: 椿, loop: 0, nth: 2 }, expect: intro, purpose: selection, condition: { gameVersion: unknown, recordedAt: '2026-06-18', note: '教学视频 BV1VBja6sErw 作者的文字轴"散AQ变奏椿"；配装用户确认与视频的硬性指标相符（V3）' } }
+  - { id: 散华E.散EQ变奏椿.第1轮, kind: switchType, record: 2026-10-20-回填-散华E-视频轴.md, scenario: m0-video-eq.yaml, at: { type: switch, char: 椿, loop: 1, nth: 3 }, expect: intro, purpose: selection, condition: { gameVersion: unknown, recordedAt: '2026-06-18', note: '同上，循环轴每轮的"散AQ变奏椿"' } }
+  - { id: 散华E.散EQ变奏椿.第2轮, kind: switchType, record: 2026-10-20-回填-散华E-视频轴.md, scenario: m0-video-eq.yaml, at: { type: switch, char: 椿, loop: 2, nth: 3 }, expect: intro, purpose: selection, condition: { gameVersion: unknown, recordedAt: '2026-06-18', note: '同上' } }
+  - { id: 散华E.散EQ变奏椿.第3轮, kind: switchType, record: 2026-10-20-回填-散华E-视频轴.md, scenario: m0-video-eq.yaml, at: { type: switch, char: 椿, loop: 3, nth: 3 }, expect: intro, purpose: selection, condition: { gameVersion: unknown, recordedAt: '2026-06-18', note: '同上' } }
+  # 散华切维里奈是不是变奏：视频里没核对过（TD-11 §5.4 的"每轮都是变奏，和视频一致"是当时的推断，m0-confirm §11 V5），读数空着
+  - { id: 散华E.散华切维里奈.第2轮, kind: switchType, record: 2026-10-20-回填-散华E-视频轴.md, scenario: m0-video-eq.yaml, at: { type: switch, char: 维里奈, loop: 2, nth: 1 }, expect: null, purpose: unspecified }
+
+  # 回填 yanhen.backfill（2026-10-27-跳字-焰痕-中2.md）：命题 yanhen-extend（焰痕的延长与全队热熔）。这几下跳字参与了改读法（AGENTS 差异 38），标 selection
+  - { id: 焰痕.破敌#2, kind: hit, record: 2026-10-27-跳字-焰痕-中2.md, scenario: fire-tower2-video.yaml, loop: 1, char: 露帕, judgment: E3-伤害, nth: 2, branch: nonCrit, game: 9606, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '深塔 41 期中 2 实战录像，视频 59.8 秒，逐格截图读跳字（~/.cache/ww-frames/s2/）；不暴击' } }
+  - { id: 焰痕.狼舞的决意·极#2, kind: hit, record: 2026-10-27-跳字-焰痕-中2.md, scenario: fire-tower2-video.yaml, loop: 1, char: 露帕, judgment: 强化E4-6, nth: 2, branch: nonCrit, game: 19482, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，视频 66.5 秒（大招后 6 秒以外）；不暴击' } }
+  - { id: 焰痕.狼舞的决意·极#3, kind: hit, record: 2026-10-27-跳字-焰痕-中2.md, scenario: fire-tower2-video.yaml, loop: 1, char: 露帕, judgment: 强化E4-6, nth: 3, branch: nonCrit, game: 19482, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，视频 115.0 秒，第三轮；不暴击' } }
+
+  # 回填 buling-concerto-timing.backfill（2026-10-28-协奏环-卜灵-中3中4.md）：命题 buling-concerto-timing（卜灵协奏的到账时机）。
+  # 切走前协奏环满（卜灵 → 雷主是变奏）：两局各 4 次。中 4 第 9 条拿它否掉过"两种改法一起改"（切人会变普通），标 selection
+  - { id: 卜灵协奏.中3.切雷主#1, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower3-video.yaml, at: { type: switch, char: 雷主·男, nth: 1 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '深塔 41 期中 3 实战录像，切人前一格协奏环满（视频约 14 秒）' } }
+  - { id: 卜灵协奏.中3.切雷主#3, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower3-video.yaml, at: { type: switch, char: 雷主·男, nth: 3 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，第二段' } }
+  - { id: 卜灵协奏.中3.切雷主#5, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower3-video.yaml, at: { type: switch, char: 雷主·男, nth: 5 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，第三段' } }
+  - { id: 卜灵协奏.中3.切雷主#7, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower3-video.yaml, at: { type: switch, char: 雷主·男, nth: 7 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，第四段' } }
+  - { id: 卜灵协奏.中4.切雷主#1, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: switch, char: 雷主·男, nth: 1 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '深塔 41 期中 4 实战录像，切人前一格协奏环满（视频 14.0 秒）' } }
+  - { id: 卜灵协奏.中4.切雷主#3, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: switch, char: 雷主·男, nth: 3 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，视频 75.25 秒' } }
+  - { id: 卜灵协奏.中4.切雷主#5, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: switch, char: 雷主·男, nth: 5 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，视频 130.5 秒' } }
+  - { id: 卜灵协奏.中4.切雷主#7, kind: switchType, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: switch, char: 雷主·男, nth: 7 }, expect: intro, purpose: selection, condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '同上，视频 185.5 秒' } }
+  # 段中：卜灵大招起手（HUD 消失帧）前那一秒的协奏环（36 格读法，±1 格）。仿真在这时早就满了。环的读数还没拿已知的协奏曲线标定过
+  # （心的环各段稳定高约 5%），环的显示与仿真时刻怎么对齐也不知道——这是比较必需的条件，所以 insufficientCondition（DD-08 §6"做不下去照实写"）
+  - { id: 卜灵协奏.中4.大招前#1, kind: resourceAt, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: actionStart, char: 卜灵, action: 大招, nth: 1 }, when: before, char: 卜灵, resource: concerto, as: ratio, gameRange: [0.694, 0.75], purpose: selection, requires: [协奏环读数与仿真的时刻对齐], condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '视频 9.0–10.0 秒的中位数 0.722；大招在 10.0 起手', unknowns: [协奏环读数与仿真的时刻对齐] } }
+  - { id: 卜灵协奏.中4.大招前#3, kind: resourceAt, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: actionStart, char: 卜灵, action: 大招, nth: 3 }, when: before, char: 卜灵, resource: concerto, as: ratio, gameRange: [0.861, 0.917], purpose: selection, requires: [协奏环读数与仿真的时刻对齐], condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '视频 126.0–126.4 秒的中位数 0.889；大招在 126.4 起手', unknowns: [协奏环读数与仿真的时刻对齐] } }
+  - { id: 卜灵协奏.中4.大招前#4, kind: resourceAt, record: 2026-10-28-协奏环-卜灵-中3中4.md, scenario: xin-tower4-video.yaml, at: { type: actionStart, char: 卜灵, action: 大招, nth: 4 }, when: before, char: 卜灵, resource: concerto, as: ratio, gameRange: [0.778, 0.833], purpose: selection, requires: [协奏环读数与仿真的时刻对齐], condition: { gameVersion: '3.7', recordedAt: '2026-10-26', note: '视频 181.0–181.41 秒的中位数 0.8055；大招在 181.41 起手', unknowns: [协奏环读数与仿真的时刻对齐] } }
+
+  # 第一条新闭环 echo-input-priority.2026-11（docs/experiments/C8-声骸起手优先级.md）：E 起手 → 首位声骸起手隔几个世界帧。
+  # 预测已登记，读数等进游戏（60 帧录像，三次重复的范围写成 gameRange；读数时的条件写进 condition）
+  - { id: 声骸起手.散华EQ, kind: interval, record: ../experiments/C8-声骸起手优先级.md, scenario: evidence/echo-input-priority-散华EQ.yaml, from: { type: actionStart, char: 散华, action: E }, to: { type: actionStart, char: 散华, action: Q }, clock: world, unit: frames, fps: 60, tolerance: 6, purpose: independent_validation, game: null }
+  - { id: 声骸起手.维里奈EQ, kind: interval, record: ../experiments/C8-声骸起手优先级.md, scenario: evidence/echo-input-priority-维里奈EQ.yaml, from: { type: actionStart, char: 维里奈, action: E }, to: { type: actionStart, char: 维里奈, action: Q }, clock: world, unit: frames, fps: 60, tolerance: 6, purpose: independent_validation, game: null }
+  - { id: 声骸起手.椿E1Q, kind: interval, record: ../experiments/C8-声骸起手优先级.md, scenario: evidence/echo-input-priority-椿E1Q.yaml, from: { type: actionStart, char: 椿, action: E1 }, to: { type: actionStart, char: 椿, action: Q }, clock: world, unit: frames, fps: 60, tolerance: 6, purpose: independent_validation, game: null }

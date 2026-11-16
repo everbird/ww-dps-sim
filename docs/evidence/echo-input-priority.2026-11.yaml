@@ -1,0 +1,70 @@
+# 第一条新闭环（DD-08 §5.5，用户 2026-11-14 同意）：声骸起手的优先级。进游戏实验，实验页 docs/experiments/C8-声骸起手优先级.md。
+# 预测在观测之前登记（preRegistration，DD-08 §5.2）；之后不再改候选、判据与观测的容差，要改就另开一条记录。
+id: echo-input-priority.2026-11
+propositionId: echo-input-priority
+question: 技能（E）之后马上按声骸，声骸是按通用块的优先级 5 打断 E 的后摇（隔几十帧就出），还是按声骸表各行的优先级等 E 结束或进派生窗口
+kind: experiment
+setups:
+  - id: 散华EQ
+    scenario: evidence/echo-input-priority-散华EQ.yaml
+    note: 散华在场，E 后马上按 Q（无常凶鹭）
+  - id: 维里奈EQ
+    scenario: evidence/echo-input-priority-维里奈EQ.yaml
+    note: 维里奈在场，E 后马上按 Q（异相·无归的谬误）
+  - id: 椿E1Q
+    scenario: evidence/echo-input-priority-椿E1Q.yaml
+    note: 椿在场（白椿），E 进盛绽后马上按 Q（梦魇·无冠者）
+candidates:
+  - candidateId: generic-5
+    conditions: 声骸起手时拿通用块"召唤声骸 / 变身声骸"行的优先级 5 与当前动作比（rules.echoInputPriority true）：高于 E 当时的优先级就能打断后摇，照样等 E 的判定出手；E 的冷却、声骸的冷却都好时，按 Q 到声骸起手只隔"等出手"的那几帧
+    runs:
+      - setupId: 散华EQ
+        runId: run-51cd25e481fd1ad7
+        status: completed
+      - setupId: 维里奈EQ
+        runId: run-105938db9da5ca6d
+        status: completed
+      - setupId: 椿E1Q
+        runId: run-a465c67f5d1f5a71
+        status: completed
+    predictions:
+      - observationId: 声骸起手.散华EQ
+        predicted: 20
+        covered: true
+      - observationId: 声骸起手.维里奈EQ
+        predicted: 26
+        covered: true
+      - observationId: 声骸起手.椿E1Q
+        predicted: 36
+        covered: true
+  - candidateId: echo-table
+    conditions: 声骸起手按声骸表各行的优先级（多为 0，rules.echoInputPriority false）：要等 E 结束或进同级派生窗口才出
+    runs:
+      - setupId: 散华EQ
+        runId: run-a69eec487412ff0f
+        status: completed
+      - setupId: 维里奈EQ
+        runId: run-ed3595f4a66118fa
+        status: completed
+      - setupId: 椿E1Q
+        runId: run-994013521e1ac5d0
+        status: completed
+    predictions:
+      - observationId: 声骸起手.散华EQ
+        predicted: 96
+        covered: true
+      - observationId: 声骸起手.维里奈EQ
+        predicted: 87
+        covered: true
+      - observationId: 声骸起手.椿E1Q
+        predicted: 86
+        covered: true
+criteria: 每个 setup 一条观测：E 起手（技能图标进冷却 / E 动作出现的第一帧）到声骸起手（声骸图标进冷却 / 声骸出现的第一帧）隔几个世界帧，60 帧录像，三次重复的范围写成区间。容差 ±6 世界帧（两端读数各 ±1 帧；连按声骸键约每 5–6 帧一次，没有预输入时按键会比最早能放的那一帧晚到最多约 5 帧，读数只会偏晚），在登记前定。仿真值落在区间加容差里算相容、外面算冲突；三条观测都用 independent_validation（没参与挑读法）
+observationIds:
+  - 声骸起手.散华EQ
+  - 声骸起手.维里奈EQ
+  - 声骸起手.椿E1Q
+verdicts: []
+scopeTested: 游戏版本 3.7；Evariste 账号的椿 0 链 · 散华 6 链 · 维里奈 3 链（m0-video-eq.yaml 的配装），训练场木桩；E 之后马上按首位声骸，E 与声骸都不在冷却
+reruns: []
+notes: 什么时候进游戏由用户安排（DD-08 §5.5）。读数填进 docs/calibration/points.yaml 的 声骸起手.*（gameRange 与 condition），然后 pnpm evidence judge。

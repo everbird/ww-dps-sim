@@ -24,6 +24,7 @@
     "import:scan": "tsx src/cli/import-scan.ts",
     "assumptions": "tsx src/cli/assumptions.ts",
     "candidates": "tsx src/cli/candidates.ts",
+    "evidence": "tsx src/cli/evidence.ts",
     "query": "tsx src/cli/query.ts",
     "conformance": "tsx src/cli/conformance.ts",
     "fuzz": "tsx src/cli/fuzz.ts",

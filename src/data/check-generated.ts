@@ -87,6 +87,11 @@ async function listFlags(name: string): Promise<void> {
   const { lines, nAct, nJudg } = flagLines(acts)
   console.log(`\n${name}：${acts.length} 个动作；未处理的 flag 动作级 ${nAct}、判定级 ${nJudg}${mod ? '' : '（没有角色模块）'}`)
   for (const l of lines) console.log(l)
+  if (mod) {
+    // 已处理 = 按缺省规则装配时有、角色模块覆盖或 accept 之后没了的 flag。消掉 flag 只说明采用了某种读法，不等于证实（DD-08 §7、路线图 §5.5）
+    const raw = flagLines(Object.values(blocks).flatMap(b => Object.values(assembleBlock(b))))
+    console.log(`  已处理（采用了某种读法，不代表已证实）：动作级 ${Math.max(0, raw.nAct - nAct)}、判定级 ${Math.max(0, raw.nJudg - nJudg)}（角色模块覆盖或 accept 的；证据看台账 pnpm assumptions --ledger）`)
+  }
   const nk = nanoka?.characters[name]
   if (!nk) { console.log(`  （nanoka.json 里没有${name}，冷却、技能树、段数、协奏、大招能量没核对）`); return }
   const cds = [...checkCooldowns(assembled, mod?.aliases ?? {}, nk), ...checkTreeStats(mod?.treeStats ?? {}, nk)]
