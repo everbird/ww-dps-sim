@@ -172,7 +172,8 @@ const withEnergyRegen = (r: ResolvedScenario, slot: Slot, panelValue: number): R
   team: r.team.map(m => (m.slot === slot ? { ...m, panel: { ...m.panel, energyRegen: panelValue } } : m)) as ResolvedScenario['team'],
 })
 
-/** 假设表里的开关（AdjustPath）：rules.<键> 或 options.<键> */
+/** 假设表里的开关（AdjustPath）：rules.<键> 或 options.<键>。只支持两段路径，留给还在用它的分析：
+ *  把 rules.forteKeepOnSwitchBy.心 交给它会把整个按角色的表写成一个值。新代码用 prepareRun 的 overrides.rules（多段路径，DD-04 §4.2） */
 export function adjusted(r: ResolvedScenario, path: AdjustPath, v: number | boolean | string): ResolvedScenario {
   const [where, key] = path.split('.') as ['rules' | 'options', string]
   return where === 'rules' ? { ...r, rules: { ...r.rules, [key]: v } } : { ...r, options: { ...r.options, [key]: v } }

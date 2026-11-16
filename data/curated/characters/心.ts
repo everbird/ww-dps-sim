@@ -6,6 +6,7 @@
 // 共鸣模态·电磁的电磁效应结算（TD-06 §18，docs/xin-confirm.md §4）：目标的电磁效应结算时不减层（effectRules）；电磁爆发转成霆心域，
 // 踏月归心（应世 E、照世 E）最后一段按霆心域主动触发一次电磁效应伤害；霆心域 ≥ 50 时照世 E 停滞目标。
 import { defineCharacter } from '../../../src/data/define'
+import { forteKept } from '../../../src/data/gamedata'
 import type { HookContext } from '../../../src/engine/types'
 
 const P = '照世·'
@@ -204,8 +205,9 @@ export default defineCharacter('心', {
     onEvent(ctx, ev) {
       const v = ctx.vars
       const self = me(ctx)
-      // 切走回到应世相、退出心相心生（假设 forte-keep-on-switch 翻过来：options.rules.forteKeepOnSwitch = false，量敏感度用）
-      if (ev.type === 'switch' && ev.from === self && !ctx.rules.forteKeepOnSwitch) {
+      // 切走回到应世相、退出心相心生（假设 forte-keep-on-switch 翻过来，量敏感度用）：options.rules.forteKeepOnSwitch = false（两人一起），
+      // 或只翻心 forteKeepOnSwitchBy.心 = false（台账 forte-keep.心-照世相，DD-04 §4.1）
+      if (ev.type === 'switch' && ev.from === self && !forteKept(ctx.rules, self)) {
         v.照世 = false; v.转相解锁 = false; v.万阙解锁 = false; v.魔方至 = -1
         ctx.removeBuff('心.心相心生')
         ctx.removeBuff('心.统御众机')

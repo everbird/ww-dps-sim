@@ -251,8 +251,12 @@ export interface Rules {
   effectTickReset: boolean
   /** 异常效应定时结算的伤害记在谁名下（吃谁身上的 buff）：最后附加的人（缺省）、第一次附加的人、结算时在前台的人（假设 effect-owner） */
   effectOwner: 'last' | 'first' | 'onField'
-  /** 切人保留共鸣回路的状态（心的照世相、心相心生，卜灵的卦象…；缺省 true，假设 forte-keep-on-switch）。false：角色模块在切出时清掉 */
+  /** 切人保留共鸣回路的状态（心的照世相、心相心生，卜灵的卦象…；缺省 true，假设 forte-keep-on-switch）。false：角色模块在切出时清掉。
+   *  这是共享的缺省；按角色的覆盖在 forteKeepOnSwitchBy，读的时候经 forteKept */
   forteKeepOnSwitch: boolean
+  /** 按角色覆盖 forteKeepOnSwitch（DD-04 §4.1；架构 §8.3）：键是角色名，没写的角色用 forteKeepOnSwitch；缺省 {}。
+   *  一律经 forteKept(rules, 角色) 读，不直接读这张表：场景只写了旧的 forteKeepOnSwitch 时表里没有键（DF-05） */
+  forteKeepOnSwitchBy: Partial<Record<CharName, boolean>>
   /** 大招没写"不能切人"时，"第 n 帧前不响应输入"也挡切人（缺省 true，假设 ult-no-switch） */
   ultInputLocksSwitch: boolean
   /** 没写帧数的"无敌期间不能切人"等推断出来的切人锁生效（缺省 true，假设 switch-no-lock）；false：这类动作不锁切人 */
@@ -300,6 +304,7 @@ export const DEFAULT_RULES: Rules = {
   effectTickReset: false,                           // 原文"每5秒结算1次"没说计时从哪一刻起（TD-06 §18）
   effectOwner: 'last',
   forteKeepOnSwitch: true,                          // 用户 2026-10-21 的印象，未实测（docs/verify-guide.md B1、B2）
+  forteKeepOnSwitchBy: {},                          // 不按角色覆盖（DD-04 §4.1）
   ultInputLocksSwitch: true,                        // 实战体感，未实测（verify-guide B7、C5）
   invincibleLocksSwitch: true,                      // 推断（TD-05 §2，verify-guide B7）
   switchEndsStop: true,                             // xlsx 写的帧 + 视频 A 逐帧量（docs/jys-videos.md §6.3）
@@ -318,3 +323,7 @@ export const DEFAULT_RULES: Rules = {
     弹反顿帧: { stopsBattleClock: false, hitstopSides: ['self', 'enemy', 'ally'], clearSelfOnCancel: false },
   },
 }
+
+/** 这个角色切走时保不保留共鸣回路的状态（DD-04 §4.1）：按角色的覆盖优先，没写用共享的 forteKeepOnSwitch。
+ *  角色模块的钩子与台账的"当前生效值"都经它读（DF-05） */
+export const forteKept = (rules: Readonly<Rules>, char: CharName): boolean => rules.forteKeepOnSwitchBy[char] ?? rules.forteKeepOnSwitch
