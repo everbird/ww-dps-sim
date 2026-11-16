@@ -13,7 +13,7 @@ import type { Scenario } from '../data/scenario.schema'
 import { usableBasis } from './basis'
 import { steadyFrames } from './candidates'
 import { canonicalJson, digestOf } from './digest'
-import { compareValue, readObservation, type ComparisonStatus, type PredictedValue } from './observations'
+import { compareValue, hasReading, readObservation, type ComparisonStatus, type PredictedValue } from './observations'
 import type { Candidate, Evidence, EvidencePurpose, Proposition } from './propositions'
 import { RULE_POINTS } from './rule-points'
 import { prepareRun, runPrepared } from './run'
@@ -275,6 +275,8 @@ export function registerClosure(record: ClosureRecord, ctx: EvidenceContext, opt
   if (record.kind !== 'experiment') throw new EvidenceError(`${record.id}：回填记录不登记预测（DD-08 §6），直接 judge`)
   if (record.preRegistration) throw new EvidenceError(`${record.id}：已经登记过（${record.preRegistration.date}），要改预测或判据就另开一条记录`)
   if (ctx.environment?.contentFingerprint) throw new EvidenceError(`${record.id}：工作区有没提交的改动（src、data、scenarios…）：先提交代码与 setup 场景，再登记`)
+  const read = observationsOf(record, ctx.observations).filter(o => o.purpose !== 'given' && hasReading(o)).map(o => o.id)
+  if (read.length) throw new EvidenceError(`${record.id}：${read.join('、')} 已经有读数了——预测要在读数之前登记（DD-08 §5.2）；已有的材料按回填（kind: backfill）记`)
   const now = predictClosure(record, ctx)
   if (canonicalJson(now.record.candidates) !== canonicalJson(record.candidates))
     throw new EvidenceError(`${record.id}：文件里的预测与现在跑出来的不同，先 pnpm evidence predict`)

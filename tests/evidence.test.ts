@@ -290,6 +290,8 @@ describe('predict、登记与过期（DD-08 §4.2；DF-17）', () => {
     const predicted = predictClosure(experiment(), ctx).record
     expect(() => registerClosure(predicted, ctxOf({ environment: { gitCommit: 'abc', contentFingerprint: 'f' } }), { date: 'x', identityPath: id => id })).toThrow(/没提交的改动/)
     expect(() => registerClosure({ ...predicted, kind: 'backfill' }, ctx, { date: 'x', identityPath: id => id })).toThrow(/回填/)
+    // 预测要在读数之前登记
+    expect(() => registerClosure(predicted, ctxOf({ observations: [beforeHit(0)] }), { date: 'x', identityPath: id => id })).toThrow(/已经有读数/)
   })
 })
 
