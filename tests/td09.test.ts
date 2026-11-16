@@ -482,6 +482,7 @@ describe('T09-补位 "~"：后面那个动作因为状态条件放不出来时�
     const sw = eventsOfLog(out.log, 'switch')
     expect(sw.map(e => e.intro)).toEqual([true, false])
     expect(sw[0]!.f).toBeGreaterThanOrEqual(8)
+    expect(eventsOfLog(out.log, 'wait').some(e => e.code === 'concertoSettle')).toBe(true) // DD-02 §3.3
     expect(out.summary.warnings.filter(w => w.code === 'introMissed')).toEqual([])
     // 不是补位也一样（2026-10-25 爱琳莫：琳奈视觉冲击的落地段还没打出来就切走）
     const plain = synthRun([甲, 乙, idle('丙')], { rotation: ['甲 A', 'switch 乙 变奏', 'switch 甲'], initial: { concerto: [70, 0, 0] } })

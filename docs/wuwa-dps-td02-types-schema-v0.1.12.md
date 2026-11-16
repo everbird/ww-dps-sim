@@ -488,3 +488,7 @@ v0.1.1 按 TD-03 做的修订（乘区清单、BuffDef、`HitDraft` / `ZoneAccum
 - **v0.1.12 补记（2026-10-21）**：场景 `search?: { routines: (string | { line, max = 1 })[] }`（按套路排轴另外可用的套路，仿真不用，TD-10 v0.1.13 §6.2 ①）；`PlanResult.library` 的项加 `added`。
 - **v0.1.12 补记（2026-10-21）**：`PlanOptions.gen`（自动生成套路，`generateRoutines`）；启动轴一起排 `planOpening` → `OpeningResult`（`OpeningLeaf`：整个窗口的 DPS、稳态、启动轴时长）、`renderOpening`；`withOpening`（`src/data/scenario-text.ts`）；网页的 Worker 请求 `plan`（TD-12 v0.2.7）。
 - **v0.1.12 补记（2026-10-21）**：`ResolvedScenario.options.inputDelayAt?`（只给循环轴某几条加操作延迟，卡帧点用）；`Insight.tight`（`TightPoint`：extraFrames、dmgPct、kind = slack / time / cascade / better）、`tightFrames`；`SimOptions.sample.hand?`（`{ mean, sd }`）、`HAND_PROFILES`、`nextNormal`（`src/engine/rng.ts`）；`SimState.entry`（`{ slot, block }`）、`WaitCode` 加 `airborne`、`ScheduleErrorCode` 加 `airEntry`（TD-09 v0.1.11）。
+
+## 严格入口类型补充（2026-11-15，DD-02 §3）
+
+`WaitCode` 增加 `concertoSettle`；`ScheduleErrorCode` 增加 `intentUnmet`。`ScheduleError.intent` 保存 `UnmetIntentDetail`（kind、cmd、expected、actual），blocked 保存超时前的条件。`StrictReport` 必有，包含入口、最早合法帧基线标记、编译检查、意图等待、意图失败、强制提示与可选 timeoutContext。准确字段见 `src/engine/run-types.ts`。`PreparedRun.effective.damageScope` 与结果的 `damageScope` 使用同一口径；未含谐破且 gauge 为 off 时，也不含依赖失谐的效果。

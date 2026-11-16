@@ -1,8 +1,9 @@
+import { prepareRun } from '../engine/run'
 // src/cli/insight.ts —— pnpm insight <场景.yaml> [--delays 0,3,6,10,15] [--tight 6]：结论（TD-10 §6）——共鸣效率需求、操作容错、假设敏感度、卡住的时间、卡帧点
 import { loadGameData } from '../data/load'
 import { IMPACT_NAME, assumptionOf } from '../engine/assumptions'
 import { DEFAULT_DELAYS, DEFAULT_TIGHT, insight } from '../engine/insight'
-import { ResolveError, resolveScenario } from '../engine/resolve'
+import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart, pct, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
@@ -16,7 +17,7 @@ async function main(): Promise<number> {
   }
   const data = await loadGameData()
   let r
-  try { r = resolveScenario(withOverrides(loadScenario(file), opt), data) } catch (e) {
+  try { r = strictResolve(withOverrides(loadScenario(file), opt), data, opt) } catch (e) {
     if (e instanceof ResolveError) { console.error(e.message); return 1 }
     throw e
   }
@@ -77,3 +78,10 @@ async function main(): Promise<number> {
 }
 
 main().then(code => process.exit(code), e => { console.error(e instanceof Error ? e.message : e); process.exit(1) })
+
+// DD-02 §3.1：CLI 覆盖由归一入口处理。
+function strictResolve(sc: Parameters<typeof prepareRun>[0], data: Parameters<typeof prepareRun>[1], opt: Record<string, string>) {
+  const p = prepareRun(sc, data, opt.strict !== undefined ? { strict: opt.strict === 'true' } : {})
+  if (!p.ok) throw new Error(p.issues.map(i => `${i.code}: ${i.message}`).join('\n'))
+  return p.run.resolved
+}

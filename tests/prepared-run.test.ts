@@ -121,7 +121,7 @@ describe('归一入口与运行身份（DD-01 §3.2、§3.3）', () => {
     const x = p.identity.execution
     expect([x.entryMode, x.strictSource, x.gitCommit, x.scenarioDigest.length, x.outputSchemaVersion]).toEqual(['standard', 'default', 'unknown', 64, '1'])
     expect(p.identity.data).toEqual({ xlsxFileDate: 'synthetic' })
-    expect(p.effective).toEqual({ strict: false, strictSource: 'default', continueAfterIntentUnmet: false, sample: null })
+    expect(p.effective).toEqual({ damageScope: { tuneBreak: { mode: 'auto' } }, strict: false, strictSource: 'default', continueAfterIntentUnmet: false, sample: null })
     // 带路径的规则覆盖只改那一项，同一层的其余项保留
     const share = prepared({}, { rules: { 'energyShare.dealer': 0.5 } }).identity.execution.rules.energyShare
     expect(share).toEqual({ ...prepared().identity.execution.rules.energyShare, dealer: 0.5 })
@@ -136,7 +136,7 @@ describe('归一入口与运行身份（DD-01 §3.2、§3.3）', () => {
 
   test('有问题时返回问题清单，不抛', () => {
     const bad = (sc: Partial<ScenarioInput>, o: RunOverrides = {}) => { const p = prepareRun(scenario(sc), data, o); return p.ok ? [] : p.issues }
-    expect(bad({}, { strict: true })).toMatchObject([{ stage: 'strict', code: 'strict.unavailable' }])
+    expect(bad({}, { strict: true })).toMatchObject([{ stage: 'strict', code: 'strict.tuneBreakAuto' }])
     expect(bad({}, { rules: { 没有这条: 1 } })).toMatchObject([{ stage: 'resolve' }])
     expect(bad({}, { options: { repeat: 0 } })).toMatchObject([{ stage: 'schema', code: 'schema' }])
     expect(bad({ rotation: ['甲 X', '甲 没有的动作'] })).toMatchObject([{ stage: 'compile', line: 2 }])

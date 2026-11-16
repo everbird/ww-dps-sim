@@ -65,6 +65,7 @@ export function argsOf(argv: string[], flags: string[]): { pos: string[]; opt: R
   const pos: string[] = []
   for (let i = 0; i < args.length; i++) {
     const a = args[i]!
+    if (a === '--strict' || a === '--no-strict') { opt.strict = String(a === '--strict'); continue }
     if (flags.includes(a) && i + 1 < args.length) opt[a.slice(2)] = args[++i]!
     else pos.push(a)
   }

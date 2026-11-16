@@ -30,9 +30,7 @@ export function outroOf(m: ResolvedMember): ActionDef | undefined {
  *  → 变奏时开始变奏动作（其后发施放资源）→ intro。switchOut / switchIn 的触发由 switch 事件派生（TD-07 §4.1） */
 export function onSwitch(sim: Sim, s: SimState, from: Slot, to: Slot, cmd: CommandRef): void {
   // 变奏动作随状态换（守岸人解限星域里是洞悉）：钩子 introAction 返回动作 ID，缺省按别名 QTE
-  const pick = sim.hooks[to]?.introAction?.(sim.ctxs[to]!)
-  const introDef = pick !== undefined ? sim.r.team[to].actions[pick] : introOf(sim.r.team[to])
-  if (pick !== undefined && !introDef) throw new Error(`${sim.r.team[to].def.name} 的钩子 introAction 返回的"${pick}"不是它的动作`)
+  const introDef = selectIntro(sim, to)
   const full = s.chars[from].concerto >= sim.r.rules.concertoMax
   const intro = full && introDef !== undefined
   log(s, { type: 'switch', from: s.chars[from].name, to: s.chars[to].name, intro, cmd })
@@ -80,4 +78,12 @@ export function outroTrigger(sim: Sim, s: SimState, slot: Slot, src: EventSource
     castResources(sim, s, from, tail)
     drain(sim, s)
   }
+}
+
+// DD-02 §3.3：预检与执行共用动作选择规则。
+export function selectIntro(sim: Sim, to: Slot): ActionDef | undefined {
+  const pick = sim.hooks[to]?.introAction?.(sim.ctxs[to]!)
+  const introDef = pick !== undefined ? sim.r.team[to].actions[pick] : introOf(sim.r.team[to])
+  if (pick !== undefined && !introDef) throw new Error(`${sim.r.team[to].def.name} 的钩子 introAction 返回的"${pick}"不是它的动作`)
+  return introDef
 }

@@ -18,7 +18,7 @@ const ANALYSIS = [
 const CORE = [
   'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula', 'simulate', 'context', 'num', 'rng',
   'resolve', 'portable', 'types', 'summary', 'invariants', 'assumptions',
-  'run', 'run-types', 'digest',
+  'run', 'run-types', 'digest', 'strict', // DD-02 编译检查属于执行入口
 ]
 const NODE_ONLY = ['fs', 'path', 'child_process', 'crypto']
 const CONSUMERS = ['../cli/', '../report/', '../../web/']

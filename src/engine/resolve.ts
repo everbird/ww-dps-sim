@@ -126,6 +126,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   }
 
   return {
+    ...(sc.tuneBreakOmitted ? { tuneBreakOmitted: sc.tuneBreakOmitted } : {}),
     data, purpose: sc.purpose, team, enemy, buffs, effects, commands, opening,
     initial: {
       energy,
@@ -136,7 +137,7 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     rules,
     tuneBreakTiming,
     options: {
-      repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait, tuneBreak: sc.options.tuneBreak,
+      strict: sc.options.strict ?? false, repeat: sc.options.repeat, maxFrames: sc.options.maxFrames, maxWait: sc.options.maxWait, tuneBreak: sc.options.tuneBreak,
       inputDelay: sc.options.inputDelay,
       ...(sc.options.endAt !== undefined ? { endAt: sc.options.endAt } : {}),
     },

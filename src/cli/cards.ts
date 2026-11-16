@@ -12,7 +12,7 @@ const FLAG_TEXT: Record<CardFlag, string> = {
 }
 const WAIT_TEXT: Record<string, string> = {
   cooldown: '冷却', switchCd: '切人冷却', switchLock: '切人锁', globalStop: '大招动画', airborne: '等跳起', inputLock: '输入锁', resource: '资源', hook: '角色条件',
-  combo: '连段', priority: '优先级', derive: '派生', started: '出手', settled: '就绪', delay: '延迟', input: '操作',
+  combo: '连段', priority: '优先级', derive: '派生', started: '出手', concertoSettle: '等协奏出手', settled: '就绪', delay: '延迟', input: '操作',
 }
 
 function measureText(m: CardMeasure, char: string): string[] {

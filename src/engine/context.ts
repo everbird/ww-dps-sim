@@ -5,7 +5,7 @@ import type { EffectName, Slot } from '../data/common'
 import type { BuffBook } from './buffs'
 import type { ActiveBuff, HitContext, HitView } from './formula'
 import type { Kernel } from './kernel'
-import type { InterventionRecord } from './run-types'
+import type { InterventionRecord, StrictReport, RunCompletion } from './run-types'
 import type { CharacterHooks, HitDraft, HookContext, ResolvedScenario } from './types'
 
 /** 一次直接伤害结算的输入（不含面板）：换声骸后按新面板重算这一段（TD-13 §3）。index 是日志里那条 hit 事件 */
@@ -21,7 +21,7 @@ export interface HitRecord {
 /** simulate 的可选项。sample：抽样模式（总设计 T4）——seed 定下全部随机数；逐段抽暴击；jitter > 0 时每个决策点的
  *  操作延迟另加 [0, jitter] 帧的均匀抖动；hand 时另加 max(0, round(正态(mean, sd))) 帧（手速档，HAND_PROFILES，假设 hand-speed）。
  *  都在 options.inputDelay 之上。不给就是期望模式 */
-export interface SimOptions { onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number; hand?: { mean: number; sd: number } } }
+export interface SimOptions { continueAfterIntentUnmet?: boolean; onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number; hand?: { mean: number; sd: number } } }
 
 export interface Sim {
   r: ResolvedScenario
@@ -35,6 +35,9 @@ export interface Sim {
   onHit?: (rec: HitRecord) => void        // 记下每次直接伤害结算的输入（配装择优的快速重算，TD-13 §3）
   keepStacks: ReadonlySet<EffectName>       // 结算后不减层的效应：队伍里有角色的 effectRules 写了 keepStacks（TD-06 §18）
   /** 外部干预记录（DD-01 §3.8；架构 §4.1）：录像指令各记一条；一直都有，不进日志的触发队列，随结果带出去 */
+  unmetIntents: StrictReport['unmetIntents'][number][]
+  hints: StrictReport['hints'][number][]
+  continuationFrom?: NonNullable<RunCompletion['diagnosticContinuationFrom']>
   interventions: InterventionRecord[]
 }
 

@@ -20,7 +20,7 @@ dataDescribe('桃渊散', () => {
     return { r, out: simulate(r) }
   }
   const run = (rotation: string[], onField = 1) => {
-    const { out } = sim({ ...base, video: undefined, initial: { onField }, rotation, options: { repeat: 1, maxFrames: 6000 } })
+    const { out } = sim({ ...base, tuneBreakOmitted: undefined, video: undefined, initial: { onField }, rotation, options: { repeat: 1, maxFrames: 6000 } })
     expect(out.error).toBeUndefined()
     return out.log
   }
@@ -67,7 +67,7 @@ dataDescribe('桃渊散', () => {
   })
 
   test('异构武装（声骸表里没有，extra-echoes.json 补的：帧取 WuwaLAB、倍率连 nanoka）：散华 Q 第 50 帧命中 405% 冷凝，首位加成冷凝与共鸣技能各 12%', () => {
-    const { r, out } = sim({ ...base, video: undefined, initial: { onField: 2 }, rotation: ['散华 Q'], options: { repeat: 1, maxFrames: 600 } })
+    const { r, out } = sim({ ...base, tuneBreakOmitted: undefined, video: undefined, initial: { onField: 2 }, rotation: ['散华 Q'], options: { repeat: 1, maxFrames: 600 } })
     expect(out.error).toBeUndefined()
     const q = out.log.find(e => e.type === 'actionStart' && e.char === '散华' && e.action === 'Q·幻形')!
     const h = hits(out.log, '幻形-攻击')

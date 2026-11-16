@@ -55,5 +55,5 @@ dataDescribe('录像剖析的贴合度', () => {
     expect(scores).toEqual([...scores].sort((a, b) => a - b))
     expect(x.rows.some(row => row.desc.startsWith('假设 '))).toBe(true)
     expect(x.candidates).toBeGreaterThan(4)
-  })
+  }, 30_000) // 多个变体各跑完整仿真；验证排序与假设覆盖，不把默认 5 秒当性能门槛。
 })

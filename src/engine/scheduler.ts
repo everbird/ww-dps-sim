@@ -6,13 +6,18 @@ import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
 import { airborne, cooldownKey, gate, log, settled, startAction, tick, type Kernel } from './kernel'
+import type { UnmetIntentDetail, StrictReport } from './run-types'
 import { roundTo } from './num'
 import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
 
-export type ScheduleErrorCode = 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill' | 'airEntry'
+export const INTENT_WAITS = ['concertoSettle', 'airborne', 'entryBusy'] as const
+
+export type ScheduleErrorCode = 'intentUnmet' | 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill' | 'airEntry'
 
 /** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
 export class ScheduleError extends Error {
+  intent?: UnmetIntentDetail
+  blocked?: NonNullable<StrictReport['timeoutContext']>['blocked']
   readonly code: ScheduleErrorCode
   readonly cmd: CommandRef | null
   readonly frame: number
@@ -141,6 +146,10 @@ function checkOnField(commands: Command[], team: CompileMember[], onField: Slot,
 // §3 调度
 
 export interface SchedulerOptions {
+  strict?: boolean
+  onIntentUnmet?(s: SimState, detail: UnmetIntentDetail): 'fail' | 'continue'
+  introAvailable?(s: SimState, to: Slot): boolean
+  onHint?(s: SimState, hint: StrictReport['hints'][number]): void
   maxWait: number                           // 一条指令因"不合法"最多等多少世界帧（options.maxWait）
   /** TD-06：资源够不够（大招能量、核心资源…）；返回字符串 = 不够及原因。缺省总是够 */
   canAfford?(s: SimState, slot: Slot, def: ActionDef): true | string
@@ -275,7 +284,7 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       // 写了"变奏"、切出者协奏还没满、手上的动作还有判定没出手：等它出手再切——这几下的协奏可能正好补满
       // （TD-09 §3.5；2026-10-25 景尤守 5R18Z 补位的普攻、爱琳莫琳奈视觉冲击的落地段：不等的话同一 tick 就切走，这几下白打）
       if (c.expectIntro && s.chars[s.onField].concerto < k.rules.concertoMax && !settled(s, s.onField))
-        return { go: false, code: 'settled', reason: `等 ${s.chars[s.onField].action!.id} 出手（变奏要协奏满）` }
+        return { go: false, code: 'concertoSettle', reason: `等 ${s.chars[s.onField].action!.id} 出手（变奏要协奏满）` }
       const lock = last?.def.switchLockUntil
       // 推断出来的锁可以在场景里关掉，量假设的敏感度（options.rules.ultInputLocksSwitch / invincibleLocksSwitch）
       const off = last && ((last.def.switchLockFromInput && !k.rules.ultInputLocksSwitch) || (last.def.switchLockFromInvincible && !k.rules.invincibleLocksSwitch))
@@ -294,7 +303,7 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
         const cur = s.chars[s.onField].action
         const up = cur && !cur.ended ? cur.def.air : undefined
         if (up && cur!.localFrame < up.from) return { go: false, code: 'airborne', reason: `等 ${cur!.id} 跳起（第 ${up.from} 帧），${s.chars[c.to].name} 切进来才在空中` }
-        throw fail(s, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
+        throw intentFail(s, opts, 'airEntry', `${where(q, ref)}：${s.chars[c.to].name} 第一下是空中动作 ${first.id}，可 ${s.chars[s.onField].name} 在地面，切进来也在地面`, ref)
       }
       // 切人后第一下是地面出场技：切进来的人自己在后台的动作要走完才算出场技入场（TD-09 §3.5 的 busy）。会走完的，切人等它
       // （2026-10-25 景莫守：景燃 A4 脱手退场后不久切回来打出场技阳A2，BV1VJYL6HEuQ）
@@ -310,7 +319,7 @@ function evaluate(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[]
       // 有出场技的角色，地面普通切人入场后第一下 A（A1）就是出场技（用户确认，TD-09 §3.5）：轴里要写出场技，写 A1 报错
       const entry = def.id === 'A1' && s.entry?.slot === c.slot && s.entry.block === null
         ? Object.values(actions[c.slot]!).find(a => a.entrySkill) : undefined
-      if (entry) throw fail(s, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
+      if (entry) throw intentFail(s, opts, 'entrySkill', `${where(q, ref)} ${s.chars[c.slot].name} A1：普通切人入场后第一下 A 是出场技（写 ${entry.id}）`, ref)
       if (c.optional && def.entrySkill && !(s.entry?.slot === c.slot && s.entry.block === null))
         return { go: false, code: 'entry', reason: `${def.id} 是出场技，${entryWhy(s, c.slot)}` }
       return evaluateAct(s, k, opts, c.slot, def, c.force, c.delay, ref, !def.comboFrom?.length)
@@ -326,7 +335,7 @@ function evaluateAct(
   const ch = s.chars[slot]
   // 出场技只在普通切人入场后第一个出（用户确认，m0-confirm §11 V10）；不满足就再也等不来，同连段中断直接报错
   if (def.entrySkill && !(s.entry?.slot === slot && s.entry.block === null))
-    throw fail(s, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
+    throw intentFail(s, opts, 'entrySkill', `${where(q, ref)} ${ch.name} ${def.id}：出场技要从地面普通切人入场后第一个出（${entryWhy(s, slot)}）`, ref)
   const g = gate(ch, def, k.rules.echoInputPriority)
   const onlyStarted = !g.ok && g.code === 'started'                   // "本 tick 已开始过动作"放到后面报（§3.2）
   if (!g.ok && !onlyStarted) {
@@ -392,6 +401,19 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
     case 'enemy': opts.enemyCommand?.(s, c); return                  // 敌人 失谐 / 换（录像剖析）：改敌人状态由 simulate 做
     case 'fill': opts.fillCommand?.(s, c.slot, c.resource); return    // 能量满（录像剖析）：同上
     case 'switch': {
+      // DD-02 §3.3：最终放行后、任何切人状态修改之前核对意图。
+      if (opts.strict && c.expectIntro) {
+        const ch = s.chars[s.onField]
+        const short = ch.concerto < k.rules.concertoMax
+        if (short || opts.introAvailable?.(s, c.to) === false) {
+          const d: UnmetIntentDetail = { kind: 'introMissed', cmd: ref,
+            expected: short ? `切出者协奏 ≥ ${k.rules.concertoMax}` : '有变奏动作',
+            actual: short ? `${ch.name} 协奏 ${roundTo(ch.concerto, 100)}` : `${s.chars[c.to].name} 没有变奏动作` }
+          if (opts.onIntentUnmet?.(s, d) !== 'continue') {
+            const e = fail(s, 'intentUnmet', d.actual, ref); e.intent = d; throw e
+          }
+        }
+      }
       beginLoop(s)
       const from = s.onField
       // 写了"变奏"（switch <角色> 变奏）而切出者协奏没满：照常普通切人，记一条警告——轴这里可能有问题（TD-09 §3.5）
@@ -421,6 +443,11 @@ function execute(s: SimState, k: Kernel, actions: Record<ActionId, ActionDef>[],
       return
     }
     case 'act':
+      if (c.force) {
+        const a = s.chars[c.slot].action
+        const code = !a || a.ended ? 'forceNoCancel' : settled(s, c.slot) ? 'forceNoEffect' : null
+        if (code) opts.onHint?.(s, { code, cmd: ref, message: code === 'forceNoCancel' ? '前一个动作已经结束，没有发生取消' : '不写 ! 也是这一帧，没有判定可丢' })
+      }
       beginLoop(s)
       startAction(s, k, c.slot, actions[c.slot]![c.action]!, ref)
   }
@@ -443,7 +470,11 @@ function hold(s: SimState, opts: SchedulerOptions, v: Extract<Verdict, { go: fal
   }
   if (INTENDED.includes(v.code)) return
   q.waited += 1
-  if (q.waited > opts.maxWait) throw fail(s, 'timeout', `${where(q, ref)}等了 ${opts.maxWait} 帧仍不能执行：${v.reason}`, ref)
+  if (q.waited > opts.maxWait) {
+    const blocked = { code: v.code, reason: v.reason, sinceFrame: q.seg.from }
+    const e = fail(s, 'timeout', `${where(q, ref)}等了 ${opts.maxWait} 帧仍不能执行：${v.reason}`, ref)
+    e.blocked = blocked; throw e
+  }
 }
 
 /** 结束当前等待段，写一条 wait 事件（f = 结束的帧，from = 开始的帧） */
@@ -492,4 +523,11 @@ export function runLoop(s: SimState, k: Kernel, schedule: (s: SimState) => boole
     return 'maxFramesInFlight'
   }
   return 'idle'
+}
+
+// DD-02 §3.3：没有可续跑语义的入场意图直接失败。
+function intentFail(s: SimState, opts: SchedulerOptions, kind: 'airEntry' | 'entrySkill', message: string, ref: CommandRef): ScheduleError {
+  const e = fail(s, opts.strict ? 'intentUnmet' : kind, message, ref)
+  if (opts.strict) e.intent = { kind, cmd: ref, expected: kind === 'airEntry' ? '空中入场' : '普通切人后第一个出场技', actual: message }
+  return e
 }

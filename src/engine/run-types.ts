@@ -41,6 +41,7 @@ export interface PreparedRun {
   readonly identity: RunIdentity            // 记归一后的有效值
   readonly resolved: ResolvedScenario
   readonly effective: {
+    readonly damageScope: DamageScope
     readonly strict: boolean
     readonly strictSource: 'scenario' | 'cli-override' | 'default'
     readonly continueAfterIntentUnmet: boolean
@@ -225,8 +226,7 @@ export interface StrictReport {
 }
 
 /** 谐度破坏含不含在 DPS 里（DD-02 §3.7）。"未含"= 谐度破坏自身的伤害不在 DPS 里；gauge 为 off 时，依赖失谐的效果也不在。
- *  DD-02 做完之前只按 options.tuneBreak 推：auto → auto；manual → written；off → omitted（disabledByOption、off）。
- *  "轴里有没有谐破动作"要看装配后的动作种类，由 DD-02 的 T02-10 细分 */
+ *  按最终有效选项与装配后的动作种类分类，省略原因保留场景声明 */
 export interface DamageScope {
   readonly tuneBreak:
     | { readonly mode: 'written' }
