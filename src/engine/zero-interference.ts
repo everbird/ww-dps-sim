@@ -6,6 +6,7 @@
 //   ③ 事件队列的游标 busCursor。
 // 逐字段深比较：同一个引用直接算相同，对象比键的集合（值为 undefined 的键也算），所以比 canonicalJson 后逐字节相等更严。
 import { ALL_DIAG, type DiagSink } from './diagnostics'
+import { statesAt } from './query'
 import { runForInspection, type InspectOptions } from './run'
 import type { PreparedRun } from './run-types'
 import type { SimState } from './types'
@@ -75,4 +76,26 @@ export function zeroInterference(p: PreparedRun, opts: ZeroInterferenceOptions =
   const off = opts.off ?? runForInspection(p, { ...opts.base })
   const on = runForInspection(p, { ...opts.base, diag: ALL_DIAG, ...(opts.sink ? { sink: opts.sink } : {}) })
   return compareInspections(off, on)
+}
+
+/** 抽样边界上的 stateAt 零干扰对拍（DD-07 T07-3；架构 §4.3）：诊断全关与全开在各采样帧上的 StateView 与 StatePrefix 逐字段相等 */
+export function zeroInterferenceStates(p: PreparedRun, frames?: readonly number[]): string | null {
+  const term = runForInspection(p)
+  const completed = term.result?.completion.coverage.completedTicks ?? 0
+  const initOk = term.result?.completion.coverage.initCompleted ?? false
+  if (!initOk) return null
+  const targets = frames ?? [...new Set([0, Math.floor(completed / 2), completed])]
+  const off = statesAt(p, targets)
+  const on = statesAt(p, targets, { diag: ALL_DIAG })
+  if (!off.ok) return `statesAt 失败：${JSON.stringify(off.error)}`
+  if (!on.ok) return `statesAt 失败：${JSON.stringify(on.error)}`
+  const stripLedger = off.value.map((x, i) => ({
+    a: { frame: x.frame, view: x.view, prefix: x.prefix },
+    b: { frame: on.value[i]!.frame, view: on.value[i]!.view, prefix: on.value[i]!.prefix },
+  }))
+  for (const { a, b } of stripLedger) {
+    const diff = firstDifference(a, b, `stateAt[${a.frame}]`)
+    if (diff) return diff
+  }
+  return null
 }

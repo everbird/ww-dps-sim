@@ -3,7 +3,7 @@
 // 只写到 0 链。两种状态：阈限（常态动作）与恶魔位格（动作 ID 带"恶魔"，加上 E2 掠袭）。
 // 核心资源槽 1 一槽两用：阈限里是罪火（常态攻击命中获得），恶翼扬升时等量转成净炼火（恶魔位格里命中消耗，耗完退出）。余火记在状态量里。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 const P = '嘉贝莉娜.'
 /** 恶魔位格 50 秒 */
@@ -29,9 +29,10 @@ const VARS = {
   c1: -1, c2: -1, c3: -1, c4: -1, c5: -1, c6: -1, c7: -1, c8: -1, c9: -1, c10: -1, c11: -1,   // 死运既定各分类上一次加层的战斗帧
 }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 type CatKey = 'c1' | 'c2' | 'c3' | 'c4' | 'c5' | 'c6' | 'c7' | 'c8' | 'c9' | 'c10' | 'c11'
-const me = (ctx: Ctx): string => ctx.state.chars[ctx.self].name
-const fire = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
+const me = (ctx: RoCtx): string => ctx.state.chars[ctx.self].name
+const fire = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
 
 /** 退出恶魔位格（净炼火耗完、或 50 秒到）：清空净炼火、余火，重置声骸监听 */
 function leaveDemon(ctx: Ctx, why: string): void {

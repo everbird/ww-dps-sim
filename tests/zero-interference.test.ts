@@ -11,7 +11,7 @@ import { ALL_DIAG, DiagSink, type OriginContext } from '../src/engine/diagnostic
 import { prepareRun, runForInspection, runPrepared } from '../src/engine/run'
 import type { StatePrefix } from '../src/engine/run-types'
 import type { SimState } from '../src/engine/types'
-import { compareInspections, firstDifference, zeroInterference } from '../src/engine/zero-interference'
+import { compareInspections, firstDifference, zeroInterference, zeroInterferenceStates } from '../src/engine/zero-interference'
 import { dataDescribe } from './helpers/kernel-harness'
 import { diagBase, diagTeam, preparedSynth } from './helpers/diag-team'
 
@@ -61,6 +61,9 @@ describe('零干扰：合成场景（DD-05 §6.2）', () => {
     expect(off.diag).toBeUndefined()
     expect(on.diag?.eventMeta?.length).toBe(on.log.length)
     expect(on.runId).toBe(off.runId)
+  })
+  test('stateAt 抽样边界零干扰（DD-07 T07-3）', () => {
+    expect(zeroInterferenceStates(diagBase())).toBeNull()
   })
 })
 
@@ -143,5 +146,6 @@ dataDescribe('零干扰：代表场景（DD-05 §6.2）', () => {
     const p = prepareRun(load(f), gd)
     if (!p.ok) throw new Error(p.issues.map(i => i.message).join('\n'))
     expect(zeroInterference(p.run)).toBeNull()
+    expect(zeroInterferenceStates(p.run)).toBeNull()
   }, 60_000)
 })

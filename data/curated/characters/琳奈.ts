@@ -4,11 +4,12 @@
 // 2 流光（上限 120，绮彩巡游里才有）、3 本色（上限 3，幻光折跃各 +1，虹彩飞溅 / 视觉冲击清空）。
 // 简化（docs/alm-confirm.md）：流光随时间的回复与流失不建模——灵感碰撞（按满蓄力的 3 级）后直接满 120，三段幻光折跃各耗 40。
 import { defineCharacter } from '../../../src/data/define'
-import type { HookContext } from '../../../src/engine/types'
+import type { HookContext, ReadonlyHookContext } from '../../../src/engine/types'
 
 /** 巡游：绮彩巡游状态（灵感碰撞后进入；长按 E、延奏退出） */
 const VARS = { 巡游: false }
 type Ctx = HookContext<typeof VARS>
+type RoCtx = ReadonlyHookContext<typeof VARS>
 const 偏移帧 = 1500                       // "光致变染为目标附加【震谐·偏移】，持续25秒"
 /** 命中时挂震谐·偏移（光致变染）的判定：幻光折跃三段、变奏、虹彩飞溅 / 视觉冲击的落地与颜料 */
 const SHIFT = new Set(['折跃1-1', '折跃1-2', '折跃1-3', '折跃2-震谐伤害', '折跃3-1', '折跃3-2', 'QTE-震谐状态', 'E3-震谐状态落地', 'E4-震谐状态落地', 'E4-C0震谐颜料'])
@@ -18,9 +19,9 @@ const SKIP: Record<string, string[]> = {
   E4: ['E4-集谐状态落地', 'E4-C0集谐颜料', 'E4-C1集谐颜料', 'E4-C1震谐颜料', 'E4-C1颜料牵引1', 'E4-C1颜料牵引2'],
 }
 const JUMPS = ['轮滑跳跃', '轮滑跳跃-折跃2', '轮滑跳跃-折跃3']
-const 溢彩 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[0]!
-const 流光 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[1]!
-const 本色 = (ctx: Ctx): number => ctx.state.chars[ctx.self].core[2]!
+const 溢彩 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[0]!
+const 流光 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[1]!
+const 本色 = (ctx: RoCtx): number => ctx.state.chars[ctx.self].core[2]!
 
 function leaveTour(ctx: Ctx, why: string): void {
   if (!ctx.vars.巡游) return

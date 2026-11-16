@@ -26,8 +26,16 @@ export interface KernelHooks {
 }
 /** at：现在走到 tick 的哪个相位。运行环境里的簿记，不是业务状态、不影响执行：出错时拿它记停在哪一步（DD-01 §3.5；架构 §2.3）。
  *  diag：诊断收集器（DD-05 §3.1），诊断全关时为 null；插桩处一律写 k.diag?.方法(…)，返回值不参与业务判断。
- *  rule：规则使用的记录（DD-05 §4.2），总是有，不随诊断开关变 */
-export interface Kernel { rules: Rules; hooks: KernelHooks; at: { phase: TickPhase }; diag: DiagSink | null; rule: RuleRecorder }
+ *  rule：规则使用的记录（DD-05 §4.2），总是有，不随诊断开关变。
+ *  settleQueue：P4 进行中时，新生成的判定追加到这里，同一 tick 内结算（DD-07 §3.1：从模块级挪到实例里） */
+export interface Kernel {
+  rules: Rules
+  hooks: KernelHooks
+  at: { phase: TickPhase }
+  diag: DiagSink | null
+  rule: RuleRecorder
+  settleQueue: JudgmentRuntime[] | null
+}
 /** 时间线事件的来源：进行中的动作，或脱离动作的尾部（ActionRuntime、TailRuntime 都符合） */
 export interface EventSource { def: ActionDef; instance: number; skip?: string[]; detached?: true }
 
@@ -305,7 +313,7 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
       registerDilation(s, k.rules, src.def.dilations[e.index]!, slot, src.instance, s.chars[slot].action?.instance === src.instance, k.rule)
       break
     case 'spawn':
-      if (!skipped(src, e)) spawnJudgment(s, slot, src.def.id, src.instance, src.def.judgments[e.index]!, src.detached)
+      if (!skipped(src, e)) spawnJudgment(s, k, slot, src.def.id, src.instance, src.def.judgments[e.index]!, src.detached)
       break
     case 'outro': k.hooks.outroTrigger?.(s, slot, src); break
   }
@@ -314,17 +322,15 @@ function fireEvent(s: SimState, k: Kernel, slot: Slot, src: EventSource, e: Time
 // ---------------------------------------------------------------------------
 // §5 判定：生成、结算次数、年龄、到期
 
-let settleQueue: JudgmentRuntime[] | null = null   // P4 进行中时，新生成的判定追加到这里，同一 tick 内结算
-
 /** detached：由延奏动作的独立时间线生成，不随持有者之后的动作消失（TD-05 §4.3）；note：钩子生成时附的说明，记进事件 */
 export function spawnJudgment(
-  s: SimState, owner: Slot, action: ActionId, instance: number, def: JudgmentDef, detached?: true, note?: string,
+  s: SimState, k: Kernel, owner: Slot, action: ActionId, instance: number, def: JudgmentDef, detached?: true, note?: string,
 ): JudgmentRuntime {
   const j: JudgmentRuntime = {
     id: s.nextId++, owner, action, actionInstance: instance, def, spawnedAt: s.frame, age: 0, ticksDone: 0, ...(detached ? { detached } : {}),
   }
   s.judgments.push(j)
-  settleQueue?.push(j)
+  k.settleQueue?.push(j)
   log(s, { type: 'judgmentSpawn', char: s.chars[owner].name, action, judgment: def.name, id: j.id, ...(note ? { note } : {}) })
   return j
 }
@@ -348,7 +354,7 @@ export const judgmentRate = (j: JudgmentRuntime, rates: Rates): number =>
  *  延迟（delayFrames，附页1"判定生成后到生效前要等的时长"）：第 n 次结算在年龄"延迟 + n × 间隔"，持续帧从生效时算 */
 export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
   const queue = [...s.judgments].sort((a, b) => a.owner - b.owner || a.id - b.id)
-  settleQueue = queue
+  k.settleQueue = queue
   try {
     for (let i = 0; i < queue.length; i++) {
       const j = queue[i]!
@@ -374,7 +380,7 @@ export function settleJudgments(s: SimState, k: Kernel, rates: Rates): void {
       }
     }
   } finally {
-    settleQueue = null
+    k.settleQueue = null
   }
   for (const j of s.judgments) j.age = snap4(j.age + judgmentRate(j, rates))
   const gone = s.judgments.filter(j => j.def.lifeFrames !== -1 && j.age >= (j.def.delayFrames ?? 0) + j.def.lifeFrames)

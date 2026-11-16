@@ -5,7 +5,7 @@ import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
-import { ProbeStop } from './diagnostics'
+import { ProbeStop, type CommandVerdict } from './diagnostics'
 import { airborne, cooldownKey, gate, log, settled, startAction, tick, type GateResult, type Kernel } from './kernel'
 import type { UnmetIntentDetail, StrictReport } from './run-types'
 import { roundTo } from './num'
@@ -168,6 +168,8 @@ export interface SchedulerOptions {
    *  插队的动作不算。缺省 0。
    *  期望模式是 options.inputDelay；抽样模式在这里加随机抖动——这是调度器里唯一的随机注入点 */
   inputDelay?(s: SimState): number
+  /** DD-07 §4.4：每次真实 evaluate 调用之后、hold / execute 之前的检查点（只读）；返回 'stop' 时抛 ProbeStop 停下 */
+  afterEvaluate?(s: SimState, c: Command, ref: CommandRef, verdict: NonNullable<CommandVerdict['verdict']>, evaluationIndex: number): void | 'stop'
 }
 
 /** repeat = 循环轴执行几轮（options.repeat）；opening = 启动轴，先跑一次，记为第 0 轮（§3.7） */
@@ -189,6 +191,8 @@ const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook', 'entry']
 
 /** 返回 P2 用的 schedule(s)：执行队首起能执行的指令（一个 tick 可以执行多条），返回"还有没有没执行完的指令" */
 export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions): (s: SimState) => boolean {
+  let evalCount = 0
+  let headKey = ''
   return (s: SimState): boolean => {
     const q = s.queue
     if (q.commands.length === 0) return false
@@ -201,6 +205,13 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       }
       const c = listOf(q)[q.next]!
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
+      if (k.diag?.opts.commandVerdicts) {
+        const key = `${ref.loop}:${ref.line}:${ref.item}`
+        if (key !== headKey) {
+          headKey = key
+          k.diag.commandVerdict({ evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'head' })
+        }
+      }
       // 对队首指令的这一轮处理，来源是这条指令（DD-05 §3.2）：算出 ref 之后立刻打开，插队分支写出的 wait 也落在它里面（DF-06）。
       // 每个出口（等、跳过、执行完、插队）各关一次；抛错时留着，由收集器的 finish 收尾
       const sc = k.diag?.open({ kind: 'command', cmd: ref }, s.log.length)
@@ -216,6 +227,10 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           return true
         }
         closeSeg(s, ref)
+        k.diag?.commandVerdict({
+          evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'interject',
+          interject: { slot: ij.slot, action: ij.def.id },
+        })
         const ia = k.diag?.open({ kind: 'autoInterject', slot: ij.slot, action: ij.def.id }, s.log.length)
         startAction(s, k, ij.slot, ij.def)
         if (ia !== undefined) k.diag!.close(ia, s.log.length, k.at.phase)
@@ -234,6 +249,10 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           const why = t!.kind === 'switch' ? `协奏满了，变奏不用补 ${c.action}`
             : t!.kind === 'at' ? `到第 ${t!.frame} 帧了，不用补 ${c.action}` : `${t!.action} 已经能放，不用补 ${c.action}`
           log(s, { type: 'skip', cmd: ref, code: 'filler', reason: why })
+          k.diag?.commandVerdict({
+            evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'skip',
+            verdict: { go: false, code: 'filler', reason: why },
+          })
           q.next += 1
           q.waited = 0
           q.readyAt = null
@@ -243,11 +262,41 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
           continue
         }
       }
-      const v = evaluate(s, k, actions, opts, c, ref)
-      if (!v.go && c.kind === 'act' && c.optional && SKIPPABLE.includes(v.code)) {
+      let v: Verdict
+      let lastEvalIdx = evalCount
+      if (!k.diag?.opts.commandVerdicts && !opts.afterEvaluate) {
+        v = evaluate(s, k, actions, opts, c, ref)
+      } else {
+        lastEvalIdx = evalCount++
+        const force = c.kind === 'act' ? c.force : false
+        const delay = c.kind === 'act' ? c.delay : 0
+        let caught: unknown = null
+        let hasCaught = false
+        let verdict: NonNullable<CommandVerdict['verdict']>
+        try {
+          v = evaluate(s, k, actions, opts, c, ref)
+          verdict = v.go ? { go: true } : { go: false, code: v.code, reason: v.reason }
+        } catch (err) {
+          caught = err
+          hasCaught = true
+          if (err instanceof ScheduleError) verdict = { threw: err.code }
+          else throw err
+        }
+        const context = { readyAt: q.readyAt, extra: q.extra, until: q.until, waited: q.waited, force, delay }
+        k.diag?.commandVerdict({
+          evaluationIndex: lastEvalIdx, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'evaluate', verdict, context,
+        })
+        if (opts.afterEvaluate?.(s, c, ref, verdict, lastEvalIdx) === 'stop') throw new ProbeStop(s.frame, lastEvalIdx)
+        if (hasCaught) throw caught
+      }
+      if (!v!.go && c.kind === 'act' && c.optional && SKIPPABLE.includes(v!.code)) {
         // 可选指令（"?"）：冷却、资源、角色条件不满足就跳过，记一条 skip，接着看下一条（TD-06 §13.4）
         closeSeg(s, ref)
-        log(s, { type: 'skip', cmd: ref, code: v.code, reason: v.reason })
+        log(s, { type: 'skip', cmd: ref, code: v!.code, reason: v!.reason })
+        k.diag?.commandVerdict({
+          evaluationIndex: lastEvalIdx, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'skip',
+          verdict: { go: false, code: v!.code, reason: v!.reason },
+        })
         q.next += 1
         q.waited = 0
         q.readyAt = null
@@ -256,13 +305,14 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
         continue
       }
-      if (!v.go) {
-        hold(s, k, opts, v, ref)
+      if (!v!.go) {
+        hold(s, k, opts, v!, ref)
         if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
         return true
       }
       closeSeg(s, ref)
       execute(s, k, actions, opts, c, ref)
+      k.diag?.commandVerdict({ evaluationIndex: lastEvalIdx, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'execute' })
       q.next += 1
       q.waited = 0
       q.readyAt = null

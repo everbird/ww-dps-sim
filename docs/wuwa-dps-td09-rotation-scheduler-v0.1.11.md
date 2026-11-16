@@ -820,3 +820,9 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 §3.3、§3.5：所有入口的变奏等待码为 `concertoSettle`，计入 maxWait，不记 wait-settled 假设。严格入口在最终切人条件放行后、状态修改之前核对变奏意图；失败为 `intentUnmet`。空中入场与出场技失败也归此码。可选诊断续跑只支持变奏意图，运行状态仍为 axisFailed。报告记录意图等待、未达到的意图、多余 `!` 提示，以及超时条件、角色资源与冷却。
 
 `!@N` 按 DD02-Q3 延后，本阶段不支持该语法。
+
+## 状态查询与结构化指令检查补充（2026-11-16，DD-07 §4–§5）
+
+- §3.2 出招检查表与 §3.5 切人检查现在有对应的纯只读检查函数：`src/engine/probe.ts` 的 `explainAct` 与 `explainSwitch`，按同一顺序输出 `ConditionCheck[]`（状态为 `met` / `unmet` / `shortCircuited` / `notApplicable` / `unmodeled`，第一个 `unmet`/`unmodeled` 之后标 `speculative: true`）；`firstBlocking` 的代码与 `WaitCode` 对应（C07-9 在三条合成轴与代表轴 `m0-video-eq-不打谐破.yaml` 上逐求值点验证一致）。
+- `SchedulerOptions` 新增可选 `afterEvaluate` 检查点回调，在每次真实 `evaluate()` 之后触发；开启 `DiagOptions.commandVerdicts` 时 `createScheduler` 记录 `head` / `interject` / `evaluate` / `execute` / `skip` 明细及指令当时的 `{ force, delay, until, readyAt, extra }`。
+- `src/engine/query.ts` 提供 `commandCheck(p, cmd, { evaluationIndex? })` 与 `rawActionCheck(p, f, slot, action)`：分别解释某条指令为何执行 / 跳过 / 失败 / 未到达（`executed` / `skipped` / `failedHere` / `notReached`），以及任意合法边界 `S[f]` 上 P1 前的原始出招条件。

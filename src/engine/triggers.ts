@@ -1,29 +1,15 @@
 // src/engine/triggers.ts —— TD-07 §4、§5、§6：事件队列与触发
 // 引擎记下的每条事件都排进本 tick 的队列（日志本身就是队列），逐条处理：① 消耗 → ② buff 触发 → ③ 资源型效果 → ④ 角色钩子 onEvent。
 // 处理中产生的新事件排到队尾，同一 tick 内处理完；一条事件引出的事件链超过 rules.maxChainDepth 层报错。
-import type { ActionId, ActionKind, DamageTag, EffectName, Element, ResourceKind, Slot } from '../data/common'
-import type { BuffDef, EnemyStateChange, TriggerFilter, TriggerSpec } from '../data/buff.schema'
+import type { Slot } from '../data/common'
+import type { BuffDef, TriggerFilter, TriggerSpec } from '../data/buff.schema'
 import { applyTriggered, bookKey, extendBuff, ownerName, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { log } from './kernel'
+import { explainExtend, explainFiring, groupsWouldFire, type Occurrence, type TriggerTarget } from './probe'
 import { grant } from './resources'
 import { ScheduleError } from './scheduler'
 import type { SimEvent, SimState } from './types'
-
-/** 一条日志事件对应的触发点（§4.1）。switch 一条对应 switchOut、switchIn 两个 */
-interface Occurrence {
-  on: TriggerSpec['on']
-  by: Slot                                  // 发出者
-  action?: ActionId
-  kind?: ActionKind
-  judgment?: string
-  tags?: readonly DamageTag[]
-  element?: Element
-  resource?: ResourceKind
-  to?: Slot                                 // outro：这次变奏的角色（nextIn 的去处）
-  enemyState?: EnemyStateChange             // enemyState：什么变化
-  effect?: EffectName                       // enemyState：哪种异常效应（effectApplied / effectEnd）
-}
 
 /** 处理队列里所有还没处理的事件。可重入：处理中再调用直接返回，新事件由外层循环接着处理 */
 export function drain(sim: Sim, s: SimState): void {
@@ -46,6 +32,7 @@ export function drain(sim: Sim, s: SimState): void {
       }
       const before = s.log.length
       bus.current = link
+      sim.k.diag?.eventRoot(i, link.root)
       handle(sim, s, s.log[i]!, i)
       bus.current = null
       for (let x = before; x < s.log.length; x++) bus.chain.set(x, { depth: link.depth + 1, root: link.root })
@@ -73,49 +60,149 @@ function describe(e: SimEvent): string {
  *  seq：这条事件的日志下标。每个处理器的一次执行各是一个 trigger 作用域，写出的事件的直接父事件就是它（DD-05 §3.2） */
 function handle(sim: Sim, s: SimState, ev: SimEvent, seq: number): void {
   const k = sim.k
+  const tc = k.diag?.opts.triggerChecks
+  const recorded = tc?.length ? new Set<number>() : null
+  const matchIdx = (kind: TriggerTarget['kind'], owner: Slot | 'env', id: string): number =>
+    tc ? tc.findIndex((t, idx) => !recorded!.has(idx) && t.kind === kind && t.owner === owner && t.id === id) : -1
   const occs = occurrencesOf(sim, ev)
+  if (occs.length === 0 && tc?.length) {
+    tc.forEach((t, idx) => {
+      if (t.kind !== 'charHook') {
+        recorded!.add(idx)
+        k.diag!.triggerCheck({ eventSeq: seq, target: t, outcome: 'notEntered', notEnteredReason: 'noOccurrence', groups: [] })
+      }
+    })
+  }
   if (occs.length > 0) {
-    consume(sim, s, occs, seq)
+    consume(sim, s, occs, seq, tc, recorded ?? undefined)
     for (const reg of sim.r.buffs) {
-      if (typeof reg.def.trigger === 'string') continue      // 常驻、只由钩子施加的不看事件
+      const idx = matchIdx('buff', reg.owner, reg.def.id)
+      if (typeof reg.def.trigger === 'string') {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({
+            eventSeq: seq, target: tc![idx]!, outcome: 'checkedNotFired',
+            groups: explainFiring(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs),
+          })
+        }
+        continue      // 常驻、只由钩子施加的不看事件
+      }
+      const groups = idx >= 0 ? explainFiring(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs) : undefined
       const occ = firing(s, reg.def.trigger, reg.owner, reg.def.id, reg.def.icd, occs)
-      if (!occ) continue
+      if (!occ) {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({ eventSeq: seq, target: tc![idx]!, outcome: 'checkedNotFired', groups: groups! })
+        }
+        continue
+      }
       const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'buffTrigger', handlerId: reg.def.id }, s.log.length)
+      const beforeLog = s.log.length
       applyTriggered(s, reg, occ.on === 'outro' ? occ.to : undefined, occ.stacks, occ.by)
       if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+      if (idx >= 0) {
+        recorded!.add(idx)
+        const afterFiring = s.log.length === beforeLog
+          ? (reg.def.target === 'nextIn' && occ.on !== 'outro' ? 'nextIn 挂起到下一次切入' : '未产生可见 buffApply')
+          : undefined
+        k.diag!.triggerCheck({
+          eventSeq: seq, target: tc![idx]!, outcome: 'fired', groups: groups!,
+          ...(afterFiring ? { afterFiring } : {}),
+        })
+      }
     }
     for (const reg of sim.r.buffs) {                  // 延长（BuffDef.extend）：在施加之后看，同一事件刚施加的实例也能被延长
+      const idx = matchIdx('buffExtend', reg.owner, reg.def.id)
       const ext = reg.def.extend
-      if (!ext || !s.buffs.some(b => b.defId === reg.def.id && b.owner === reg.owner)) continue
+      if (!ext) {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({
+            eventSeq: seq, target: tc![idx]!, outcome: 'checkedNotFired',
+            groups: [{ occurrence: occs[0]!.on, spec: 0, conditions: [{ id: 'extend', status: 'unmet', expected: '存在 extend 规则', actual: '该 buff 不支持延长' }] }],
+          })
+        }
+        continue
+      }
+      if (!s.buffs.some(b => b.defId === reg.def.id && b.owner === reg.owner)) {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({ eventSeq: seq, target: tc![idx]!, outcome: 'notEntered', notEnteredReason: 'noInstance', groups: [] })
+        }
+        continue
+      }
+      const extExplain = idx >= 0 ? explainExtend(s, reg.def, reg.owner, occs) : undefined
       const occ = firing(s, ext.trigger, reg.owner, `${reg.def.id}#extend`, undefined, occs)
-      if (!occ) continue
+      if (!occ) {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({ eventSeq: seq, target: tc![idx]!, outcome: 'checkedNotFired', groups: extExplain!.groups })
+        }
+        continue
+      }
       const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'buffExtend', handlerId: reg.def.id }, s.log.length)
-      if (extendBuff(s, reg)) {
+      const extended = extendBuff(s, reg)
+      if (extended) {
         for (const id of ext.grants ?? []) {
           const g = sim.book.get(bookKey(reg.owner, id))
           if (g) applyTriggered(s, g, undefined, g.def.stackGain, occ.by)
         }
       }
       if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+      if (idx >= 0) {
+        recorded!.add(idx)
+        k.diag!.triggerCheck({
+          eventSeq: seq, target: tc![idx]!, outcome: extended ? 'fired' : 'checkedNotFired', groups: extExplain!.groups,
+          ...(!extended ? { afterFiring: '已达延长次数上限或无限时长' } : {}),
+        })
+      }
     }
     for (const e of sim.r.effects) {                  // 已按共鸣链过滤、按谐振阶取值（resolve）
+      const idx = matchIdx('resourceEffect', e.owner, e.def.id)
+      const groups = idx >= 0 ? explainFiring(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs) : undefined
       const occ = firing(s, e.def.trigger, e.owner, e.def.id, e.def.icd, occs)
-      if (!occ) continue
+      if (!occ) {
+        if (idx >= 0) {
+          recorded!.add(idx)
+          k.diag!.triggerCheck({ eventSeq: seq, target: tc![idx]!, outcome: 'checkedNotFired', groups: groups! })
+        }
+        continue
+      }
       const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'resourceEffect', handlerId: e.def.id }, s.log.length)
+      const beforeLog = s.log.length
       for (const t of effectTargets(e.def.target, e.owner, s)) grant(sim, s, t, e.def.resource, e.amount, e.def.id, e.def.scaledByRegen)
       if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+      if (idx >= 0) {
+        recorded!.add(idx)
+        const afterFiring = s.log.length === beforeLog ? '资源已满或变化量为 0（未写业务事件）' : undefined
+        k.diag!.triggerCheck({
+          eventSeq: seq, target: tc![idx]!, outcome: 'fired', groups: groups!,
+          ...(afterFiring ? { afterFiring } : {}),
+        })
+      }
     }
   }
   for (const m of sim.r.team) {
+    const idx = matchIdx('charHook', m.slot, m.def.name)
+    if (idx >= 0) {
+      recorded!.add(idx)
+      k.diag!.triggerCheck({ eventSeq: seq, target: tc![idx]!, outcome: 'unsupported', groups: [] })
+    }
     const hooks = sim.hooks[m.slot]
     if (!hooks?.onEvent) continue
     const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'charHook', handlerId: m.def.name }, s.log.length)
     hooks.onEvent(sim.ctxs[m.slot]!, ev)
     if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   }
+  if (tc?.length) {
+    tc.forEach((t, idx) => {
+      if (recorded!.has(idx)) return
+      k.diag!.triggerCheck({ eventSeq: seq, target: t, outcome: 'notEntered', notEnteredReason: 'noInstance', groups: [] })
+    })
+  }
 }
 
-function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
+export function occurrencesOf(sim: Sim, ev: SimEvent, noteRules = true): Occurrence[] {
   const slot = (name: string): Slot => sim.slotOf.get(name)!
   switch (ev.type) {
     case 'actionStart': {
@@ -135,7 +222,7 @@ function occurrencesOf(sim: Sim, ev: SimEvent): Occurrence[] {
     // 阵、召唤物附加的不算"角色附加"时（rules.summonCountsAsChar = false，假设 summon-as-char）不触发
     case 'enemyState':
       // 规则使用（DD-05 §4.1）：事件带 summon 时才读；记了附加者的，换个读法就触发 / 不触发"附加…后"
-      if (ev.summon) sim.k.rule.note('triggers.summonAsChar', sim.r.rules.summonCountsAsChar, ev.by !== undefined)
+      if (ev.summon && noteRules) sim.k.rule.note('triggers.summonAsChar', sim.r.rules.summonCountsAsChar, ev.by !== undefined)
       if (ev.summon && !sim.r.rules.summonCountsAsChar) return []
       return ev.by !== undefined ? [{ on: 'enemyState', by: slot(ev.by), enemyState: ev.change, ...(ev.effect ? { effect: ev.effect } : {}) }] : []
     default: return []
@@ -181,10 +268,33 @@ function firing(
 }
 
 /** 消耗型"下次 X…"（§6）：先于触发处理。相关实例 = 挂在事件发出者身上的、挂在敌人身上的。每个被消耗的实例一个作用域（DD-05 §3.2） */
-function consume(sim: Sim, s: SimState, occs: Occurrence[], seq: number): void {
+function consume(
+  sim: Sim, s: SimState, occs: Occurrence[], seq: number,
+  tc?: readonly TriggerTarget[], recorded?: Set<number>,
+): void {
   const k = sim.k
+  const seenInstance = tc && recorded ? new Set<number>() : null
   for (const b of [...s.buffs]) {
     const c = sim.book.get(bookKey(b.owner, b.defId))?.def.consume
+    if (tc && recorded && seenInstance) {
+      tc.forEach((t, idx) => {
+        if (recorded.has(idx) || t.kind !== 'consume' || t.owner !== b.owner || t.id !== b.defId) return
+        seenInstance.add(idx)
+        if (!c) {
+          recorded.add(idx)
+          k.diag!.triggerCheck({
+            eventSeq: seq, target: t, outcome: 'checkedNotFired',
+            groups: [{ occurrence: occs[0]!.on, spec: 0, conditions: [{ id: 'consume', status: 'unmet', expected: '存在 consume 规则', actual: '该 buff 不是消耗型' }] }],
+          })
+          return
+        }
+        const matchedOccs = occs.filter(o => b.target === o.by || b.target === 'enemy')
+        if (matchedOccs.length === 0) return
+        recorded.add(idx)
+        const groups = explainFiring(s, { on: c.on, ...(c.where ? { where: c.where } : {}) }, b.owner, b.defId, undefined, matchedOccs)
+        k.diag!.triggerCheck({ eventSeq: seq, target: t, outcome: groupsWouldFire(groups) ? 'fired' : 'checkedNotFired', groups })
+      })
+    }
     if (!c) continue
     if (!occs.some(o => (b.target === o.by || b.target === 'enemy') && matches(s, c.on, c.where, b.owner, o))) continue
     const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'consume', handlerId: b.defId }, s.log.length)
@@ -194,6 +304,16 @@ function consume(sim: Sim, s: SimState, occs: Occurrence[], seq: number): void {
       log(s, { type: 'buffApply', buff: b.defId, owner: ownerName(s, b.owner), target: b.target === 'enemy' ? 'enemy' : s.chars[b.target].name, instanceId: b.id, stacks: b.stacks, remaining: b.remaining })
     }
     if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
+  }
+  if (tc && recorded && seenInstance) {
+    tc.forEach((t, idx) => {
+      if (recorded.has(idx) || t.kind !== 'consume') return
+      recorded.add(idx)
+      k.diag!.triggerCheck({
+        eventSeq: seq, target: t, outcome: 'notEntered',
+        notEnteredReason: seenInstance.has(idx) ? 'targetMismatch' : 'noInstance', groups: [],
+      })
+    })
   }
 }
 
