@@ -1,7 +1,7 @@
 # DD-06 资源只读账本
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-07、DF-10）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**已实现（2026-11-16）**：T06-1～T06-5，验收清单见 §6；实施中与正文对不上、按代码改了正文或正文没写到的几处记在 §9。
 **阶段**：二。**前置**：DD-01、DD-05（收集器）。**被依赖**：DD-07、DD-09（状态同步）。
 
 ## 1. 范围与依据
@@ -43,7 +43,7 @@
 readonly causeKind: 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'forced' | 'outro' | 'sync'
 ```
 
-`cause` 保留原文（资源型效果是它的定义 ID，钩子给的 `note` 也并进来），`causeKind` 是给程序分类用的固定取值：
+`cause` 保留原文（资源型效果是它的定义 ID，钩子给的 `note` 也并进来，写成 `hook：<说明>`），`causeKind` 是给程序分类用的固定取值。实施时另加了 `battleFrame`（写入那一刻的战斗帧，§3.4 按战斗帧开窗口要它，§9 第 1 条）：
 
 | `causeKind` | 什么时候 | `kind` |
 |---|---|---|
@@ -118,8 +118,9 @@ for (const f of full) log(s, f)
 `diagnostics.ts` 里的纯函数：
 
 ```ts
-/** 账本前 endExclusive 条推出的余额与 state 里的余额逐项比。返回不一致的项；空数组 = 闭合 */
-export function checkLedgerClosure(ledger: readonly ResourceLedgerEntry[], endExclusive: number, state: Pick<SimState, 'chars'>): LedgerMismatch[]
+/** 账本前 endExclusive 条推出的余额与 state 里的余额逐项比。返回不一致的项；空数组 = 闭合。
+ *  LedgerBalances：每人的槽位、名字与三种资源，SimState 满足它（实施时从 Pick<SimState, 'chars'> 放宽，§9 第 4 条） */
+export function checkLedgerClosure(ledger: readonly ResourceLedgerEntry[], endExclusive: number, state: LedgerBalances): LedgerMismatch[]
 
 /** 对 tick 边界 S[f]：从整次运行的账本里取属于它的条目 */
 export const ledgerPrefixForBoundary = (ledger, f: Frame) => ledger.filter(e => e.phase === 'init' || e.f < f)
@@ -147,8 +148,8 @@ export interface ResourceTotals {
   readonly synced: number             // 状态同步的净变化
   readonly final: number
 }
-/** 可按战斗帧或世界帧窗口、按 causeKind 过滤 */
-export function ledgerTotals(ledger, opts?: { fromFrame?: Frame; toFrame?: Frame; causeKinds?: readonly string[] }): ResourceTotals[]
+/** 可按战斗帧或世界帧窗口（clock，缺省世界帧；[fromFrame, toFrame) 左闭右开）、按 causeKind 过滤（只筛变化量，§9 第 5 条） */
+export function ledgerTotals(ledger, opts?: { clock?: 'world' | 'battle'; fromFrame?: Frame; toFrame?: Frame; causeKinds?: readonly LedgerCauseKind[] }): ResourceTotals[]
 ```
 
 报"这个角色这一轮回了多少能量"时用 `gainRequested`（没按上限截断的获得量）；报"到上限后的实际库存"用 `gainActual` 与 `final`。被截掉的量单列，不当作可见状态（路线图 §4.3）。
@@ -204,12 +205,12 @@ T06-2 不改任何业务行为：`add` 的返回值、事件、状态都不变�
 
 ## 6. 验收清单
 
-- [ ] `tests/resource-ledger.test.ts` 全过；RR-02 的关闭条件（获得、上限截断、大招扣费、延奏清零、钩子修改；诊断开关前后一致）逐条有用例。
-- [ ] 任意帧边界与终态的闭合在合成轴与两条真实轴上成立。
-- [ ] `pnpm fuzz --ledger` 通过。
-- [ ] conformance 输出逐字节不变；零干扰对拍通过。
-- [ ] 全引擎搜索 `\.energy\s*=`、`\.concerto\s*=`、`\.core\[.*\]\s*=`，除 `add`、延奏清零、`initialState` 外没有别的写入；结果贴进提交说明。
-- [ ] `resources.ts` 的文件头注释写明："新增资源写入点必须同时接进账本（DD-06）"。
+- [x] `tests/resource-ledger.test.ts` 全过（27 个，C06-1～C06-16 与两条真实轴）；RR-02 的关闭条件逐条有用例：获得 C06-3、上限截断 C06-4（另有扣到 0 以下 C06-5）、大招扣费 C06-6、延奏清零 C06-7、钩子修改 C06-2 / C06-8；诊断开关前后一致 C06-15。`tests/fuzz.test.ts` 另有两条：`pnpm fuzz --ledger` 的检查在正常的轴上没有问题、绕过账本改资源时报出闭合的问题。
+- [x] 任意帧边界与终态的闭合在合成轴与两条真实轴上成立：合成轴（300 帧、各种写入都有）查了 `S[0]`…`S[300]` 的每一个边界；`m0-video-eq.yaml`、`xin-team.yaml` 每 37 帧一个边界加 `S[completedTicks]`，以及终态。每个边界都查了"按集合条件取的前缀长度 = 观察点给的账本上界"。
+- [x] `pnpm fuzz --ledger` 通过（30 个场景，问题 0 条，约 6 分钟；跑不通的变体轴也查了终态闭合与交叉检查）。不带 `--ledger` 的 `pnpm fuzz` 同样 0 条。
+- [x] conformance 输出逐字节不变（30 个场景的 60 个文件与实现之前 `diff` 相同）；零干扰对拍通过（`ALL_DIAG` 里已有 `resourceLedger`，30 个场景一致）。
+- [x] 全引擎搜索 `\.energy\s*=`、`\.concerto\s*=`、`\.core\[.*\]\s*=`：只有 `resources.ts` 的 `add`（`after = c[res] = …` 与 `after = c.core[k - 1] = …` 两行）与 `switch.ts` 的延奏清零（`c.concerto = 0`），另有 `simulate.ts` 的 `initialState` 用对象字面量建初值；其余命中都不是写状态（`castResources` 里的局部累加 `sum.concerto`）。`data/curated` 的角色模块、`src/data`、`src/report`、网页没有命中。结果贴在提交说明里。
+- [x] `resources.ts` 的文件头注释写明："新增资源写入点必须同时接进账本（DD-06）"。
 
 ## 7. 要同步的正式文档
 
@@ -225,3 +226,20 @@ T06-2 不改任何业务行为：`add` 的返回值、事件、状态都不变�
 | DD06-Q2 | `checkLog` 要不要改成读账本 | 改；保留独立的重放 | 保留。账本是可选诊断，`checkLog` 在诊断关着时也要能跑；两种推法互相校验更有用 |
 | DD06-Q3 | 核心资源的期初条目记几个槽 | 5 个全记；只记角色有的槽 | 5 个全记。钩子可以写没登记上限的槽，闭合要覆盖到 |
 | DD06-Q4 | 被截断到 0 变化的请求要不要有业务事件 | 不要（现状）；要 | 不要。多发事件会多触发钩子；这类请求只在账本里可见，正是账本存在的理由之一 |
+
+## 9. 实施记录（2026-11-16）
+
+按代码改正文、或正文没写到的几处。README §8：设计结案后实施中发现对不上，直接改对应的文档并在总览的修订记录里记一条。
+
+1. **条目多一个 `battleFrame`**（写入那一刻的战斗帧）。§3.4 要"按战斗帧或世界帧窗口"合计，架构 §6.2 的条目只有世界帧 `f`。合计的选项对应加了 `clock: 'world' | 'battle'`（缺省世界帧）；`causeKinds` 的类型收窄为 `LedgerCauseKind`。没开全局时停的轴上两种窗口相同。
+2. **收集器的接口**：`ledger(entry, phase)` 收写入那一刻的 `k.at.phase`，按 `EventMeta` 的口径折算（循环退出后与 `afterP7` 记 `post`），序号由收集器补；另加 `ledgerRelateIntervention(mark, index)`（`能量满` 的条目带 `relatedInterventionIndex`，架构 §6.2 有这个字段、正文没写谁填）与 `ledgerLength()`（边界观察点的 `ledgerLength`，账本关着时 `null`）。`markContinuation()` 只认第一次，在 `simulate.ts` 的 `onIntentUnmet` 里与 `diagnosticContinuationFrom` 同一刻取。期初条目由 `resources.ts` 的 `openingLedger(sim, s)` 记，在 `simulate.ts` 的 `execute`（运行体在这里，不在 `run.ts`）挂常驻 buff 之前调。
+3. **`cause` 的写法**：钩子是 `'hook'`，带说明时 `'hook：<说明>'`；命中是 `'hit'`（是哪一下看 `relatedEventSeq`）；资源型效果是它的定义 ID；其余与 `causeKind` 相同。`grant` 按 `cause` 归类用 `switch`（`cast` / `cost` / `hook` / `break` / `forced`，认不出的是 `effect`），所以资源型效果的 ID 不能取这几个保留字（日志的 `resource.cause` 本来就是这个约定）。
+4. **闭合检查收 `LedgerBalances`**（每人的槽位、名字与三种资源，`SimState` 满足它），不收 `Pick<SimState, 'chars'>`：边界观察点里拷几个数就能对账。报出的项 `LedgerMismatch` 分三种：`balance`（带账本推出的与状态里的）、`chain`（带接不上的两条的序号）、`initial`（没有期初条目、期初不在第一条或重复）。
+5. **合计都是带符号的变化量**：`spendRequested`、`spendActual`、`clippedAtZero`、`outroReset` 是负数；`causeKinds` 只筛变化量，`initial` / `final` 总是窗口两端的实际余额。不过滤时 `final = initial + gainActual + spendActual + outroReset + synced`（C06-9 对每一项都查了，另查两个窗口首尾相接）。
+6. **交叉检查 `crossCheckLedger(log, ledger, names)`** 放在 `diagnostics.ts`，与闭合检查一起。除 §3.6 的"每一步 `after` 与对应 `resource` 事件的 `value` 相等"，另查：每条 `resource` 事件恰好有一条条目关联；关联到 `hit` 的条目的 `actualDelta` 等于 `hit.gains` 里的那一项（没列的算 0），`gains` 里不是 0 的项都有条目；实际变化不是 0 的写入都有关联的事件。`pnpm fuzz --ledger` 的每条轴经 `fuzz.ts` 的 `ledgerRun`（`runForInspection` + `prepareResolved`）跑：这条路上钩子里的异常记成 `engineError` 不抛，由原有的审计当引擎错误算；初始化没走完的不做闭合（架构 §2.3），轴失败、截断、引擎错误的终态照样查。
+7. **调试表**（T06-5）：
+   - `resourceTracks(steps, r, ledger?)` 的返回改成 `CharResourceTracks[]`，按日志重放时每人标 `fromLog: true`；时间轴模型（`src/report/timeline.ts`）在结果带了账本时也用账本，现在的调用方都不开账本，模型只是多了 `fromLog`。
+   - `gainSteps(log, r, meta, ledger?)`：给了账本，每步多 `values`（账本的 `after`）与 `clipped`（不是 0 的被截量）；命中时整次被截掉的人增减记 0（日志的 `gains.energy` 里不列）；实际变化为 0、没写事件的单人写入（满了的钩子、效果…，DD06-Q4）另起一步，排在它之前最近一条有事件的条目的那一步后面（账本与日志同序），不归动作。`pnpm trace --res` 因此多出"变化 ±0、被截 x"的行。套路卡与时间轴不给账本，`actionGains` 不变。
+   - **按日志重放改成每步取整到 1e-9**（`resourceTracks` 与 `traceLedger` 里累加命中增减的地方，同引擎的 `snap9`）。否则浮点误差在两位小数的 `.xx5` 边界上会舍错：改之前有 7 个场景各 1 个点少了 0.01（状态里是 98.155，重放得 98.15499999999997，舍成 98.15）：`alm-爱琳守` 琳奈、`jms-5r18z` 景燃、`jys-team` 尤诺、`tys-video` 渊武、`xin-team`、`xin-team-r5`、`xin-team-r5-卜灵Q先放` 的雷主，都是能量。改了以后两种推法在 30 个场景上逐点相同（轨道全部相同；`--res` 的表各资源各轮共 66,422 行，去掉新加的"被截"一列与 5,475 行 ±0 之后全部相同）；与改之前比，`pnpm trace --res` 只差这 7 个点（表里 21 格，各差 0.01）。汇总自己的重放（`resourceTimeline`、分轮的能量 / 协奏首尾差）在 conformance 输出里，没有动。
+8. **用例的做法**：C06-9 查了每一个边界而不是抽样；C06-11 另有反向的一支（日志的 `hit.gains` 记错时 `checkLog` 与交叉检查报出来、账本照样闭合）；C06-13 的续跑起点在 tick 中途（P2 的切人里），不是边界，用一个在 `markContinuation` 那一刻记下资源的收集器子类取那一刻的状态（同 DD-05 零干扰的反向用例）；C06-15 另在两个合成场景上跑了零干扰对拍。
+9. **耗时**：诊断全关时只多了几处 `k.diag?.…` 的空判断与 `grant` 的一次归类。`m0-video-eq.yaml` 单次运行（40 次取中位数）与 main 交替测 6 对，比值 0.955～1.018，在机器噪声之内。
