@@ -8,6 +8,8 @@ import type { EventMeta, ResourceLedgerEntry } from '../engine'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine'
 import { round, roundTo, snap9 } from '../engine'
 import { outroOf } from '../engine'
+import { splitVideoLine } from '../data/replay'
+import type { InterventionRecord } from '../engine'
 
 /** 第 k 轮：[本轮 loop 事件, 下一轮 loop 事件)；最后一轮到日志里最后一个事件 */
 export interface LoopSpan { loop: number; f: number; t: number; endF: number; endT: number }
@@ -139,7 +141,7 @@ export interface LedgerRow {
 }
 
 const CAUSE: Record<string, string> = {
-  hit: '命中', cast: '起手即得', cost: '扣除', hook: '角色钩子', break: '破盾回能', outro: '延奏清零',
+  hit: '命中', cast: '起手即得', cost: '扣除', hook: '角色钩子', break: '破盾回能', outro: '延奏清零', sync: '状态同步',
 }
 
 /** 从开场按日志重放（同 TD-06 §6.1 的资源曲线：命中的 gains 是实际增减，resource 事件给出变化后的值），列出本轮每次变化。
@@ -224,8 +226,9 @@ export function resourceTracks(steps: readonly ResourceStep[], r: ResolvedScenar
 /** 资源变化归到的动作：动作开始的实例号；延奏动作没有 actionStart，按 outro 事件算（instance 是独立时间线的实例号，没有延奏动作时为 null） */
 export interface GainOwner { char: CharName; action: ActionId; instance: number | null; f: number; t: number; outro?: true }
 
-/** 怎么来的：命中（判定的回能、协奏、核心资源）、起手即得（动作开始时给的固定量）、扣除（大招能量）、资源型效果、角色钩子、破盾回能、延奏清零 */
-export type GainHow = 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'outro'
+/** 怎么来的：命中（判定的回能、协奏、核心资源）、起手即得（动作开始时给的固定量）、扣除（大招能量）、资源型效果、角色钩子、破盾回能、延奏清零、
+ *  状态同步（录像剖析的"同步"，DD-09 §3.2：外部指定的值，不写日志，按干预记录或账本补进来） */
+export type GainHow = 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'outro' | 'sync'
 
 /** 资源的一次变化，只有数值（resourceTracks 用；不要出处时用 resourceSteps，不必带诊断跑） */
 export interface ResourceStep {
@@ -272,14 +275,34 @@ function hitDeltas(e: HitEvent): { resource: ResourceKind; deltas: Partial<Recor
   return out
 }
 
-/** 资源变化逐步，只有数值、不归动作：不需要事件来源（录像剖析的贴合度只比资源的值） */
-export function resourceSteps(log: readonly SimEvent[]): ResourceStep[] {
+/** 资源变化逐步，只有数值、不归动作：不需要事件来源（录像剖析的贴合度只比资源的值）。
+ *  sync：外部干预记录与队伍的角色名（槽位 → 名字）；给了就把静默的同步补进去（DD-09 §3.2：它不写日志），排在它所接的那条事件之后 */
+export function resourceSteps(log: readonly SimEvent[], sync?: { interventions: readonly InterventionRecord[]; names: readonly CharName[] }): ResourceStep[] {
   const out: ResourceStep[] = []
-  for (const e of log) {
+  const syncs = syncList(sync?.interventions)
+  let k = 0
+  const flush = (seq: number) => { for (; k < syncs.length && syncs[k]!.afterEventSeq < seq; k++) out.push(syncStep(syncs[k]!, sync!.names, log)) }
+  log.forEach((e, seq) => {
+    flush(seq)
     if (e.type === 'hit') for (const d of hitDeltas(e)) out.push({ f: e.f, resource: d.resource, deltas: d.deltas })
     else if (e.type === 'resource') out.push({ f: e.f, resource: e.resource, deltas: { [e.char]: e.delta }, value: e.value })
-  }
+  })
+  flush(Infinity)
   return out
+}
+
+/** 静默的同步（kind sync 的干预记录），按发生的先后 */
+const syncList = (interventions: readonly InterventionRecord[] | undefined): InterventionRecord[] =>
+  (interventions ?? []).filter(x => x.kind === 'sync' && x.target?.slot !== undefined && x.target.resource !== undefined && x.adopted !== undefined)
+    .sort((a, b) => a.afterEventSeq - b.afterEventSeq || a.orderInAnchor - b.orderInAnchor)
+
+/** 一次同步写成一步：变化 = 采用值 − 前值，变化之后的值 = 采用值；战斗秒取它所接的那条事件的（同步在 P2 执行，与它同一帧） */
+function syncStep(rec: InterventionRecord, names: readonly CharName[], log: readonly SimEvent[]): GainStep {
+  const name = names[rec.target!.slot!]!
+  return {
+    f: rec.f, t: log[rec.afterEventSeq]?.t ?? 0, resource: rec.target!.resource!, deltas: { [name]: rec.delta ?? 0 }, value: rec.adopted!, values: { [name]: rec.adopted! },
+    how: 'sync', what: '', label: `状态同步（外部指定 ${name} 的 ${rec.target!.resource} = ${roundTo(rec.adopted!, 100)}，不发触发）`, owner: null,
+  }
 }
 
 /** 按记录下来的事件来源推出处（DD-05 §3.4，R02）："谁引发的算谁"；命中交给 hit，资源变化交给 resource。不再按日志里的先后猜：
@@ -396,12 +419,15 @@ function walkCauses(log: readonly SimEvent[], r: ResolvedScenario, meta: readonl
 /** 资源变化逐步，每步归到引起它的动作（规则见 walkCauses）；meta 是这份日志的事件来源（metaOf(res)）。
  *  给了账本（diag.resourceLedger，DD-06 §3.5）：每步的增减、变化之后的值（values）、被截掉的量（clipped）取关联到这条事件的账本条目，
  *  整次被截掉的人增减记 0（命中时满了的人，日志的 gains 里不列）；实际变化为 0、没有写事件的单人写入（满了的钩子、效果…）另起一步，
- *  排在它之前最近一条有事件的条目的那一步后面，不归动作。没给账本时只按日志，没有 values / clipped */
-export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[], ledger?: readonly ResourceLedgerEntry[]): GainStep[] {
+ *  排在它之前最近一条有事件的条目的那一步后面，不归动作。没给账本时只按日志，没有 values / clipped。
+ *  状态同步（DD-09 §3.2）不写日志：给了账本时取账本的 sync 条目，没给时按 interventions（外部干预记录）补，都排在它所接的那条事件之后 */
+export function gainSteps(
+  log: readonly SimEvent[], r: ResolvedScenario, meta: readonly EventMeta[], ledger?: readonly ResourceLedgerEntry[], interventions?: readonly InterventionRecord[],
+): GainStep[] {
   const members = new Map(r.team.map(m => [m.def.name, m]))
   const names = r.team.map(m => m.def.name)
   const byEvent = new Map<number, ResourceLedgerEntry[]>()
-  const loose: { anchor: number; e: ResourceLedgerEntry }[] = []      // 没有事件的写入：anchor = 它之前最近一条有事件的条目的事件
+  const loose: { anchor: number; step: GainStep }[] = []            // 没有事件的写入：anchor = 它之前最近一条有事件的条目的事件
   let anchor = -1
   for (const e of ledger ?? []) {
     if (e.relatedEventSeq !== undefined) {
@@ -409,8 +435,14 @@ export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: r
       let list = byEvent.get(anchor)
       if (!list) byEvent.set(anchor, (list = []))
       list.push(e)
-    } else if (e.kind === 'change') loose.push({ anchor, e })
+    } else if (e.kind === 'change') loose.push({ anchor, step: looseStep(e, names) })
+    else if (e.kind === 'sync') {
+      const rec = e.relatedInterventionIndex !== undefined ? interventions?.[e.relatedInterventionIndex] : undefined
+      loose.push({ anchor: rec?.afterEventSeq ?? anchor, step: { ...looseStep(e, names), how: 'sync', what: '', label: `状态同步（外部指定，不发触发）`, t: e.battleFrame / 60 } })
+    }
   }
+  if (!ledger) for (const rec of syncList(interventions)) loose.push({ anchor: rec.afterEventSeq, step: syncStep(rec, names, log) })
+  loose.sort((a, b) => a.anchor - b.anchor)
   const fromLedger = (es: readonly ResourceLedgerEntry[]) => ({
     deltas: Object.fromEntries(es.map(x => [names[x.slot]!, x.actualDelta])),
     values: Object.fromEntries(es.map(x => [names[x.slot]!, x.after])),
@@ -451,7 +483,7 @@ export function gainSteps(log: readonly SimEvent[], r: ResolvedScenario, meta: r
   // 没有事件的写入：插在那条事件的各步之后、下一条事件之前（账本与日志同序：条目都在自己的事件写出之前、前一条事件之后记）
   const merged: GainStep[] = []
   let j = 0
-  const flush = (upTo: number) => { while (j < loose.length && loose[j]!.anchor < upTo) merged.push(looseStep(loose[j++]!.e, names)) }
+  const flush = (upTo: number) => { while (j < loose.length && loose[j]!.anchor < upTo) merged.push(loose[j++]!.step) }
   out.forEach((g, i) => { flush(seqs[i]!); merged.push(g) })
   flush(Infinity)
   return merged
@@ -660,8 +692,9 @@ export interface HpPoint { t: number; left: number; seg: number; left0: number; 
 export function hpPoints(video: NonNullable<Scenario['video']>, r: ResolvedScenario): HpPoint[] {
   let cur = { seg: 0, left0: 1, hp: r.enemy.hp, enemy: r.enemy.id }
   return (video.hp ?? []).map((line, i) => {
-    const [t, left, preset] = line.trim().split(/\s+/) as [string, string, string | undefined]
-    const p: Pick<HpPoint, 't' | 'left'> = { t: videoSeconds(t), left: Number(left) }
+    const x = splitVideoLine(line)                                    // 行末的 !given / !display 不是敌人预设（DD-09 §4.1）
+    const [left, preset] = x.tokens as [string, string | undefined]
+    const p: Pick<HpPoint, 't' | 'left'> = { t: x.t, left: Number(left) }
     if (i === 0 || preset) {
       const e = preset ? r.data.enemies[preset] : r.enemy
       if (!e) throw new Error(`video.hp 第 ${i + 1} 条：敌人预设"${preset}"不存在`)

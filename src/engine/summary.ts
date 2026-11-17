@@ -4,6 +4,8 @@
 // 分轮与稳态（options.repeat ≥ 2，TD-09 §3.7）也从日志算。
 import type { CharName } from '../data/common'
 import { ASSUMPTIONS } from './assumptions'
+import { replayResources } from './resource-replay'
+import type { InterventionRecord } from './run-types'
 import { INTENDED } from './wait-codes'
 import type { BuffUptimeRow, HitEvent, ResolvedScenario, SimEvent, SimState, Summary } from './types'
 import { round, roundTo, floor } from './num'
@@ -29,7 +31,8 @@ export function windowEnd(log: readonly SimEvent[], s: SimState, endAt?: number)
   return end
 }
 
-export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimState): Summary {
+/** interventions：外部干预记录（架构 §4.1）。静默的同步不写日志，分轮的资源首尾差与资源曲线按日志重放时要把它们套上（DD-09 §3.2，DF-09） */
+export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimState, interventions: readonly InterventionRecord[]): Summary {
   const windowFrames = windowEnd(log, s, r.options.endAt)
   const hits = log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null)
   let totalDamage = 0
@@ -52,7 +55,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
   for (const c of Object.values(byChar)) c.share = share(c.damage)
   const actions = [...byAction.values()].sort((a, b) => b.damage - a.damage)
   for (const a of actions) a.share = share(a.damage)
-  const lp = loops(log, r, hits, windowFrames)
+  const lp = loops(log, r, hits, windowFrames, interventions)
   // 打死敌人与比较的目标（TD-10 §7）：所有命中都算（窗口外的也是真伤害）；没打到时按稳态（没有稳态按整个窗口）的 DPS 往后估
   const rate = lp.steady?.dps ?? (windowFrames > 0 ? totalDamage / (windowFrames / 60) : 0)
   const kill = killOf(log, r.enemy.hp, rate, s.battleFrames)
@@ -64,7 +67,7 @@ export function summarize(log: readonly SimEvent[], r: ResolvedScenario, s: SimS
     ...lp,
     kill, ...(goal ? { goal: goal.goal } : {}),
     byChar, byAction: actions, enemy: enemyStats(log, windowFrames),
-    resourceTimeline: resourceTimeline(log, r, s), buffUptime: uptime.union, buffUptimeBy: uptime.rows,
+    resourceTimeline: resourceTimeline(log, r, s, interventions), buffUptime: uptime.union, buffUptimeBy: uptime.rows,
     waits: log.flatMap(e => (e.type === 'wait' && !INTENDED.includes(e.code)
       ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, code: e.code, frames: e.frames, reason: e.reason }] : [])),
     skipped: log.flatMap(e => (e.type === 'skip' ? [{ line: e.cmd.line, item: e.cmd.item, loop: e.cmd.loop, reason: e.reason }] : [])),
@@ -218,28 +221,21 @@ function enemyStats(log: readonly SimEvent[], W: number): Summary['enemy'] {
 }
 
 /** 分轮与稳态（Summary.perLoop / steady 的注释）。不到 2 轮（没循环、或第 2 轮还没开始就停了）时没有 */
-function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly HitEvent[], W: number): Pick<Summary, 'perLoop' | 'steady'> {
+function loops(
+  log: readonly SimEvent[], r: ResolvedScenario, hits: readonly HitEvent[], W: number, interventions: readonly InterventionRecord[],
+): Pick<Summary, 'perLoop' | 'steady'> {
   // 只算窗口内开始的轮（endAt 截在某一轮中途时，之后的轮次标记不算，否则与资源快照对不上）
   const marks = log.filter(e => e.type === 'loop' && battleFrameOf(e) < W)
   if (marks.length < 2) return {}
   const starts = marks.map(battleFrameOf)
   const ends = [...starts.slice(1), W]
-  // 资源：从初始值按日志重放（同 resourceTimeline），记下每轮开始时与窗口终点的值
-  const slotOf = new Map(r.team.map(m => [m.def.name, m.slot]))
-  const energy: number[] = [...r.initial.energy]
-  const concerto: number[] = [...r.initial.concerto]
+  // 资源：从初始值按日志重放（同 resourceTimeline，套上静默的同步，resource-replay.ts），记下每轮开始时与窗口终点的值
   const at: { energy: number[]; concerto: number[] }[] = []
-  for (const e of log) {
-    if (battleFrameOf(e) >= W) break
-    if (e.type === 'loop') at.push({ energy: [...energy], concerto: [...concerto] })
-    else if (e.type === 'hit') {
-      for (const [name, v] of Object.entries(e.gains.energy)) energy[slotOf.get(name)!]! += v!
-      concerto[slotOf.get(e.char)!]! += e.gains.concerto
-    } else if (e.type === 'resource' && (e.resource === 'energy' || e.resource === 'concerto')) {
-      ;(e.resource === 'energy' ? energy : concerto)[slotOf.get(e.char)!] = e.value
-    }
-  }
-  at.push({ energy: [...energy], concerto: [...concerto] })
+  const end = replayResources(log, r, interventions, (item, b) => {
+    if (item.bf >= W) return 'stop'
+    if (item.kind === 'event' && item.e.type === 'loop') at.push({ energy: [...b.energy], concerto: [...b.concerto] })
+  })
+  at.push({ energy: [...end.energy], concerto: [...end.concerto] })
   const damage = starts.map(() => 0)
   const tuneBreak = starts.map(() => 0)                     // 各轮谐度破坏的伤害：判稳态起点时不算（相位，steadyStart）
   for (const h of hits) {
@@ -282,24 +278,15 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
 }
 
 /** 资源曲线（TD-06 §6.1）：第 0、30、60…帧（rules.sampleInterval 个世界帧一次）与最后一帧结束时三人的能量与协奏。
- *  从初始值出发，按日志里的 hit.gains 与 resource 事件重放 */
-function resourceTimeline(log: readonly SimEvent[], r: ResolvedScenario, s: SimState): Summary['resourceTimeline'] {
-  const slotOf = new Map(r.team.map(m => [m.def.name, m.slot]))
-  const energy: [number, number, number] = [...r.initial.energy]
-  const concerto: [number, number, number] = [...r.initial.concerto]
+ *  从初始值出发，按日志里的 hit.gains 与 resource 事件重放，套上静默的同步（resource-replay.ts；同步按它自己的世界帧取样） */
+function resourceTimeline(log: readonly SimEvent[], r: ResolvedScenario, s: SimState, interventions: readonly InterventionRecord[]): Summary['resourceTimeline'] {
   const out: Summary['resourceTimeline'] = []
   const last = Math.max(0, s.frame - 1)
-  const sample = (f: number) => out.push({ f, energy: [...energy], concerto: [...concerto] })
   let next = 0
-  for (const e of log) {
-    for (; next <= last && e.f > next; next += r.rules.sampleInterval) sample(next)
-    if (e.type === 'hit') {
-      for (const [name, v] of Object.entries(e.gains.energy)) energy[slotOf.get(name)!] += v!
-      concerto[slotOf.get(e.char)!] += e.gains.concerto
-    } else if (e.type === 'resource' && (e.resource === 'energy' || e.resource === 'concerto')) {
-      ;(e.resource === 'energy' ? energy : concerto)[slotOf.get(e.char)!] = e.value
-    }
-  }
+  const end = replayResources(log, r, interventions, (item, b) => {
+    for (; next <= last && item.f > next; next += r.rules.sampleInterval) out.push({ f: next, energy: [...b.energy], concerto: [...b.concerto] })
+  })
+  const sample = (f: number) => out.push({ f, energy: [...end.energy], concerto: [...end.concerto] })
   for (; next <= last; next += r.rules.sampleInterval) sample(next)
   if (out.at(-1)?.f !== last) sample(last)
   return out

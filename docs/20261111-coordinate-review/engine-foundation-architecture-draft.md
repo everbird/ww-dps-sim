@@ -464,7 +464,7 @@ export interface InterventionRecord {
   readonly phase: string
   readonly afterEventSeq: number            // 排在哪条业务事件之后；初始化阶段还没有事件时是 -1
   readonly orderInAnchor: number            // 同一个 afterEventSeq 下的先后
-  readonly kind: 'sync' | 'fill' | 'enemyDisharmony' | 'enemySwap'
+  readonly kind: 'sync' | 'enemyDisharmony' | 'enemySwap'   // 'fill'（能量满）随写法删了（DD-09 T09-10）
   readonly target?: { readonly slot?: Slot; readonly resource?: ResourceKind }
   readonly before?: number
   readonly adopted?: number
@@ -477,7 +477,7 @@ export interface InterventionRecord {
 - **为什么不能只放在诊断里**：状态同步直接改资源、不发业务事件。如果它只在诊断开着时才有记录，诊断关着时 `checkLog` 按资源事件重放会对不上，报"中间有没记日志的改动"。
 - **为什么不能写进日志**：日志里的每条事件都会交给角色钩子，这违反"同步缺省不发业务触发"。
 - **所以是第三种记录**：一直都有，不进触发队列；不变量检查与账本都读它，同一个锚点下按 `orderInAnchor` 重放。
-- **现有的 `能量满`、`敌人 失谐 / 换`** 照旧发业务事件，同时也记一条干预记录，标明 `firedTriggers: true`。
+- **现有的 `敌人 失谐 / 换`** 照旧发业务事件，同时也记一条干预记录，标明 `firedTriggers: true`。原来的 `能量满` 同样如此，DD-09 在五个录像场景重记之后把它删了（改用同步）。
 
 ### 4.2 用到了哪些规则
 
@@ -562,10 +562,10 @@ export interface RuleUsageReport {
 ### 6.1 资源在哪里被写
 
 - **运行中的两个写入点**：
-  - `resources.ts` 的 `add`：命中资源、施放资源、扣费、资源型效果、破盾回能、角色钩子的 `ctx.addResource`、`能量满`，最后都走到这里；
+  - `resources.ts` 的 `add`：命中资源、施放资源、扣费、资源型效果、破盾回能、角色钩子的 `ctx.addResource`，最后都走到这里（原来的 `能量满` 也是，DD-09 删了）；
   - `switch.ts` 的 `outroTrigger`：延奏触发时把协奏直接设为 0，不经过 `add`。这是"设为 0"，不是"减 100"，不为了统一接口改成减法。
 - **期初余额**：`initialState` 按场景的 `initial` 赋值，不是战斗内的获得。
-- **以后新增的写入点**（例如状态同步）必须同时接进账本。
+- **以后新增的写入点**（例如状态同步）必须同时接进账本。DD-09 的状态同步是 `resources.ts` 的 `syncResource`，已接进账本（`kind` / `causeKind` 是 `sync`）。
 
 ### 6.2 账本条目
 
@@ -579,7 +579,7 @@ export interface ResourceLedgerEntry {
   readonly resource: ResourceKind
   readonly kind: 'initial' | 'change' | 'outroReset' | 'sync'
   /** 给程序分类用的固定取值（详细设计总览 S-06）；cause 保留原文 */
-  readonly causeKind: 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'forced' | 'outro' | 'sync'
+  readonly causeKind: 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'outro' | 'sync'   // 'forced'（能量满）随写法删了（DD-09）
   readonly before: number
   readonly requestedDelta: number           // 请求的变化量，截断之前
   readonly actualDelta: number              // 实际的库存变化
@@ -892,7 +892,7 @@ export type ComparisonStatus =
 
 严格入口下，以下写法在编译期报错，指明行、项与原因：
 - `~`、`?`、`at`；
-- 录像用的外部指令：`能量满`、`敌人 失谐 / 换`；
+- 录像用的外部指令：`同步`、`敌人 失谐 / 换`（原来的 `能量满` DD-09 删了）；
 - `options.tuneBreak: auto`；
 - `purpose: replay`；
 - **输入自相矛盾**：`tuneBreak: off` 而轴里有谐度破坏动作。检查按装配后的动作种类（`kind === 'tuneBreak'`）判，覆盖别名与各种谐破变体，启动轴与循环轴都查。非严格入口下给一条警告。
@@ -971,7 +971,7 @@ export interface StrictCandidateReport {
   - 记一条干预记录（§4.1）与一条账本条目（`kind: 'sync'`）；
   - 从第一次干预起，完成状态标为有条件的（§2.4）。
 - **外来事件**（`敌人 换` 等）是显式输入，与补状态分开。
-- **旧指令照旧**：`能量满` 走 `grant`、发业务事件。它保留为旧行为，录像场景重记后再替换。
+- **旧指令照旧**：`能量满` 走 `grant`、发业务事件。它保留为旧行为，录像场景重记后再替换。（DD-09 实施：五个录像场景重记之后删了，写了报错、指向 `同步`。）
 - **语法与单位**（协奏写绝对值还是比例、核心资源用哪个名字）留到阶段四。
 
 ## 13. 可移植与测试（路线图 §13 第 13 项）
@@ -1148,6 +1148,7 @@ AF-03、11、16、23、24 在 v0.2 里按 Codex 与 Claude 同意的方案写。
 - **v0.3 Final（2026-11-14）**：三方签署齐备后定稿。架构条款与 v0.3 相同，只改了标题、开头的状态与审查记录。文件名保留 `-draft`，是为了不让路线图与意见文件里的链接失效。
 - **详细设计带来的补充（2026-11-15，Claude）**：[详细设计 v0.4 Final](detailed-design/README.md) 三方签署，其中 §6 的补充提案 S-01～S-15 一并通过。它们不改已有契约，都是加字段或把没写明的地方写明。本文各节的正文这次没有逐处改写：与那张表不一致的地方以那张表为准，实施相应工作包时再把对应的几条写进正文并在这里各记一条。
 - **DD-06 实施（2026-11-16）**：§6.2 的 `ResourceLedgerEntry` 写进 S-06 的 `causeKind`，另加 `battleFrame`（账本按战斗帧开窗口合计，DD-06 §9 第 1 条）。其余账本条款（写入点、闭合、`LedgerMarks`）与实现一致，没有改。
+- **DD-09 实施（2026-11-17）**：§4.1 的 `InterventionRecord.kind` 去掉 `'fill'`、§6.2 的 `causeKind` 去掉 `'forced'`（能量满在五个录像场景按新写法重记之后删了，DD-09 §3.3、T09-10）；§6.1 写明状态同步的写入点 `syncResource`；§11.2、§12 的能量满跟着改。§10.3 的条款与实现一致，没有改（四种情形各有用例，DD-09 §8）。
 
 <a id="review-log"></a>
 

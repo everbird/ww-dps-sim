@@ -61,10 +61,12 @@ describe('时间轴网页', () => {
       [1, ['甲 X', '甲 X'], ['协奏', '能量']], [2, ['甲 X', '甲 X'], ['协奏', '能量']],
     ])
     // 第 3 条比第 1 条晚 30 帧（wait 从 X 开始时算），视频里晚 1 秒：仿真快 0.5 秒
-    expect(m.video).toEqual({
+    expect(m.video).toMatchObject({
       loop: 1, missing: [7],
       marks: [{ line: 1, video: 0, sim: 0, diff: 0, step: 0, f: 0, vf: 0, at: 10 }, { line: 3, video: 1, sim: 0.5, diff: -0.5, step: -0.5, f: 30, vf: 60, at: 11 }],
       events: [], hp: [],
+      // DD-09：有条件推演的起点（没有外部干预为 null）、干预记录、三种时段、按通道的匹配（这里只有两个锚点、没有观测：不可评估）
+      conditionedFrom: null, interventions: [], segments: [], fit: { assessable: false, observations: [] },
     })
     expect(timelineModel('scenarios/demo.yaml', sc, r, res).video).toBeNull()
   })

@@ -40,8 +40,11 @@ function propositionFor(r: ClosureRecord): Proposition {
 }
 
 async function contextOf(f: ClosureFile): Promise<EvidenceContext> {
-  const scenarios = new Map<string, Scenario>(f.record.setups.map(s => [s.scenario, loadScenario(join('scenarios', s.scenario))]))
-  return { data: await loadGameData(), scenarios, observations: loadPoints(), proposition: propositionFor(f.record), environment: collectRunEnvironment() }
+  const proposition = propositionFor(f.record)
+  // setup 的场景，加上 scenario 绑定的候选自己的场景（DD-09 §5：轴的输入不同的候选）
+  const files = [...f.record.setups.map(s => s.scenario), ...proposition.candidates.flatMap(c => (c.binding.kind === 'scenario' ? [c.binding.path!] : []))]
+  const scenarios = new Map<string, Scenario>([...new Set(files)].map(s => [s, loadScenario(join('scenarios', s))]))
+  return { data: await loadGameData(), scenarios, observations: loadPoints(), proposition, environment: collectRunEnvironment() }
 }
 
 /** 登记的身份文件：一条闭环一个，runId → 身份 */
@@ -116,6 +119,7 @@ async function rerun(f: ClosureFile): Promise<number> {
   writeIdentities(rerunFile(f.record), out.identities)
   writeClosure(f, { reruns: out.reruns })
   console.log(`${f.record.id}：受影响的场景 ${out.affected.length} 个（身份在 ${rerunFile(f.record)}）`)
+  if (out.note) console.log(`  ${out.note}`)
   for (const a of out.affected) {
     const x = out.reruns.find(r => r.scenario === a.scenario)!
     const dps = (s: typeof x.before) => (s.dps === null ? s.status : Math.round(s.dps).toLocaleString('en-US'))

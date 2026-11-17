@@ -2,7 +2,7 @@
 // 规则路径的多段设值（mergeRulePaths，C04-3）、台账自检（C04-4）。人造角色，不依赖生成数据；最后一组（代表轴碰到的假设）依赖 data/generated。
 // C04-4b 与 C04-5 起的候选检查（当前生效值、分类、路径冲突…）属于 T04-4 之后，放 tests/candidates.test.ts。
 // DD-08 §4.3：证据入台账的用途约束（C08-11）、台账与闭环记录（docs/evidence/）三处一致（结论按同一张决策表算）。
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { CalibrationFileSchema } from '../src/data/calibration.schema'
@@ -161,6 +161,8 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
         // curated、hook 现在不能自动翻：只有当前采用的那个（照现在的代码跑），别的读法记 unimplemented（DD-04 §3.1）
         if (b.kind === 'curated' || b.kind === 'hook') expect([at, c.id === p.adopted, b.path !== undefined]).toEqual([at, true, true])
         if (b.kind === 'unimplemented') expect([at, c.implemented]).toEqual([at, false])
+        // scenario：另一份场景（轴的输入不同的候选，DD-09 §5），文件要在 scenarios/ 下、能跑
+        if (b.kind === 'scenario') expect([at, b.path !== undefined && existsSync(new URL(`../scenarios/${b.path}`, import.meta.url)), c.implemented, c.changes]).toEqual([at, true, true, 'input'])
       }
       if (p.assumptionId !== undefined) expect([p.id, ASSUMPTIONS.some(x => x.id === p.assumptionId)]).toEqual([p.id, true])
       if (p.scope === 'character') expect([p.id, (p.appliesToChars ?? []).length > 0]).toEqual([p.id, true])

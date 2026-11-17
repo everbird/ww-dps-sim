@@ -41,9 +41,11 @@ export type ScenarioFeature =
  *  - option：场景 options 下的键（'inputDelay'）与取值，经 RunOverrides.options 翻；
  *  - curated：写在手写数据里；hook：写在代码里（角色模块的钩子或引擎）。path 写文件与符号，不写行号。这两种现在不能自动翻：
  *    只有当前采用的那个 implemented 为 true（照现在的代码跑），别的读法记 unimplemented；
+ *  - scenario：另一份场景（path 是 scenarios/ 下的文件）：候选改变的是轴的输入（录像里漏记的一下、另一种转写，DD-09 §5 的证据任务）。
+ *    闭环 predict 时这个候选在每个 setup 上都换成这份场景跑；DD-04 的候选检查按 changes: 'input' 排除，不当机制候选翻；
  *  - unimplemented：还没有实现、不能运行的读法，照样入账 */
 export interface Binding {
-  readonly kind: 'rule' | 'option' | 'curated' | 'hook' | 'unimplemented'
+  readonly kind: 'rule' | 'option' | 'curated' | 'hook' | 'scenario' | 'unimplemented'
   readonly path?: string
   readonly value?: number | boolean | string
 }
@@ -433,6 +435,37 @@ export const PROPOSITIONS = [
       ],
       transform: { buildRule: 'tools/build/parse.py parse_gain：公式末项记为 onAction（起手即得），前面各项是逐段所得', rationale: '起手即得在动作开始时给（TD-01 §3.7）；逐段所得按命中给（rules.concertoTiming onHit，2026-10-03 实测的共享规则）；奇幻变奏 1 精放 E 时另 +8 来自武器效果' },
     },
+  },
+
+  // ---- ④ DD-09 §5 的两项证据任务（录像剖析，深塔 41 期中 3、中 4）：假设表里没有，证据只有闭环判出来的。
+  // 候选改变的是轴的输入（录像里漏记的一下、仿真与录像的时序），用 scenario 绑定：DD-04 的候选检查按 input 排除，不当机制候选翻
+  {
+    id: 'buling-first-echo', scope: 'conditioning', appliesToChars: ['卜灵', '心'],
+    proposition: '深塔 41 期中 3、中 4 两局里，卜灵第一段上场（中 3 还有第四段）放了声骸（无归的谬误：全队攻击 +10%，20 秒），心第 1 轮应世相的各下都吃到：路线图 §7 案例里录像对仿真的共同乘数 m ≈ 1.044 由此而来',
+    adopted: 'echo-cast', candidatesExhaustive: false,       // 另外两种读法（只给心的攻击类加成、目标侧乘法项）没实现；也可能还有别的来源
+    candidates: [
+      { id: 'echo-cast', label: '放了：照技能栏 LT 冷却 20.0 出现的第一帧补上卜灵 Q（中 4 视频 9.73；中 3 18.42、177.73）', implemented: true, changes: 'input', binding: { kind: 'scenario', path: 'xin-tower4-video.yaml' } },
+      { id: 'no-echo', label: '没放（2026-10 的转写：卜灵第一段只有重击、E、大招）', implemented: true, changes: 'input', binding: { kind: 'scenario', path: 'evidence/xin-tower4-卜灵首段不放声骸.yaml' } },
+      { id: 'xin-only-atk', label: '另有一条只给心、转相前后到期的攻击类加成（路线图 §7 的 H1a）', implemented: false, changes: 'mechanism', binding: { kind: 'unimplemented' } },
+      { id: 'target-side', label: '目标侧的乘法项（防御、抗性一类，队友也按同样的比例，H1b）', implemented: false, changes: 'mechanism', binding: { kind: 'unimplemented' } },
+    ],
+    evidence: [
+      { id: 'buling-first-echo.backfill:tower4:1', supports: ['echo-cast'], refutes: ['no-echo'], consistentWith: [], purpose: 'formulation', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵首段声骸.中4.LT冷却、卜灵首段声骸.中4.电磁QTE-3、卜灵首段声骸.中4.心召唤-6、卜灵首段声骸.中4.E-落地、卜灵首段声骸.中4.镇红尘#1（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-d4dfea0f7b565537', summary: '5 条观测：echo-cast passed ×5；no-echo conflicted ×5；xin-only-atk 没实现；target-side 没实现', ref: 'docs/evidence/buling-first-echo.backfill.yaml' },
+      { id: 'buling-first-echo.backfill:tower4:2', supports: ['echo-cast'], refutes: ['no-echo'], consistentWith: [], purpose: 'independent_validation', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵首段声骸.中4.电磁QTE-2：视频 31.70 那一帧两个 1380（与 22061 同在），2026-11 新读；暴击' }, simulationRunId: 'run-d4dfea0f7b565537', summary: '1 条观测：echo-cast passed；no-echo conflicted；xin-only-atk 没实现；target-side 没实现', ref: 'docs/evidence/buling-first-echo.backfill.yaml' },
+      { id: 'buling-first-echo.backfill:tower4:3', supports: [], refutes: [], consistentWith: ['echo-cast', 'no-echo'], purpose: 'formulation', observation: { gameVersion: '3.7', recordedAt: '2026-10-26', condition: '卜灵首段声骸.中4.镇红尘#2：同上，视频 90.5 第 2 轮（录像两轮一样，中 4 第 2 条拿它推过"同类的全队攻击不叠加"）' }, simulationRunId: 'run-d4dfea0f7b565537', summary: '1 条观测：echo-cast passed；no-echo passed；xin-only-atk 没实现；target-side 没实现', ref: 'docs/evidence/buling-first-echo.backfill.yaml' },
+    ], conclusion: 'provisional',
+    impact: { dps: 'none', threshold: 'none', timingFrames: 0 },   // 轴的输入：只影响这两局录像剖析的伤害，不影响别的场景
+  },
+  {
+    id: 'zhenhuanyu-window', scope: 'conditioning', appliesToChars: ['心', '雷主·男'],
+    proposition: '深塔 41 期中 4 第 1 轮，心的镇寰宇（照世·增幅强化重击）命中时，心变奏入场挂上的两条 15 秒 buff（镜影流电之瞬 5 件的延奏加成、绝息魄首位的导电加成）还在（路线图 §7 案例里 B-1 的窗口要求）',
+    adopted: 'expired-as-sim', candidatesExhaustive: true,  // 在与不在，只有这两种
+    candidates: [
+      { id: 'expired-as-sim', label: '照现在的场景与时序：入场到镇寰宇起手 15.27 战斗秒，命中时两条已到期（仿真）', implemented: true, changes: 'input', binding: { kind: 'scenario', path: 'xin-tower4-video.yaml' } },
+      { id: 'in-window', label: '命中在入场后 15 战斗秒以内，两条都还在（录像镇寰宇 202284 / 仿真 180256 = 1.1222，正好是这两条的加成）', implemented: false, changes: 'input', binding: { kind: 'unimplemented' } },
+    ],
+    evidence: [], conclusion: 'unverified',
+    impact: { dps: 'none', threshold: 'none', timingFrames: 'unknown' },
   },
 ] as const satisfies readonly Proposition[]
 

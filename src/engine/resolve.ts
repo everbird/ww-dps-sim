@@ -6,8 +6,9 @@ import { forChain } from '../data/assemble-action'
 import { echoActionsFor } from '../data/assemble-echo'
 import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
+import { givenConflicts, replayInserts } from '../data/replay'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
-import { compileRotation, type CompileMember } from './compile'
+import { compileMembers, compileRotation, type CompileMember } from './compile'
 import { priorityAt } from './kernel'
 import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StaticStats, StatValues } from './types'
 import { round, snap9, floor } from './num'
@@ -59,11 +60,17 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   const onField = sc.initial.onField as Slot
   let commands: ResolvedScenario['commands'] = []
   let opening: ResolvedScenario['opening'] = []
+  // 录像输入（DD-09 §3）：未观测时段的填法插在闭合的 at 之前；时段放不下、还有几种填法没选、同步用了没标 !given 的读数，都是编译期的错
+  const replay = replayInserts(sc)
+  for (const x of [...replay.issues, ...givenConflicts(sc)]) {
+    located.set(issues.length, { stage: 'compile' })
+    issues.push(`${x.path.join('.')}：${x.message}`)
+  }
   if (built.every(b => b !== null)) {
     const team = built.map(b => b.member)
     const compiled = compileRotation(
-      sc.rotation, team.map((m): CompileMember => ({ name: m.def.name, actions: m.actions, aliases: m.aliases })), onField, sc.options.repeat,
-      sc.opening,
+      sc.rotation, compileMembers({ team }), onField, sc.options.repeat,
+      sc.opening, replay.inserts,
     )
     if (compiled.ok) {
       commands = compiled.commands; opening = compiled.opening
@@ -80,10 +87,15 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
     }
     else {
       const many = (lines: string[], line: number) => { const p = parseRotationLine(lines[line - 1] ?? ''); return Array.isArray(p) && p.length > 1 }
+      // 填法的行编在第 N + 1 条起（src/data/replay.ts）：报错时说是哪个时段、哪种填法的第几行
+      const fillOf = (line: number) => replay.inserts.find(x => line >= x.firstLine && line < x.firstLine + x.lines.length)
+      const allLines = [...sc.rotation, ...replay.inserts.flatMap(x => x.lines)]
       for (const i of compiled.issues) {
-        const lines = i.opening ? sc.opening : sc.rotation
+        const lines = i.opening ? sc.opening : allLines
+        const f = i.opening ? undefined : fillOf(i.line)
+        const where = f ? `replay.segments[${f.segment}] 填法"${f.fill}"第 ${i.line - f.firstLine + 1} 行` : `${i.opening ? 'opening' : 'rotation'} 第 ${i.line} 条`
         located.set(issues.length, { stage: 'compile', ...(i.line > 0 ? { line: i.line } : {}), ...(i.item !== undefined ? { item: i.item } : {}), ...(i.opening ? { opening: true as const } : {}) })
-        issues.push(`${i.opening ? 'opening' : 'rotation'} 第 ${i.line} 条${i.item !== undefined && many(lines, i.line) ? `第 ${i.item} 个` : ''}：${i.message}`)
+        issues.push(`${where}${i.item !== undefined && many(lines, i.line) ? `第 ${i.item} 个` : ''}：${i.message}`)
       }
     }
   }

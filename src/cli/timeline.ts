@@ -7,14 +7,14 @@ import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
 import { prepareRun, runPrepared } from '../engine/run'
 import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../report/timeline'
-import { argsOf, fmt, loadScenario, pct } from './format'
+import { argsOf, fmt, loadScenario, pct, pickFillCombo } from './format'
 
 const TEMPLATE = new URL('../../web/timeline.html', import.meta.url)
 const DESIGNS = new URL('../../web/designs/', import.meta.url)
-const USAGE = `用法：pnpm timeline <场景.yaml> [--view ${Object.keys(TIMELINE_VIEWS).join('|')}] [--out <网页.html>] [--fragment]`
+const USAGE = `用法：pnpm timeline <场景.yaml> [--view ${Object.keys(TIMELINE_VIEWS).join('|')}] [--out <网页.html>] [--fragment] [--fill <填法组合>]`
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--view'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--out', '--view', '--fill'])
   const fragment = pos.includes('--fragment')
   const file = pos.find(a => !a.startsWith('--'))
   const view = opt.view
@@ -22,7 +22,7 @@ async function main(): Promise<number> {
     console.error(view !== undefined && fragment ? '--fragment 只对原版，不能和 --view 一起写' : view !== undefined && !(view in TIMELINE_VIEWS) ? `没有视图 ${view}\n${USAGE}` : USAGE)
     return 2
   }
-  const sc = loadScenario(file)
+  const sc = pickFillCombo(loadScenario(file), opt.fill)        // 录像剖析有几个填法组合时 --fill 选一个（DD-09 §3.1）
   const data = await loadGameData()
   const p = prepareRun(sc, data)
   if (!p.ok) { console.error(p.issues.map(i => i.message).join('\n')); return 1 }

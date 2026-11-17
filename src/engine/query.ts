@@ -1224,7 +1224,7 @@ function cmdStructuralKey(cmd: CommandRef, def: Command): string {
     case 'wait': return `${cmd.loop}:wait:${def.frames}`
     case 'at': return `${cmd.loop}:at:${def.frame}`
     case 'enemy': return `${cmd.loop}:enemy:${def.state}`
-    case 'fill': return `${cmd.loop}:fill:${def.slot}:${def.resource}`
+    case 'sync': return `${cmd.loop}:sync:${def.slot}:${def.resource}:${def.unit}:${def.value}`
   }
 }
 

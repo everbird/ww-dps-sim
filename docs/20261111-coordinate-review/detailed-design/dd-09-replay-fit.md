@@ -1,7 +1,7 @@
 # DD-09 录像输入与贴合度
 
 **版本**：v0.3，2026-11-14，Claude。v0.2 按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10：DF-09、DF-18、DF-19）；v0.3 按 Codex 第二轮复核修订（意见文件 §13：DF-18 的歧义判定）。
-**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.3 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。**T09-1～T09-10 已实现（2026-11-16～17）**：验收清单见 §8，实施中按代码改的地方见 §11（总览 §8 的做法）。
 **阶段**：四。**前置**：DD-01、DD-03、DD-06、DD-07、DD-08。阶段一、二的代表轴集成验收通过之后再动工。
 
 离动工还远。本文写到"接口、任务与验收条件能评审"的程度；动工前按当时的代码再修订一次，尤其是 §3 的语法。
@@ -253,12 +253,12 @@ export interface FitResult {
 
 ## 8. 验收清单（阶段四）
 
-- [ ] 路线图 §9.2 的 P2 完成标准：9 秒 → 5 秒的反例不再得高分（C09-13）；能区分单位错、漏动作、资源时机（分通道残差）；分不清时保留候选（C09-10）。
-- [ ] `tests/fit-eligibility.test.ts` 覆盖架构 §10.3 的四种情形。
-- [ ] 状态同步不发业务触发，账本闭合、`checkLog`、零干扰都通过。
-- [ ] 中 3、中 4 按新写法重记；报告里标明哪些时段是有条件推演、哪些读数被用作输入。
-- [ ] 两项证据任务各有闭环记录；结论照实（可以是分不清）。
-- [ ] 任何报告都不把"贴合"写成"机制对"，不把"补了状态"写成"恢复了历史"（路线图 §9.3 阶段四那一行）。
+- [x] 路线图 §9.2 的 P2 完成标准：9 秒 → 5 秒的反例不再得高分（C09-13）；能区分单位错、漏动作、资源时机（分通道残差）；分不清时保留候选（C09-10）。（C09-9～C09-13、C09-19～C09-23 通过；中 4 的漏动作在报告里是 `action#21` 落单加第 1 轮跳字 8 条冲突，补上之后两者都消失，见 §11 第 13 条）
+- [x] `tests/fit-eligibility.test.ts` 覆盖架构 §10.3 的四种情形。（C09-11、C09-12、C09-13 与"不可评估"；`tests/fit.test.ts` 的 C03-15、C03-16 另在真实场景上查不可评估）
+- [x] 状态同步不发业务触发，账本闭合、`checkLog`、零干扰都通过。（C09-1～C09-3、C09-18；`pnpm conformance` 30 个场景零干扰一致，`pnpm fuzz`、`pnpm fuzz --ledger` 问题 0）
+- [x] 中 3、中 4 按新写法重记；报告里标明哪些时段是有条件推演、哪些读数被用作输入。（`pnpm fit` 与视图 F 标出第一次外部干预之后的有条件推演；每条观测带用途，中 3 的同步依据是"大招按钮亮了"，不是 `video` 里的读数，没有要标 `!given` 的；见 §11 第 13 条）
+- [x] 两项证据任务各有闭环记录；结论照实（可以是分不清）。（`buling-first-echo.backfill` 暂定〔第 5 行〕；`zhenhuanyu-window.backfill` 未验证〔第 1 行〕：G 跨过 15 秒，仿真的镇寰宇起手又和录像没对齐，两条观测都是条件不足，见 §11 第 14 条）
+- [x] 任何报告都不把"贴合"写成"机制对"，不把"补了状态"写成"恢复了历史"（路线图 §9.3 阶段四那一行）。（`pnpm fit` 每次都打印"更贴合是线索，不等于机制对"与"同步恢复不了隐藏的历史"；视图 F 的说明同）
 
 ## 9. 要同步的正式文档
 
@@ -279,3 +279,42 @@ export interface FitResult {
 | DD09-Q3 | 匹配的目标 | 先配对数最多、再总时刻差最小；只看总时刻差 | 前者。否则会为了缩小时刻差而少配 |
 | DD09-Q4 | 旧场景的切人类型参照 | 过渡期从原场景冻结；必须先补 `video.switches` | 过渡期冻结并标明；重记时补齐 |
 | DD09-Q5 | 填法组合的上限 | 16；不设 | 16，超过要显式指定。组合爆炸时结果也读不过来 |
+
+## 11. 实施记录（2026-11-16～17）
+
+按总览 §8 的做法，实施中按代码改的地方直接写在这里（代码注释与提交说明引用本节）。分支 `implement-dd-09-replay-fit`：T09-1～T09-7 在 `a63025f`，T09-8、T09-9 在 `c1c53c9`（两条闭环在干净的 `c1c53c9` 上重跑，结果提交在 `ef98cf8`），T09-10 在 `0f998f4`。
+
+1. **时间与时段**（T09-2，`src/data/replay.ts`、`scenario.schema.ts`）：`replay` 块多一个 `videoOffset`（视频秒 = 世界秒 + videoOffset；时段写视频秒，`at` 写世界秒），写了时段就要给。时段要落在相邻两个 `at` 之间：闭合的 `at` 是轴里第一个时刻不早于 `to` 的，它前面那个不能晚于 `from`（中间有 `at` 就是"跨过了已观测的动作"，编译期报错）；没有闭合的 `at` 时填法接在轴末尾。schema 另查：只在 `purpose: replay` 下能写、`from < to`、时段不重叠、同一时段的填法不重名。
+2. **填法插进轴**：未观测时段的填法插在闭合的 `at` 之前；填法的行编成第 N + 1 条起的指令（N 是 rotation 的条数，按时段先后、行先后编号），rotation 原有各条的条号不变，`video.marks` 与 `notation` 照旧指得对。填法行写错时，报错指到 `replay.segments[i] 填法"X"第 n 行`。视图 F 与 `pnpm timeline` 显示的轴文字由 `replayRotationText` 生成（填法插在原位）。
+3. **填法组合**：`fillCombos`、`narrowReplay`、`expandReplayCombos`；上限 16（`MAX_FILL_COMBOS`，DD09-Q5）。组合名是"<from>=<填法名>"用"；"连起来，只有一种组合时是空串。选定组合时把场景收窄成只剩那几种填法，`scenarioDigest` / `runId` 自然不同。有几种组合时 `prepareRun` 报错、要求选一个；`pnpm sim / timeline / trace / query` 加 `--fill <组合名>`，`pnpm fit` 不给 `--fill` 时每个组合分别跑、分别报告（C09-6）。
+4. **同步**（T09-1）：写法 `同步|sync <角色> <资源> <=值|值%>`，资源写能量、协奏或核心资源名（`energy`、`concerto` 也行），比例不能超过 100%，没有上限的核心资源不能写比例（编译期报错）。`resources.ts` 的 `syncResource` 是**第四个**资源写入点（DD-06 把期初也算一处：`add`、延奏清零、`initialState` 期初，再加同步），截在 [0, 上限]，实际变化为 0 也记一条账本（kind / causeKind `sync`，关联干预记录）。干预记录 `firedTriggers: false`，`skippedTriggers` 是"实际变了"时的 `['resource']`，从不满到满再加 `'resourceFull'`。每次同步 `assume('forced-sync')`。严格入口报 `strict.external`（C09-4）；候选检查把它算作外部干预（`hasForcedIntervention`）；`insight` 的操作延迟跳过它。
+5. **按日志重放读干预记录**（DF-09）：`src/engine/resource-replay.ts` 的 `replayResources`，`checkLog`（改成一趟）、`summary.ts` 的 `loops()` 与 `resourceTimeline()` 三处共用，只套用 `kind === 'sync'` 的，按 `afterEventSeq`、`orderInAnchor`；`summarize` 多收 `interventions`。调试表一侧 `resourceSteps` / `gainSteps` 也收干预记录（`GainHow` 加 `sync`），`pnpm trace --res`、时间轴模型、贴合度的资源读数都传。
+6. **同一项读数不能两用**（§3.2）：`givenConflicts`：同步的时刻取它前面那个 `at` 加 `videoOffset`，同一角色、同一资源、相差不到 0.5 秒的读数必须标 `!given`（协奏看 `video.concerto`，核心资源看同名的 `video.core`；能量没有读数通道）。编译期报错（C09-5）。
+7. **观测的 ID 与通道**（T09-3，`observations.ts`）：`switch#N`（`video.switches` 里的第 N 条，从 1 起）；过渡期冻结的参照是 `switch#m<条号>`（marks 指到的那次切人，DD09-Q4，报告里标"参照来自原场景的写法"）；`action#N` / `summon#N` 的 N 都是在 `video.events` 里的位置（写不写 `@` 不改编号）；`hit#N`、`hp#N`、`concerto#N`、`core#N` 同理。跳字的判定名在几个动作里重名时写"动作/判定"（`照世·E/E-2`）。行末 `!given` / `!display` 是用途；缺省的评分集合是全部 `score` 用途的观测。
+8. **匹配**（T09-4）：`alignSequences` 是带权的最长公共子序列，正向、反向各一遍动态规划，强制配对查前后缀表（§4.2 第 4 步），歧义的余量 0.25 秒，`mayBeUnmatched` 只作说明；窗口 10 秒。前台动作通道配仿真里全部的 `actionStart`（所有角色、所有动作排成一个序列，键是角色与动作）；后台来源通道配 `actionStart`、`judgmentSpawn`（写判定名）与延奏（`@延奏`），不受前台的顺序约束；跳字通道配带伤害的 `hit`。血条、协奏环、回路条取那一刻的值（资源有账本时取账本，否则按日志重放、带上同步），运行在那之前停了的标 `uncovered`。
+9. **定性冲突只有两种**：切人类型不同；跳字在标明的分支上超出容差（分支未知时两支都超出）。其余通道超出容差只是残差大，只进"最早偏差"。歧义的跳字照样按配上的那一下算数值残差。
+10. **资格、分组与身份**（T09-5、T09-6）：签名是"有没有定性冲突 + 评分集合里匹配上的 ID + 覆盖的通道 + 窗口完整"的摘要；窗口完整 = 运行没失败、覆盖到最后一条评分观测。`score` = Σ 通道系数 × 该通道评分观测的平均绝对残差，系数（折成秒）切人、前台动作 1、后台来源 0.5、跳字与血条 50、协奏环与回路条 10，容差 0.5 / 0.5 / 1 秒、0.2%、3%、10%、10%。不可评估：一个锚点都没对上，或评分集合里除了第一个锚点自己那次切人（残差恒为 0）没有别的观测。报告身份 `reportIdentity` = 各运行的 runId + 评分定义的摘要 + `observationSetDigest`（读数、单位与时钟、分支、用途、冻结的参照、`marks` 与对齐规则）；`pnpm fit --json` 写报告，`--compare a.json b.json` 遇到评分定义或观测内容不同的拒绝（C09-14）。`groupRows` 先把引擎错误拿出去（单列、保留原因），再放下不可评估的，其余按签名分组；共有子集只在 `--common-subset` 时算（C09-12）。
+11. **两张表**（T09-5）：`fitVariants(sc, data, opts)` 换了签名。规则候选取 `classifyCandidates(...).mechanism` 翻（rule / option）；策略类不跑（录像里的操作是观测到的输入），没实现的、不适用的、和轴冲突的、改的是轴的输入（`scenario` 绑定，见第 14 条）的都列进 `ruleNotRun` 并写原因。改轴候选用 `neighborIter` 的 `keepEmpty`：空出来的行留成空行，条号不变，`marks` 照旧指得对（C09-8）。
+12. **视图 F**（T09-7）：时间轴模型多 `fit`、`conditionedFrom`、`interventions`、`segments`；第一次外部干预之后的时间轴加底色与"有条件推演"的说明，已知空闲 / 未观测时段各有底色，`#fitbox` 按通道列匹配状态与最早偏差。用无头 Chrome `--dump-dom` 看过一次。
+13. **中 3、中 4 重记**（T09-8）：各步在提交 `ef98cf8`（工作区干净）上跑，贴合度都按第六版的 `video` 算（各步用自己的 `marks`）：
+
+    | 步 | 改了什么 | 中 4 runId / DPS | 中 4 贴合度 | 中 3 runId / DPS | 中 3 贴合度 |
+    |---|---|---|---|---|---|
+    | 0 | 第五版（DD-09 之前） | `run-fbd62c7d306402a4` / 73,852 | 匹配 375；跳字冲突 11，`action#21` 落单 | `run-e06ff99426ce475e` / 73,669 | 匹配 261；跳字冲突 10，两条落单 |
+    | 1 | 雷主首位改成绝息魄 | `run-f61372b3eaaa0ca3` / 74,310 | 匹配 378；跳字冲突 8 | `run-1c8949c938b0b142` / 73,769 | 匹配 264；跳字冲突 7 |
+    | 2 | 补 `video.switches`、`video.hits`（只是观测，运行不变） | 同上 | 同上 | 同上 | 同上 |
+    | 3 | 换写法：补位改成未观测 / 已知空闲时段，能量满换成同步 | `run-7acbf9f2fb6e4c1c` / 74,250 | 同第 1 步的签名，score 1.699 → 1.657 | `run-e23f4886fc755cc4` / 73,768 | 同第 1 步的签名 |
+    | — | 补上卜灵漏记的三下声骸（第 6 条带出来的） | `run-2cee48bacf6812f9` / 74,477 | 匹配 383；跳字冲突 4，没有落单 | `run-e487a6bcd266d082` / 74,533 | 匹配 268；跳字冲突 5，没有落单 |
+
+    - 第 1 步的预测（两类伤害的残差变成同一个约 1.044）**对上了**：中 4 第 1 轮 QTE-3、心召唤-6、E-落地、镇红尘四下的录像 / 仿真都是 1.0437。
+    - 第 3 步只换写法：未观测时段的填法照原补位实际打出的那几下，动作的先后与改写前一样；中 3、中 4 各有一处 at 之后才打出的补位并进了前一段的填法，那几下普攻因此起手提前（中 4 最多 164 帧、中 3 83 帧；中 3 紧接着的雷主强化E 早 15 帧），下一次切人起各动作的起手帧都不变。中 3 第 3 轮万阙垂天前的"能量满"换成"同步 心 能量 100%"。
+    - 和旧报告（第五版贴合度中 4 2.51、中 3 2.68）不比分数，评分定义不同；对照匹配上的观测：`action#21`（中 4 视频 9.73 卜灵 Q）从落单变成匹配，第 1 轮跳字的冲突消失。
+    - 剩下的冲突：中 4 踏月归心两下（仿真 +103%、+122%，假设 `summon-as-char`）、镇寰宇（−10.9%，第 14 条的窗口）、第 3 轮镇红尘（−2.4%，受伤递增少一层）；中 3 第 3 轮镇红尘（−3.0%）、第 2 次镇寰宇（−13.9%）、万阙垂天（+1.2%）、照世·E-2（−2.1%）、踏月归心（+68.7%）。
+    - "同类的全队攻击不叠加"（`docs/tower-20261026.md` 中 4 第 2 条）的推断撤回：两轮镇红尘一样，是因为两轮都有卜灵的声骸，补上第一段那一下之后两轮都对上。
+14. **两项证据任务**（T09-9）：读数记录 `docs/calibration/2026-11-16-录像-中3中4卜灵首段声骸与镇寰宇窗口.md`，观测在 `points.yaml`（`卜灵首段声骸.*`、`窗口.中4.*`）。
+    - 新的绑定种类 `scenario`（`Binding.kind`，path 是 `scenarios/` 下的文件）：候选改变的是轴的输入，`changes: 'input'`；闭环 predict 时这个候选在每个 setup 上换成自己的场景跑（`scenarioFor`），DD-04 的候选检查照旧按 input 排除，不当机制候选翻；`rerunClosure` 对它不重跑别的场景，给出说明（引擎的缺省没变）。
+    - `buling-first-echo`（m ≈ 1.044 的来源）：候选 `echo-cast`（采用）、`no-echo`（对照场景 `scenarios/evidence/xin-tower4-卜灵首段不放声骸.yaml`）、两种没实现的读法。7 条观测 `echo-cast` 全通过、`no-echo` 6 条冲突；有一条独立验证（新读的电磁QTE-2），另两种读法没实现，结论是第 5 行的**暂定**。
+    - `zhenhuanyu-window`（B-1 的 15 秒窗口）：G = 15.02 战斗秒，范围 [14.97, 15.07]，命中在施加后 [15.00, 15.10]，按路线图 §10.2 的判法跨过边界是分不清；而仿真的镇寰宇比录像晚 0.45 秒起手，两条观测都声明了"仿真的镇寰宇起手与录像对齐"、比较结果是条件不足，结论是第 1 行的**未验证**，记录里写了下一项能区分的观测。
+15. **其余三个录像场景与删掉能量满**（T09-10）：`tys-video`、`fire-tower1/2-video` 按行内每一项改写：第一项已观测的之前的补位（at 之后才打出的）并进前一段的填法；之后从第一下实际打出的补位起到下一个 `at`，打出过的各项（含夹在中间、按打法估的狼咬、锐爪、狼舞的决意·极）都进这一段的填法；没打出的去掉。三个场景的动作序列、每个动作的起手帧、伤害与 DPS 都和改写之前相同（conformance 的 log 只差条号、跳过的补位与等待，tys 一条警告的条号）；加了 `video.switches`（类型照轴里写的变奏）。五个场景都不含旧写法之后删了 `能量满` / `fill-energy`：写了报错、指向"同步 <角色> 能量 100%"；`RotationItem` / `Command` 的 `fill`、`SchedulerOptions.fillCommand`、干预记录的 `'fill'`、账本 causeKind 的 `'forced'`、假设 `forced-energy` 一起删。C09-18 的第三部分（"另一条轴用旧的能量满"）改成断言写了报错；DD-01 的 C01-17、DD-02 的 C02-6、DD-06 的合成轴（C06-9、C06-12）原来拿能量满当"外部干预"，改用同步。
+16. **用例**：`tests/replay-input.test.ts`（C09-1～C09-7、C09-18 与时段、填法的其余检查）、`tests/fit-eligibility.test.ts`（C09-6 的报告部分、C09-8～C09-17、C09-19～C09-23、不可评估）、`tests/fit.test.ts`（真实场景）、`tests/xin-tower3.test.ts` / `xin-tower4.test.ts`（第六版）、`tests/evidence.test.ts`（`scenario` 绑定的 predict 与 rerun）、`tests/propositions.test.ts`（`scenario` 绑定要指到存在的场景、`changes: 'input'`）。
+17. **接在 DD-10 的拆层之后**（2026-11-17 rebase 到含 DD-10 的 main）：本文前面写的 `src/engine/fit.ts`、`observations.ts`、`trace.ts`、`search.ts`、`fuzz.ts` 现在都在 `src/analysis/`，只经 `src/engine/index.ts` 引入核心；编译搬到了 `src/engine/compile.ts`（`compileMembers`、`compileRotation` 的 `inserts` 参数、同步的资源名解析都在那里，`compileMembers` 与 `InterventionRecord`、`EventHandle` 加进了 index 的导出），`resource-replay.ts` 归 `ENTRY_REPORT` 组（`tests/layering.test.ts`）。`fuzzScenario` 改成收场景并自己走 `prepareRun`，变体的填法由场景自带的 `replay` 重新插，所以 `FuzzOptions.replay` 去掉了。

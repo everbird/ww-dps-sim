@@ -46,18 +46,18 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     const pts = hpPoints(sc.video!, r)
     expect(new Set(pts.map(p => p.enemy))).toEqual(new Set(['41塔中4/异构武装', '41塔中4/无冠者']))
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.hp!.rmse).toBeLessThan(0.03)
-    expect(fit.switches.typeMiss).toBe(0)
-    expect(fit.events.matched).toBe(fit.events.n)
+    expect(fit.residualByChannel.hp!.rmse).toBeLessThan(0.03)
+    expect(fit.observations.filter(o => o.channel === 'switch' && o.status !== 'matched')).toEqual([])   // 切人类型全对
+    expect(fit.observations.filter(o => o.channel === 'action' && o.status !== 'matched')).toEqual([])
     // 协奏环（2026-10-28）：133 个点，均方根差约 9.8%，仿真平均高约 5.6%（卜灵段中间给得早）
-    expect(fit.concerto!.n).toBe(133)
-    expect(fit.concerto!.rmse).toBeLessThan(0.11)
+    expect(fit.residualByChannel.concerto!.n).toBe(133)
+    expect(fit.residualByChannel.concerto!.rmse).toBeLessThan(0.11)
   })
 
   test('回路条上的应世心（video.core，2026-10-28）：均方根差不到 6%；开打、镇红尘之后到 E 都没打普攻，借相回应世只打一下 A1，第四次变奏入场约 70（原来带进去 39，入场就满）', () => {
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.core!.n).toBe(sc.video!.core!.length)
-    expect(fit.core!.rmse).toBeLessThan(0.06)
+    expect(fit.residualByChannel.core!.n).toBe(sc.video!.core!.length)
+    expect(fit.residualByChannel.core!.rmse).toBeLessThan(0.06)
     const qte = out.log.filter(e => e.type === 'resource' && e.char === '心' && e.resource === 'core1' && e.cause === 'cast' && e.delta === 60)   // 变奏入场 +60
     expect(qte).toHaveLength(4)
     const after = qte.map(e => (e.type === 'resource' ? e.value : 0))
@@ -69,7 +69,7 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
 
   test('变奏入场放完声骸不补普攻（2026-10-29，回路条在电磁QTE-3 落下之前不涨）：第一轮 E 在视频 31.3 起手，原来补的 A1 让它晚 0.1 秒；回路条均方根差不到 4%', () => {
     const fit = replayFit(r, out, sc.video!)
-    expect(fit.core!.rmse).toBeLessThan(0.04)
+    expect(fit.residualByChannel.core!.rmse).toBeLessThan(0.04)
     const e = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'E' && vsec(x.f) > 30)!
     expect(Math.abs(vsec(e.f) - 31.3)).toBeLessThan(0.02)
     const firstA1 = out.log.find(x => x.type === 'actionStart' && x.char === '心' && x.action === 'A1' && vsec(x.f) > 30)!
@@ -91,20 +91,21 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(out.log.filter(e => e.type === 'enemyState' && e.change === 'disharmony' && e.detail === '轴里写的（敌人 失谐）')).toHaveLength(2)
   })
 
-  test('跳字（校准线索）：万阙垂天第 1 轮对上录像 298012；镇红尘第 1 轮仿真少约 7%；第 2 轮仿真多吃了卜灵声骸的全队攻击（录像两轮一样）', () => {
+  test('跳字：卜灵第一段的声骸补上（视频 9.73 LT 冷却 20.0，DD-09 §5 第 6 条）、雷主首位改成绝息魄之后，心第 1、2 轮应世相与万阙垂天都与录像差 0.04%；镇寰宇仍少 10.9%（15 秒窗口）', () => {
     const crit = (judgment: string, t: number) => {
       const h = out.log.filter(e => e.type === 'hit' && e.judgment === judgment && e.dmg)
         .sort((a, b) => Math.abs(vsec(a.f) - t) - Math.abs(vsec(b.f) - t))[0]!
       return h.type === 'hit' ? { v: h.dmg!.crit, buffs: h.buffs } : null!
     }
     const ult = crit('大招-6', 58.0)
-    expect(Math.abs(ult.v / 298012 - 1)).toBeLessThan(0.005)
+    expect(Math.abs(298012 / ult.v - 1)).toBeLessThan(0.001)
     const z1 = crit('增幅强化重击-3', 36.8), z2 = crit('增幅强化重击-3', 90.5)
-    expect(288240 / z1.v).toBeGreaterThan(1.06)                       // 录像 288240、仿真 267644：差 7.7%，还没找到是哪一项
-    expect(288240 / z1.v).toBeLessThan(1.09)
-    expect(z2.buffs).toContain('无归的谬误.攻击')                     // 录像第 1、2 轮都是 288240；仿真第 2 轮多 4.4%
-    expect(z1.buffs).not.toContain('无归的谬误.攻击')
-    expect(z2.v / z1.v).toBeGreaterThan(1.04)
+    expect(Math.abs(288240 / z1.v - 1)).toBeLessThan(0.001)          // 原来 1.077（m ≈ 1.044 × 绝息魄）：卜灵第一段的声骸漏记了
+    expect(Math.abs(288240 / z2.v - 1)).toBeLessThan(0.001)
+    expect(z1.buffs).toContain('无归的谬误.攻击')                     // 两轮都吃到卜灵声骸的全队攻击（录像两轮一样）
+    expect(z2.buffs).toContain('无归的谬误.攻击')
+    const zh = crit('增幅强化重击-2', 51.9)
+    expect(202284 / zh.v).toBeGreaterThan(1.1)                        // 镇寰宇：两条 15 秒 buff 在仿真里早 18 帧到期（docs/evidence/zhenhuanyu-window.backfill.yaml）
   })
 
   test('阵打出的判定带 summon（卜灵冲击波）：缺省算"角色附加"；rules.summonCountsAsChar = false 时不触发、心不转霆心域，踏月归心小一半多（假设 summon-as-char）', async () => {

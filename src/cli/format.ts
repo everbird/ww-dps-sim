@@ -2,12 +2,26 @@
 import { readFileSync } from 'node:fs'
 import { parse } from 'yaml'
 import { FLAT_STATS, type StatKey } from '../data/common'
+import { fillCombos, narrowReplay } from '../data/replay'
 import { ScenarioSchema, type Scenario } from '../data/scenario.schema'
 import { parseOrThrow } from '../data/validate'
 import { ASSUMPTIONS, IMPACT_NAME, assumptionOf } from '../engine/assumptions'
 import type { Summary } from '../engine/types'
 
 export const loadScenario = (file: string): Scenario => parseOrThrow(ScenarioSchema, parse(readFileSync(file, 'utf8')), file)
+
+/** 录像剖析的填法组合（DD-09 §3.1）：只有一个组合时就用它；有几个时要 --fill <组合名> 选一个（pnpm fit 会把每个组合分别跑一次）。
+ *  选定之后每个未观测时段只剩一种填法，prepareRun 才跑得起来 */
+export function pickFillCombo(sc: Scenario, fill?: string): Scenario {
+  const combos = fillCombos(sc)
+  if (fill === undefined) {
+    if (combos.length === 1) return narrowReplay(sc, combos[0]!.picks)
+    throw new Error(`场景有 ${combos.length} 个填法组合，用 --fill <组合名> 选一个（${combos.slice(0, 8).map(c => c.name).join('、')}${combos.length > 8 ? '…' : ''}）；pnpm fit 会分别跑每一个`)
+  }
+  const c = combos.find(x => x.name === fill)
+  if (!c) throw new Error(`没有填法组合"${fill}"（有：${combos.slice(0, 8).map(x => x.name).join('、')}${combos.length > 8 ? '…' : ''}）`)
+  return narrowReplay(sc, c.picks)
+}
 
 /** 命令行临时覆盖场景（TD-10 §6.3）：--goal steady | kill:倍数 | killHp:血量 | window:秒；--repeat 轮数（打死几倍血要多跑几轮时用）；
  *  --enemy 换敌人预设（敌人表的 id，如 42塔中1/无冠者、矩8R2/燎照之骑） */

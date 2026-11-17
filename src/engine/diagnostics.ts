@@ -171,7 +171,7 @@ export interface HitMarginRecord {
 export type LedgerKind = 'initial' | 'change' | 'outroReset' | 'sync'
 
 /** 给程序分类用的固定取值（总览 §6 的 S-06）；cause 保留原文 */
-export type LedgerCauseKind = 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'forced' | 'outro' | 'sync'
+export type LedgerCauseKind = 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | 'hook' | 'break' | 'outro' | 'sync'   // 'forced'（能量满）随写法删了（DD-09 T09-10）
 
 /** 资源账本的一条（DD-06 §3.1；架构 §6.2）。只读、旁路：不补发业务事件。
  *  - 请求量为 0 的不记；请求了但被截掉的要记（满格再获得、空了再扣），clippedDelta 就是被截掉的量：正数是到上限被截，负数是扣到 0 以下被截；
@@ -180,7 +180,7 @@ export type LedgerCauseKind = 'initial' | 'hit' | 'cast' | 'cost' | 'effect' | '
  *  - phase 同 EventMeta 的口径（P1 不写资源，不会出现）；battleFrame 是写入那一刻的战斗帧（按战斗帧开窗口合计用，DD-06 §9 第 1 条）；
  *  - cap 没有上限时是 Infinity（JSON 里怎么编由 DD-07 的 wire 定）；
  *  - relatedEventSeq：对应的业务事件（resource 或 hit）；期初、实际变化为 0 的单人写入（没写事件）、静默同步没有。
- *    relatedInterventionIndex：外部干预（能量满）引起的，指向那条干预记录 */
+ *    relatedInterventionIndex：外部干预（同步，DD-09 §3.2）引起的，指向那条干预记录 */
 export interface ResourceLedgerEntry {
   readonly index: number                    // 账本自己的序号，就是检查点的 ledgerEndExclusive 用的那个
   readonly f: Frame
@@ -373,7 +373,7 @@ export class DiagSink {
     for (let i = mark; i < this.entries.length; i++) this.entries[i]!.relatedEventSeq ??= eventSeq
   }
 
-  /** 把 [mark, 现在) 里的条目关联到第 index 条外部干预记录（能量满） */
+  /** 把 [mark, 现在) 里的条目关联到第 index 条外部干预记录（同步） */
   ledgerRelateIntervention(mark: number, index: number): void {
     for (let i = mark; i < this.entries.length; i++) this.entries[i]!.relatedInterventionIndex ??= index
   }

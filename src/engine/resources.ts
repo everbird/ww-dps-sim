@@ -1,8 +1,10 @@
 // src/engine/resources.ts —— TD-06：角色资源（大招能量、协奏、核心资源）
 // 什么时刻、给谁、加减多少：每次结算的全队能量分配（§2.1）、大招门槛与扣除（§2.3）、协奏的两种发放时机（§3.2）、
 // 核心资源与合并区（§4）、资源型效果与钩子共用的 grant（§5）。负数就是消耗，统一"带符号累加，截在 [0, 上限]"。
-// 资源只读账本（DD-06）：角色资源只在三处写——这里的 add、switch.ts 的延奏清零、simulate.ts 的 initialState，三处都接进了账本。
+// 资源只读账本（DD-06）：角色资源只在四处写——这里的 add、switch.ts 的延奏清零、simulate.ts 的 initialState、这里的 syncResource（状态同步，
+// DD-09 §3.2：运行中 add 与延奏清零之外的第三个写入点），四处都接进了账本。
 // 新增资源写入点必须同时接进账本（DD-06）：漏接的话闭合检查（checkLedgerClosure）与 pnpm fuzz --ledger 会报出来。
+// 不写日志的写入（状态同步）另记外部干预记录；按日志重放资源的地方都要读它（resource-replay.ts）。
 import { RESOURCE_KINDS, type CharName, type ResourceKind, type Slot } from '../data/common'
 import { concertoTimingOf, type ActionDef } from '../data/gamedata'
 import { activeFor } from './buffs'
@@ -63,7 +65,7 @@ function add(
 /** grant 收到的 cause 归类（DD-06 §3.2）：认不出的就是资源型效果（cause 是它的定义 ID）。效果的 ID 因此不能取这几个保留字 */
 function causeKindOf(cause: string): LedgerCauseKind {
   switch (cause) {
-    case 'cast': case 'cost': case 'hook': case 'break': case 'forced': return cause
+    case 'cast': case 'cost': case 'hook': case 'break': return cause
     default: return 'effect'
   }
 }
@@ -108,6 +110,31 @@ export function grant(
   }
   for (const f of full) log(s, f)
   return d
+}
+
+/** 状态同步（DD-09 §3.2）：把某人某种资源直接设成采用值（unit ratio 时是占上限的比例），截在 [0, 上限]。
+ *  不写日志、不发业务触发：没有 resource、resourceFull 事件，钩子的 onEvent 看不到。记一条账本条目（kind / causeKind sync），
+ *  关联到哪条干预记录由调用方做；实际变化是 0 也记（每次同步一条）。skipped：这如果是一次普通的变化，本来会发的触发 */
+export function syncResource(
+  sim: Sim, s: SimState, slot: Slot, res: ResourceKind, value: number, unit: 'value' | 'ratio',
+): { before: number; adopted: number; delta: number; skipped: string[] } {
+  const c = s.chars[slot]
+  const cap = capOf(sim, slot, res)
+  const target = unit === 'ratio' ? value * cap : value
+  const before = valueOf(s, slot, res)
+  const adopted = snap9(clamp(target, cap))
+  if (res === 'energy' || res === 'concerto') c[res] = adopted
+  else c.core[Number(res.slice(4)) - 1] = adopted
+  const delta = snap9(adopted - before)
+  sim.k.diag?.ledger({
+    f: s.frame, battleFrame: s.battleFrames, slot, resource: res, kind: 'sync', causeKind: 'sync', cause: 'sync',
+    before, requestedDelta: snap9(target - before), actualDelta: delta, clippedDelta: snap9(target - adopted), after: adopted, cap,
+  }, sim.k.at.phase)
+  const skipped = [
+    ...(delta !== 0 ? ['resource'] : []),
+    ...((res === 'energy' || res === 'concerto') && before < cap && adopted >= cap ? ['resourceFull'] : []),
+  ]
+  return { before, adopted, delta, skipped }
 }
 
 /** 数据里的核心资源落到不存在的槽：丢弃，每个角色每个槽只提示一次（§4） */

@@ -11,7 +11,7 @@ import { loadGameData } from '../data/load'
 import { prepareRun, runPrepared } from '../engine/run'
 import { compareMarks, gainSteps, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../analysis/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
-import { argsOf, loadScenario, padEnd, padStart, width } from './format'
+import { argsOf, loadScenario, padEnd, padStart, pickFillCombo, width } from './format'
 
 const USAGE = '用法：pnpm trace <场景.yaml> [--loop k] [--seg] [--res 协奏|能量|<核心资源名>] [--hits] [--char <角色>] [--md] [--out <文件.md>]'
 
@@ -59,7 +59,7 @@ export function tables(r: ResolvedScenario, res: SimResult, loop: number, opts: 
     const sel = resourceSel(r, opts.res)
     if (typeof sel === 'string') return sel
     const ledger = res.diag?.resourceLedger
-    const rows = traceLedger(log, gainSteps(log, r, metaOf(res), ledger), r, loop, sel, opts.char)
+    const rows = traceLedger(log, gainSteps(log, r, metaOf(res), ledger, res.interventions), r, loop, sel, opts.char)
     const shown = rows[0] ? Object.keys(rows[0].values) : []
     if (rows.length === 0) notes.push(`${sel.label}这一轮没有变化`)
     // 被截：只列一个人时写数，几个人时写"名字 数"；正数是到上限被截掉的，负数是扣到 0 以下被截掉的
@@ -123,11 +123,11 @@ export function asMarkdown(t: Table): string {
 }
 
 async function main(): Promise<number> {
-  const { pos, opt } = argsOf(process.argv.slice(2), ['--loop', '--res', '--char', '--out'])
+  const { pos, opt } = argsOf(process.argv.slice(2), ['--loop', '--res', '--char', '--out', '--fill'])
   const file = pos.find(a => !a.startsWith('--'))
   const unknown = pos.filter(a => a.startsWith('--') && a !== '--seg' && a !== '--md' && a !== '--hits')
   if (!file || unknown.length > 0) { console.error(unknown.length ? `不认识的参数：${unknown.join(' ')}\n${USAGE}` : USAGE); return 2 }
-  const sc = loadScenario(file)
+  const sc = pickFillCombo(loadScenario(file), opt.fill)        // 录像剖析有几个填法组合时 --fill 选一个（DD-09 §3.1）
   const p = prepareRun(sc, await loadGameData())
   if (!p.ok) { console.error(p.issues.map(i => i.message).join('\n')); return 1 }
   const r = p.run.resolved

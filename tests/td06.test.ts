@@ -161,16 +161,15 @@ describe('TD-06 人造角色', () => {
     expect(eventsOfLog(out.log, 'resource').map(e => [e.cause, e.delta])).toEqual([['甲.定值', 10], ['甲.乘效率', 15]])
   })
 
-  test('录像剖析的"能量满 <角色>"（2026-10-27 中 3）：大招能量此刻补满（差多少补多少，cause forced），后面的大招不用等；记假设 forced-energy', () => {
+  test('录像剖析补满大招能量（2026-10-27 中 3）：旧写法"能量满 <角色>"在五个录像场景重记之后删了（DD-09 T09-10），写了报错、指向同步；"同步 甲 能量 100%"补满后大招不用等，不写 resource，记假设 forced-sync', () => {
     const 甲: SynthChar = { name: '甲', actions: [action({ id: 'X', endFrame: 10 }), action({ id: 'R', kind: 'liberation', endFrame: 10, energyCost: 100 })] }
-    const out = synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X', '能量满 甲', '甲 R'] })
+    const out = synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X', '同步 甲 能量 100%', '甲 R'] })
     expect(out.error).toBeUndefined()
-    expect(eventsOfLog(out.log, 'resource').map(e => [e.char, e.cause, e.delta, e.value])).toEqual([['甲', 'forced', 100, 100], ['甲', 'cost', -100, 0]])
-    expect(out.summary.assumptions.map(a => a.id)).toContain('forced-energy')
+    expect(eventsOfLog(out.log, 'resource').map(e => [e.char, e.cause, e.delta, e.value])).toEqual([['甲', 'cost', -100, 0]])
+    expect(out.summary.assumptions.map(a => a.id)).toContain('forced-sync')
     // 不写的话等能量：超时
     expect(synthRun([甲, idle('乙'), idle('丙')], { initial: { energy: 'empty' }, rotation: ['甲 X', '甲 R'], options: { maxWait: 60 } }).error?.code).toBe('timeout')
-    expect(parseRotationLine('fill-energy 甲')).toEqual([{ kind: 'fill', char: '甲', resource: 'energy' }])
-    expect(parseRotationLine('能量满')).toHaveProperty('error')
-    expect(() => ScenarioSchema.parse({ team: [{ char: '甲', weapon: { name: 'w' } }], enemy: { custom: { level: 90 } }, rotation: ['能量满 丁'] })).toThrow('丁 不在队伍里')
+    for (const line of ['能量满 甲', 'fill-energy 甲', '能量满']) expect(parseRotationLine(line)).toHaveProperty('error')
+    expect(() => ScenarioSchema.parse({ team: [{ char: '甲', weapon: { name: 'w' } }], enemy: { custom: { level: 90 } }, rotation: ['能量满 甲'] })).toThrow('同步 甲 能量 100%')
   })
 })

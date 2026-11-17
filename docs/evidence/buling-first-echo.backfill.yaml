@@ -1,0 +1,231 @@
+# 回填（DD-09 §5 第 6 条，路线图 §10.2"m ≈ 1.044 的来源"）：中 4 心第 1 轮应世相的跳字，录像对仿真共同多出约 4.4%。
+# 材料是 docs/calibration/2026-11-16-录像-中3中4卜灵首段声骸与镇寰宇窗口.md（技能栏 LT 冷却逐帧读、31.70 那一帧新读的 1380），
+# 加上 docs/tower-20261026.md 中 4 第 1 条的跳字表。雷主首位已按你 2026-11-11 的确认改成绝息魄（DD-09 §5 第 1 步）。与 B10（同类加成叠不叠加）分开。
+id: buling-first-echo.backfill
+propositionId: buling-first-echo
+question: 中 4 心第 1 轮应世相各下的共同乘数 m ≈ 1.044，是不是卜灵第一段放了声骸（无归的谬误的全队攻击 +10%）而场景漏记了
+kind: backfill
+setups:
+  - id: tower4
+    scenario: xin-tower4-video.yaml
+    note: 深塔 41 期中 4 录像剖析（第六版）；世界秒 = 视频秒 − 2.75。候选 no-echo 换成 evidence/xin-tower4-卜灵首段不放声骸.yaml 跑
+candidates:
+  - candidateId: echo-cast
+    conditions: 卜灵第一段（视频 3.75–14.0）在 9.73 放了声骸无归的谬误：全队攻击 +10%（攻击% 乘区）、自身共鸣效率 +10%，20 战斗秒（大招过场里不走）；心 30.0 变奏入场后第 1 轮应世相（31–37 秒）都在它里面，转相（37.0）之后的照世相已经到期
+    runs:
+      - setupId: tower4
+        runId: run-d4dfea0f7b565537
+        status: completed
+    predictions:
+      - observationId: 卜灵首段声骸.中4.LT冷却
+        predicted: 5.983333333333333
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-2
+        predicted:
+          - 604
+          - 1381
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-3
+        predicted:
+          - 9655
+          - 22070
+        covered: true
+      - observationId: 卜灵首段声骸.中4.心召唤-6
+        predicted:
+          - 17817
+          - 40728
+        covered: true
+      - observationId: 卜灵首段声骸.中4.E-落地
+        predicted:
+          - 7425
+          - 16974
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#1
+        predicted:
+          - 126140
+          - 288356
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#2
+        predicted:
+          - 126140
+          - 288356
+        covered: true
+  - candidateId: no-echo
+    conditions: 卜灵第一段没放声骸（2026-10 的转写）；心第 1 轮只有雷主超负荷的全队攻击 +10%，第 2 轮另有卜灵第二段（74.8）的声骸
+    runs:
+      - setupId: tower4
+        runId: run-d5c52b26bf6495d4
+        status: completed
+    predictions:
+      - observationId: 卜灵首段声骸.中4.LT冷却
+        predicted: 71.35
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-2
+        predicted:
+          - 579
+          - 1322
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-3
+        predicted:
+          - 9247
+          - 21138
+        covered: true
+      - observationId: 卜灵首段声骸.中4.心召唤-6
+        predicted:
+          - 17064
+          - 39008
+        covered: true
+      - observationId: 卜灵首段声骸.中4.E-落地
+        predicted:
+          - 7112
+          - 16257
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#1
+        predicted:
+          - 120810
+          - 276172
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#2
+        predicted:
+          - 126140
+          - 288356
+        covered: true
+  - candidateId: xin-only-atk
+    conditions: 另有一条只给心的攻击类加成，转相前后到期（路线图 §7 的 H1a）；队友不受影响。没有实现
+    runs: []
+    predictions: []
+  - candidateId: target-side
+    conditions: 目标侧的乘法项（防御、抗性一类），转相前后到期；队友的伤害也按同样的比例（H1b）。没有实现
+    runs: []
+    predictions: []
+criteria: 跳字按观测写明的分支比（暴击），缺省容差 0.2%；LT 冷却的间隔按世界帧比，容差 ±2 帧。在容差内算相容、外面算冲突
+observationIds:
+  - 卜灵首段声骸.中4.LT冷却
+  - 卜灵首段声骸.中4.电磁QTE-2
+  - 卜灵首段声骸.中4.电磁QTE-3
+  - 卜灵首段声骸.中4.心召唤-6
+  - 卜灵首段声骸.中4.E-落地
+  - 卜灵首段声骸.中4.镇红尘#1
+  - 卜灵首段声骸.中4.镇红尘#2
+verdicts:
+  - candidateId: echo-cast
+    perObservation:
+      - observationId: 卜灵首段声骸.中4.LT冷却
+        status: passed
+        residual: 0
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-2
+        status: passed
+        residual: 0.0007246376811593791
+        purpose: independent_validation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-3
+        status: passed
+        residual: 0.00040795974797158685
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.心召唤-6
+        status: passed
+        residual: 0.0003930045195519316
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.E-落地
+        status: passed
+        residual: 0.00041256556845636894
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#1
+        status: passed
+        residual: 0.0004024424091035872
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#2
+        status: passed
+        residual: 0.0004024424091035872
+        purpose: formulation
+        covered: true
+    runStatuses:
+      - completed
+    overall: consistent
+  - candidateId: no-echo
+    perObservation:
+      - observationId: 卜灵首段声骸.中4.LT冷却
+        status: conflicted
+        residual: 3919.8
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-2
+        status: conflicted
+        residual: -0.04202898550724643
+        purpose: independent_validation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.电磁QTE-3
+        status: conflicted
+        residual: -0.041838538597525066
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.心召唤-6
+        status: conflicted
+        residual: -0.04185498133228527
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.E-落地
+        status: conflicted
+        residual: -0.04184593622915067
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#1
+        status: conflicted
+        residual: -0.04186788787121842
+        purpose: formulation
+        covered: true
+      - observationId: 卜灵首段声骸.中4.镇红尘#2
+        status: passed
+        residual: 0.0004024424091035872
+        purpose: formulation
+        covered: true
+    runStatuses:
+      - completed
+    overall: inconsistent
+  - candidateId: xin-only-atk
+    perObservation: []
+    overall: notAssessed
+    notAssessedReason: unimplemented
+    runStatuses: []
+  - candidateId: target-side
+    perObservation: []
+    overall: notAssessed
+    notAssessedReason: unimplemented
+    runStatuses: []
+conclusion:
+  proposition: provisional
+  about: echo-cast
+  basis:
+    independent:
+      - 卜灵首段声骸.中4.电磁QTE-2
+    other:
+      - 卜灵首段声骸.中4.LT冷却
+      - 卜灵首段声骸.中4.电磁QTE-3
+      - 卜灵首段声骸.中4.心召唤-6
+      - 卜灵首段声骸.中4.E-落地
+      - 卜灵首段声骸.中4.镇红尘#1
+    excludedBy:
+      no-echo:
+        independent:
+          - 卜灵首段声骸.中4.电磁QTE-2
+        other:
+          - 卜灵首段声骸.中4.LT冷却
+          - 卜灵首段声骸.中4.电磁QTE-3
+          - 卜灵首段声骸.中4.心召唤-6
+          - 卜灵首段声骸.中4.E-落地
+          - 卜灵首段声骸.中4.镇红尘#1
+  rule: 5
+scopeTested: 游戏版本 3.7；深塔 41 期中 4（异构武装），xin-tower4-video.yaml 第六版的配装（雷主首位绝息魄、卜灵 6 链奇幻变奏 1 精）与环境特性；中 3 第一、四段同样漏了卜灵的声骸（18.42、177.73），补上后镇红尘第 2、4、5 轮也只差 0.04%（没入这条闭环）
+decision:
+  adoptedBefore: no-echo
+  adopted: echo-cast
+  defaultChanged: false
+  note: 改的是轴的输入，不是规则的缺省值：xin-tower3-video.yaml、xin-tower4-video.yaml 第六版补上了卜灵的这三下声骸（video.events 也追加了）。由实现者按录像读数填写，你可以改
+reruns: []
+notes: 'no-echo 的场景由 xin-tower4-video.yaml 去掉视频 9.73 那一下卜灵 Q 得到。另两种读法（H1a、H1b）没实现，所以结论最多是暂定；能区分它们的是队友在同一时段的跳字（H1b 预测队友也多 4.4%，echo-cast 预测卜灵冲击波按她自己的攻击% 涨，H1a 预测不涨）——这一局卜灵冲击波的跳字被特效盖住、没读出来（33.6 前后屏幕上的 +484 是治疗）。'

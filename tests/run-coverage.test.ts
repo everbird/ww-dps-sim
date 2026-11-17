@@ -206,30 +206,30 @@ describe('七条停止路径（DD-01 §3.6 的判定表）', () => {
 })
 
 describe('外部干预记录（DD-01 §3.8）', () => {
-  test('C01-17 能量满、敌人 失谐各记一条，排在自己引出的事件之前；运行算有条件的', () => {
+  test('C01-17 同步、敌人 失谐各记一条，排在自己引出的事件之前；运行算有条件的（原来用能量满，DD-09 T09-10 删了，换成同步）', () => {
     const r = go(甲, {
-      rotation: ['甲 X', '能量满 甲', '敌人 失谐', '甲 X'], initial: { energy: 'empty' },
+      rotation: ['甲 X', '同步 甲 能量 100%', '敌人 失谐', '甲 X'], initial: { energy: 'empty' },
       enemy: { custom: { level: 90, tunabilityMax: 100 } }, options: { tuneBreak: 'manual' },
     })
     expect(r.completion.status).toBe('completed')
     expect(r.interventions).toHaveLength(2)
-    const [fill, dis] = r.interventions
-    const res = r.log.findIndex(e => e.type === 'resource' && e.cause === 'forced')
+    const [sync, dis] = r.interventions
+    expect(r.log.some(e => e.type === 'resource' && e.char === '甲' && e.resource === 'energy')).toBe(false)   // 同步不写日志
     const st = r.log.findIndex(e => e.type === 'enemyState' && e.change === 'disharmony')
-    expect(res).toBeGreaterThan(-1)
-    expect(st).toBeGreaterThan(res)
-    expect(fill).toEqual({
-      index: 0, f: r.log[res]!.f, phase: 'P2', afterEventSeq: res - 1, orderInAnchor: 0, kind: 'fill',
-      target: { slot: 0, resource: 'energy' }, before: 0, adopted: 100, delta: 100, firedTriggers: true, skippedTriggers: [],
+    expect(st).toBeGreaterThan(-1)
+    expect(sync).toMatchObject({
+      index: 0, phase: 'P2', orderInAnchor: 0, kind: 'sync', target: { slot: 0, resource: 'energy' }, before: 0, adopted: 100, delta: 100,
+      firedTriggers: false, skippedTriggers: ['resource', 'resourceFull'],
     })
-    expect(dis).toMatchObject({ index: 1, phase: 'P2', orderInAnchor: 0, kind: 'enemyDisharmony', firedTriggers: true, skippedTriggers: [] })
-    expect(fill!.afterEventSeq).toBeLessThan(res)
-    expect(dis!.afterEventSeq).toBeLessThan(st)
-    expect(dis!.afterEventSeq).toBeGreaterThanOrEqual(res)                           // 排在能量满引出的事件之后
+    expect(dis).toMatchObject({ index: 1, phase: 'P2', kind: 'enemyDisharmony', firedTriggers: true, skippedTriggers: [] })
+    expect(sync!.afterEventSeq).toBeLessThan(st)
+    expect(dis!.afterEventSeq).toBeLessThan(st)                                      // 排在自己引出的 enemyState 之前
+    // 同步不写事件：两条挂在同一个锚点上，orderInAnchor 依次是 0、1
+    expect([dis!.afterEventSeq, dis!.orderInAnchor]).toEqual([sync!.afterEventSeq, 1])
     expect(r.completion.conditioning).toEqual({ basis: 'conditioned', firstInterventionIndex: 0 })
     expect(r.completion.coverage.terminal.prefix.interventionEndExclusive).toBe(2)
     // 同一个锚点下连着两条：orderInAnchor 递增
-    const two = go(甲, { rotation: ['能量满 甲', '能量满 乙', '甲 X'], initial: { energy: 'full' } })
+    const two = go(甲, { rotation: ['同步 甲 能量 100%', '同步 乙 能量 100%', '甲 X'], initial: { energy: 'full' } })
     expect(two.interventions.map(i => [i.afterEventSeq, i.orderInAnchor, i.delta])).toEqual([[-1, 0, 0], [-1, 1, 0]])
   })
 })

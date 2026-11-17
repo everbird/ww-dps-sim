@@ -1,5 +1,7 @@
 // src/engine/invariants.ts —— 不变量检查（总设计 §11 第 4 条，开发模式常开）
 // 每个 tick 结束、每次结算各查一次；不成立就是引擎的错，报 SimResult.error（code 'invariant'），指出第几帧、哪一项。
+import type { Sim } from './context'
+import { balanceOf, replayResources } from './resource-replay'
 import { ScheduleError } from './types'
 import type { HitEvent, ResolvedScenario, SimResult, SimState } from './types'
 
@@ -56,24 +58,21 @@ export function checkHit(s: SimState, dmg: HitEvent['dmg'], char: string, judgme
 
 const LOG_EPS = 1e-4
 
-/** 事件日志与汇总的自洽检查；每条说明带世界帧 */
-export function checkLog(r: ResolvedScenario, res: Pick<SimResult, 'log' | 'summary'>): string[] {
+/** 事件日志与汇总的自洽检查；每条说明带世界帧。资源按日志重放时套上静默的同步（res.interventions，DD-09 §3.2），否则同步之后的
+ *  resource 事件会被当成"中间有没记日志的改动"；不给 interventions 时当没有干预 */
+export function checkLog(r: ResolvedScenario, res: Pick<SimResult, 'log' | 'summary'> & Partial<Pick<SimResult, 'interventions'>>): string[] {
   const out: string[] = []
   const say = (f: number, what: string) => { if (out.length < 50) out.push(`第 ${f} 帧：${what}`) }
   const slotOf = new Map(r.team.map(m => [m.def.name, m.slot] as const))
   let lastF = -Infinity, lastT = -Infinity
   const open = new Map<number, { char: string; action: string }>()        // 开始了、还没结束 / 取消的动作实例
   const seen = new Set<number>()
-  // 资源：每条 resource 事件的 value 应等于上一条的 value + delta；第一条接开局值
-  const value = new Map<string, number>()
-  for (const m of r.team) {
-    value.set(`${m.def.name}|energy`, r.initial.energy[m.slot])
-    value.set(`${m.def.name}|concerto`, r.initial.concerto[m.slot])
-    r.initial.core[m.slot].forEach((v, i) => value.set(`${m.def.name}|core${i + 1}`, v))
-  }
   let onField = r.team[r.initial.onField].def.name
   const lastUse = new Map<string, number>()                               // 冷却键 → 上次出招的战斗帧（只查不按次数充能的）
-  for (const e of res.log) {
+  // 一遍过日志：资源按日志重放（resource-replay.ts，套上静默的同步），每条 resource 事件的 value 应等于重放到它之前的值 + delta
+  replayResources(res.log, r, res.interventions ?? [], (item, b) => {
+    if (item.kind !== 'event') return
+    const e = item.e
     if (e.f < lastF || e.t < lastT - LOG_EPS) say(e.f, `日志倒序：${e.type} 在第 ${lastF} 帧、战斗 ${lastT.toFixed(3)} 秒之后`)
     lastF = e.f; lastT = Math.max(lastT, e.t)
     switch (e.type) {
@@ -106,25 +105,20 @@ export function checkLog(r: ResolvedScenario, res: Pick<SimResult, 'log' | 'summ
         onField = e.to
         break
       case 'resource': {
-        const key = `${e.char}|${e.resource}`
-        const before = value.get(key) ?? 0
+        const slot = slotOf.get(e.char)
+        const before = slot === undefined ? 0 : balanceOf(b, slot, e.resource)
         if (Math.abs(before + e.delta - e.value) > LOG_EPS)
           say(e.f, `${e.char} 的 ${e.resource}：上一条记到 ${before}，这次 ${e.delta >= 0 ? '+' : ''}${e.delta} 却记成 ${e.value}（中间有没记日志的改动）`)
-        value.set(key, e.value)
         break
       }
       case 'hit': {
-        // 结算给的资源不记 resource 事件，实际增减写在 hit 的 gains 里（resources.ts settleGains）
-        const bump = (key: string, d: number) => { if (d) value.set(key, (value.get(key) ?? 0) + d) }
-        for (const [who, d] of Object.entries(e.gains.energy)) bump(`${who}|energy`, d ?? 0)
-        bump(`${e.char}|concerto`, e.gains.concerto)
-        e.gains.core.forEach((d, i) => bump(`${e.char}|core${i + 1}`, d))
+        // 结算给的资源不记 resource 事件，实际增减写在 hit 的 gains 里（resources.ts settleGains），由重放累加
         if (e.dmg && !(e.dmg.nonCrit <= e.dmg.expected + LOG_EPS && e.dmg.expected <= e.dmg.crit + LOG_EPS))
           say(e.f, `${e.char} ${e.judgment} 的期望伤害 ${e.dmg.expected} 不在不暴击 ${e.dmg.nonCrit} 与暴击 ${e.dmg.crit} 之间`)
         break
       }
     }
-  }
+  })
   // 汇总：总伤害 = 各角色之和 = 各动作之和 = 各轮之和；稳态 = 所含各轮之和；覆盖率在 [0, 1]
   const s = res.summary
   const near = (a: number, b: number) => Math.abs(a - b) <= Math.max(1, Math.abs(b) * 1e-9)

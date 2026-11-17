@@ -3,6 +3,8 @@
 // 第三版（同日）：镇红尘按跳字往回推起手、E 后转相照录像抢帧、转相第 254 帧降优先级，15 次切人都差不到 2 秒。
 // 第四版（同日）：第三轮万阙垂天前写"能量满 心"、194 改回变奏、boss 血条按正确的时间重读、心应世 E 的落地段后移。依赖 data/generated（缺数据时跳过）
 // 第五版（2026-10-28）：大招、转相、镇寰宇、万阙垂天钉到 HUD 消失帧（同中 4），超负荷按冷却数字 25.0 出现的那一格，钉住的动作写 !；15 次切人、22 个录像动作都差不到 0.1 秒。
+// 第六版（2026-11，DD-09 §5）：雷主首位改成绝息魄；补上卜灵第一、四段漏记的声骸（LT 冷却）；"补位打到 at"改写成 replay.segments 的未观测 / 已知空闲时段，
+// 能量满换成同步；加 video.switches、video.hits。
 import { runPrepared } from '../src/engine/run'
 import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
@@ -38,12 +40,12 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     expect(sw.map(e => e.type === 'switch' && e.intro)).toEqual([false, true, true, true, false, true, true, true, false, true, true, true, false, true, true])
   })
 
-  test('第五版：录像动作（大招类钉到 HUD 消失帧、谐度破坏）22 个都差不到 0.1 秒，15 次切人差不到 0.05 秒（超负荷按 10 fps 冷却数字重读后，第二轮雷主 → 心才是变奏）', () => {
+  test('第五版：录像动作（大招类钉到 HUD 消失帧、谐度破坏，第六版另加卜灵第一、四段的声骸）24 个都差不到 0.1 秒，15 次切人差不到 0.05 秒（超负荷按 10 fps 冷却数字重读后，第二轮雷主 → 心才是变奏）', () => {
     const cmp = compareMarks(traceCommands(out.log, r, 1), sc.video!.marks!)
     for (const x of cmp.rows) expect(Math.abs(x.diff)).toBeLessThan(0.05)
     const starts = out.log.flatMap(e => (e.type === 'actionStart' ? [[e.char, e.action, e.f / 60 + 11] as const] : []))
-    const id: Record<string, string> = { 大招: '大招', 转相: '大招', 镇寰宇: '照世·增幅强化重击', 万阙垂天: '照世·大招', 谐度破坏: '谐度破坏', '照世·谐度破坏': '照世·谐度破坏' }
-    expect(sc.video!.events).toHaveLength(22)
+    const id: Record<string, string> = { 大招: '大招', 转相: '大招', 镇寰宇: '照世·增幅强化重击', 万阙垂天: '照世·大招', 谐度破坏: '谐度破坏', '照世·谐度破坏': '照世·谐度破坏', Q: r.team[2].aliases.Q! }
+    expect(sc.video!.events).toHaveLength(24)
     for (const ev of sc.video!.events!) {
       const [t, who, act] = ev.split(' ') as [string, string, string]
       const near = starts.filter(([c, a]) => c === who && a === id[act]).map(([, , s]) => s - Number(t))
@@ -71,16 +73,31 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     for (const [a, t] of want) expect(Math.abs(at(a) - t), a).toBeLessThan(0.3)
   })
 
-  test('第三轮万阙垂天：录像 107.4 镇寰宇过场一结束按钮就亮了，仿真能量差约 6 点（多敌人段），轴里写"能量满 心"补满；之后 113.1 切人对上', () => {
-    const fill = out.log.filter(e => e.type === 'resource' && e.cause === 'forced')
-    expect(fill).toHaveLength(1)
-    const f = fill[0]!
-    expect(f.type === 'resource' && f.char).toBe('心')
-    expect(f.type === 'resource' && f.delta).toBeGreaterThan(0)
-    expect(f.type === 'resource' && f.delta).toBeLessThan(15)
-    const ult = out.log.find(e => e.type === 'actionStart' && e.char === '心' && e.action === '照世·大招' && e.f >= f.f)!
+  test('第三轮万阙垂天：录像 107.4 镇寰宇过场一结束按钮就亮了，仿真能量差约 6 点（多敌人段），轴里写"同步 心 能量 100%"（第六版，原来是能量满）：不写日志、不发触发，记一条干预；之后 113.1 切人对上', () => {
+    expect(out.log.filter(e => e.type === 'resource' && e.cause === 'forced')).toEqual([])
+    const sync = out.interventions.filter(i => i.kind === 'sync')
+    expect(sync).toHaveLength(1)
+    const s = sync[0]!
+    expect(s).toMatchObject({ target: { slot: 0, resource: 'energy' }, adopted: 125, firedTriggers: false })
+    expect(s.delta!).toBeGreaterThan(0)
+    expect(s.delta!).toBeLessThan(15)
+    const ult = out.log.find(e => e.type === 'actionStart' && e.char === '心' && e.action === '照世·大招' && e.f >= s.f)!
     expect(Math.abs(ult.f / 60 + 11 - 108.0)).toBeLessThan(0.3)
-    expect(out.summary.assumptions.map(a => a.id)).toContain('forced-energy')
+    expect(out.summary.assumptions.map(a => a.id)).toContain('forced-sync')
+  })
+
+  test('第六版（DD-09）：轴里没有补位；看不清的普攻写成未观测时段（填法照原补位）、回路条确认没打的写成已知空闲；卜灵第一、四段的声骸补上后，心镇红尘第 2、4、5 轮与录像差 0.04%', () => {
+    expect(sc.rotation!.some(l => /~/.test(l ?? ''))).toBe(false)
+    const segs = sc.replay!.segments!
+    expect(segs.filter(g => g.kind === 'idle').length).toBe(7)
+    expect(segs.filter(g => g.kind === 'unobserved').length).toBeGreaterThan(50)
+    expect(sc.video!.switches).toHaveLength(15)
+    const crit = (t: number) => {
+      const h = out.log.filter(e => e.type === 'hit' && e.judgment === '增幅强化重击-3' && e.dmg).sort((a, b) => Math.abs(a.f / 60 + 11 - t) - Math.abs(b.f / 60 + 11 - t))[0]!
+      return h.type === 'hit' ? h.dmg!.crit : 0
+    }
+    for (const [t, v] of [[41.5, 288240], [141.07, 322150], [197.2, 381494]] as const) expect(Math.abs(v / crit(t) - 1), String(t)).toBeLessThan(0.001)
+    expect(288240 / crit(89.5)).toBeGreaterThan(1.02)                 // 第 3 轮仿真少约 3%（没有绝息魄的导电；录像里雷主那一段没放声骸，原因没查）
   })
 
   test('心应世 E 的落地段后移（E-落地第 86 帧）：E 后 0.5 秒就转相的三轮都没出踏月归心；第四轮借相回应世放的 E 打完了，出一次', () => {

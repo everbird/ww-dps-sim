@@ -18,7 +18,7 @@ import { prepareRun, runPrepared } from '../engine/run'
 import type { PrepareIssue, PreparedRun, RunOverrides } from '../engine/run-types'
 import type { SimEventType, SimResult, SimState } from '../engine/types'
 import { envelope, toWire } from '../engine/wire'
-import { loadScenario } from './format'
+import { loadScenario, pickFillCombo } from './format'
 import { collectRunEnvironment } from './run-env'
 
 class CliArgError extends Error {}
@@ -70,7 +70,7 @@ const VALUE_FLAGS = new Set([
   '--loop', '--line', '--item', '--evaluation',
   '--kind', '--owner', '--id', '--event',
   '--clock', '--from', '--to', '--slot', '--char', '--resource', '--cause',
-  '--target', '--types',
+  '--target', '--types', '--fill',
 ])
 
 function parseCli(argv: string[]): ParsedCli {
@@ -266,7 +266,7 @@ async function main(): Promise<number> {
 
   let scenario: Scenario
   try {
-    scenario = loadScenario(scenarioPath)
+    scenario = pickFillCombo(loadScenario(scenarioPath), parsed.single.fill)   // 录像剖析有几个填法组合时 --fill 选一个（DD-09 §3.1）
   } catch (e) {
     console.error(`读取场景失败（${scenarioPath}）：${e instanceof Error ? e.message : String(e)}`)
     return 2
