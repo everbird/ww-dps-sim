@@ -1,6 +1,6 @@
 # 鸣潮 DPS 引擎 · TD-13 声骸库存择优 v0.1.2
 
-> **状态**：v0.1.2（2026-10-20）：声骸库存一个账号一份（§1、§2）；v0.1.1（2026-10-12）：组合数上限与按套装剪枝、标出"就是现在这套"；v0.1（2026-10-05）随实现写成（`src/data/inventory.schema.ts`、`src/engine/optimize.ts`、`src/cli/optimize.ts`，用例 `tests/optimize.test.ts`）。用户定的范围：库存手写 YAML、一次一个角色（2026-10-05）。
+> **状态**：v0.1.2（2026-10-20）：声骸库存一个账号一份（§1、§2）；v0.1.1（2026-10-12）：组合数上限与按套装剪枝、标出"就是现在这套"；v0.1（2026-10-05）随实现写成（`src/data/inventory.schema.ts`、`src/analysis/optimize.ts`、`src/cli/optimize.ts`，用例 `tests/optimize.test.ts`）。用户定的范围：库存手写 YAML、一次一个角色（2026-10-05）。
 > **依据**：《技术总体设计 v0.1.9》（下称"总设计"）§3.5（稳态口径）、第 12 节 M5 / M7；《TD-10 输出与报告 v0.1.3》§3（对比口径 `basisOf`）、§4（副词条边际）；《TD-03 伤害公式规格》（`computeHit`）；《TD-07 Buff 系统》（`accumulate` 与过滤条件）
 > **不讲**：轴怎么排（轴固定，排轴搜索属于 M7）；声骸词条的强化与概率
 
@@ -65,7 +65,7 @@ echoes:
 
 ## 3. 快速重算
 
-**记录**：`simulate(r, { onHit })` 在每次直接伤害结算（`computeHit` 那一支；谐度破坏、异常效应不算）时给出 `HitRecord`：出伤者、日志里 hit 事件的下标、`computeHit` 除面板外的输入（倍率、相关属性、附加基础伤害、等级、敌人防御与抗性）、过滤条件要看的 `HitView`、当时生效的 buff（`ActiveBuff[]`）、钩子直接补的乘区。
+**记录**：`runPrepared(p, { onHit })`（观察选项，不进运行身份；原来是 `simulate(r, { onHit })`，DD-10 删了兼容入口）在每次直接伤害结算（`computeHit` 那一支；谐度破坏、异常效应不算）时给出 `HitRecord`：出伤者、日志里 hit 事件的下标、`computeHit` 除面板外的输入（倍率、相关属性、附加基础伤害、等级、敌人防御与抗性）、过滤条件要看的 `HitView`、当时生效的 buff（`ActiveBuff[]`）、钩子直接补的乘区。
 
 **重算**（`buildReplayer`）：
 
@@ -96,13 +96,13 @@ echoes:
 ```ts
 // src/engine/context.ts
 interface HitRecord { slot; index; ctx: Omit<HitContext, 'panel'>; view: HitView; active: ActiveBuff[]; draft: Pick<HitDraft, 'zones' | 'critOnly'> }
-interface SimOptions { onHit?(rec: HitRecord): void }        // simulate(r, opts?)
+interface RunOptions { onHit?(rec: HitRecord): void }        // runPrepared(p, opts?)（原来是 SimOptions / simulate）
 
 // src/data/inventory.schema.ts
 InventorySchema; resolveInventory(inv, data) → { pieces: InvPiece[]; issues: string[] }
 interface InvPiece { id; name; set; cost: 1 | 3 | 4; main; subs; owner? }
 
-// src/engine/optimize.ts
+// src/analysis/optimize.ts
 totalsOf(pieces) → Totals; buildReplayer(r, res, recs, slot) → Replayer { basis; totals0; hits; dps(totals) }
 runRecorded(sc, data); withEchoes(sc, slot, pieces)
 optimize(sc, data, pieces, { slot, top?, keep?, set?, includeTeam? }) → OptimizeResult { char; current; plan; main; pool; evaluated; verified; builds: Build[]; notes }

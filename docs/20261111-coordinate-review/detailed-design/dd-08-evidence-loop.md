@@ -97,7 +97,7 @@ export function compareObservations(p: PreparedRun, res: SimResult, observations
 | `unassessable` | 观测没有实测值 |
 
 - `interval` 的容差按帧给绝对值（缺省 ±1 帧；30 帧录像缺省 ±2），不用相对误差：间隔很短时相对误差没有意义。`DEFAULT_TOLERANCE` 加一项。
-- `resourceAt` 的 `before` / `after` 用账本取值（DD-06）：`at` 选中的事件之前最后一条、或它引出的条目之后的余额。
+- `resourceAt` 的 `before` / `after` 用账本取值（DD-06）：`at` 选中的事件之前最后一条、或它引出的条目之后的余额。状态同步（DD-09 §3.2）不写日志，它的条目按干预记录放回事件之间：排在 `afterEventSeq` 那条事件之后、下一条之前；同步不是事件引出的，不算 `after`。取值要带干预记录（`ObservationSource.interventions`），账本里有同步却没给时取不到（2026-11-17，Codex 审查 F1：原来沿用上一笔账的位置，晚到的同步污染了更早的读数）。
 - 容差在看到比较结果之前定：闭环记录里的"判据"一栏在登记预测时就填（§5.2）。
 - 信封里的 `observationSummary` 按四类计数（架构 §2.7）。
 

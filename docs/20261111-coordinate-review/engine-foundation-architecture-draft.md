@@ -93,6 +93,7 @@ export interface PreparedRun {
     readonly strictSource: 'scenario' | 'cli-override' | 'default'
     readonly continueAfterIntentUnmet: boolean
     readonly sample: SimOptions['sample'] | null
+    readonly damageScope: DamageScope           // 谐度破坏的口径（S-11，DD-02 §3.7）：按有效配置分类，原样带进 SimResult.damageScope
   }
 }
 ```
@@ -103,7 +104,8 @@ export interface PreparedRun {
 - **"最早合法帧基线"的条件**：严格入口，并且 `inputDelay`、`inputDelayAt`、抽样抖动、手速档都没有。只要有任何一项操作延迟，这次运行就标为"操作策略试验"，不算基线，哪怕开着严格入口。轴作者手写的 `+N` 属于轴本身；`at` 在严格入口下仍然禁止（§11.2）。
 - **运行与查询都收 `PreparedRun`**。结果带 `runId`；把一次运行的事件句柄拿去查另一次运行，返回明确的错误。
 - **`effective` 里的每一项都进运行身份**（AF-28）：`strict` 与 `strictSource` 对应身份的 `entryMode` 与 `strictSource`，`continueAfterIntentUnmet` 与 `sample` 同名。装配结果的摘要 `resolvedDigest` 也在身份里。所以只改续跑开关、或只改最终装配内容，`runId` 都会变。
-- **观察选项不进身份**：诊断开关与过滤条件可以独立变化，前提是零干扰（§4.3）。同一份执行输入只改诊断开关，`runId` 不变。
+- **观察选项不进身份**：诊断开关与过滤条件可以独立变化，前提是零干扰（§4.3）。同一份执行输入只改诊断开关，`runId` 不变。是否跑 `checkLog`、`onHit` 回调同属观察选项（S-04）；前提是观察回调只读收到的对象，回调自己抛的异常原样抛给调用方，不算这次运行的状态。
+- **谐度破坏的口径**（S-11）：场景可写 `tuneBreakOmitted`（原文没给位置、当时游戏里没有、刻意不打）；`DamageScope` 按 `tuneBreak` × 轴里有没有谐破动作的有效配置分类（`written` / `auto` / `writtenPlusAuto` / `omitted`，后者带 `reason` 与量表 `gauge`）。它不影响执行，但进 `scenarioDigest`。比较结果两边口径不同时带 `scopeMismatch`（两边完整的口径），对外信封的 `unsupported` 在 `omitted` 时自动加说明（DD-02 §3.7、DD-03 §7.4）。
 
 ### 2.2 完成状态（AF-02）
 
@@ -124,6 +126,8 @@ export interface UnmetIntentDetail {
   readonly actual: string                   // 例："协奏 92"
 }
 ```
+
+运行期用哪个错误码（S-02）：严格入口的意图没满足抛调度错误码 `intentUnmet`（`ScheduleErrorCode` 有这一项，错误带 `UnmetIntentDetail`），完成状态归成 `axisFailure.kind === 'intentUnmet'`；其余调度错误码同名映射到 `AxisFailureKind`。
 
 现有错误码与警告的归类：
 
@@ -166,7 +170,7 @@ export interface RunCoverage {
   readonly loopExitAt: {
     readonly reason: 'idle' | 'maxFrames' | 'axisFailed' | 'engineError'
     readonly worldFrame: Frame
-    readonly phase: 'init' | 'P2' | 'P3' | 'P4' | 'P6' | 'afterP7'
+    readonly phase: 'init' | 'P1' | 'P2' | 'P3' | 'P4' | 'P6' | 'afterP7'   // P1：钩子不在 P1 跑，但 computeRates 理论上可以抛非调度错误（S-03）
     readonly inFlightEventSeq?: number      // 循环里出错时正在处理的事件
   }
   /** 循环退出之后的收尾做了什么、做完没有（AF-26） */
@@ -226,8 +230,19 @@ export interface RunCompletion {
     readonly kind: 'commandsPending' | 'inFlightRemains'
     readonly remains: { pendingCommands: number; activeActions: number; pendingJudgments: number; pendingTails: number }
   }
+  /** 引擎错误的明细（S-01）：连锁过深、不变量不成立、未捕获的异常；这类错误不往外抛，结果作废、只供排错 */
+  readonly engineError?: { readonly code: 'chainDepth' | 'invariant' | 'uncaught'; readonly message: string }
   readonly coverage: RunCoverage
-  readonly loops: { readonly planned: number; readonly completed: number }   // 完整走完的轮数，不含残缺的轮
+  /** 执行轮数只认日志里的轮边界（S-15，DF-01）；endAt 不参与 */
+  readonly loops: {
+    readonly planned: number
+    readonly started: number                // 日志里 loop ≥ 1 的 loop 事件个数
+    readonly completed: number              // 结束边界已确认的循环轮数，不含残缺的轮
+    readonly openingCompleted: boolean | null   // 没有启动轴时 null
+    /** 结束边界已确认的各轮（含启动轴，记为第 0 轮）的真实结束战斗帧，不受 endAt 影响。按 loop 找条目，不当数组下标用：
+     *  统计窗口是否完整覆盖稳态的某一轮，要拿它与窗口终点比（DF-25） */
+    readonly roundEnds: readonly { readonly loop: number; readonly endBattleFrame: number }[]
+  }
   /** 目标是否达成：与 status 是两个维度 */
   readonly goal: { readonly kind: 'steady' | 'kill' | 'window'; readonly reached: boolean }
   /** 有没有外部指定的状态（§4.1 的干预记录） */
@@ -240,7 +255,7 @@ export interface RunCompletion {
 `goal.reached` 的定义：
 - **击杀**：取 `summary.goal.reached`，它按目标血量 `goal.hp` 算。`summary.kill` 是 1 倍血的里程碑，按 `enemy.hp` 算，两者不混用。
 - **前 N 秒**：有效的战斗帧覆盖了整个窗口，且此前没有因失败停下。
-- **稳态**：有稳态，且稳态包含的每一轮都完整走完。
+- **稳态**：有稳态，且稳态包含的每一轮都完整走完：执行上 `r ≤ loops.completed`，统计上 `roundEnds` 里这一轮的真实结束帧不晚于统计窗口终点（S-15，DD-03 §7.1）。
 
 "目标达成没有""轴跑完没有""有没有引擎错误"分开报，不合成一个布尔值。
 
@@ -263,6 +278,11 @@ export interface RunCompletion {
 | `compareObservations` | `PreparedRun`、观测 | 分项比较结果 | §10 |
 
 诊断关着时，需要诊断记录的查询经同一个 `PreparedRun` 带诊断重跑取得。重跑用的严格选项、续跑策略、抽样种子都来自 `PreparedRun`，不由调用方另给。
+
+几处写明（S-13）：
+- **查询收 `EventHandle`（`{ runId, eventSeq }`）而不是裸序号**：`runId` 与 `PreparedRun` 不配时返回 `runIdMismatch`。
+- **中途停下的重放返回 `ReplayPrefix`**（停止点：边界、某次真实求值之后），它没有完成状态；探针不能伪造 `completed` 或 `engineError`。跑到底的才是带完成状态的结果。
+- **`stateAt` 的边界取在 P7 之后、帧数上限检查之前**，所以 `S[maxFrames]` 取得到。
 
 ### 2.6 跨运行比较（AF-12）
 
@@ -372,13 +392,19 @@ export type OriginContext =
   | { kind: 'judgmentExpire'; judgmentId: number }
   | { kind: 'timer'; timerKind: 'buff' | 'effectTick' | 'enemy'; id?: number; defId?: string }
   | { kind: 'trigger'; directParentSeq: number; handlerKind: 'consume' | 'buffTrigger' | 'buffExtend' | 'resourceEffect' | 'charHook'; handlerId: string }
+  | { kind: 'finalization'; step: 'failClose' | 'maxFramesWarning' }   // 失败收尾写的 wait、帧数上限的警告（S-05）
+  | { kind: 'unattributed' }                                          // 没落在任何作用域里：出现了就说明插桩有漏（S-05）
 
 export interface EventMeta {              // diag.eventMeta[seq]，与日志下标一一对应
-  readonly phase: 'init' | 'P2' | 'P3' | 'P4' | 'P6' | 'post'
+  readonly phase: 'init' | 'P1' | 'P2' | 'P3' | 'P4' | 'P6' | 'post'
   readonly origin: OriginContext
-  readonly directParentSeq?: number       // 直接引出它的事件；延迟生效的经实体来源表查到
+  readonly directParentSeq?: number       // 谁直接引出了它（因果）；延迟生效的经实体来源表查到
+  readonly subjectSeq?: number            // 它说的那个实体（动作实例、判定、buff 实例、尾部）是哪条事件创建的（S-12）
+  readonly scope?: number                 // 回填它的作用域的编号，规则明细按它挂到事件上（S-08）；不承诺别的含义
 }
 ```
+
+两种关系分开记（S-12，DF-06）：`actionCancel` 同时涉及"谁发起了取消"（`directParentSeq`）与"取消的是哪个动作"（`subjectSeq`），单父链会丢掉其中一个。`onSwitch` 里直接写的事件以那条 `switch` 为直接父事件。
 
 要点：
 - **放在诊断的旁路数组里**，按事件下标索引。钩子看到的事件、日志的结构都不变。
@@ -387,7 +413,7 @@ export interface EventMeta {              // diag.eventMeta[seq]，与日志下�
 - **业务链不动。** `bus.spawned` 仍在 P6 清空；`Link.root` 继续表示伤害与资源的业务归属（"谁引发的算谁"）。它们参与 `chainDepth` 的判断，改它们的寿命会改变运行是否成功，不是诊断功能可以顺带做的事。跨 tick 的连锁深度该不该继承，另立议题、另配回归用例。
 - **诊断的直接父链与业务的 `Link.root` 是两个概念**，不混用。
 
-做完后，`trace.ts` 的 `walkOwners` 按日志邻近关系推来源的两种错归（同帧多个到期、队列交错）就不再需要。
+做完后，`trace.ts` 的 `walkOwners` 按日志邻近关系推来源的两种错归（同帧多个到期、队列交错）就不再需要。（已换成按记录下来的来源推的 `walkCauses`，DD-05 §3.4；旧算法只留在测试里作对照。）
 
 ### 3.4 单个事件的解释（AF-20）
 
@@ -396,6 +422,8 @@ export interface EventExplanation {
   readonly event: EventHandle
   /** 沿诊断的直接父链回到已记录的源头；只是已建模的直接触发链 */
   readonly directCauses: readonly { readonly seq: number; readonly meta: EventMeta }[]
+  /** 业务链的根事件（"算在谁名下"，与"谁直接引出"分开给，S-08） */
+  readonly businessRoot?: { readonly seq: number }
   /** 伤害事件：结算时实际用的输入与中间量 */
   readonly hitInputs?: {
     readonly panel: unknown                 // 结算用的面板
@@ -446,7 +474,7 @@ export interface ActiveBuffContribution {   // 在结算那一刻绑定，不事
 | `completion` | 主体 | 必有 | §2.2–§2.4 |
 | `identity` | 主体 | 必有 | §9 |
 | `interventions`：外部干预记录 | 主体，**不进日志的触发队列** | 必有 | 方向第 8 条；`checkLog` 要读它 |
-| `strictReport`：严格入口的检查结果、按意图的等待、提示 | 主体 | 必有 | 路线图 §3.4、路线图 §3.6 |
+| `strictReport`：严格入口的检查结果、按意图的等待、提示；超时时另有 `timeoutContext`（被什么挡住、切出者与切入者各自的资源与冷却） | 主体 | 必有，所有入口都有（S-09；非严格入口的编译检查为空） | 路线图 §3.4、路线图 §3.6 |
 | `summary.assumptions`：碰到的假设 | 汇总 | 必有 | 沿用现有 `assume()` |
 | `ruleUsage`：规则使用摘要与覆盖清单 | 主体 | 必有 | 方向第 6 条；§4.2 |
 | `diag.eventMeta`、实体来源表 | `diag` | 可选 | §3.3 |
@@ -454,6 +482,7 @@ export interface ActiveBuffContribution {   // 在结算那一刻绑定，不事
 | `diag.ruleTrace`：规则使用的逐次明细 | `diag` | 可选 | §4.2 |
 | `diag.triggerChecks` | `diag` | 可选，按目标过滤 | §7.3 |
 | `diag.hitInputs`、`diag.hitMargins` | `diag` | 可选 | §3.4、§7.4 |
+| `diag.commandVerdicts`：调度器每一次真实求值（带 `evaluationIndex`、结论与求值之后的上下文）与指令的生命周期 | `diag` | 可选 | §7.2（S-10）。编号本身不随诊断开关：诊断关着也计数，随快照保存，恢复后 `evaluation` 停止点接得上（DD-07 §4.4、DD-10 §3.1） |
 
 外部干预记录：
 
@@ -644,7 +673,7 @@ export interface ResourceLedgerEntry {
 - **补纯检查函数**：
   - 触发检查拆出不写 `lastTrigger` 的版本；
   - 调度器的动作、切人合法性拆出不写队列、不调 `assume`、不消耗 RNG 的版本。
-- **只读的钩子上下文**：`canStart`、`introAction`、`forte` 用只读的类型。钩子若尝试写状态，报"不支持的写入"，不静默忽略后返回一个看似正常的答案。基线上各角色模块的 `canStart` 都是只读的。
+- **只读的钩子上下文**：`canStart`、`introAction`、`forte` 用只读的类型（S-14：`ReadonlyHookContext`，`state` 与 `vars` 是深只读的投影——浅的 `Readonly<SimState>` 挡不住嵌套写入）。钩子若尝试写状态，报"不支持的写入"，不静默忽略后返回一个看似正常的答案。基线上各角色模块的 `canStart` 都是只读的。
 
 每个条件的结果：
 
@@ -896,6 +925,7 @@ export type ComparisonStatus =
 - `options.tuneBreak: auto`；
 - `purpose: replay`；
 - **输入自相矛盾**：`tuneBreak: off` 而轴里有谐度破坏动作。检查按装配后的动作种类（`kind === 'tuneBreak'`）判，覆盖别名与各种谐破变体，启动轴与循环轴都查。非严格入口下给一条警告。
+- **没说清谐度破坏**（装配后的检查，S-11）：轴里没有谐破动作、也没写 `tuneBreakOmitted` 时报 `strict.tuneBreakUndeclared`。严格轴因此只有两种合法状态：写了谐破，或声明了省略。
 
 输入自相矛盾在编译期处理；游戏门槛不满足（例如目标一直没失谐）仍是运行结果。
 
@@ -904,10 +934,11 @@ export type ComparisonStatus =
 - **按意图的等待单独记码**：变奏切人等出手，现在和默认的等就绪共用 `settled`。新增等待代码 `concertoSettle`，与 `airborne`、`entryBusy` 一起算"按意图的等待"。
 - **意图没达到就是轴失败**：`axisFailed`（`intentUnmet`），带哪条指令、期望与实际。
 - **可以继续试跑，但要标边界**：开了 `continueAfterIntentUnmet` 时，在完成状态里记"从哪里起是降级试跑"（§2.4）。正式的完成状态仍是失败。
-- **`strictReport`（必有）**：
-  - 编译期检查的结果；
+- **`strictReport`（必有，所有入口都有，S-09）**：
+  - 编译期检查的结果（非严格入口为空）；
   - 每一处按意图的等待及其类别；
-  - 提示，例如"写了 `!`，但前一个动作其实已经自然结束，没有发生取消"。这只是提示，不算意图失败。
+  - 提示，例如"写了 `!`，但前一个动作其实已经自然结束，没有发生取消"。这只是提示，不算意图失败；
+  - 超时时的 `timeoutContext`：在关闭等待段之前取现场，分清切出者与切入者（S-09）。
 
 ### 11.4 候选的分类与阶段一的报告
 
@@ -928,10 +959,18 @@ export interface CandidateOutcome {
   readonly changes: readonly CandidateChange[]
   readonly runId: string
   readonly status: RunStatus
+  readonly completion: RunCompletion                // 机器可读的失败原因在这里（S-07）
   readonly comparedWindow: string                   // 实际比较的轮次或窗口
+  readonly steadyLoopBattleFrames: readonly number[] | null
   readonly steadyLoopBattleSeconds: number | null
   readonly steadyDps: number | null
+  readonly loopTime: 'same' | 'changed' | 'notComparable'
+  /** 与基准比的 DPS（S-07，DF-20）：实际的差都给出；same 只表示数值相同，不表示"差在误差内" */
+  readonly dps: { readonly status: 'same' | 'changed' | 'notComparable'; readonly delta: number | null; readonly ratio: number | null; readonly withinWindowVariation: boolean | null }
+  readonly intentWaitCount: number
+  readonly identicalLog: boolean
   readonly failureDetail?: string
+  readonly scopeMismatch?: ScopeMismatch           // 变体改变了谐破口径时那一行标出（DD-03 §7.4）
 }
 
 export interface StrictCandidateReport {
@@ -957,6 +996,8 @@ export interface StrictCandidateReport {
 ```
 
 - **覆盖是实际跑出来的**：由计划的集合、实际运行的集合、失败与未运行的项生成，不写死"都查过了"。`engineError` 与没运行的不算已检查；`axisFailed` 是保留的结果。
+- **报告按稳态出数，闸门也按稳态判**（`usableSteady`，DD-03 §7.1）：不随场景目标放行只统计了一部分的稳态。
+- **"不适用"单列**（S-07）：命题的 `appliesToChars` 不在队伍里的候选，与"没实现"分开列。
 - **记录到等待与指令时刻敏感分开**（DD-04 §5.4，DF-20）：+6f 对照引用运行与窗口，只确认该指令的时刻影响轮长，不确认哪个等待门槛决定轮长；门槛级对照未做。
 - **时刻对照不是台账候选**：不证明游戏里存在更快的可执行操作；变快和不可评估的对照同样列出。
 
@@ -1149,37 +1190,4 @@ AF-03、11、16、23、24 在 v0.2 里按 Codex 与 Claude 同意的方案写。
 - **详细设计带来的补充（2026-11-15，Claude）**：[详细设计 v0.4 Final](detailed-design/README.md) 三方签署，其中 §6 的补充提案 S-01～S-15 一并通过。它们不改已有契约，都是加字段或把没写明的地方写明。本文各节的正文这次没有逐处改写：与那张表不一致的地方以那张表为准，实施相应工作包时再把对应的几条写进正文并在这里各记一条。
 - **DD-06 实施（2026-11-16）**：§6.2 的 `ResourceLedgerEntry` 写进 S-06 的 `causeKind`，另加 `battleFrame`（账本按战斗帧开窗口合计，DD-06 §9 第 1 条）。其余账本条款（写入点、闭合、`LedgerMarks`）与实现一致，没有改。
 - **DD-09 实施（2026-11-17）**：§4.1 的 `InterventionRecord.kind` 去掉 `'fill'`、§6.2 的 `causeKind` 去掉 `'forced'`（能量满在五个录像场景按新写法重记之后删了，DD-09 §3.3、T09-10）；§6.1 写明状态同步的写入点 `syncResource`；§11.2、§12 的能量满跟着改。§10.3 的条款与实现一致，没有改（四种情形各有用例，DD-09 §8）。
-
-<a id="review-log"></a>
-
-## 审查记录
-
-- **2026-11-11～12**：对 v0.1 的三方意见与逐项讨论，见[意见文件](engine-foundation-architecture-draft-feedback.md)。25 项里 20 项三方一致；5 项 Codex 与 Claude 一致，等 Antigravity 回应。
-- **2026-11-13，Claude（v0.2 合稿人）**：
-  - **做了什么**：按意见文件的结论合成 v0.2。意见文件 §10.3 列的 12 处互相不一致的写法，都按后来的结论统一了。
-  - **Claude Stamp**：**STAMPED / APPROVED（v0.2）**。我同意以 v0.2 作为底座架构设计，进入各阶段的详细设计。这个签署有两个前提：
-    - Codex 与 Antigravity 核对正文，确认与意见文件的结论一致；
-    - Antigravity 对 §14.2 的五处表态。
-
-    任何一处有异议，就在意见文件里继续讨论，正文跟着改，我的签署随之更新。
-  - **签署的范围**：接口、数据结构与验收条件。代码没有改，新用例没有跑，TD 没有合入，游戏机制也没有新证据，这些都不在范围内。
-- **2026-11-14，Antigravity（复核与表态）**：
-  - **做了什么**：逐行核对 v0.2 正文与意见文件 `§10.3`、`附录 A`、`附录 B`（对比基线 `cb520f5` 代码），并对 `§14.2` 五处（`AF-03`、`AF-11`、`AF-16`、`AF-23`、`AF-24`）逐项确认，全部 `25` 项意见至此均已达成三方一致；3 条非阻塞实施细节记入意见文件 `§12`。
-  - **Antigravity Stamp**：**STAMPED / APPROVED（v0.2）**。同意以 v0.2 作为底座架构设计进入各阶段详细设计。待 Codex 完成 v0.2 正文核对并签署 Stamp 后，即可统一移除正文中已完成的 `〔待 Antigravity 确认〕` 标记（`§2.3`、`§4.2`、`§7.2`、`§10.3`、`§14.2`）并落定 `final` 版。
-  - **签署的范围**：接口、数据结构、边界契约与验收条件（同 Claude，未修改业务代码与 TD）。
-- **2026-11-14，Claude（v0.3）**：
-  - **做了什么**：Codex 复核 v0.2 后新提 AF-26～AF-28（意见文件 §13），没有签。我在 `cb520f5` 上核对了它引的代码（`runLoop` → `fail` → `closeSeg`、`drain` 先加游标再调处理器、`simulate` 只接调度错误），三项都成立，按它建议的最小修订改成 v0.3。改动清单见附录 C。
-  - **Claude Stamp**：**STAMPED / APPROVED（v0.3）**，取代我对 v0.2 的签署。前提是 Codex 确认 AF-26～AF-28 可以关闭，Antigravity 确认 v0.3 的改动。Antigravity 上面的签署针对 v0.2，不自动延伸到 v0.3。
-  - **签署的范围**：同 v0.2，只含接口、数据结构与验收条件。
-- **2026-11-14，Antigravity（v0.3 复核与表态）**：
-  - **做了什么**：核对 Codex 新增的 AF-26～AF-28（`cb520f5` 代码路径与两处新接口契约反例），并逐项审查 Claude 在 v0.3（§2.1、§2.3、§2.4、§3.1、§4.3、§5.2、§6、§9、§13、§14 与附录 C）的修订以及 §12.3 三条实施细则的落位，确认修正完整且前后自洽（意见文件 §15）。
-  - **Antigravity Stamp**：**STAMPED / APPROVED（v0.3）**，取代此前对 v0.2 的签署。待 Codex 确认关闭 AF-26～AF-28 并签署 v0.3 Stamp 后即可定稿为 Final。
-  - **签署的范围**：同 Claude，仅含接口、数据结构、边界契约与验收条件（未修改业务代码与 TD）。
-- **2026-11-14，Codex（v0.3 复核与 Stamp）**：
-  - **做了什么**：核对 v0.2 → v0.3 全部差异、AF-26～AF-28 的双方回复及相关代码控制流；检查完成状态与诊断元数据的边界、有效运行输入到身份的映射，以及 §13.2 对原反例的验收覆盖。三项均确认共识并关闭为 `done`，详见[意见文件 §16](engine-foundation-architecture-draft-feedback.md#codex-v03-stamp)。
-  - **Codex Stamp**：**STAMPED / APPROVED（v0.3）**。没有新的架构阻塞项，三方对本版本的签署已齐备，审查状态同步为 **v0.3 Final**。标题与状态更新不改变 v0.3 的架构条款。
-  - **签署的范围**：模块边界、接口、数据结构、执行与查询契约、验收条件；同意进入各阶段详细设计。新契约的实现、相应测试与游戏机制实证仍按路线图推进。
-- **2026-11-14，Claude（收尾）**：
-  - **签署条件已满足**：我对 v0.3 的签署带两个前提，Codex 确认 AF-26～AF-28 关闭、Antigravity 确认 v0.3 的改动。两位都已确认并签署（意见文件 §15、§16），我的签署不再带条件。
-  - **核对了什么**：AF-01～AF-28 在意见文件里全部是 `done`；正文里没有剩下的待确认标记；Codex 定稿时只改了标题、状态与它自己的签章。
-  - **结果**：三方对 v0.3 的签署齐备，本文定稿为 **v0.3 Final**。下一步是各阶段的详细设计，§14.3 列的事项在那里定。
+- **S-01～S-15 并入正文（2026-11-17，Claude）**：十个工作包都已实现，按[详细设计总览](detailed-design/README.md) §6 的约定把补充提案写进各节：§2.1（S-04 观察选项、S-11 `damageScope` 与 `tuneBreakOmitted`）、§2.2（S-02 运行期错误码）、§2.3（S-03 `loopExitAt.phase` 的 `'P1'`）、§2.4（S-01 `engineError`、S-15 `loops` 的 `started` / `openingCompleted` / `roundEnds`）、§2.5（S-13 `EventHandle`、`ReplayPrefix`、`stateAt` 的边界）、§3.3（S-05 两种来源、S-12 `subjectSeq`、S-08 作用域号）、§3.4（S-08 `businessRoot`）、§4.1（S-09 `strictReport` 所有入口都有与 `timeoutContext`、S-10 `commandVerdicts`）、§7.1（S-14 只读钩子上下文）、§11.2–§11.4（S-11 `strict.tuneBreakUndeclared`、S-09、S-07 `CandidateOutcome` 的补充字段与"不适用"）。S-06 在 DD-06 时已写进 §6.2。只加字段与说明，已有契约不变。同时记下合入后审查的几处实现修正：候选报告按稳态的闸门（§11.4）、`commandVerdicts` 的编号不随诊断开关（§4.1）、`walkOwners` 已换成 `walkCauses`（§3.3）。

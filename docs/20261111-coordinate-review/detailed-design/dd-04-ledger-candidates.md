@@ -199,7 +199,8 @@ export interface CandidateOutcome {
 }
 ```
 
-- `notComparable`：`usableBasis`（DD-03 §7）返回 `ok: false`，或双方的稳态窗口不是同样的轮次。
+- `notComparable`：`usableBasis`（DD-03 §7）返回 `ok: false`，或双方的稳态窗口不是同样的轮次。实现（2026-11-17，Codex 审查 F2）：报告按稳态出数，闸门用稳态专用的 `usableSteady`（DD-03 §7.1 末尾），不按场景目标——目标是前 N 秒、`endAt` 截掉稳态一半时也是 `notComparable`。
+- 候选改变了谐破口径（例如把 `tuneBreak` 翻成 `auto`）时，那一行带 `scopeMismatch`，文字版标 †（DD-03 §7.4）。
 - `comparedWindow` 写成 `'稳态第 2–3 轮'` 这样的实际窗口。
 - `identicalLog` 只是提示，**不用来跳过两两组合**：单项没有作用的候选，和另一个候选组合后可能有作用（路线图 §9.5 查出的两对就是这样）。
 

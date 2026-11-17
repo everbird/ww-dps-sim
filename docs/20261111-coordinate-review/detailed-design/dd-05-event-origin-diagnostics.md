@@ -227,6 +227,15 @@ export type RulePointId = (typeof RULE_POINTS)[number]['id']
 | `char.卜灵.forteKeep` | `forte-keep.卜灵-卦象` | 卜灵的钩子，切出时 | 切出时卦象不为空 |
 | `char.爱弥斯.trackNoConsume` | `track-no-consume` | 爱弥斯的钩子 | 过载后第一次光翼共奏 |
 
+**后补的两点（2026-11-17，合入后审查 Antigravity M4）**：首版之后又发现两处直接读可翻规则的地方，补进表里（共 18 个点）：
+
+| 判定点 | 命题 | 位置 | 什么时候算"决定了分支" |
+|---|---|---|---|
+| `char.心.summonAsChar` | `summon-as-char` | 心的钩子，`enemyState` 的电磁效应附加处 | 事件带 `summon`、记了附加者（固有1、霆霓、霆心域换个读法就算 / 不算） |
+| `res.concertoTiming.卜灵` | `buling-concerto-timing`（DD-08 回填的按角色命题） | `resources.ts` 的 `castResources`、`settleGains`（`concertoTimingOf` 处，施放者 / 出伤者是卜灵时） | 起手时：动作有由时间线生成、带协奏的判定；结算时：判定由时间线生成、带协奏 |
+
+按角色的那一点只对台账里有按角色命题的角色记（`rule-points.ts` 的 `CONCERTO_TIMING_POINTS`，角色名放在台账这一层），别人读的是共享的 `concertoTiming`（2026-10-03 实测，不在台账）。有了这一点，DD-08 的 `rerun` 对这条命题按规则使用找受影响的场景，不再退回 `appliesToChars`。
+
 其余的 `assume()` 调用点都是"碰到假设"：`wait-settled`、`data-guess`、`dilation-rules`、`summon-clock`、`later-damage`、`stat-scaling-static`、`forced-energy`、`forced-disharmony`、`enemy-swap`、`effect-burst`、`effect-settle-clear`、`resonance-rules`、`tunability-base`、`white-bar`、`module-guess`、`burst-release`，以及已被上表覆盖的那几个 ID 的原调用。它们照旧只调 `assume()`，不进判定点表。T05-5 把 49 处的逐个归类做成一张表贴进提交说明，作为这一节的核对记录。
 
 ### 4.2 记录函数
@@ -365,7 +374,7 @@ DD-07 做完后再加一项：抽样若干世界帧（首、尾、三个中间�
 - [x] `tests/phase-boundary.test.ts`、`tests/zero-interference.test.ts` 全过；反向用例证明检查有效（在 `open` 里改 `s.nextId` 的收集器子类，比较失败并指出路径）。
 - [x] `pnpm conformance` 带零干扰对拍，全部场景通过（29 个场景；样例的 `log`、`summary`、`error`、`completion` 等与实现之前逐字节相同，只有 `ruleUsage` 有了内容）。
 - [x] 代表场景上 `eventMeta` 没有 `unattributed`（`m0-video-eq.yaml` 与合成主轴，`tests/event-origin.test.ts`；零干扰对拍另跑了 `xin-team.yaml`、`xin-tower4-video.yaml`）。
-- [x] `ruleUsage` 在所有运行里都有，`coverage` 列出 16 个判定点。
+- [x] `ruleUsage` 在所有运行里都有，`coverage` 列出 16 个判定点（2026-11-17 增至 18 个，见 §4.1 表后的说明）。
 - [x] 路线图 §4.2 末尾说的两种错归（同帧多个到期、队列交错）各有用例，并断言了旧算法在该用例上是错的（C05-3、C05-11：旧算法搬到 `tests/helpers/old-owners.ts` 只作对照，§12 第 6 条）。
 - [x] 诊断全关时，单次运行的耗时相对 DD-01 之后的增加不超过 3%：`m0-video-eq.yaml` 两份代码同一进程交替跑，200 对的成对比值中位数 +0.9%、+1.4%；各跑 20 次取中位数的 5 次交替测量 −1.3%、+3.9%、+4.3%、−1.1%、−2.3%（单次测量的机器噪声约 ±4%，平均 +0.7%）。
 - [x] `pnpm fuzz` 通过（29 个场景，问题 0 条）。

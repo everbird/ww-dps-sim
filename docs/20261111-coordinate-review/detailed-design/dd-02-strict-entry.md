@@ -331,7 +331,7 @@ T02-2 与 T02-4 都改 `scheduler.ts`，各自跑 `pnpm conformance` 与 `pnpm f
 ## 6. 验收清单
 
 - [x] `tests/strict-teaching.test.ts` 全过，路线图 §3.7 的六个夹具都有对应用例。
-- [ ] 非严格场景：T02-2 之后的 conformance 输出，与 T02-9 之后的逐字节相同。
+- [x] 非严格场景：T02-2 之后的 conformance 输出，与 T02-9 之后的业务字段逐键相同（log、summary、error、completion、interventions）。整份输出不可能逐字节相同：本包有意新增了 strictReport 的内容、身份里的 options.strict 与 tys-video 的口径原因，口径改写的理由见[实现记录](dd-02-implementation.md)的"兼容性核对"。
 - [x] T02-2 引起的快照变化只有等待代码与 `wait-settled` 的计数，没有任何伤害或帧数变化；变化清单在提交说明里。
 - [x] `m0-video-eq.yaml` 加 `--strict` 运行，得到 `strict.tuneBreakAuto` 的编译问题（它用的是缺省的自动谐破），不是运行期错误。
 - [x] `pnpm fuzz` 通过。

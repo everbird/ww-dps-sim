@@ -97,7 +97,7 @@
   - 汇总：总伤害 = 各角色 = 各动作 = 各轮之和，稳态 = 所含各轮之和，覆盖率在 [0, 1]。
 
   场景快照测试顺带查。
-- `pnpm fuzz`（`src/engine/fuzz.ts`）：
+- `pnpm fuzz`（`src/analysis/fuzz.ts`）：
   - 每个场景用轴搜索的改法（挪动、去掉、对调任一动作）生成变体，每条跑完都查 `checkLog`；
   - 原轴另查两条变形关系：同样输入跑两次日志一样；生命、攻击、防御各加一点，时间轴不变、每一下伤害不降。
 - **结果**：15 个场景、约 2,100 条变体轴（跑通约 770 条）、544 秒，**0 个问题**。M0 的变体多数跑不通（连段中断），覆盖还可以加。
@@ -116,7 +116,7 @@
   - `invincibleLocksSwitch`：false 时没写帧数、推断出来的切人锁不锁（`ActionDef.switchLockFromInvincible`）。
 
   钩子的 ctx 多了只读的 `rules`。
-- `pnpm sensitivity [--md 文件]`（`src/engine/sensitivity.ts`）：内容如下
+- `pnpm sensitivity [--md 文件]`（`src/analysis/sensitivity.ts`）：内容如下
   - 全部场景 × 假设表里每个开关各跑一遍；
   - 对照场景（文件名 = 基准 + "-差异"）比基准的收益，在哪条假设下会变。
   - 结果存在 `docs/assumption-sensitivity.md`。
