@@ -14,7 +14,7 @@ candidates:
     conditions: 卜灵第一段（视频 3.75–14.0）在 9.73 放了声骸无归的谬误：全队攻击 +10%（攻击% 乘区）、自身共鸣效率 +10%，20 战斗秒（大招过场里不走）；心 30.0 变奏入场后第 1 轮应世相（31–37 秒）都在它里面，转相（37.0）之后的照世相已经到期
     runs:
       - setupId: tower4
-        runId: run-82b1fa22bccee4bb
+        runId: run-d4dfea0f7b565537
         status: completed
     predictions:
       - observationId: 卜灵首段声骸.中4.LT冷却
@@ -54,7 +54,7 @@ candidates:
     conditions: 卜灵第一段没放声骸（2026-10 的转写）；心第 1 轮只有雷主超负荷的全队攻击 +10%，第 2 轮另有卜灵第二段（74.8）的声骸
     runs:
       - setupId: tower4
-        runId: run-228b56344dc7a5fe
+        runId: run-d5c52b26bf6495d4
         status: completed
     predictions:
       - observationId: 卜灵首段声骸.中4.LT冷却

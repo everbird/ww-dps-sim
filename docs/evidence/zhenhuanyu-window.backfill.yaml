@@ -14,7 +14,7 @@ candidates:
     conditions: 照现在的场景与时序：心 30.0 变奏入场（第 1180 战斗帧）挂上镜影流电之瞬 5 件的延奏加成（+25%）与绝息魄首位的导电加成（+12%），各 900 战斗帧；镇寰宇第 2096 帧起手、第 2098 帧命中，两条在第 2080 帧到期
     runs:
       - setupId: tower4
-        runId: run-82b1fa22bccee4bb
+        runId: run-d4dfea0f7b565537
         status: completed
     predictions:
       - observationId: 窗口.中4.入场到镇寰宇
