@@ -1,22 +1,25 @@
 // src/cli/query.ts —— 状态查询与可解释性命令行（DD-07 §10.3；T07-10）。
 // 用法：pnpm query <场景.yaml> <子命令> [参数...]
 // 退出码：0 正常 / truncated / axisFailed；1 engineError（仍输出信封）；2 参数错误、准备失败或 QueryError。
+// 能力说明（信封的 capability）：capabilitiesUsed 与 unsupported 用 DD-07 §10.1 的固定字符串；伤害口径的两项（未含谐度破坏）由 envelope 自己补。
+// 每个子命令尽量只跑一次：查询函数能复用这次运行的（statesAndResult、terminalStateOf、explainEvent / commandCheck 的 res），
+// 信封里的完成状态就取这一次的；只有 why-not、would 还要另跑一次（触发检查要按目标插桩、假想事件只跑到那一帧）。
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { ResourceKind, Slot } from '../data/common'
 import type { Scenario } from '../data/scenario.schema'
 import { loadGameData } from '../data/load'
 import {
-  ALL_DIAG, checkLedgerClosure, ledgerTotals, type LedgerCauseKind, type ResourceLedgerEntry, type ResourceTotals,
+  checkLedgerClosure, ledgerTotals, type LedgerCauseKind, type ResourceLedgerEntry, type ResourceTotals,
 } from '../engine/diagnostics'
 import {
-  commandCheck, diffRuns, eventsBetween, eventsBySeq, explainEvent, replayTo, stateAt, statesAt, terminalState,
+  commandCheck, diffRuns, eventsBetween, eventsBySeq, EXPLAIN_DIAG, explainEvent, replayTo, statesAndResult, terminalStateOf,
   whyDidEventNotTrigger, wouldHypotheticalEventTrigger,
   type DiffTarget, type HypotheticalEvent, type QueryResult, type TriggerTarget,
 } from '../engine/query'
 import { prepareRun, runPrepared } from '../engine/run'
 import type { PrepareIssue, PreparedRun, RunOverrides } from '../engine/run-types'
-import type { SimEventType, SimResult, SimState } from '../engine/types'
+import type { CommandRef, SimEventType, SimResult } from '../engine/types'
 import { envelope, toWire } from '../engine/wire'
 import { loadScenario, pickFillCombo } from './format'
 import { collectRunEnvironment } from './run-env'
@@ -28,7 +31,7 @@ function usage(): string {
     '用法：pnpm query <场景.yaml> <子命令> [参数...] [通用覆盖...]',
     '',
     '子命令：',
-    '  run                                              整轮摘要、完成状态、事件数（--log 附完整事件日志）',
+    '  run                                              汇总、strictReport、谐破口径、事件数（完成状态、身份、规则使用在信封里；--log 附完整事件日志）',
     '  state     --frame <f> | --frames <f1,f2,...>     查询 tick 边界 S[f] 状态视图',
     '  terminal                                         查询终态视图与完成覆盖范围',
     '  events    --seq <a..b> | --window <lo..hi>       查询日志事件 [from, to) 或战斗帧窗口（--types t1,t2 可选过滤）',
@@ -37,7 +40,9 @@ function usage(): string {
     '  why-not   --seq <n> --kind <buff|buffExtend|resourceEffect|consume|charHook> --owner <0|1|2|角色|env> --id <id>',
     '  would     --frame <f> --event <JSON> --kind <buff|buffExtend|resourceEffect|consume|charHook> --owner <0|1|2|角色|env> --id <id>',
     '  ledger    [--totals] [--clock world|battle] [--from <a>] [--to <b>] [--slot <0|1|2> | --char <名>] [--resource <res>] [--cause <k1,k2>]',
-    '  diff      [<另一场景.yaml>] [--target metrics|commands|events] [--types t1,t2] [--cand-rule k=v ...] [--cand-option k=v ...] [--cand-strict|--cand-no-strict]',
+    '  diff      [<另一场景.yaml>] [--target metrics|commands|events] [--types t1,t2] [--cmd <轮>:<条>.<项>] [--mapping <轮>:<条>.<项>=<轮>:<条>.<项> ...]',
+    '            [--cand-fill <填法组合>] [--cand-rule k=v ...] [--cand-option k=v ...] [--cand-strict|--cand-no-strict]',
+    '            --cmd 只比这条指令引出的事件（events）；--mapping 改了轴时两边指令的对应（可重复，DD-07 §9；不给时改轴的比较全部是 ambiguous）',
     '',
     '通用参数：',
     '  --strict / --no-strict         覆盖严格模式',
@@ -46,6 +51,7 @@ function usage(): string {
     '  --seed <n>                     使用随机种子（抽样模式）',
     '  --continue-after-intent-unmet  意图未满足后继续执行',
     '  --out <文件>                   输出 JSON 写入文件而非 stdout',
+    '  --fill <组合名>                录像剖析有几个填法组合时选一个（DD-09 §3.1；对比场景用 --cand-fill）',
   ].join('\n')
 }
 
@@ -61,6 +67,7 @@ interface ParsedCli {
   options: string[]
   candRules: string[]
   candOptions: string[]
+  mappings: string[]
   single: Record<string, string>
 }
 
@@ -70,7 +77,7 @@ const VALUE_FLAGS = new Set([
   '--loop', '--line', '--item', '--evaluation',
   '--kind', '--owner', '--id', '--event',
   '--clock', '--from', '--to', '--slot', '--char', '--resource', '--cause',
-  '--target', '--types', '--fill',
+  '--target', '--types', '--fill', '--cand-fill', '--cmd', '--mapping',
 ])
 
 function parseCli(argv: string[]): ParsedCli {
@@ -85,6 +92,7 @@ function parseCli(argv: string[]): ParsedCli {
     options: [],
     candRules: [],
     candOptions: [],
+    mappings: [],
     single: {},
   }
   for (let i = 0; i < args.length; i++) {
@@ -104,6 +112,7 @@ function parseCli(argv: string[]): ParsedCli {
       else if (a === '--option') out.options.push(v)
       else if (a === '--cand-rule') out.candRules.push(v)
       else if (a === '--cand-option') out.candOptions.push(v)
+      else if (a === '--mapping') out.mappings.push(v)
       else out.single[a.slice(2)] = v
       continue
     }
@@ -176,6 +185,21 @@ function parseFloatRange(raw: string): [number, number] {
   const m = /^(-?\d+(?:\.\d+)?)\.\.(-?\d+(?:\.\d+)?)$/.exec(raw)
   if (!m) throw new CliArgError(`--window 应为 <lo>..<hi>，收到：${raw}`)
   return [Number(m[1]), Number(m[2])]
+}
+
+/** 指令出处写成 <轮>:<条>.<项>（第 0 轮是启动轴），同报错里的写法 */
+function parseCmdRef(raw: string, flag: string): CommandRef {
+  const m = /^(\d+):(\d+)\.(\d+)$/.exec(raw.trim())
+  if (!m) throw new CliArgError(`${flag} 应写成 <轮>:<条>.<项>（如 1:6.2），收到：${raw}`)
+  return { loop: Number(m[1]), line: Number(m[2]), item: Number(m[3]) }
+}
+
+function parseMapping(items: readonly string[]): [CommandRef, CommandRef][] {
+  return items.map(item => {
+    const [a, b, ...rest] = item.split('=')
+    if (!a || !b || rest.length) throw new CliArgError(`--mapping 应写成 <轮>:<条>.<项>=<轮>:<条>.<项>，收到：${item}`)
+    return [parseCmdRef(a, '--mapping'), parseCmdRef(b, '--mapping')]
+  })
 }
 
 const VALID_TRIGGER_KINDS = new Set(['buff', 'buffExtend', 'resourceEffect', 'consume', 'charHook'])
@@ -310,45 +334,43 @@ async function main(): Promise<number> {
   try {
     switch (subcmd) {
       case 'run': {
+        // DD-07 §10.3：完成状态、身份、规则使用在信封里；数据部分是汇总的要点、strictReport（DD-02 §3.4）与谐破口径（DD-02 §3.7）
         const res = runPrepared(p)
         const payload = {
           runId: res.runId,
           summary: res.summary,
+          strictReport: res.strictReport,
+          damageScope: res.damageScope,
           eventCount: res.log.length,
           ...(parsed.withLog ? { log: res.log } : {}),
         }
-        code = emitEnvelope(p, res, payload, ['runPrepared'], [], outFile)
+        code = emitEnvelope(p, res, payload, ['run'], [], outFile)
         break
       }
 
       case 'state': {
-        const res = runPrepared(p)
         if (parsed.single.frame !== undefined && parsed.single.frames !== undefined) {
           throw new CliArgError('--frame 与 --frames 不能同时指定')
         }
-        if (parsed.single.frame !== undefined) {
-          const f = parseIntStrict(parsed.single.frame, '--frame')
-          const qr = stateAt(p, f)
-          if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-          code = emitEnvelope(p, res, qr.value, ['replayTo', 'stateAt', 'stateView'], [], outFile)
-        } else if (parsed.single.frames !== undefined) {
-          const frames = parsed.single.frames.split(',').filter(Boolean).map(s => parseIntStrict(s.trim(), '--frames'))
-          if (frames.length === 0) throw new CliArgError('--frames 不能为空')
-          const qr = statesAt(p, frames)
-          if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-          code = emitEnvelope(p, res, qr.value, ['replayTo', 'statesAt', 'stateView'], [], outFile)
-        } else {
+        if (parsed.single.frame === undefined && parsed.single.frames === undefined) {
           throw new CliArgError('state 需要 --frame <f> 或 --frames <f1,f2,...>')
         }
+        const single = parsed.single.frame !== undefined
+        const frames = single
+          ? [parseIntStrict(parsed.single.frame, '--frame')]
+          : parsed.single.frames!.split(',').filter(Boolean).map(s => parseIntStrict(s.trim(), '--frames'))
+        if (frames.length === 0) throw new CliArgError('--frames 不能为空')
+        // 一次完整运行：边界上取状态，跑完的结果写信封（不为信封另跑一遍）
+        const { states, result } = statesAndResult(p, frames)
+        if (!states.ok) { console.error(formatQueryError(states.error)); return 2 }
+        code = emitEnvelope(p, result, single ? states.value[0] : states.value, ['state.recompute'], [], outFile)
         break
       }
 
       case 'terminal': {
         const rep = replayTo(p, { kind: 'terminal' })
         if (rep.kind !== 'complete') throw new CliArgError('terminal 未返回完成结果')
-        const qr = terminalState(p)
-        if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-        code = emitEnvelope(p, rep.result, qr.value, ['replayTo', 'terminalState', 'stateView'], [], outFile)
+        code = emitEnvelope(p, rep.result, terminalStateOf(rep), ['state.recompute'], [], outFile)
         break
       }
 
@@ -363,8 +385,7 @@ async function main(): Promise<number> {
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
         const typeSet = parsed.single.types ? new Set(parsed.single.types.split(',').map(s => s.trim()).filter(Boolean) as SimEventType[]) : null
         const list = typeSet ? qr.value.filter(r => typeSet.has(r.event.type)) : qr.value
-        const used = parsed.single.seq !== undefined ? ['eventsBySeq', 'eventMeta'] : ['eventsBetween', 'eventMeta']
-        code = emitEnvelope(p, res, list, used, [], outFile)
+        code = emitEnvelope(p, res, list, ['diag.eventMeta'], [], outFile)
         break
       }
 
@@ -372,20 +393,18 @@ async function main(): Promise<number> {
         const seq = parseIntStrict(parsed.single.seq, '--seq')
         const lookback = parsed.single.lookback !== undefined ? parseIntStrict(parsed.single.lookback, '--lookback') : undefined
         const lookahead = parsed.single.lookahead !== undefined ? parseIntStrict(parsed.single.lookahead, '--lookahead') : undefined
-        const res = runPrepared(p)
+        const res = runPrepared(p, { diag: EXPLAIN_DIAG })              // 带解释要的诊断跑一次，查询直接用它（DD-05 的零干扰：完成状态与不带诊断时相同）
         const qr = explainEvent(p, { runId: p.runId, eventSeq: seq }, {
           ...(lookback !== undefined ? { lookback } : {}),
           ...(lookahead !== undefined ? { lookahead } : {}),
+          res,
         })
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
         const exp = qr.value
-        const used = ['explainEvent', 'eventMeta', 'ruleTrace', 'resourceLedger']
-        if (exp.hitInputs) used.push('hitInputs')
-        if (exp.windowMargins) used.push('hitMargins', 'windowMargins')
+        const used = ['diag.eventMeta', 'diag.hitInputs', 'diag.resourceLedger', 'diag.ruleTrace', ...(exp.windowMargins ? ['diag.hitMargins'] : [])]
         const ev = res.log[seq]
-        const unsupported = !exp.hitInputs && ev?.type === 'hit' && ev.effect !== undefined
-          ? ['explainEvent.hitInputs: 异常效应伤害']
-          : []
+        // 只解释直接来源与当场的输入（scope: direct_causes_and_immediate_inputs_only）；异常效应自身的伤害没记公式输入
+        const unsupported = ['间接的时序影响', ...(!exp.hitInputs && ev?.type === 'hit' && ev.effect !== undefined ? ['异常效应伤害的输入'] : [])]
         code = emitEnvelope(p, res, exp, used, unsupported, outFile)
         break
       }
@@ -395,10 +414,14 @@ async function main(): Promise<number> {
         const line = parseIntStrict(parsed.single.line, '--line')
         const item = parseIntStrict(parsed.single.item, '--item')
         const evaluationIndex = parsed.single.evaluation !== undefined ? parseIntStrict(parsed.single.evaluation, '--evaluation') : undefined
-        const res = runPrepared(p)
-        const qr = commandCheck(p, { loop, line, item }, evaluationIndex !== undefined ? { evaluationIndex } : undefined)
+        const res = runPrepared(p, { diag: { commandVerdicts: true } })   // 查询复用这一次（只另跑到要检查的那次求值）
+        const qr = commandCheck(p, { loop, line, item }, { ...(evaluationIndex !== undefined ? { evaluationIndex } : {}), res })
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-        code = emitEnvelope(p, res, qr.value, ['commandCheck', 'commandVerdicts', 'probe'], [], outFile)
+        const def = (loop === 0 ? p.resolved.opening : p.resolved.commands).find(c => c.line === line && c.item === item)
+        const used = ['state.recompute', 'diag.commandVerdicts', ...(def?.kind === 'act' ? ['probe.act'] : def?.kind === 'switch' ? ['probe.switch'] : [])]
+        // 只读求值做不了的条件（钩子在检查里要写状态、抽样模式的操作延迟还没抽）：status unmodeled 的各列一项
+        const unsupported = qr.value.conditions.filter(c => c.status === 'unmodeled').map(c => (c.id === 'inputDelay' ? '抽样模式的操作延迟' : `${c.id} 只读求值`))
+        code = emitEnvelope(p, res, qr.value, used, unsupported, outFile)
         break
       }
 
@@ -408,10 +431,8 @@ async function main(): Promise<number> {
         const res = runPrepared(p)
         const qr = whyDidEventNotTrigger(p, { runId: p.runId, eventSeq: seq }, target)
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-        const unsupported = qr.value.outcome === 'unsupported'
-          ? ['whyDidEventNotTrigger: unsupported trigger']
-          : []
-        code = emitEnvelope(p, res, qr.value, ['whyDidEventNotTrigger', 'triggerChecks', 'probe'], unsupported, outFile)
+        const unsupported = qr.value.outcome === 'unsupported' ? ['charHook 内部'] : []
+        code = emitEnvelope(p, res, qr.value, ['diag.triggerChecks'], unsupported, outFile)
         break
       }
 
@@ -431,10 +452,9 @@ async function main(): Promise<number> {
         const res = runPrepared(p)
         const qr = wouldHypotheticalEventTrigger(p, frame, rawEv as HypotheticalEvent, target)
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-        const unsupported = qr.value.outcome === 'unsupported'
-          ? ['wouldHypotheticalEventTrigger: unsupported trigger']
-          : []
-        code = emitEnvelope(p, res, qr.value, ['wouldHypotheticalEventTrigger', 'openProbe', 'probe'], unsupported, outFile)
+        // 用的是 S[frame]（这一帧开始时的状态），不是帧内某一刻（DD-07 §6）
+        const unsupported = ['帧内时刻', ...(qr.value.outcome === 'unsupported' ? ['charHook 内部'] : [])]
+        code = emitEnvelope(p, res, qr.value, ['state.recompute', 'probe.firing'], unsupported, outFile)
         break
       }
 
@@ -470,9 +490,9 @@ async function main(): Promise<number> {
           ? checkLedgerClosure(fullLedger, closureEnd, rep.state)
           : []
 
-        const used = ['resourceLedger', 'checkLedgerClosure']
+        const used = ['diag.resourceLedger', 'ledger.closure']
         if (parsed.totals) {
-          used.push('ledgerTotals')
+          used.push('ledger.totals')
           const rawTotals: ResourceTotals[] = ledgerTotals(fullLedger, {
             clock,
             ...(fromFrame !== undefined ? { fromFrame } : {}),
@@ -523,11 +543,17 @@ async function main(): Promise<number> {
           ? parsed.single.types.split(',').map(s => s.trim()).filter(Boolean) as SimEventType[]
           : undefined
         if (types && targetKind !== 'events') throw new CliArgError('--types 只能配合 --target events 使用')
+        const cmd = parsed.single.cmd !== undefined ? parseCmdRef(parsed.single.cmd, '--cmd') : undefined
+        if (cmd && targetKind !== 'events') throw new CliArgError('--cmd 只能配合 --target events 使用')
+        const mapping = parseMapping(parsed.mappings)
+        if (mapping.length && targetKind === 'metrics') throw new CliArgError('--mapping 只对 --target commands|events 有用')
+        if (parsed.single['cand-fill'] !== undefined && thirdPos === undefined) throw new CliArgError('--cand-fill 要配合另一个场景用')
 
         let candScenario: Scenario = scenario
         if (thirdPos !== undefined) {
           try {
-            candScenario = loadScenario(thirdPos)
+            // 对比场景同样按填法组合选一个（DD-09 §3.1）：--cand-fill；只有一个组合时就是它
+            candScenario = pickFillCombo(loadScenario(thirdPos), parsed.single['cand-fill'])
           } catch (e) {
             console.error(`读取对比场景失败（${thirdPos}）：${e instanceof Error ? e.message : String(e)}`)
             return 2
@@ -558,23 +584,22 @@ async function main(): Promise<number> {
           return 2
         }
         const pB = prepB.run
-        const diagOpts = targetKind === 'commands' ? { diag: ALL_DIAG } : undefined
-        const resA = runPrepared(p, diagOpts)
-        const resB = runPrepared(pB, diagOpts)
+        // 只带比较要的诊断（diffRuns 缺了会自己重跑）：指令要事件来源与求值记录，事件要事件来源，指标什么都不要
+        const diag = targetKind === 'commands' ? { eventMeta: true, commandVerdicts: true } : targetKind === 'events' ? { eventMeta: true } : undefined
+        const resA = runPrepared(p, diag ? { diag } : {})
+        const resB = runPrepared(pB, diag ? { diag } : {})
         const target: DiffTarget = targetKind === 'events'
-          ? { kind: 'events', ...(types && types.length > 0 ? { types } : {}) }
+          ? { kind: 'events', ...(types && types.length > 0 ? { types } : {}), ...(cmd ? { cmd } : {}) }
           : { kind: targetKind }
-        const qr = diffRuns({ p, res: resA }, { p: pB, res: resB }, target)
+        const qr = diffRuns({ p, res: resA }, { p: pB, res: resB }, target, mapping.length ? { commandMapping: mapping } : {})
         if (!qr.ok) { console.error(formatQueryError(qr.error)); return 2 }
-        const used = ['diffRuns', `diff.${targetKind}`]
-        if (targetKind === 'commands') used.push('commandCheck', 'commandVerdicts')
         const payload = {
           baseIdentity: p.identity,
           candIdentity: pB.identity,
           diff: qr.value,
         }
         const candFailed = resB.completion.status === 'engineError' ? 1 : 0
-        code = emitEnvelope(p, resA, payload, used, [], outFile, candFailed)
+        code = emitEnvelope(p, resA, payload, [`diff.${targetKind}`], ['三项及以上的归因'], outFile, candFailed)
         break
       }
 
@@ -591,7 +616,7 @@ async function main(): Promise<number> {
 
   const elapsed = performance.now() - t0
   if (elapsed > 2000) {
-    console.error(`[query] 查询耗时 ${Math.round(elapsed)} ms（> 2000 ms）；当前未做快照缓存，每次查询均从头重跑（DD-07 §3.5）`)
+    console.error(`[query] 查询耗时 ${Math.round(elapsed)} ms（> 2000 ms）：命令行每次调用都从头跑（快照缓存 MemorySnapshotCache 只在同一进程里有用，DD-07 §3.5、DD-10 §3）`)
   }
   return code
 }
