@@ -6,8 +6,8 @@ import { InventorySchema, resolveInventory, type InvPiece } from '../src/data/in
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
 import { BuffDefSchema } from '../src/data/buff.schema'
-import { basisOf } from '../src/engine/analysis'
-import { buildReplayer, MAX_EVAL, optimize, runRecorded, totalsOf, withEchoes } from '../src/engine/optimize'
+import { basisOf } from '../src/analysis/analysis'
+import { buildReplayer, MAX_EVAL, optimize, runRecorded, totalsOf, withEchoes } from '../src/analysis/optimize'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
 

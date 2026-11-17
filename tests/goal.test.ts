@@ -1,5 +1,7 @@
 // tests/goal.test.ts —— 比较的目标（TD-10 §7）：稳态之外，打死几倍血要多少战斗秒、前 N 秒的伤害；命令行覆盖。
 // 依赖 data/generated 的部分缺数据时跳过
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -7,9 +9,9 @@ import { withOverrides } from '../src/cli/format'
 import type { EnemyPreset, GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
-import { basisOf } from '../src/engine/analysis'
+import { basisOf } from '../src/analysis/analysis'
 import { goalOf, resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import { battleFrameOf, hitValue } from '../src/engine/summary'
 import type { HitEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
@@ -39,14 +41,14 @@ describe('目标的写法', () => {
 let gd: GameData
 const load = (f: string, goal?: Scenario['goal']) => {
   const sc = ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${f}`, import.meta.url), 'utf8')))
-  return resolveScenario(goal ? { ...sc, goal } : sc, gd)
+  return preparedScenario(goal ? { ...sc, goal } : sc, gd)
 }
 
 dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）', () => {
   beforeAll(async () => { gd = await loadGameData() })
 
   test('打死 1 倍血：累计伤害到敌人生命的那一下，第 25.1 战斗秒（启动轴刚打完）', () => {
-    const res = simulate(load('xin-team-r5.yaml'))
+    const res = runPrepared(load('xin-team-r5.yaml'))
     const { kill } = res.summary
     expect(kill.hp).toBe(1_321_958)
     expect((kill.frame! / 60).toFixed(1)).toBe('25.1')              // 2026-10-25 切人冷却改成每人单独计：29.1 → 28.6；声骸起手能打断后摇（echo-input-priority）→ 26.8；2026-10-27 转相第 254 帧降优先级 → 25.5；2026-10-28 大招过场里的自身顿帧不拖慢 → 25.1
@@ -57,7 +59,7 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
   }, 60_000)
 
   test('打死 2 倍血：比较口径 = 血量 ÷ 击杀秒；原轴比稳态最好的 C8 快（名次反过来）', () => {
-    const base = simulate(load('xin-team-r5.yaml', { kill: 2 })), c8 = simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { kill: 2 }))
+    const base = runPrepared(load('xin-team-r5.yaml', { kill: 2 })), c8 = runPrepared(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { kill: 2 }))
     const b = basisOf(base), c = basisOf(c8)
     expect(b.label).toBe('打死 264.4 万血（敌人生命 ×2）')
     expect(b.dps).toBeCloseTo(2 * 1_321_958 / (b.hi / 60), 6)
@@ -65,19 +67,19 @@ dataDescribe('按目标比较（心队，全息 6 无常凶鹭约 132 万血）'
     expect(b.hi).toBeLessThan(c.hi)                           // 原轴 51.4 秒，C8 53.9 秒（2026-10-22 雷主大招补上全局时停后）
     expect(b.dps).toBeGreaterThan(c.dps)
     // 稳态则相反
-    expect(basisOf(simulate(load('xin-team-r5.yaml'))).dps).toBeLessThan(basisOf(simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml'))).dps)
+    expect(basisOf(runPrepared(load('xin-team-r5.yaml'))).dps).toBeLessThan(basisOf(runPrepared(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml'))).dps)
   }, 60_000)
 
   test('前 25 秒：窗口内命中之和；两条轴启动轴相同，一样', () => {   // 启动轴 25.1 秒打完（2026-10-27 转相变短前是 30 秒内）
-    const a = simulate(load('xin-team-r5.yaml', { window: 25 }))
+    const a = runPrepared(load('xin-team-r5.yaml', { window: 25 }))
     const hits = a.log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null && battleFrameOf(e) < 1500)
     expect(a.summary.goal!.damage).toBeCloseTo(hits.reduce((x, h) => x + hitValue(h), 0), 6)
     expect(basisOf(a).dps).toBeCloseTo(a.summary.goal!.damage / 25, 6)
-    expect(basisOf(simulate(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { window: 25 }))).dps).toBeCloseTo(basisOf(a).dps, 6)
+    expect(basisOf(runPrepared(load('xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml', { window: 25 }))).dps).toBeCloseTo(basisOf(a).dps, 6)
   }, 60_000)
 
   test('没打死：按稳态往后估、提示多跑几轮', () => {
-    const res = simulate(load('xin-team-r5.yaml', { kill: 50 }))
+    const res = runPrepared(load('xin-team-r5.yaml', { kill: 50 }))
     const g = res.summary.goal!
     expect(g.reached).toBe(false)
     expect(g.hi).toBeGreaterThan(res.log.at(-1)!.t * 60)

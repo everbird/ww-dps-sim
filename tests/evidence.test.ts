@@ -9,7 +9,7 @@ import { canonicalJson } from '../src/engine/digest'
 import {
   distinguishability, EvidenceError, evidenceFromClosure, evidenceViolations, judgeClosure, predictClosure, registerClosure, rerunClosure,
   verifyPredictions, type EvidenceContext,
-} from '../src/engine/evidence'
+} from '../src/analysis/evidence'
 import type { Candidate, Proposition } from '../src/engine/propositions'
 import { evidenceTable, summarizeClosure, CONCLUSION_LABEL } from '../src/report/evidence'
 import { action, judgment } from './helpers/kernel-harness'

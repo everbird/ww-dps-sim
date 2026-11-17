@@ -11,7 +11,7 @@ import { ALL_DIAG, DiagSink, type OriginContext } from '../src/engine/diagnostic
 import { prepareRun, runForInspection, runPrepared } from '../src/engine/run'
 import type { StatePrefix } from '../src/engine/run-types'
 import type { SimState } from '../src/engine/types'
-import { compareInspections, firstDifference, zeroInterference, zeroInterferenceStates } from '../src/engine/zero-interference'
+import { compareInspections, firstDifference, zeroInterference, zeroInterferenceStates } from '../src/analysis/zero-interference'
 import { dataDescribe } from './helpers/kernel-harness'
 import { diagBase, diagTeam, preparedSynth } from './helpers/diag-team'
 

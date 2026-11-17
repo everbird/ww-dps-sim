@@ -1,6 +1,6 @@
 // tests/num.test.ts —— 取整（总设计 §10.1 第 4 条）：JS 的 Math.round 与文件头写的 Rust 写法逐位相同，换语言时照抄那个写法
 import { describe, expect, test } from 'vitest'
-import { round, roundTo, snap4, snap9 } from '../src/engine/num'
+import { floor, round, roundTo, snap4, snap9 } from '../src/engine/num'
 
 /** src/engine/num.ts 文件头给 Rust 的写法，用 JS 照写一遍 */
 const rustRound = (x: number): number => { const f = Math.floor(x); return x - f >= 0.5 ? f + 1 : f }
@@ -19,6 +19,11 @@ describe('num', () => {
       xs.push((seed / 2 ** 32 - 0.5) * 10 ** ((i % 12) - 4))
     }
     for (const x of xs) expect([x, rustRound(x) + 0]).toEqual([x, round(x) + 0])   // + 0 把 −0 与 0 当成一样（Rust 里 −0.0 == 0.0）
+  })
+
+  test('floor 保留负数、边界与负零语义（DD-10 §6）', () => {
+    for (const x of [-Infinity, -2.5, -1, -0.5, -0, 0, 0.5, 2.5, Infinity, NaN])
+      expect(Object.is(floor(x), Math.floor(x))).toBe(true)
   })
 
   test('roundTo / snap4 / snap9：与原来散在各处的写法相同', () => {

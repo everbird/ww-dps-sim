@@ -115,7 +115,7 @@ export const ASSUMPTIONS = [
     what: '抽样模式的手速档（pnpm sim --sample N --hand）：每个决策点在合法之后再晚 max(0, round(正态(平均, 标准差))) 帧；高手 3 / 1.5、熟练 6 / 3、普通 10 / 5。'
       + '能预输入的其实是 0，现在不分；连段后续不加（同 earliest-frame）',
     why: '用户 2026-10-21 要的：先假设一个分布，以后单独测（与暴击、数据、机制正交）。按节奏背熟的轴是踩着节奏按，不是看到才反应（看到才按约 12–15 帧）；数是估的，没出处',
-    adjust: { how: '改 src/engine/sample.ts 的 HAND_PROFILES；以后用录像量（TD-11 §6.3 视频时间点：合法帧到实际按下的间隔）' },
+    adjust: { how: '改 src/analysis/sample.ts 的 HAND_PROFILES；以后用录像量（TD-11 §6.3 视频时间点：合法帧到实际按下的间隔）' },
   },
   {
     id: 'air-entry', topic: '切人', tracked: false, impact: 'small', ref: 'TD-09 §3.5，docs/xin-confirm.md §6 C4',
@@ -261,7 +261,7 @@ export const ASSUMPTIONS = [
       '每轮 5 只按敌人表的顺序出场，第 4 轮起血量按第 3 轮外推（每只 +5%，单利）',
     why: '规则与缺省值取自 DPM-Team-Builder v4.9.2（S2-3、3.7 版），血量与敌人表"矩8"对得上；出场顺序、计时停不停、换 boss 时状态清不清没实测。' +
       '只在 pnpm matrix 里用，单场仿真碰不到',
-    adjust: { how: '改 src/engine/matrix.ts 的 MATRIX_RULES；换 boss 清状态要把接力做进仿真内核（敌人序列）' },
+    adjust: { how: '改 src/analysis/matrix.ts 的 MATRIX_RULES；换 boss 清状态要把接力做进仿真内核（敌人序列）' },
   },
   {
     id: 'stat-scaling-static', topic: '角色', tracked: true, impact: 'unknown', ref: 'TD-07、docs/jys-confirm.md',

@@ -2,7 +2,7 @@
 // 人造角色，不依赖 data/generated。
 import { describe, expect, test } from 'vitest'
 import { CalibrationPointSchema, ObservationSchema, toleranceOf, type Observation } from '../src/data/calibration.schema'
-import { compareObservations, compareValue, readObservation, selectEvent } from '../src/engine/observations'
+import { compareObservations, compareValue, readObservation, selectEvent } from '../src/analysis/observations'
 import { runPrepared } from '../src/engine/run'
 import type { PreparedRun } from '../src/engine/run-types'
 import { preparedSynth } from './helpers/diag-team'

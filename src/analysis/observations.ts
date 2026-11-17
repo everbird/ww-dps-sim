@@ -1,16 +1,12 @@
-// src/engine/observations.ts —— 观测与仿真的比较（DD-03 §4.2 的六种状态；DD-08 §3.2；架构 §10.1–§10.2）。④ 分析层。
+// src/analysis/observations.ts —— 观测与仿真的比较（DD-03 §4.2 的六种状态；DD-08 §3.2；架构 §10.1–§10.2）。④ 分析层。
 // 两步分开：readObservation 从一次运行里取出观测对应的仿真值（取不到时说明为什么、是不是运行提前停了）；compareValue 拿一个值与观测的读数比。
 // compareValue 是纯函数，闭环的 judge 拿冻结的预测值直接调它（DD-08 §4.2），不重跑仿真；compareObservations 是对一次运行的包装，
 // 结果带信封（架构 §2.7）。旧的 calibrate()（面板、跳字、时长）是这里的薄包装（calibration.ts）。
 import { toleranceOf, type EventSelector, type Observation } from '../data/calibration.schema'
 import type { ResourceKind } from '../data/common'
-import type { EventMeta, ResourceLedgerEntry } from './diagnostics'
-import { runPrepared } from './run'
-import type { PreparedRun, RunCompletion } from './run-types'
-import { battleFrameOf } from './summary'
+// DD-10 §5：分析层只经显式公开入口调用执行与查询。
+import { battleFrameOf, envelope, runPrepared, type EventMeta, type ResourceLedgerEntry, type PreparedRun, type RunCompletion, type QueryEnvelope, type ResolvedMember, type ResolvedScenario, type SimEvent, type SimResult } from '../engine'
 import { loopSpan, traceHits, tracePanel } from './trace'
-import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult } from './types'
-import { envelope, type QueryEnvelope } from './wire'
 
 /** 比较结果的状态（架构 §10.2；DD-08 §3.2 的表）：passed 落在读数（加容差）里；conflicted 落在外面、类别不同；unmatched 选择器在日志里
  *  找不到对应的事件（名字错、轮次不够、运行在那之前停了）；ambiguous 跳字分支未知而至少一支相容、或同一帧有几条分不清的事件；

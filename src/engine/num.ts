@@ -5,6 +5,8 @@
 
 /** JS Math.round 的语义（见文件头） */
 export const round = (x: number): number => Math.round(x)
+/** 向负无穷取整（保留 JS Math.floor 对负数和负零的语义）。 */
+export const floor = (x: number): number => Math.floor(x)
 /** 取到 1/scale：round(x × scale) ÷ scale */
 export const roundTo = (x: number, scale: number): number => Math.round(x * scale) / scale
 /** 局部帧、判定年龄每次推进后取到 1e-4 帧：膨胀系数都是 1e-4 的整数倍，与整数帧比较不受浮点误差影响（TD-04 §2） */

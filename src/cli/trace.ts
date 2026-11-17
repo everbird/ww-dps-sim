@@ -8,9 +8,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
-import { ResolveError, resolveScenario } from '../engine/resolve'
-import { simulate } from '../engine/simulate'
-import { compareMarks, gainSteps, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../engine/trace'
+import { prepareRun, runPrepared } from '../engine/run'
+import { compareMarks, gainSteps, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, type LoopSpan, type MarkCmp } from '../analysis/trace'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { argsOf, loadScenario, padEnd, padStart, width } from './format'
 
@@ -129,15 +128,10 @@ async function main(): Promise<number> {
   const unknown = pos.filter(a => a.startsWith('--') && a !== '--seg' && a !== '--md' && a !== '--hits')
   if (!file || unknown.length > 0) { console.error(unknown.length ? `不认识的参数：${unknown.join(' ')}\n${USAGE}` : USAGE); return 2 }
   const sc = loadScenario(file)
-  let r: ResolvedScenario
-  try {
-    r = resolveScenario(sc, await loadGameData())
-  } catch (e) {
-    if (e instanceof ResolveError) { console.error(e.message); return 1 }
-    throw e
-  }
-  // 资源出处按记录下来的事件来源（DD-05 §3.4）；--res 另带资源账本（DD-06 §3.5）
-  const res = simulate(r, { diag: { eventMeta: true, ...(opt.res ? { resourceLedger: true } : {}) } })
+  const p = prepareRun(sc, await loadGameData())
+  if (!p.ok) { console.error(p.issues.map(i => i.message).join('\n')); return 1 }
+  const r = p.run.resolved
+  const res = runPrepared(p.run, { diag: { eventMeta: true, ...(opt.res ? { resourceLedger: true } : {}) } })
   const loops = loopsOf(res.log)
   const loop = opt.loop !== undefined ? Number(opt.loop) : res.summary.steady?.from ?? loops.at(-1) ?? 1
   if (!loops.includes(loop)) { console.error(`没有第 ${opt.loop} 轮（有：${loops.map(k => (k === 0 ? '0（启动）' : k)).join('、')}）`); return 2 }

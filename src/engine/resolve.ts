@@ -7,10 +7,10 @@ import { echoActionsFor } from '../data/assemble-echo'
 import type { BuffDef } from '../data/buff.schema'
 import { DEFAULT_RULES, type ActionDef, type EchoDef, type EnemyPreset, type GameData, type Rules } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
-import { compileRotation, type CompileMember } from './scheduler'
+import { compileRotation, type CompileMember } from './compile'
 import { priorityAt } from './kernel'
 import type { Core5, Goal, RegisteredBuff, RegisteredEffect, ResolvedMember, ResolvedScenario, StaticPanel, StaticStats, StatValues } from './types'
-import { round, snap9 } from './num'
+import { round, snap9, floor } from './num'
 
 /** 角色的基础暴击、暴伤、共鸣效率：全员相同（xlsx 伤害配置 B2196 = 500 × 0.0001、B2204 = 1.5、B2218 = 1） */
 export const CHAR_BASE = { critRate: 0.05, critDamage: 1.5, energyRegen: 1 } as const
@@ -254,7 +254,7 @@ function resolveMember(m: MemberInput, slot: Slot, data: GameData, issues: strin
 export function staticStats(m: ResolvedMember, buffs: readonly RegisteredBuff[]): StaticStats {
   const sum = (zone: string) => buffs.filter(b => b.def.zone === zone && b.def.trigger === 'always' && !b.def.filter && !b.def.scale && reaches(b, m.slot))
     .reduce((a, b) => a + b.value, 0)
-  const compose = (p: StaticPanel['hp'], pct: string, flat: string) => Math.floor(p.base * (1 + p.pct + sum(pct))) + p.flat + sum(flat)
+  const compose = (p: StaticPanel['hp'], pct: string, flat: string) => floor(p.base * (1 + p.pct + sum(pct))) + p.flat + sum(flat)
   return {
     hp: compose(m.panel.hp, 'hpPct', 'hpFlat'), atk: compose(m.panel.atk, 'atkPct', 'atkFlat'), def: compose(m.panel.def, 'defPct', 'defFlat'),
     energyRegen: snap9(m.panel.energyRegen + sum('energyRegen')),
@@ -267,7 +267,7 @@ const reaches = (b: RegisteredBuff, slot: Slot): boolean =>
 /** 按属性换算：min(cap, 每份 × 份数)，份数 = (属性 + offset) / per（floor 时取整） */
 export function scaledValue(sc: NonNullable<BuffDef['scale']>, per: number, stats: StaticStats): number {
   const units = (stats[sc.stat] + (sc.offset ?? 0)) / sc.per
-  const v = per * (sc.floor ? Math.floor(units + 1e-9) : units)
+  const v = per * (sc.floor ? floor(units + 1e-9) : units)
   return snap9(sc.cap !== undefined ? Math.min(sc.cap, v) : v)
 }
 
@@ -331,7 +331,7 @@ export function goalOf(g: Scenario['goal'], enemy: EnemyPreset): Goal {
   if (g === 'steady') return { kind: 'steady' }
   if ('kill' in g) return { kind: 'kill', hp: enemy.hp * g.kill, scale: g.kill }
   if ('killHp' in g) return { kind: 'kill', hp: g.killHp, scale: null }
-  return { kind: 'window', frames: Math.round(g.window * 60) }
+  return { kind: 'window', frames: round(g.window * 60) }
 }
 
 function resolveEnemy(e: Scenario['enemy'], data: GameData, issues: string[]): EnemyPreset {

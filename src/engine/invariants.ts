@@ -1,7 +1,6 @@
 // src/engine/invariants.ts —— 不变量检查（总设计 §11 第 4 条，开发模式常开）
 // 每个 tick 结束、每次结算各查一次；不成立就是引擎的错，报 SimResult.error（code 'invariant'），指出第几帧、哪一项。
-import type { Sim } from './context'
-import { ScheduleError } from './scheduler'
+import { ScheduleError } from './types'
 import type { HitEvent, ResolvedScenario, SimResult, SimState } from './types'
 
 /** 1e-6 的余量：资源值取整到 1e-9，比较时不因浮点误差误报 */
@@ -14,13 +13,13 @@ function ok(v: number, lo: number, hi: number): boolean {
 }
 
 /** tick 结束（P6 之后）：资源在 [0, 上限]、计时器不为负、战斗时钟不倒退。lastBattle = 上一次检查时的战斗帧 */
-export function checkTick(sim: Sim, s: SimState, lastBattle: number): void {
+export function checkTick(r: ResolvedScenario, s: SimState, lastBattle: number): void {
   if (s.battleFrames < lastBattle) throw bad(s, `战斗时钟倒退：${lastBattle} → ${s.battleFrames}`)
   // 每个 tick 都跑：不建闭包、不用 Object.entries，免得这一步本身成了开销
   for (const c of s.chars) {
-    const def = sim.r.team[c.slot].def
+    const def = r.team[c.slot].def
     if (!ok(c.energy, 0, def.energyCost)) throw bad(s, `${c.name} 的大招能量 ${c.energy} 不在 [0, ${def.energyCost}]`)
-    if (!ok(c.concerto, 0, sim.r.rules.concertoMax)) throw bad(s, `${c.name} 的协奏 ${c.concerto} 不在 [0, ${sim.r.rules.concertoMax}]`)
+    if (!ok(c.concerto, 0, r.rules.concertoMax)) throw bad(s, `${c.name} 的协奏 ${c.concerto} 不在 [0, ${r.rules.concertoMax}]`)
     for (let i = 0; i < c.core.length; i++) {
       const v = c.core[i]!
       if (v === 0) continue

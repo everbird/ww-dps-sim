@@ -1,12 +1,13 @@
 // tests/env-buffs.test.ts —— 深塔环境特性（data/curated/env-buffs.ts）：41 期中 3 的四条，拿心雷卜（scenarios/xin-team.yaml）跑。
 // 触发条件 afterBattle（战斗多少帧以后才触发）、环境特性写"自身"的给触发者（2026-10-26，docs/tower-20261026.md）。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
-import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -22,7 +23,7 @@ dataDescribe('深塔 41 期中 3 的环境特性', () => {
       ...base, enemy: { preset: '41塔中3/无常凶鹭' }, options: { ...base.options, repeat: 4 },
       environment: ['深塔41中3.受伤递增', '深塔41中3.抗性', '深塔41中3.变奏', '深塔41中3.电磁'],
     }
-    const out = simulate(resolveScenario(ScenarioSchema.parse(sc), gd))
+    const out = runPrepared(preparedScenario(ScenarioSchema.parse(sc), gd))
     expect(out.error).toBeUndefined()
     log = out.log
   })

@@ -1,12 +1,11 @@
-// src/cli/fuzz.ts —— pnpm fuzz [场景.yaml …] [--n 60] [--ledger]：模糊测试（docs/engine-quality-plan.md P1，src/engine/fuzz.ts）。
+// src/cli/fuzz.ts —— pnpm fuzz [场景.yaml …] [--n 60] [--ledger]：模糊测试（docs/engine-quality-plan.md P1，src/analysis/fuzz.ts）。
 // 不写场景就跑 scenarios/ 下全部；有问题时退出码 1。改了引擎跑一次。
 // --ledger：每条变体轴带资源账本跑，另查终态闭合、相邻条目不变式、账本与日志的交叉检查（DD-06 §3.6、T06-4）
 import { readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadGameData } from '../data/load'
-import { fuzzScenario } from '../engine/fuzz'
-import { resolveScenario } from '../engine/resolve'
-import { FAILURE_LABEL } from '../engine/search'
+import { fuzzScenario } from '../analysis/fuzz'
+import { FAILURE_LABEL } from '../analysis/search'
 import { argsOf, loadScenario } from './format'
 
 async function main(): Promise<number> {
@@ -23,7 +22,7 @@ async function main(): Promise<number> {
   for (const file of files) {
     const sc = loadScenario(file)
     const t = Date.now()
-    const x = fuzzScenario(resolveScenario(sc, data), sc.rotation, sc.opening, n, { ledger })
+    const x = fuzzScenario(sc, data, n, { ledger })
     const why = Object.entries(x.rejected).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${FAILURE_LABEL[k] ?? k} ${v}`).join('、')
     const errPart = x.engineErrors ? `；引擎错误 ${x.engineErrors}` : ''
     console.log(`${file}：候选 ${x.variants}，跑 ${x.ran}，跑通 ${x.ok}${why ? `（跑不通：${why}）` : ''}；问题 ${x.problems.length}${errPart}；${((Date.now() - t) / 1000).toFixed(1)} 秒`)

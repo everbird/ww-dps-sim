@@ -1,10 +1,9 @@
-import { prepareRun } from '../engine/run'
-// src/cli/sensitivity.ts —— pnpm sensitivity [场景.yaml …] [--md 输出.md]：假设敏感度矩阵（docs/engine-quality-plan.md P2，src/engine/sensitivity.ts）。
+// src/cli/sensitivity.ts —— pnpm sensitivity [场景.yaml …] [--md 输出.md]：假设敏感度矩阵（docs/engine-quality-plan.md P2，src/analysis/sensitivity.ts）。
 // 不写场景就跑 scenarios/ 下全部。第一张表：每个场景在每个开关翻过来后 DPS 变多少；第二张：对照场景比基准好多少，翻了哪条假设结论会变
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { loadGameData } from '../data/load'
-import { sensitivityMatrix, type Cell } from '../engine/sensitivity'
+import { sensitivityMatrix, type Cell } from '../analysis/sensitivity'
 import { argsOf, loadScenario, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const pct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
@@ -20,8 +19,8 @@ async function main(): Promise<number> {
   const files = loaded.filter(x => !skipped.includes(basename(x.f, '.yaml')))
   const data = await loadGameData()
   const t0 = Date.now()
-  const scen = files.map(({ f, sc }) => ({ name: basename(f, '.yaml'), r: strictResolve(withOverrides(sc, opt), data, opt) }))
-  const m = sensitivityMatrix(scen, row => console.error(`  ${row.name}：${((Date.now() - t0) / 1000).toFixed(0)} 秒`))
+  const scen = files.map(({ f, sc }) => { const effective = withOverrides(sc, opt); if (opt.strict !== undefined) effective.options.strict = opt.strict === 'true'; return { name: basename(f, '.yaml'), sc: effective } })
+  const m = sensitivityMatrix(scen, data, row => console.error(`  ${row.name}：${((Date.now() - t0) / 1000).toFixed(0)} 秒`))
   const out: string[] = []
   out.push('# 假设敏感度矩阵', '', `${files.length} 个场景 × ${m.flips.length} 个开关，${((Date.now() - t0) / 1000).toFixed(0)} 秒；比较口径同轴搜索（有分轮取稳态，否则整个窗口）。`, '')
   if (skipped.length) out.push(`没跑的录像剖析场景（purpose: replay）：${skipped.join('、')}。`, '')
@@ -66,10 +65,3 @@ async function main(): Promise<number> {
 }
 
 main().then(code => process.exit(code), e => { console.error(e instanceof Error ? e.message : e); process.exit(1) })
-
-// DD-02 §3.1：CLI 覆盖由归一入口处理。
-function strictResolve(sc: Parameters<typeof prepareRun>[0], data: Parameters<typeof prepareRun>[1], opt: Record<string, string>) {
-  const p = prepareRun(sc, data, opt.strict !== undefined ? { strict: opt.strict === 'true' } : {})
-  if (!p.ok) throw new Error(p.issues.map(i => `${i.code}: ${i.message}`).join('\n'))
-  return p.run.resolved
-}

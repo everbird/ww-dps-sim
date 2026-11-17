@@ -1,12 +1,14 @@
 // tests/phase-boundary.test.ts —— 相位边界用例（DD-05 §5；架构 §3.5）：冷却剩 1 帧、同帧命中与 buff 到期、同帧多个到期与交错触发。
 // 用人造动作与人造角色，不依赖 data/generated。已有用例能覆盖的注明出处，这里只补缺的断言。
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import type { BuffDefInput } from '../src/data/buff.schema'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import type { EventMeta } from '../src/engine/diagnostics'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { gainSteps, hitCauses } from '../src/engine/trace'
+
+import { gainSteps, hitCauses } from '../src/analysis/trace'
 import type { SimResult } from '../src/engine/types'
 import { action, eventsOf, judgment, run } from './helpers/kernel-harness'
 import { oldGainSteps } from './helpers/old-owners'
@@ -18,7 +20,7 @@ const buff = (o: Partial<BuffDefInput> & { id: string }): BuffDefInput =>
 /** 三个人造角色跑一个场景，带事件来源（DD-05 §3）；返回结果与 eventMeta */
 function traced(chars: [SynthChar, SynthChar, SynthChar], sc: Record<string, unknown>): { out: SimResult; meta: readonly EventMeta[]; r: ReturnType<typeof resolveScenario> } {
   const r = resolveScenario(ScenarioSchema.parse({ team: chars.map(c => ({ char: c.name, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, ...sc }), synthData(chars))
-  const out = simulate(r, { diag: { eventMeta: true } })
+  const out = runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } })
   return { out, meta: out.diag!.eventMeta!, r }
 }
 

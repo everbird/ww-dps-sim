@@ -5,9 +5,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
-import { ResolveError, resolveScenario } from '../engine/resolve'
-import { simulate } from '../engine/simulate'
-import type { ResolvedScenario } from '../engine/types'
+import { prepareRun, runPrepared } from '../engine/run'
 import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../report/timeline'
 import { argsOf, fmt, loadScenario, pct } from './format'
 
@@ -26,14 +24,10 @@ async function main(): Promise<number> {
   }
   const sc = loadScenario(file)
   const data = await loadGameData()
-  let r: ResolvedScenario
-  try {
-    r = resolveScenario(sc, data)
-  } catch (e) {
-    if (e instanceof ResolveError) { console.error(e.message); return 1 }
-    throw e
-  }
-  const res = simulate(r, { diag: { eventMeta: true } })         // 出处按记录下来的事件来源（DD-05 §3.4）
+  const p = prepareRun(sc, data)
+  if (!p.ok) { console.error(p.issues.map(i => i.message).join('\n')); return 1 }
+  const r = p.run.resolved
+  const res = runPrepared(p.run, { diag: { eventMeta: true } })         // 出处按记录下来的事件来源（DD-05 §3.4）
   const model = timelineModel(file, sc, r, res)
   const html = view === undefined
     ? renderTimeline(readFileSync(TEMPLATE, 'utf8'), model, fragment)

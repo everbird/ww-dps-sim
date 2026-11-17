@@ -17,8 +17,8 @@ import type { Scenario } from '../data/scenario.schema'
 import {
   EvidenceError, evidenceFromClosure, judgeClosure, observationsOf, predictClosure, registerClosure, registrationProblems, rerunClosure,
   verifyPredictions, type EvidenceContext,
-} from '../engine/evidence'
-import { hasReading } from '../engine/observations'
+} from '../analysis/evidence'
+import { hasReading } from '../analysis/observations'
 import { PROPOSITIONS, propositionOf, type Proposition } from '../engine/propositions'
 import { conclusionText, evidenceTable, summarizeClosure, VERDICT_LABEL } from '../report/evidence'
 import { EVIDENCE_DIR, readClosure, readIdentities, RUNS_DIR, writeClosure, writeIdentities, type ClosureFile } from './evidence-file'

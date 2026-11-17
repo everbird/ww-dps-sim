@@ -2,7 +2,7 @@
 // 只给用例对照用：DD-05 §9 要求路线图 §4.2 末尾说的两种错归（同帧多个到期、队列交错）"各有用例，并断言了旧算法在该用例上是错的"。
 // 生产代码一律按记录下来的事件来源（diag.eventMeta）推出处（src/engine/trace.ts 的 walkCauses），不要在别处用它。
 import type { CharName, ResourceKind } from '../../src/data/common'
-import { causeText, type GainHow, type GainOwner, type GainStep, type HitCause, type HitOrigin, type HitTrigger } from '../../src/engine/trace'
+import { causeText, type GainHow, type GainOwner, type GainStep, type HitCause, type HitOrigin, type HitTrigger } from '../../src/analysis/trace'
 import { outroOf } from '../../src/engine/switch'
 import type { ResolvedScenario, SimEvent } from '../../src/engine/types'
 

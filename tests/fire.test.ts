@@ -1,6 +1,8 @@
 // tests/fire.test.ts —— 三火（嘉贝莉娜 · 达妮娅 · 露帕，2026-10-26，docs/tower-20261026.md）的角色模块与中 1 的录像剖析。
 // 达妮娅：两种形态、熵变强化与蚀刻繁彩、虚质粒子下黑A按强化版算、放逐按黯核加倍率、聚爆模态挂层、蚀域；
 // 露帕：狼焰与狼魂、追猎加层与你无法逃离、延燃；嘉贝莉娜：罪火满才进恶魔位格、余火、死运既定、恶魔位格 50 战斗秒。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,8 +10,8 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { compareMarks, traceCommands } from '../src/engine/trace'
+
+import { compareMarks, traceCommands } from '../src/analysis/trace'
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -33,7 +35,7 @@ dataDescribe('达妮娅', () => {
     { char: '椿', chain: 0, weapon: { name: '千古洑流', rank: 1 } },
   ]
   const run = (rotation: string[]) => {
-    const out = simulate(resolveScenario(ScenarioSchema.parse({
+    const out = runPrepared(preparedScenario(ScenarioSchema.parse({
       data: '20261019', team, enemy: { preset: '41塔中1/辉萤军势' }, initial: { onField: 0 }, rotation, options: { repeat: 1, maxFrames: 6000 },
     }), gd))
     expect(out.error).toBeUndefined()
@@ -101,7 +103,7 @@ dataDescribe('三火深塔 41 期中 1 的录像（露帕、嘉贝莉娜）', ()
     const gd = await loadGameData()
     const sc = parse(readFileSync(new URL('../scenarios/fire-tower1-video.yaml', import.meta.url), 'utf8')) as ScenarioInput
     const r = resolveScenario(ScenarioSchema.parse(sc), gd)
-    const out = simulate(r)
+    const out = runPrepared(fixturePreparedRun(r))
     expect(out.error).toBeUndefined()
     log = out.log
     cmp = compareMarks(traceCommands(log, r, 1), sc.video!.marks!)
@@ -184,7 +186,7 @@ dataDescribe('三火深塔 41 期中 2 的录像', () => {
     const gd = await loadGameData()
     const sc = parse(readFileSync(new URL('../scenarios/fire-tower2-video.yaml', import.meta.url), 'utf8')) as ScenarioInput
     const r = resolveScenario(ScenarioSchema.parse(sc), gd)
-    const out = simulate(r)
+    const out = runPrepared(fixturePreparedRun(r))
     expect(out.error).toBeUndefined()
     log = out.log
     cmp = compareMarks(traceCommands(log, r, 1), sc.video!.marks!)

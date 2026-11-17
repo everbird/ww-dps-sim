@@ -1,9 +1,9 @@
-// src/engine/calibration.ts —— 校准点的仿真值与比对（docs/engine-quality-plan.md P4、DD-03 §3–4；点的写法见 src/data/calibration.schema.ts）
+// src/analysis/calibration.ts —— 校准点的仿真值与比对（docs/engine-quality-plan.md P4、DD-03 §3–4；点的写法见 src/data/calibration.schema.ts）
 // DD-08 §3.2 起是 observations.ts 的薄包装：取值（readObservation）与比较（compareValue）都在那边，这里只把结果换成旧的 CalibrationResult
 // （面板、跳字、时长三种；新种类用 compareObservations）。纯函数：给装配结果与事件日志。
 import { type CalibrationPoint } from '../data/calibration.schema'
 import { compareOne, readObservation, type BranchResidual, type ComparisonStatus } from './observations'
-import type { ResolvedScenario, SimEvent } from './types'
+import type { ResolvedScenario, SimEvent } from '../engine'
 
 export type { BranchResidual } from './observations'
 

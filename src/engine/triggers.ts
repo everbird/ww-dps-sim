@@ -8,7 +8,7 @@ import type { Sim } from './context'
 import { log } from './kernel'
 import { explainExtend, explainFiring, groupsWouldFire, type Occurrence, type TriggerTarget } from './probe'
 import { grant } from './resources'
-import { ScheduleError } from './scheduler'
+import { ScheduleError } from './types'
 import type { SimEvent, SimState } from './types'
 
 /** 处理队列里所有还没处理的事件。可重入：处理中再调用直接返回，新事件由外层循环接着处理 */

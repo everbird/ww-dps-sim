@@ -1,5 +1,5 @@
 // DD-04 §5.5：文字只从报告取数；时刻敏感不等于某一门槛是瓶颈。
-import type { CandidateOutcome, CandidateRef, StrictCandidateReport } from '../engine/candidates'
+import type { CandidateOutcome, CandidateRef, StrictCandidateReport } from '../analysis/candidates'
 const num = (x: number | null) => x === null ? '不可比' : x.toFixed(4)
 const pct = (x: number | null) => x === null ? '不可比' : `${(x * 100).toFixed(4)}%`
 const names = (cs: readonly CandidateRef[]) => cs.map(c => `${c.propositionId}=${c.candidateId}`).join(' × ')

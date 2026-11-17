@@ -1,9 +1,9 @@
-// src/cli/matrix.ts —— pnpm matrix <场景.yaml …> [--stage 矩8] [--md 输出.md]：矩阵计分（src/engine/matrix.ts、docs/matrix.md）。
+// src/cli/matrix.ts —— pnpm matrix <场景.yaml …> [--stage 矩8] [--md 输出.md]：矩阵计分（src/analysis/matrix.ts、docs/matrix.md）。
 // 几支队（角色不能重复）按每种出场顺序接力打这一期的 boss，每队 120 秒，按伤害折分；列总分、每队打到哪、每只 boss 的分
 import { writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
-import { MATRIX_RULES, matrixOrders, ratioOf, matrixBosses } from '../engine/matrix'
+import { MATRIX_RULES, matrixOrders, ratioOf, matrixBosses } from '../analysis/matrix'
 import { assumptionOf } from '../engine/assumptions'
 import { argsOf, fmt, loadScenario } from './format'
 

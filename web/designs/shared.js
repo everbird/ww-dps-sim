@@ -69,7 +69,7 @@ window.WW = (() => {
       keys.get(x.key).push([x.f, { ready: x.ready, charges: x.charges }])
     }
     const slot = new Map(m.team.map((t, i) => [t.name, i]))
-    // 每个动作给的资源（src/engine/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
+    // 每个动作给的资源（src/analysis/trace.ts 的 actionGains），按动作开始的实例号挂到动作上；延奏动作（outro）没有动作条，不挂
     const gainsOf = new Map((raw.gains || []).filter(g => !g.outro).map(g => [g.instance, g]))
     const actions = [], open = new Map(), byInst = new Map(), hits = [], waits = [], skips = [], loops = [], enemy = [], switches = [], alerts = []
     const effects = []   // 异常效应的层数变化（附加、消耗、到时，与定时结算 effectTick），按日志顺序（TD-06 §18）
@@ -113,7 +113,7 @@ window.WW = (() => {
     const lastF = Math.max(clock.end, ...(m.summary.resourceTimeline || []).map(s => s.f))
     for (const a of actions) if (a.end === null) { a.end = lastF; a.t1 = clock.secAt(lastF); a.how = '日志结束时仍在进行' }
     for (const r of buffRows.values()) for (const s of r.spans) if (s.end === null) { s.end = lastF; s.reason = 'end' }
-    // 命中归到引发它的动作（"谁引发的算谁"，同资源的出处；src/engine/trace.ts 的 hitOwners，命中的 owner 是那个动作开始的实例号）：
+    // 命中归到引发它的动作（"谁引发的算谁"，同资源的出处；src/analysis/trace.ts 的 hitOwners，命中的 owner 是那个动作开始的实例号）：
     // 动作条的伤害、C 的伤害列与本轮按动作、D 的检查器与每秒伤害都按它；判定在别的组里的（重击居合引爆的"E-引爆冰棱"）逐条记下。
     // ownerAct：归到的动作名（归到延奏、归不到动作的，按判定所在的动作）。汇总的"分动作"仍按判定所在的动作（TD-10 §1、TD-12 §2.1）
     for (const h of hits) {
@@ -177,7 +177,7 @@ window.WW = (() => {
     while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (steps[mid][0] <= f) lo = mid; else hi = mid - 1 }
     return steps[lo][1]
   }
-  /** 第 i 人在 f 帧的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）：[{ key, name, cap, v }]（src/engine/trace.ts 的 resourceTracks）；
+  /** 第 i 人在 f 帧的能量、协奏与共鸣回路（核心资源，只列这次有变化的槽）：[{ key, name, cap, v }]（src/analysis/trace.ts 的 resourceTracks）；
    *  模型里没有逐帧值时退回资源曲线的采样（30 帧一次，只有能量与协奏） */
   function metersAt(m, i, f) {
     const own = (m.resources || []).find(x => x.char === m.team[i].name)
@@ -211,7 +211,7 @@ window.WW = (() => {
   const RES_NAME = { concerto: '协奏', energy: '能量' }
   /** 带符号的资源数：+15、+7.2、−125（10 以下留两位小数，去掉末尾的 0） */
   const signedNum = v => { const a = Math.abs(v); return `${v < 0 ? '−' : '+'}${+a.toFixed(a >= 10 ? 1 : 2)}` }
-  /** 引出原因写成一句（同 src/engine/trace.ts 的 causeText）："5 链：冰到时自爆（散华.冰棱 到时）" */
+  /** 引出原因写成一句（同 src/analysis/trace.ts 的 causeText）："5 链：冰到时自爆（散华.冰棱 到时）" */
   const causeText = (note, via) => (note && via ? `${note}（${via}）` : note || via || '')
   /** 一条出处叫什么："E-引爆冰棱 命中 2 段""E-引爆冰棱 命中（5 链：冰到时自爆）""行进序曲.协奏""起手即得" */
   function gainName(it) {

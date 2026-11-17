@@ -1,16 +1,18 @@
 // tests/summary-boundaries.test.ts —— DD-03 §5–§7（C03-6 ~ C03-22）：覆盖率（按提供者与并集）、致死与溢出拆分、口径闸门与伤害口径声明
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { dpsBreakdown, tryCompareRuns } from '../src/engine/analysis'
+import { dpsBreakdown, tryCompareRuns } from '../src/analysis/analysis'
 import { basisOf, usableBasis } from '../src/engine/basis'
 import { resolveScenario } from '../src/engine/resolve'
-import { scorecards } from '../src/engine/scorecard'
-import { sensitivityMatrix } from '../src/engine/sensitivity'
-import { simulate } from '../src/engine/simulate'
+import { scorecards } from '../src/analysis/scorecard'
+import { sensitivityMatrix } from '../src/analysis/sensitivity'
+
 import type { ResolvedScenario, SimResult } from '../src/engine/types'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, synthRun, type SynthChar } from './helpers/synth'
@@ -27,12 +29,15 @@ const NO_CRIT_BUFF = {
 
 const ZERO_DEF_ENEMY = { custom: { level: 90, hp: 1000, def: 0, res: { 物理: 0 } } }
 
-function makeResolved(chars: [SynthChar, SynthChar, SynthChar], sc: Record<string, unknown>): ResolvedScenario {
-  return resolveScenario(ScenarioSchema.parse({
+function makeInput(chars: [SynthChar, SynthChar, SynthChar], sc: Record<string, unknown>) {
+  return { sc: ScenarioSchema.parse({
     team: chars.map(c => ({ char: c.name, weapon: { name: '测试武器' } })),
-    enemy: ZERO_DEF_ENEMY,
-    ...sc,
-  }), synthData(chars))
+    enemy: ZERO_DEF_ENEMY, ...sc,
+  }), data: synthData(chars) }
+}
+function makeResolved(chars: [SynthChar, SynthChar, SynthChar], sc: Record<string, unknown>): ResolvedScenario {
+  const input = makeInput(chars, sc)
+  return resolveScenario(input.sc, input.data)
 }
 
 describe('DD-03 §5：buffUptimeBy 与并集（C03-6 / C03-7）', () => {
@@ -125,7 +130,7 @@ describe('DD-03 §6：致死与溢出拆分（C03-8 ~ C03-11）', () => {
       [{ name: '甲', actions: [hit1500], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, goal: { kill: 1 }, rotation: ['甲 重砍'], options: { repeat: 1 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.summary.kill.frame).toBe(30)
     expect(res.summary.kill.overflow).toBeCloseTo(500, 9)
     expect(res.summary.goal?.lethal?.overflow).toBeCloseTo(500, 9)
@@ -147,7 +152,7 @@ describe('DD-03 §6：致死与溢出拆分（C03-8 ~ C03-11）', () => {
       [{ name: '甲', actions: [three], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, goal: { kill: 1 }, rotation: ['甲 三连'], options: { repeat: 1 } },
     )
-    const res3 = simulate(r3)
+    const res3 = runPrepared(fixturePreparedRun(r3))
     expect(res3.summary.kill.frame).toBe(30)
     expect(res3.summary.kill.overflow).toBeCloseTo(200, 9)
     const br3 = dpsBreakdown(res3, basisOf(res3))
@@ -166,7 +171,7 @@ describe('DD-03 §6：致死与溢出拆分（C03-8 ~ C03-11）', () => {
       [{ name: '甲', actions: [first3, fourth], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, goal: { kill: 1 }, rotation: ['甲 第一招 第二招'], options: { repeat: 1 } },
     )
-    const res4 = simulate(r4)
+    const res4 = runPrepared(fixturePreparedRun(r4))
     expect(res4.summary.kill.frame).toBe(30)
     expect(res4.summary.kill.overflow).toBeCloseTo(200, 9)
     const br4 = dpsBreakdown(res4, basisOf(res4))
@@ -185,7 +190,7 @@ describe('DD-03 §6：致死与溢出拆分（C03-8 ~ C03-11）', () => {
       [{ name: '甲', actions: [instant], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, goal: { kill: 1 }, rotation: ['甲 瞬杀'], options: { repeat: 1 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.summary.kill.frame).toBe(0)
     const br = dpsBreakdown(res, basisOf(res))
     expect(br.zeroDuration).toBe(true)
@@ -201,7 +206,7 @@ describe('DD-03 §6：致死与溢出拆分（C03-8 ~ C03-11）', () => {
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 砍'], options: { repeat: 3 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     const st = res.summary.steady!
     const br = dpsBreakdown(res, basisOf(res))
     expect(br.zeroDuration).toBe(false)
@@ -217,7 +222,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 砍'], options: { repeat: 4, maxFrames: 90 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.completion.status).toBe('truncated')
     const u = usableBasis(res)
     expect(u.ok).toBe(false)
@@ -227,7 +232,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 砍'], options: { repeat: 4 } },
     )
-    const cmp = tryCompareRuns({ r, res }, { r: rOk, res: simulate(rOk) })
+    const cmp = tryCompareRuns({ r, res }, { r: rOk, res: runPrepared(fixturePreparedRun(rOk)) })
     expect(cmp.ok).toBe(false)
   })
 
@@ -241,7 +246,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 延斩'], options: { repeat: 4, maxFrames: 241 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.completion.status).toBe('truncated')
     expect(res.completion.truncation?.kind).toBe('inFlightRemains')
     expect(res.completion.loops.started).toBe(4)
@@ -257,7 +262,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 百帧'], options: { repeat: 2, maxFrames: 150 } },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.completion.loops.completed).toBe(1)
     const u = usableBasis(res)
     expect(u.ok).toBe(false)
@@ -270,7 +275,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 百帧'], options: { repeat: 2, endAt: 150 } },
     )
-    const resCut = simulate(rCut)
+    const resCut = runPrepared(fixturePreparedRun(rCut))
     expect(resCut.completion.status).toBe('completed')
     expect(resCut.completion.loops.completed).toBe(2)
     expect(resCut.completion.loops.roundEnds.find(x => x.loop === 2)?.endBattleFrame).toBe(200)
@@ -285,7 +290,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       [{ name: '甲', actions: [act], buffs: [NO_CRIT_BUFF] }, idle('乙'), idle('丙')],
       { initial: { onField: 0 }, rotation: ['甲 百帧'], options: { repeat: 2, endAt: 200 } },
     )
-    const uFit = usableBasis(simulate(rFit))
+    const uFit = usableBasis(runPrepared(fixturePreparedRun(rFit)))
     expect(uFit.ok).toBe(true)
     if (uFit.ok) {
       expect([uFit.basis.lo, uFit.basis.hi]).toEqual([100, 200])
@@ -304,7 +309,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
         options: { repeat: 2 },
       },
     )
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     expect(res.completion.status).toBe('completed')
     expect(res.summary.goal?.reached).toBe(false)
     expect(res.summary.warnings.some(w => w.code === 'goalNotReached')).toBe(true)
@@ -339,7 +344,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
       endFrame: 10,
       judgments: [judgment({ name: '刺', spawnFrame: 5, multiplier: 1.0 })],
     })
-    const r = makeResolved(
+    const input = makeInput(
       [
         {
           name: '甲',
@@ -361,7 +366,7 @@ describe('DD-03 §7.1 & §7.3：usableBasis 口径闸门（C03-12 / C03-13 / C03
         options: { repeat: 1, maxWait: 30 },
       },
     )
-    const m = sensitivityMatrix([{ name: 's', r }])
+    const m = sensitivityMatrix([{ name: 's', sc: input.sc }], input.data)
     const row = m.rows[0]!
     expect(row.base.dps).not.toBeNull()
     const iUlt = m.flips.findIndex(f => f.path === 'rules.ultInputLocksSwitch')
@@ -385,7 +390,7 @@ dataDescribe('DD-03 §7.4：谐度破坏口径不一致警示（C03-17 / C03-18 
   test('C03-17 & C03-19：compare 检测 mode 与 gauge 差异；只差 omitted.reason 不报 scopeMismatch', () => {
     const runOf = (sc: ReturnType<typeof ScenarioSchema.parse>): { r: ResolvedScenario; res: SimResult } => {
       const r = resolveScenario(sc, gd)
-      return { r, res: simulate(r) }
+      return { r, res: runPrepared(fixturePreparedRun(r)) }
     }
 
     const rOff = runOf(parseM0({ options: { tuneBreak: 'off' }, tuneBreakOmitted: { reason: 'deliberate' } }))

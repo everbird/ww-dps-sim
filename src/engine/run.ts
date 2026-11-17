@@ -11,11 +11,12 @@ import { cachedDigest, canonicalJson, digestOf, sha256Hex } from './digest'
 import { ResolveError, resolveScenario } from './resolve'
 import {
   OUTPUT_SCHEMA_VERSION,
-  type AxisFailureKind, type DamageScope, type PreparedRun, type PrepareIssue, type PrepareResult, type RunCompletion, type RunCoverage,
+  type BoundaryObserver, type AxisFailureKind, type DamageScope, type PreparedRun, type PrepareIssue, type PrepareResult, type RunCompletion, type RunCoverage,
   type RunEnvironment, type RunIdentity, type RunOptions, type RunOverrides, type StatePrefix, type StrictReport,
 } from './run-types'
 import { checkStrictSource, checkStrictResolved, STRICT_CHECKS } from './strict'
 import { INTENT_WAITS, ScheduleError, type ScheduleErrorCode } from './scheduler'
+import { checkHit, checkTick } from './invariants'
 import { execute, type Execution, type Inspect } from './simulate'
 import { battleFrameOf, summarize, windowEnd } from './summary'
 import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, SimState, Summary } from './types'
@@ -71,6 +72,26 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
   // 卡帧点的操作延迟场景里写不出来，装配后补进 options（跟着进身份）
   if (overrides.inputDelayAt && Object.keys(overrides.inputDelayAt).length > 0)
     resolved = { ...resolved, options: { ...resolved.options, inputDelayAt: { ...overrides.inputDelayAt } } }
+  // DD-10 §5：面板扰动从真实源场景准备，并计入 resolvedDigest。
+  // 保留原分析口径：只改变 panel，不重新推导装配时的 stats / scale。
+  if (overrides.panelDeltas) {
+    const allowed = ['energyRegen', 'hpFlat', 'atkFlat', 'defFlat'] as const
+    for (const [name, delta] of Object.entries(overrides.panelDeltas)) {
+      const member = resolved.team.find(m => m.def.name === name)
+      if (!member || !delta || typeof delta !== 'object' || Array.isArray(delta))
+        return { ok: false, issues: [{ stage: 'resolve', code: 'resolve', message: `panelDeltas.${name}：角色或增量无效` }] }
+      for (const [key, value] of Object.entries(delta)) {
+        if (!(allowed as readonly string[]).includes(key) || typeof value !== 'number' || !Number.isFinite(value))
+          return { ok: false, issues: [{ stage: 'resolve', code: 'resolve', message: `panelDeltas.${name}.${key}：要求支持的面板项与有限数值` }] }
+        const field = key as typeof allowed[number]
+        const part = field === 'hpFlat' ? 'hp' : field === 'atkFlat' ? 'atk' : 'def'
+        const next = (field === 'energyRegen' ? member.panel.energyRegen : member.panel[part].flat) + value
+        if (!Number.isFinite(next)) return { ok: false, issues: [{ stage: 'resolve', code: 'resolve', message: `panelDeltas.${name}.${key}：结果不是有限数值` }] }
+        if (field === 'energyRegen') member.panel.energyRegen = next
+        else member.panel[part].flat = next
+      }
+    }
+  }
   // ⑤ 算身份
   const { video: _video, search: _search, ...executable } = effective as Scenario & { notation?: unknown }
   delete executable.notation                 // video、search、notation 不影响执行，不进摘要（notation 由 DD-02 加）
@@ -83,15 +104,6 @@ export function prepareRun(scenario: Scenario, data: GameData, overrides: RunOve
     environment: overrides.environment,
   })
   return { ok: true, run, warnings: resolved.warnings }
-}
-
-/** 过渡用：已经装配好的结果直接包成 PreparedRun（兼容外壳 simulate 与还没迁移的分析层用）。场景内容没法知道，scenarioDigest 记 'unknown'；
- *  runId 仍由整份身份算出，两次不同的装配结果不会撞。DD-10 把最后一个调用方迁走后删掉 */
-export function prepareResolved(r: ResolvedScenario, opts: { sample?: SimOptions['sample']; environment?: RunEnvironment } = {}): PreparedRun {
-  return sealed(r, {
-    scenarioDigest: 'unknown', strict: (r.options as { strict?: boolean }).strict === true, strictSource: 'default',
-    continueAfterIntentUnmet: false, sample: opts.sample ?? null, environment: opts.environment,
-  })
 }
 
 /** 把 { 'forteKeepOnSwitchBy.心': false, 'energyShare.dealer': 2, defFloor: true } 展开并合并进 options.rules 的输入对象（DD-01 §3.2；DD-04 §4.2）。
@@ -208,26 +220,17 @@ export function resolvedDigestOf(r: ResolvedScenario, fresh = false): string {
  *  日志与汇总保留到出错为止。例外是观察回调（opts.onHit）自己抛的异常，原样抛给调用方（那是调用方的错，不是这次运行的结论）。
  *  opts 是观察选项，不进运行身份；diag 开了的诊断（DD-05 的事件来源、规则明细）放在 res.diag，不影响其余字段 */
 export function runPrepared(p: PreparedRun, opts: RunOptions = {}): SimResult {
-  return runWithFailure(p, opts).res
-}
-
-/** 同 runPrepared，另外带出没被归成调度错误的原异常（uncaught）：兼容外壳 simulate 要把它重新抛出（DD-01 §3.7） */
-export function runWithFailure(p: PreparedRun, opts: RunOptions = {}): { res: SimResult; uncaught: { error: unknown } | null } {
-  const { res, uncaught } = runCore(p, opts)
-  return { res: res!, uncaught }
+  return runCore(p, opts).res!
 }
 
 /** 边界观察点（DD-05 §6.1）：只给诊断与查询用（零干扰对拍、DD-06 的任意帧闭合、DD-07 的 stateAt）。合法边界只有两类：
  *  S[0]（初始化全部做完之后、第 0 帧 P1 之前）与 S[f + 1]（tick 走完 P7 之后、帧数上限检查之前，所以 S[maxFrames] 取得到） */
-export interface BoundaryObserver {
-  readonly frames: ReadonlySet<Frame>
-  /** 到了 S[f]：s 是本体，只读；要留就自己拷贝（DD-07 的 viewOf）。返回 'stop' 就在这里停下。ledgerLength：开了账本诊断（diag.resourceLedger）时
-   *  这个边界的 ledgerEndExclusive（DD-06 §3.3，与 prefix 同一刻取，等于 ledgerPrefixForBoundary(账本, f) 的长度），没开时 null */
-  onBoundary(f: Frame, s: SimState, prefix: StatePrefix, ledgerLength: number | null): void | 'stop'
-}
+export type { BoundaryObserver } from './run-types'
 
 /** runForInspection 的选项：RunOptions 之外加边界观察点与求值检查点；sink 是测试用的，换一个收集器（零干扰的反向用例，DD-05 §6.2），给了就用它 */
 export interface InspectOptions extends RunOptions {
+  readonly resume?: Inspect['resume']
+  readonly checkpoint?: Inspect['checkpoint']
   readonly observer?: BoundaryObserver
   readonly afterEvaluate?: Inspect['afterEvaluate']
   readonly sink?: (s: Readonly<SimState>) => DiagSink
@@ -261,7 +264,7 @@ function runCore(p: PreparedRun, opts: InspectOptions): { x: Execution; res: Sim
   const x = execute(
     r,
     { continueAfterIntentUnmet: p.effective.continueAfterIntentUnmet, ...(p.effective.sample ? { sample: p.effective.sample } : {}), ...(opts.onHit ? { onHit: opts.onHit } : {}) },
-    { ...(sink ? { sink } : {}), ...(opts.observer ? { observer: opts.observer } : {}), ...(opts.afterEvaluate ? { afterEvaluate: opts.afterEvaluate } : {}) },
+    { checks: { checkHit, checkTick }, ...(opts.resume ? { resume: opts.resume } : {}), ...(opts.checkpoint ? { checkpoint: opts.checkpoint } : {}), ...(sink ? { sink } : {}), ...(opts.observer ? { observer: opts.observer } : {}), ...(opts.afterEvaluate ? { afterEvaluate: opts.afterEvaluate } : {}) },
   )
   if (x.stoppedAt !== null) return { x, res: null, uncaught: null }
   x.k.diag?.finish(x.s.log, x.k.at.phase)

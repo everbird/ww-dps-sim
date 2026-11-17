@@ -1,7 +1,7 @@
 // src/cli/cards.ts —— pnpm cards <场景.yaml> [--char 椿]：套路卡速查表（TD-10 §6.2 ②、⑥ 第 1 步）。
 // 每个套路（同一角色的一行轴）在几种上下文里单独量一遍，另列原场景里每轮的这一段；对不上、切走得太早的标出来
 import { loadGameData } from '../data/load'
-import { ENTRY_LABEL, EXIT_LABEL, measureCards, type Card, type CardFlag, type CardMeasure } from '../engine/cards'
+import { ENTRY_LABEL, EXIT_LABEL, measureCards, type Card, type CardFlag, type CardMeasure } from '../analysis/cards'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart } from './format'
 

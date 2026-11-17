@@ -3,7 +3,7 @@
 <script lang="ts">
   import { parse } from 'yaml'
   import { withOpening, withRotation } from '../../../../src/data/scenario-text'
-  import { FAILURE_LABEL } from '../../../../src/engine/search'
+  import { FAILURE_LABEL } from '../../../../src/analysis/search'
   import { call } from '../api'
   import { find, ofKind, saveAs } from '../docs.svelte'
   import { fmt, pct2, signed } from '../fmt'

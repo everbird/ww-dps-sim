@@ -1,4 +1,4 @@
-// src/engine/optimize.ts —— 声骸库存择优（TD-13）：给一个角色从库存里挑 5 件，队友配装与轴不动。
+// src/analysis/optimize.ts —— 声骸库存择优（TD-13）：给一个角色从库存里挑 5 件，队友配装与轴不动。
 // 做法（TD-13 §3–§5）：先完整跑一次、记下这个角色每次直接伤害结算的输入（HitRecord），换声骸时只按新面板重算这些结算
 // （"快速重算"，每套几毫秒以内）；按边际收益预筛、枚举、逐件替换找出估计最好的几套，再各自完整仿真确认。
 // 快速重算假定时间轴不变：共鸣效率改变出大招的时机、套装 / 首位声骸改变 buff 时，估计会偏，所以最终排名只看完整仿真。
@@ -7,12 +7,13 @@ import type { GameData } from '../data/gamedata'
 import type { InvPiece } from '../data/inventory.schema'
 import type { Scenario } from '../data/scenario.schema'
 import { basisOf, tierValue, usableBasis, type Basis } from './analysis'
-import type { HitRecord } from './context'
-import { accumulate, computeHit, matchesFilter, type HitContext } from './formula'
-import { echoSpecies, resolveScenario, setPieces } from './resolve'
-import { simulate } from './simulate'
-import { battleFrameOf } from './summary'
-import type { ResolvedScenario, SimResult, StaticPanel, ZoneAccumulator } from './types'
+import type { HitRecord } from '../engine'
+import { accumulate, computeHit, matchesFilter, type HitContext } from '../engine'
+import { echoSpecies, resolveScenario, setPieces } from '../engine'
+import { runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
+import { battleFrameOf } from '../engine'
+import type { ResolvedScenario, SimResult, StaticPanel, ZoneAccumulator } from '../engine'
 
 export type Totals = Partial<Record<StatKey, number>>
 type PieceStats = { main: Totals; subs: Totals }
@@ -96,9 +97,10 @@ export function buildReplayer(r: ResolvedScenario, res: SimResult, recs: readonl
 
 /** 完整跑一次，顺带记下结算输入 */
 export function runRecorded(sc: Scenario, data: GameData): { r: ResolvedScenario; res: SimResult; recs: HitRecord[] } {
-  const r = resolveScenario(sc, data)
+  const p = preparedScenario(sc, data)
+  const r = p.resolved
   const recs: HitRecord[] = []
-  const res = simulate(r, { onHit: x => recs.push(x) })
+  const res = runPrepared(p, { onHit: x => recs.push(x) })
   return { r, res, recs }
 }
 

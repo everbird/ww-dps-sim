@@ -1,4 +1,6 @@
 // tests/sample.test.ts —— 抽样模式（总设计 T4）：随机数（rng.ts，Rust 对得上的前几个输出）、逐段抽暴击、操作抖动、多次抽样的分布
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -6,10 +8,9 @@ import type { BuffDefInput } from '../src/data/buff.schema'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { resolveScenario } from '../src/engine/resolve'
 import { nextFloat, nextNormal, nextU32, runSeeds, seedRng } from '../src/engine/rng'
-import { HAND_PROFILES, sampleRuns, statsOf } from '../src/engine/sample'
-import { simulate } from '../src/engine/simulate'
+import { HAND_PROFILES, sampleRuns, statsOf } from '../src/analysis/sample'
+
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
 
@@ -37,12 +38,12 @@ describe('逐段抽暴击（人造角色，暴击率 50%）', () => {
     actions: [action({ id: 'X', kind: 'skill', endFrame: 200, judgments: [judgment({ name: 'a', spawnFrame: 1, lifeFrames: 200, ticks: 100, tickInterval: 2 })] })],
   }
   const gd = synthData([甲, idle('乙'), idle('丙')])
-  const r = resolveScenario(ScenarioSchema.parse({
+  const sc = ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['甲 X'],
-  }), gd)
+  })
 
   test('期望模式不带 isCrit；抽样模式每段都抽，同一种子结果相同、换种子不同', () => {
-    const hits = (o?: { sample: { seed: number } }) => eventsOfLog(simulate(r, o).log, 'hit')
+    const hits = (o?: { sample: { seed: number } }) => eventsOfLog(runPrepared(preparedScenario(sc, gd, { sample: o?.sample })).log, 'hit')
     expect(hits().every(h => h.dmg!.isCrit === undefined)).toBe(true)
     const a = hits({ sample: { seed: 1 } }), b = hits({ sample: { seed: 1 } }), c = hits({ sample: { seed: 2 } })
     expect(a.length).toBe(100)
@@ -54,7 +55,7 @@ describe('逐段抽暴击（人造角色，暴击率 50%）', () => {
   })
 
   test('多次抽样的平均收敛到期望值（这里没有"暴击时触发"的效果，期望值就是精确值）', { timeout: 30_000 }, () => {
-    const x = sampleRuns(r, { runs: 400, seed: 3 })
+    const x = sampleRuns(sc, gd, { runs: 400, seed: 3 })
     expect(x.failed).toBe(0)
     const se = x.stats!.sd / Math.sqrt(400)
     expect(Math.abs(x.stats!.mean - x.expected)).toBeLessThan(4 * se)
@@ -68,16 +69,16 @@ describe('逐段抽暴击（人造角色，暴击率 50%）', () => {
 dataDescribe('抽样（M0 代表轴）', () => {
   let gd: GameData
   beforeAll(async () => { gd = await loadGameData() })
-  const load = () => resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-team.yaml', import.meta.url), 'utf8'))), gd)
+  const load = () => ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-team.yaml', import.meta.url), 'utf8')))
 
   // 一次 M0 仿真约 0.1 秒：各抽 25 次（种子固定，结果是确定的）；标准差约 3%，25 次的平均误差约 0.6%
   test('只抽暴击：平均与期望值差不到 2%；加操作抖动：平均更低，等待原因里有 input', { timeout: 60_000 }, () => {
     const r = load()
-    const plain = sampleRuns(r, { runs: 25, seed: 1 })
+    const plain = sampleRuns(r, gd, { runs: 25, seed: 1 })
     expect(Math.abs(plain.stats!.mean / plain.expected - 1)).toBeLessThan(0.02)
-    const jit = sampleRuns(r, { runs: 25, seed: 1, jitter: 6 })
+    const jit = sampleRuns(r, gd, { runs: 25, seed: 1, jitter: 6 })
     expect(jit.stats!.mean).toBeLessThan(plain.stats!.mean)
-    const one = simulate(r, { sample: { seed: 5, jitter: 6 } })
+    const one = runPrepared(preparedScenario(r, gd, { sample: { seed: 5, jitter: 6 } }))
     expect(eventsOfLog(one.log, 'wait').some(w => w.code === 'input')).toBe(true)
   })
 })
@@ -99,8 +100,8 @@ describe('手速档（假设 hand-speed）', () => {
 dataDescribe('手速档：M0 视频轴 EQ 版', () => {
   test('高手 > 熟练 > 普通，都低于期望值；同一种子结果相同', async () => {
     const data = await loadGameData()
-    const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
-    const mean = (h: keyof typeof HAND_PROFILES) => sampleRuns(r, { runs: 8, seed: 3, hand: HAND_PROFILES[h] })
+    const r = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
+    const mean = (h: keyof typeof HAND_PROFILES) => sampleRuns(r, data, { runs: 8, seed: 3, hand: HAND_PROFILES[h] })
     const [a, b, c] = [mean('高手'), mean('熟练'), mean('普通')]
     expect(a.stats!.mean).toBeLessThan(a.expected)
     expect(a.stats!.mean).toBeGreaterThan(b.stats!.mean)

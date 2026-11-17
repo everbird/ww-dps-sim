@@ -1,5 +1,7 @@
 // tests/m0-team.test.ts —— M0 三人的角色钩子（TD-08 §5、§6；结论见 m0-confirm §6）
 // 依赖 data/generated（缺数据时跳过）。
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,8 +10,8 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { composeStat } from '../src/engine/formula'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { actionGains, gainSteps, metaOf, resourceSteps, resourceTracks } from '../src/engine/trace'
+
+import { actionGains, gainSteps, metaOf, resourceSteps, resourceTracks } from '../src/analysis/trace'
 import { dataDescribe } from './helpers/kernel-harness'
 import { M0, m0Run } from './helpers/m0'
 import { eventsOfLog } from './helpers/synth'
@@ -59,7 +61,7 @@ dataDescribe('M0 三人的钩子', () => {
   test('T08-散华-4 资源出处（时间轴的检查器）：谁引发的算谁——E 只有行进序曲 16（R5）+ 起手即得 15，重击居合引爆的冰都算重击居合；没被引爆、5 链到时自爆的冰算 E', () => {
     const gainsOf = (rotation: string[]) => {
       const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
-      const out = simulate(r, { diag: { eventMeta: true } })        // 出处按记录下来的事件来源（DD-05 §3.4）
+      const out = runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } })        // 出处按记录下来的事件来源（DD-05 §3.4）
       const gains = actionGains(gainSteps(out.log, r, metaOf(out)))
       return (action: string, res: string) => gains.find(g => g.char === '散华' && g.action === action)!.items
         .filter(it => it.resource === res).map(it => [it.how, it.what, it.deltas['散华'], it.of ?? null])
@@ -79,7 +81,7 @@ dataDescribe('M0 三人的钩子', () => {
   test('T08-散华-5 透视（核心资源槽 1，基础页叫"指针"）：E 命中 +1，每层 5 秒各自到时；大招 +2 封顶 2 层、刷新先得的那层；重击爆裂清空、计时撤掉', () => {
     const core1 = (rotation: string[]) => {
       const r = resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation }), gd)
-      const out = simulate(r)
+      const out = runPrepared(fixturePreparedRun(r))
       const t = resourceTracks(resourceSteps(out.log), r).find(x => x.char === '散华')!.tracks.find(x => x.key === 'core1')!
       const timers = out.log.flatMap(e => ((e.type === 'buffApply' || e.type === 'buffExpire') && e.buff.startsWith('散华.透视')
         ? [[e.f, e.type === 'buffApply' ? '+' : `-${e.reason}`, e.buff]] : []))
@@ -260,7 +262,7 @@ dataDescribe('M0 三人的钩子', () => {
         // 不补协奏不够、一日花放不出来，这里加回去
         for (const k of ['opening', 'rotation'] as const) raw[k] = raw[k].map((l: string) => l.replace('椿 大招 E3 ', '椿 大招 A1~ A2~ E3 '))
       }
-      const res = simulate(resolveScenario(ScenarioSchema.parse(raw), gd))
+      const res = runPrepared(preparedScenario(ScenarioSchema.parse(raw), gd))
       const warns = eventsOfLog(res.log, 'warning').filter(w => w.code === 'introMissed')
         .map(w => [w.cmd!.loop, w.cmd!.line, /协奏 ([\d.]+)/.exec(w.message)![1]])
       return res.error ? [...warns, [res.error.loop, res.error.line, res.error.code]] : warns

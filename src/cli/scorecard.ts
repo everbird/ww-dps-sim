@@ -1,9 +1,9 @@
-// src/cli/scorecard.ts —— pnpm scorecard <场景.yaml …> [--goal …] [--repeat N] [--md 输出.md]：轴卡片（TD-10 §6.3，src/engine/scorecard.ts）。
+// src/cli/scorecard.ts —— pnpm scorecard <场景.yaml …> [--goal …] [--repeat N] [--md 输出.md]：轴卡片（TD-10 §6.3，src/analysis/scorecard.ts）。
 // 几条轴放一起，按四个维度各列一张表；不合成一个分数，标出帕累托前沿（零帧与"熟练"都比不过别人的不标）
 import { writeFileSync } from 'node:fs'
 import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
-import { scorecards, type Scorecard } from '../engine/scorecard'
+import { scorecards, type Scorecard } from '../analysis/scorecard'
 import { argsOf, fmt, loadScenario, OVERRIDE_FLAGS, OVERRIDE_USAGE, withOverrides } from './format'
 
 const pct = (x: number | null) => (x === null ? '—' : `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(1)}%`)

@@ -273,6 +273,19 @@ export class DiagSink {
 
   constructor(opts: DiagOptions) { this.opts = opts }
 
+  /** DD-10 §3.1：边界只能保存空作用域栈；保留尚未 finish 的收集器内部表。 */
+  checkpoint() {
+    if (this.stack.length) throw new Error('snapshot: diagnostic scope stack is not empty')
+    return structuredClone({ nextScope: this.nextScope, filled: this.filled, tails: this.tails, trace: this.trace,
+      entries: this.entries, verdicts: this.verdicts, triggers: this.triggers, hits: this.hits, margins: this.margins,
+      roots: this.roots, continuation: this.continuation, post: this.post })
+  }
+
+  restore(data: ReturnType<DiagSink['checkpoint']>): void {
+    Object.assign(this, structuredClone(data))
+    this.done = null
+  }
+
   /** 打开一个作用域，返回作用域号（只用来配对 close）。parentSeq：这个作用域回填的事件的直接父事件（onSwitch 里写完 switch 之后的那段，DF-06） */
   open(origin: OriginContext, logLength: number, parentSeq?: number): number {
     const id = this.nextScope++
@@ -689,6 +702,9 @@ export class RuleCounter implements RuleRecorder {
       this.sink.ruleNoted(point, RULE_POINTS[i]!.propositionId, value, decisive, s.frame, s.battleFrames, s.log.length - 1, this.at.phase)
     }
   }
+
+  checkpoint() { return { reads: [...this.reads], decisive: [...this.decisive], first: [...this.first] } }
+  restore(data: ReturnType<RuleCounter['checkpoint']>): void { Object.assign(this, structuredClone(data)) }
 
   /** 按命题汇总（命题按判定点表里第一次出现的顺序）；coverage 就是判定点表 */
   report(): RuleUsageReport {

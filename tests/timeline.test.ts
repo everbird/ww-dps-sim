@@ -1,10 +1,12 @@
 // tests/timeline.test.ts —— 时间轴网页的数据与嵌入（src/report/timeline.ts；网页本身是 web/timeline.html，不在这里测）；
 // 调试表与视频时间点（TD-11 §6 P3）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate as run } from '../src/engine/simulate'
+
 import type { ResolvedScenario } from '../src/engine/types'
 import { renderDesign, renderTimeline, TIMELINE_VIEWS, timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
@@ -17,11 +19,10 @@ const sc = ScenarioSchema.parse({
   rotation: ['甲 X X   # 注释里写 </script><b>', 'wait 10'],
 })
 /** 时间轴模型的出处按记录下来的事件来源（DD-05 §3.4）：带 eventMeta 跑 */
-const simulate = (r: ResolvedScenario) => run(r, { diag: { eventMeta: true } })
 const data = synthData([甲, idle('乙'), idle('丙')])
 data.characters['甲']!.tunabilityRate = 1                          // 人造角色缺省偏谐效率 0
 const r = resolveScenario(sc, data)
-const res = simulate(r)
+const res = runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } })
 const template = readFileSync(new URL('../web/timeline.html', import.meta.url), 'utf8')
 
 describe('时间轴网页', () => {
@@ -55,7 +56,7 @@ describe('时间轴网页', () => {
   test('调试表：每轮一份分段、逐条、资源逐步；视频时间点带仿真与按视频推算的世界帧', () => {
     const sc2 = ScenarioSchema.parse({ ...sc, rotation: ['甲 X', 'wait 30', '甲 X'], options: { repeat: 2 }, video: { loop: 1, marks: { 1: '0:10', 3: 11, 7: 12 } } })
     const r2 = resolveScenario(sc2, data)
-    const m = timelineModel('scenarios/demo.yaml', sc2, r2, simulate(r2))
+    const m = timelineModel('scenarios/demo.yaml', sc2, r2, runPrepared(fixturePreparedRun(r2), { diag: { eventMeta: true } }))
     expect(m.trace.map(t => [t.loop, t.commands.map(c => c.label), t.ledgers.map(l => l.name)])).toEqual([
       [1, ['甲 X', '甲 X'], ['协奏', '能量']], [2, ['甲 X', '甲 X'], ['协奏', '能量']],
     ])
@@ -70,7 +71,7 @@ describe('时间轴网页', () => {
   test('录像里看到的动作（video.events，视图 F 对照用）：时刻按"分:秒"或秒数，动作换成动作 ID，换不了的为 null', () => {
     const sc3 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['10.5 甲 X', '0:11 甲 Y', '12 丁 X'] } })
     const r3 = resolveScenario(sc3, data)
-    expect(timelineModel('scenarios/demo.yaml', sc3, r3, simulate(r3)).video!.events).toEqual([
+    expect(timelineModel('scenarios/demo.yaml', sc3, r3, runPrepared(fixturePreparedRun(r3), { diag: { eventMeta: true } })).video!.events).toEqual([
       { t: 10.5, char: '甲', label: 'X', action: 'X' }, { t: 11, char: '甲', label: 'Y', action: null }, { t: 12, char: '丁', label: 'X', action: null },
     ])
     expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['甲 X'] } })).toThrow(/视频秒/)
@@ -78,16 +79,16 @@ describe('时间轴网页', () => {
   test('录像里敌人的血条（video.hp，视图 F 对照累计伤害）："<视频秒> <剩余比例>"；模型带上敌人生命', () => {
     const sc4 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62'] } })
     const r4 = resolveScenario(sc4, data)
-    const m = timelineModel('scenarios/demo.yaml', sc4, r4, simulate(r4))
+    const m = timelineModel('scenarios/demo.yaml', sc4, r4, runPrepared(fixturePreparedRun(r4), { diag: { eventMeta: true } }))
     const seg = { seg: 10.5, left0: 1, hp: r4.enemy.hp, enemy: r4.enemy.id }
     expect(m.video!.hp).toEqual([{ t: 10.5, left: 1, ...seg }, { t: 12, left: 0.62, ...seg }])
     // 末尾写了敌人预设的一条起是另一只敌人的血条（2026-10-27 中 4）：另起一段，按这只的生命折比例
     const next = { ...r4.enemy, id: '测试/下一只', hp: 2e6 }
     const sc5 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62', '13 1 测试/下一只', '14 0.9'] } })
     const r5 = resolveScenario(sc5, { ...data, enemies: { ...data.enemies, [next.id]: next } })
-    expect(timelineModel('scenarios/demo.yaml', sc5, r5, simulate(r5)).video!.hp.map(p => [p.t, p.seg, p.hp, p.enemy]))
+    expect(timelineModel('scenarios/demo.yaml', sc5, r5, runPrepared(fixturePreparedRun(r5), { diag: { eventMeta: true } })).video!.hp.map(p => [p.t, p.seg, p.hp, p.enemy]))
       .toEqual([[10.5, 10.5, r4.enemy.hp, r4.enemy.id], [12, 10.5, r4.enemy.hp, r4.enemy.id], [13, 13, 2e6, '测试/下一只'], [14, 13, 2e6, '测试/下一只']])
-    expect(() => timelineModel('scenarios/demo.yaml', sc5, r4, simulate(r4))).toThrow('敌人预设"测试/下一只"不存在')
+    expect(() => timelineModel('scenarios/demo.yaml', sc5, r4, runPrepared(fixturePreparedRun(r4), { diag: { eventMeta: true } }))).toThrow('敌人预设"测试/下一只"不存在')
     expect(m.enemy.hp).toBe(r4.enemy.hp)
     expect(m.purpose).toBe('rotation')                                   // 缺省是轴；录像剖析写 purpose: replay
     expect(ScenarioSchema.parse({ ...sc, purpose: 'replay' }).purpose).toBe('replay')
@@ -104,7 +105,7 @@ describe('时间轴网页', () => {
     }
     const sc3 = ScenarioSchema.parse({ team: ['丁', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['丁 Y Y'] })
     const r3 = resolveScenario(sc3, synthData([丁, idle('乙'), idle('丙')]))
-    const res3 = simulate(r3)
+    const res3 = runPrepared(fixturePreparedRun(r3), { diag: { eventMeta: true } })
     const own = timelineModel('scenarios/demo.yaml', sc3, r3, res3).resources.find(x => x.char === '丁')!
     expect(own.tracks.map(t => [t.key, t.name, t.cap])).toEqual([['energy', '能量', 100], ['concerto', '协奏', 100], ['core1', '蓄', 10]])   // 没变过的槽不列
     expect(own.tracks.find(t => t.key === 'core1')!.steps).toEqual([[0, 0], [10, 3], [40, 6]])
@@ -121,7 +122,7 @@ describe('时间轴网页', () => {
       ],
     }
     const sc4 = ScenarioSchema.parse({ team: ['戊', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['戊 Y T Y', '戊 C C', 'wait 300'] })
-    const res4 = simulate(resolveScenario(sc4, synthData([戊, idle('乙'), idle('丙')])))
+    const res4 = runPrepared(preparedScenario(sc4, synthData([戊, idle('乙'), idle('丙')])), { diag: { eventMeta: true } })
     // T 的 50 帧全局时停：Y 的"第 100 战斗帧起能用"不变，世界第 150 帧第二次放出
     expect(res4.cooldowns.filter(x => x.key === 'Y').map(x => [x.f, x.ready])).toEqual([[0, 100], [149, null], [150, 200], [249, null]])
     expect(res4.cooldowns.filter(x => x.key === 'echo').map(x => [x.f, x.ready, x.charges])).toEqual([[180, 250, 1], [190, 250, 0], [299, 370, 1], [419, null, 2]])

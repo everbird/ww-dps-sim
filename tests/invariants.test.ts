@@ -1,5 +1,7 @@
 // tests/invariants.test.ts —— 跑完后的日志自洽检查 checkLog（docs/engine-quality-plan.md P1）：
 // 拿一个真实场景的日志，故意改坏一处，看检查能不能指出来。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -7,7 +9,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { checkLog } from '../src/engine/invariants'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { ResolvedScenario, SimEvent, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -21,7 +23,7 @@ dataDescribe('checkLog：改坏一处要能查出来', () => {
   beforeAll(async () => {
     const sc = ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-video-eq.yaml', import.meta.url), 'utf8')))
     r = resolveScenario(sc, await loadGameData())
-    base = simulate(r)
+    base = runPrepared(fixturePreparedRun(r))
   })
 
   test('原样：没有问题', () => { expect(checkLog(r, base)).toEqual([]) })

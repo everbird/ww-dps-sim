@@ -3,7 +3,7 @@
 // 退出码：0 成功；1 场景有错；2 用法错误。
 import type { Slot } from '../data/common'
 import { loadGameData } from '../data/load'
-import { marginal, type Tier } from '../engine/analysis'
+import { marginal, type Tier } from '../analysis/analysis'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart, pct2, signed, statValue } from './format'
 

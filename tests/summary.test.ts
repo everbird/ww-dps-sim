@@ -1,4 +1,6 @@
 // tests/summary.test.ts —— 汇总（总设计 §3.5）：分轮与稳态（TD-09 §3.7 / §3.9 的边界、TD-10 §2 的稳态口径）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthRun } from './helpers/synth'
@@ -46,7 +48,6 @@ describe('分轮与稳态', () => {
   })
 })
 
-
 // 稳态可能受相位影响（2026-10-21）：心队每轮约 36 秒，谐度破坏的周期与轮对不上，4 轮时稳态（第 2–3 轮）忽高忽低
 dataDescribe('稳态的相位提示 steadyPhase', () => {
   // 2026-10-22 雷主大招补上全局时停后各轮变短，心队 5 阶原轴 4 轮时各轮次数相同了，改用 1 阶（xin-team.yaml）
@@ -56,14 +57,13 @@ dataDescribe('稳态的相位提示 steadyPhase', () => {
     const { loadGameData } = await import('../src/data/load')
     const { ScenarioSchema } = await import('../src/data/scenario.schema')
     const { resolveScenario } = await import('../src/engine/resolve')
-    const { simulate } = await import('../src/engine/simulate')
     const data = await loadGameData()
     // 按 2026-10-28 之前的自身顿帧跑（hitstop-in-global-stop 关掉）：现在的做法下心队 4 轮的谐度破坏次数一样，测不到提示
     const run = (file: string, repeat?: number) => {
       const raw = parse(readFileSync(file, 'utf8'))
       raw.options.rules = { ...raw.options.rules, hitstopInGlobalStop: true }
       if (repeat) raw.options.repeat = repeat
-      return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary.warnings.filter(w => w.code === 'steadyPhase')
+      return runPrepared(preparedScenario(ScenarioSchema.parse(raw), data)).summary.warnings.filter(w => w.code === 'steadyPhase')
     }
     const four = run('scenarios/xin-team.yaml', 4)
     expect(four).toHaveLength(1)
@@ -82,12 +82,11 @@ dataDescribe('稳态的误差条 steady.spread、漂移提示 steadyDrift 与自
     const { loadGameData } = await import('../src/data/load')
     const { ScenarioSchema } = await import('../src/data/scenario.schema')
     const { resolveScenario } = await import('../src/engine/resolve')
-    const { simulate } = await import('../src/engine/simulate')
     const data = await loadGameData()
     const run = (f: string, rules?: Record<string, unknown>) => {
       const raw = parse(readFileSync(`scenarios/${f}`, 'utf8'))
       if (rules) raw.options.rules = { ...raw.options.rules, ...rules }
-      return simulate(resolveScenario(ScenarioSchema.parse(raw), data)).summary
+      return runPrepared(preparedScenario(ScenarioSchema.parse(raw), data)).summary
     }
     // C2 按 2026-10-25 之前的声骸优先级跑（echo-input-priority 关掉）：现在的做法下 C2 一轮短了、能量够，不再漂移，测不到跳过；
     // 两条都按 2026-10-28 之前的自身顿帧跑（hitstop-in-global-stop 关掉）：现在的做法下原轴的误差条约 1.8%

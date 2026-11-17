@@ -1,4 +1,4 @@
-// src/engine/simulate.ts —— 运行体 execute(ResolvedScenario) 与兼容外壳 simulate（总设计 §3.4、§6；DD-01 §3.6、§3.7）
+// src/engine/simulate.ts —— 内部运行体 execute(ResolvedScenario)；兼容外壳已删除（总设计 §3.4、§6；DD-10 §5）
 // 把内核（TD-04）、调度器（TD-09）、伤害公式（TD-03）、切人（TD-05）、资源与敌人量表（TD-06）、buff 与触发（TD-07）、角色钩子（TD-08）接在一起：
 // 每个 tick 由内核推进；开始动作、切人、延奏、每次结算之后都把新事件交给事件队列处理（TD-07 §5）。
 // 新的运行入口是 run.ts 的 prepareRun + runPrepared：它调这里的 execute，再算完成状态与汇总。
@@ -16,10 +16,9 @@ import {
   applyEffect, applyShift, canTuneBreak, forceDisharmony, freshEnemy, swapEnemy, effectDamage, effectTicks, enemyTimers, hitGauges, onTuneBreakStart, takeBurst, tuneBreakActionsOf,
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, contributes, hitView, matchesFilter, tuneBase } from './formula'
-import { checkHit, checkTick } from './invariants'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
 import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains } from './resources'
-import { prepareResolved, runWithFailure, type BoundaryObserver } from './run'
+import type { BoundaryObserver } from './run-types'
 import type { InterventionRecord, StatePrefix, TickPhase } from './run-types'
 import type { HookRulePointId } from './rule-points'
 import { createScheduler, newQueue, runLoop } from './scheduler'
@@ -28,18 +27,6 @@ import { drain } from './triggers'
 import type {
   CharRuntime, CommandRef, CooldownStep, EnemyRuntime, ForteStep, HitDraft, HitEvent, HookContext, JudgmentRuntime, ResolvedScenario, SimResult, SimState,
 } from './types'
-
-/** 兼容外壳（DD-01 §3.7）：还拿着 ResolvedScenario 的调用方用。行为同改之前：调度错误（等不来、超时、帧数上限、连锁过深、
- *  不变量不成立）记在 error 里；别的异常（钩子里抛错）原样抛出——runPrepared 本身不抛，这里重新抛是为了不让现有的
- *  try { simulate(r) } catch 悄悄换了语义。
- *  @deprecated 新代码用 prepareRun + runPrepared，看 completion.status */
-export function simulate(r: ResolvedScenario, opts: SimOptions = {}): SimResult {
-  const { res, uncaught } = runWithFailure(prepareResolved(r, opts.sample ? { sample: opts.sample } : {}), {
-    ...(opts.onHit ? { onHit: opts.onHit } : {}), ...(opts.diag ? { diag: opts.diag } : {}),
-  })
-  if (uncaught) throw uncaught.error
-  return res
-}
 
 /** 运行体跑完（或停下）之后留下的东西：状态、运行环境、展示轨道，以及停在哪里的簿记（DD-01 §3.5、§3.6）。完成状态由 run.ts 的 buildCompletion 算 */
 export interface Execution {
@@ -57,11 +44,35 @@ export interface Execution {
   stoppedAt: Frame | null
   /** 检查点停在第几次真实求值之后（DD-07 §4.4）；没停在求值检查点时为 null */
   stoppedAtEvaluation: number | null
+  checkpoint: () => ExecutionMemory
   ruleCounter: RuleCounter                  // Kernel.rule 的实现：运行结束时汇总成 ruleUsage（DD-05 §4.2）
+}
+
+/** DD-10 §3.1：不在 SimState 中的可变运行簿记。定义、钩子和回调重建。 */
+export interface ExecutionMemory {
+  lastBattle: number
+  phase: TickPhase
+  shown: (string | undefined)[]
+  cdShown: Map<string, { ready: number | null; charges?: number }>[]
+  forte: ForteStep[]
+  cooldowns: CooldownStep[]
+  warned: Set<string>
+  cursor: number
+  spawned: Sim['bus']['spawned']
+  interventions: Sim['interventions']
+  unmetIntents: Sim['unmetIntents']
+  hints: Sim['hints']
+  continuationFrom: Sim['continuationFrom']
+  rules: ReturnType<RuleCounter['checkpoint']>
+  diag: ReturnType<DiagSink['checkpoint']> | null
+  progress: { evalCount: number; headKey: string }
 }
 
 /** 运行体的观察项（DD-05 §6.1；DD-07 §4.4）：都不进运行身份，也不改执行 */
 export interface Inspect {
+  readonly resume?: { state: SimState; memory: ExecutionMemory }
+  readonly checkpoint?: (x: Execution) => void
+  readonly checks?: Pick<Kernel['hooks'], 'checkTick' | 'checkHit'>
   readonly sink?: (s: Readonly<SimState>) => DiagSink
   readonly observer?: BoundaryObserver
   readonly afterEvaluate?: (s: SimState, c: Command, ref: CommandRef, verdict: NonNullable<CommandVerdict['verdict']>, evaluationIndex: number) => void | 'stop'
@@ -75,14 +86,17 @@ class ObserverThrow extends Error {
 
 /** 运行体：建初始状态与运行环境，初始化 → 逐 tick 循环 → 收尾的 drain。引擎与钩子里的异常都接住、记在 failure 里，不往外抛 */
 export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Inspect = {}): Execution {
-  const s = initialState(r)
-  if (opts.sample) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
+  const saved = inspect.resume
+  const s = saved?.state ?? initialState(r)
+  if (opts.sample && !saved) s.rng = seedRng(opts.sample.seed)              // 抽样模式（总设计 T4）
   const jitter = opts.sample?.jitter ?? 0
   const hand = opts.sample?.hand
-  let lastBattle = 0                                              // 不变量：战斗时钟不倒退
-  const at: { phase: TickPhase } = { phase: 'init' }
+  let lastBattle = saved?.memory.lastBattle ?? 0                                              // 不变量：战斗时钟不倒退
+  const at: { phase: TickPhase } = { phase: saved?.memory.phase ?? 'init' }
   const diag = inspect.sink?.(s) ?? null                          // 诊断收集器（DD-05 §3.1）：全关时不建
   const ruleCounter = new RuleCounter(s, at, diag)                // 规则使用（DD-05 §4.2）：总是有
+  if (saved?.memory.diag) diag?.restore(saved.memory.diag)
+  if (saved) ruleCounter.restore(saved.memory.rules)
   const k: Kernel = {
     rules: r.rules,
     at,
@@ -90,6 +104,7 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     rule: ruleCounter,
     settleQueue: null,
     hooks: {
+      ...inspect.checks,
       settle: (st, j, n) => settle(sim, st, j, n),
       // 开始动作时的顺序（TD-06 §7）：（谐度破坏消耗失谐）→ 扣大招能量 → actionStart 的触发与钩子 → 施放资源
       actionStarted: (st, slot, a) => {
@@ -109,7 +124,7 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
         sim.bus.spawned.clear()
         captureForte(st)
         captureCooldowns(st, rates.battle)
-        checkTick(sim, st, lastBattle)                            // 总设计 §11 第 4 条：每个 tick 结束查一次
+        k.hooks.checkTick?.(sim.r, st, lastBattle)                            // 总设计 §11 第 4 条：每个 tick 结束查一次
         lastBattle = st.battleFrames
       },
     },
@@ -120,12 +135,18 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     interventions: [], unmetIntents: [], hints: [],
     ...(opts.onHit ? { onHit: rec => { try { opts.onHit!(rec) } catch (e) { throw new ObserverThrow(e) } } } : {}),
   }
+  if (saved) {
+    const m = saved.memory
+    sim.warned = m.warned; sim.bus.cursor = m.cursor; sim.bus.spawned = m.spawned
+    sim.interventions = m.interventions; sim.unmetIntents = m.unmetIntents; sim.hints = m.hints
+    if (m.continuationFrom) sim.continuationFrom = m.continuationFrom
+  }
   sim.ctxs = r.team.map(m => hookContext(sim, s, m.slot))
   // 按面板属性换算的 buff 在装配时按静态面板定了数值（BuffDef.scale）
-  for (const b of r.buffs) if (b.def.scale) assume(s, 'stat-scaling-static', b.def.id)
+  for (const b of r.buffs) if (!saved && b.def.scale) assume(s, 'stat-scaling-static', b.def.id)
   // 共鸣回路的状态说明（钩子 forte，只读）：每个 tick 结束取一次，变了才记；只供时间轴的检查器显示
-  const forte: ForteStep[] = []
-  const shown: (string | undefined)[] = r.team.map(() => undefined)
+  const forte: ForteStep[] = saved?.memory.forte ?? []
+  const shown: (string | undefined)[] = saved?.memory.shown ?? r.team.map(() => undefined)
   const captureForte = (st: SimState) => {
     for (const m of r.team) {
       const text = sim.hooks[m.slot]?.forte?.(sim.ctxs[m.slot]!)
@@ -136,9 +157,9 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
   }
   // 技能冷却（时间轴视图 E 显示）：P6 扣过冷却之后取，"这一 tick 走完后的战斗帧 + 剩余"在倒计时期间不变（全局时停里也不变），
   // 就是从哪个战斗帧起能用；变了（放了技能、充能回复一次）才记
-  const cooldowns: CooldownStep[] = []
+  const cooldowns: CooldownStep[] = saved?.memory.cooldowns ?? []
   const maxCharges = r.team.map(m => new Map(Object.values(m.actions).flatMap(a => (a.cooldown && (a.charges ?? 1) > 1 ? [[cooldownKey(a), a.charges!] as const] : []))))
-  const cdShown = r.team.map(() => new Map<string, { ready: number | null; charges?: number }>())
+  const cdShown = saved?.memory.cdShown ?? r.team.map(() => new Map<string, { ready: number | null; charges?: number }>())
   const captureCooldowns = (st: SimState, rate: number) => {
     for (const m of r.team) {
       const c = st.chars[m.slot]
@@ -160,7 +181,9 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     const c = at && st.queue.loop > 0 ? st.queue.commands[st.queue.next] : undefined
     return c ? at![`${c.line}.${c.item}`] ?? 0 : 0
   }
+  const progress = saved?.memory.progress ?? { evalCount: 0, headKey: '' }
   const schedule = createScheduler(k, r.team.map(m => m.actions), {
+    progress,
     maxWait: r.options.maxWait,
     strict: r.options.strict ?? false,
     introAvailable: (_st, to) => selectIntro(sim, to) !== undefined,
@@ -219,7 +242,16 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       },
     } : {}),
   })
-  const x: Execution = { s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null, stoppedAt: null, stoppedAtEvaluation: null, ruleCounter }
+  const checkpoint = (): ExecutionMemory => {
+    if (!x.initCompleted || (at.phase !== 'init' && at.phase !== 'afterP7')) throw new Error('snapshot: not a tick boundary')
+    const b = sim.bus
+    if (b.chain.size || b.current || b.inFlight !== null || b.draining || k.settleQueue !== null || b.cursor !== s.log.length || (s.frame >= 1 && b.spawned.size))
+      throw new Error('snapshot: tick boundary bookkeeping is not empty')
+    return structuredClone({ lastBattle, phase: at.phase, shown, cdShown, forte, cooldowns, warned: sim.warned,
+      cursor: b.cursor, spawned: b.spawned, interventions: sim.interventions, unmetIntents: sim.unmetIntents,
+      hints: sim.hints, continuationFrom: sim.continuationFrom, rules: ruleCounter.checkpoint(), diag: diag?.checkpoint() ?? null, progress })
+  }
+  const x: Execution = { checkpoint, s, sim, k, forte, cooldowns, initCompleted: false, loopExit: null, postDrainCompleted: false, failure: null, stoppedAt: null, stoppedAtEvaluation: null, ruleCounter }
   // 边界观察点（DD-05 §6.1）：S[0] 在初始化做完之后、第 0 帧 P1 之前；S[f + 1] 在 tick 走完 P7 之后、帧数上限检查之前（runLoop 的 afterTick）。
   // 回调只读收到的状态；它自己抛的异常原样抛给调用方（同 onHit）
   const observer = inspect.observer
@@ -227,9 +259,10 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
     if (!observer.frames.has(st.frame)) return
     const prefix: StatePrefix = { eventEndExclusive: st.log.length, handledEndExclusive: sim.bus.inFlight ?? sim.bus.cursor, interventionEndExclusive: sim.interventions.length }
     // ledgerLength：这个边界的账本上界（DD-06 §3.3），与 prefix 同一刻取；没开账本时 null
-    try { return observer.onBoundary(st.frame, st, prefix, k.diag?.ledgerLength() ?? null) } catch (e) { throw new ObserverThrow(e) }
+    try { inspect.checkpoint?.(x); return observer.onBoundary(st.frame, st, prefix, k.diag?.ledgerLength() ?? null) } catch (e) { throw new ObserverThrow(e) }
   })
   try {
+    if (!saved) {
     openingLedger(sim, s)                                         // 资源账本的期初（DD-06 §3.2 ③）：挂常驻 buff 之前；诊断关着时什么都不做
     // 初始化的两个来源（DD-05 §3.2）：挂常驻 buff；每个角色的 onResolve
     const ab = k.diag?.open({ kind: 'init', sourceId: 'alwaysBuffs' }, s.log.length)
@@ -246,9 +279,10 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     }
     drain(sim, s)
+    }
     x.initCompleted = true
     if (boundary?.(s) === 'stop') throw new ProbeStop(s.frame)
-    const why = runLoop(s, k, schedule, r.options.maxFrames, boundary)
+    const why = runLoop(s, k, schedule, r.options.maxFrames, boundary, !!saved && s.frame >= 1)
     x.loopExit = { why, worldFrame: s.frame, phase: k.at.phase }  // idle 停在 P2（这个 tick 不计入）；帧数上限停在 P7 之后
     k.diag?.markPost()                                            // 之后写的事件记 post（k.at.phase 在空闲退出时停在 P2）
     drain(sim, s)                                                 // 最后一个 tick 在 P2 就结束时记下的事件
@@ -402,7 +436,7 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
       })
       sim.k.diag.hitMargin(s.log.length, { dealer: m.def.name, hitBattleFrame: s.battleFrames, matchingDefs, present })
     }
-    checkHit(s, dmg, m.def.name, d.name)
+    sim.k.hooks.checkHit?.(s, dmg, m.def.name, d.name)
     used = active.filter(b => b.def.zone !== undefined && matchesFilter(b.def.filter, view))   // 标记型不列
       .map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id))
   }

@@ -4,19 +4,13 @@
 // 分轮与稳态（options.repeat ≥ 2，TD-09 §3.7）也从日志算。
 import type { CharName } from '../data/common'
 import { ASSUMPTIONS } from './assumptions'
-import { INTENDED } from './scheduler'
+import { INTENDED } from './wait-codes'
 import type { BuffUptimeRow, HitEvent, ResolvedScenario, SimEvent, SimState, Summary } from './types'
-import { round, roundTo } from './num'
+import { round, roundTo, floor } from './num'
 
-/** 一段命中计入多少伤害：期望模式是期望值；抽样模式按这一段抽到的暴击 / 非暴击（总设计 T4）。汇总、对比都按它算 */
-export const hitValue = (h: HitEvent): number => {
-  const d = h.dmg
-  if (!d) return 0
-  return d.isCrit === undefined ? d.expected : d.isCrit ? d.crit : d.nonCrit
-}
-
-/** 事件的战斗帧（t 是战斗秒数） */
-export const battleFrameOf = (e: SimEvent): number => round(e.t * 60)
+// DD-10 §4④：执行组也可复用这些事件纯函数。
+import { hitValue, battleFrameOf } from './event-util'
+export { hitValue, battleFrameOf } from './event-util'
 
 /** 统计窗口的终点（战斗帧）：最后一条指令——出招看它开始的动作何时结束或被取消，切人看切人那一刻，wait 看等完那一刻 */
 export function windowEnd(log: readonly SimEvent[], s: SimState, endAt?: number): number {
@@ -104,7 +98,7 @@ function killOf(log: readonly SimEvent[], hp: number, rate: number, end: number)
   return { hp, frame: null, eventSeq: null, overflow: null, estimate: rate > 0 ? round(end + (hp - acc) / rate * 60) : null }
 }
 
-const wan = (x: number) => (x >= 1e4 ? `${roundTo(x / 1e4, 10)} 万` : String(Math.round(x)))
+const wan = (x: number) => (x >= 1e4 ? `${roundTo(x / 1e4, 10)} 万` : String(round(x)))
 
 /** 场景的目标（ResolvedScenario.goal）→ Summary.goal 与没打到时的提示；稳态时 null */
 function goalSummary(r: ResolvedScenario, log: readonly SimEvent[], rate: number, end: number):
@@ -125,7 +119,7 @@ function goalSummary(r: ResolvedScenario, log: readonly SimEvent[], rate: number
       },
       warning: k.frame !== null ? null : {
         code: 'goalNotReached',
-        message: `${label}：跑完 ${(end / 60).toFixed(1)} 战斗秒还没打死，按每秒 ${Math.round(rate)} 估在第 ${(hi / 60).toFixed(1)} 秒；多跑几轮（options.repeat）`,
+        message: `${label}：跑完 ${(end / 60).toFixed(1)} 战斗秒还没打死，按每秒 ${round(rate)} 估在第 ${(hi / 60).toFixed(1)} 秒；多跑几轮（options.repeat）`,
       },
     }
   }
@@ -168,14 +162,14 @@ function steadyDrift(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings
   const st = lp.steady
   if (!st || !lp.perLoop || st.to - st.from + 1 < 4) return []
   const part = lp.perLoop.filter(p => p.loop >= st.from && p.loop <= st.to)
-  const half = Math.floor(part.length / 2)
+  const half = floor(part.length / 2)
   const d = (ps: typeof part) => dpsOf(ps.reduce((x, p) => x + p.damage, 0), ps.reduce((x, p) => x + p.frames, 0))
   const a = d(part.slice(0, half)), b = d(part.slice(part.length - half))
   if (!(a > 0) || Math.abs(b / a - 1) < DRIFT_WARN) return []
   const secs = part.map(p => (p.frames / 60).toFixed(1)).join('、')
   return [{
     code: 'steadyDrift',
-    message: `稳态（第 ${st.from}–${st.to} 轮）前一半 DPS ${Math.round(a)}、后一半 ${Math.round(b)}，差 ${((b / a - 1) * 100).toFixed(1)}%（各轮 ${secs} 秒）：`
+    message: `稳态（第 ${st.from}–${st.to} 轮）前一半 DPS ${round(a)}、后一半 ${round(b)}，差 ${((b / a - 1) * 100).toFixed(1)}%（各轮 ${secs} 秒）：`
       + '轴可能还没进入稳定（资源在漂移，稳态偏向前几轮），或者各轮来回波动；多跑几轮看后面的轮，比较时看误差条',
   }]
 }
@@ -204,8 +198,8 @@ function steadySkip(lp: Pick<Summary, 'perLoop' | 'steady'>): Summary['warnings'
   const early = lp.perLoop.filter(p => p.loop >= 2 && p.loop < st.from)
   return [{
     code: 'steadySkip',
-    message: `稳态从第 ${st.from} 轮起：第 ${st.from === 3 ? '2' : `2–${st.from - 1}`} 轮还在漂移（DPS ${early.map(p => Math.round(p.dps)).join('、')}，`
-      + `之后各轮都在合并 DPS ${Math.round(st.dps)} 的 ±${DRIFT_WARN * 100}% 以内），多半是开局的资源还没用完`,
+    message: `稳态从第 ${st.from} 轮起：第 ${st.from === 3 ? '2' : `2–${st.from - 1}`} 轮还在漂移（DPS ${early.map(p => round(p.dps)).join('、')}，`
+      + `之后各轮都在合并 DPS ${round(st.dps)} 的 ±${DRIFT_WARN * 100}% 以内），多半是开局的资源还没用完`,
   }]
 }
 
@@ -278,7 +272,7 @@ function loops(log: readonly SimEvent[], r: ResolvedScenario, hits: readonly Hit
   const dps = dpsOf(dmg, frames)
   // 误差条（P3）：窗口挪一轮（去掉第一轮或最后一轮），以及前一半与后一半各算一次（还在漂移的轴两半差得多）；取离稳态最远的。
   // 只有一轮时 0。轮数太少、各轮赶上的谐度破坏次数不同（相位）时这里看不出来，另有 steadyPhase 提示
-  const half = Math.floor(part.length / 2)
+  const half = floor(part.length / 2)
   const alts = [
     ...(part.length >= 3 ? [sumOf(part.slice(1)), sumOf(part.slice(0, -1))] : []),
     ...(part.length >= 2 ? [sumOf(part.slice(0, half)), sumOf(part.slice(part.length - half))] : []),

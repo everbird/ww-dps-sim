@@ -15,6 +15,9 @@ export const SLOTS: readonly Slot[] = [0, 1, 2]
 
 /** 内核调出去的接口：P4 的结算、施放资源、延奏触发由其他模块实现 */
 export interface KernelHooks {
+  /** DD-10 §4③：运行入口注入检查，执行核心不依赖不变量模块。 */
+  checkTick?(r: import('./types').ResolvedScenario, s: SimState, lastBattle: number): void
+  checkHit?(s: SimState, dmg: import('./types').HitEvent['dmg'], char: string, judgment: string): void
   /** P4 一次结算（TD-03 伤害 → TD-06 资源 → TD-07 触发）。可在里面调用 spawnJudgment 生成连锁判定，同一 tick 内接着结算 */
   settle(s: SimState, j: JudgmentRuntime, tick: number): void
   /** 动作刚开始（actionStart 已记）：扣大招能量 → actionStart 的触发与钩子 → 施放资源（TD-06 §7） */

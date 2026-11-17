@@ -1,3 +1,4 @@
+import { floor } from './num'
 // src/engine/rng.ts —— 抽样模式的随机数（总设计 T4、§10.1 第 7 条）：引擎里随机数只从这里来，期望模式不用。
 // xoshiro128**（32 位整数运算），种子用 splitmix32 展开成 4 个字；状态是 4 个 u32 组成的数组，放在 SimState 里，
 // structuredClone 分支时随状态一起复制。全部是 32 位整数的乘、移位、异或，Rust 用 u32 的 wrapping_mul、rotate_left 照写就逐位相同
@@ -45,7 +46,7 @@ export function nextNormal(s: RngState): number {
 }
 
 /** [0, n] 上的均匀整数（操作抖动用） */
-export const nextInt = (s: RngState, n: number): number => Math.floor(nextFloat(s) * (n + 1))
+export const nextInt = (s: RngState, n: number): number => floor(nextFloat(s) * (n + 1))
 
 /** 多次抽样各次的种子：用总种子起一个流，依次取 n 个 u32 */
 export function runSeeds(seed: number, n: number): number[] {

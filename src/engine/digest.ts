@@ -1,3 +1,4 @@
+import { floor } from './num'
 // src/engine/digest.ts —— 规范化 JSON 与内容摘要（DD-01 §3.3；架构 §2.7、§9）
 // canonicalJson：同一份内容总得到同一段文本（键排序、Map / Set 排序、无穷写成 'inf'）；DD-07 的对外 JSON 复用这套规则。
 // sha256Hex：纯 TypeScript、同步。不用 node:crypto（引擎要在浏览器 Worker 里跑），不用 crypto.subtle（异步，会把 prepareRun 变成异步）。
@@ -88,7 +89,7 @@ function padded(text: string): Uint8Array {
   out[p] = 0x80
   const bits = n * 8                                  // 长度（位）写在最后 8 字节，大端；n < 2^50 时两个 32 位够用
   const view = new DataView(out.buffer)
-  view.setUint32(out.length - 8, Math.floor(bits / 0x100000000))
+  view.setUint32(out.length - 8, floor(bits / 0x100000000))
   view.setUint32(out.length - 4, bits >>> 0)
   return out
 }

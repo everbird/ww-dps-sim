@@ -1,5 +1,7 @@
 // tests/portable.test.ts —— 好移植（总设计 §10.1、§11 第 7 条）：装配结果去掉钩子表后是纯数据，JSON 往返再接上钩子，仿真结果逐条相同。
 // 这保证引擎的输入里没有藏着函数、Map、Set、Infinity、对象身份之类 JSON 带不过去的东西——换实现时 pnpm conformance 的样例才可信。
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,7 +10,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { portable, withHooks } from '../src/engine/portable'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { ResolvedScenario } from '../src/engine/types'
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -16,7 +18,7 @@ import { idle, synthData, type SynthChar } from './helpers/synth'
 /** JSON 往返后接上原来的钩子表 */
 const roundTrip = (r: ResolvedScenario): ResolvedScenario => withHooks(JSON.parse(JSON.stringify(portable(r))), r.data.hooks)
 const same = (r: ResolvedScenario) => {
-  const a = simulate(r), b = simulate(roundTrip(r))
+  const a = runPrepared(fixturePreparedRun(r)), b = runPrepared(fixturePreparedRun(roundTrip(r)))
   expect(b.log).toEqual(a.log)
   expect(b.summary).toEqual(a.summary)
   expect(b.error).toEqual(a.error)
@@ -51,7 +53,9 @@ describe('装配结果 JSON 往返（人造角色，不依赖生成数据）', (
     }
     const gd = synthData([甲, idle('乙'), idle('丙')])
     const sc = ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['甲 X'] })
-    expect(() => simulate(resolveScenario(sc, gd))).toThrow(/not extensible|没声明/)
+    const out = runPrepared(preparedScenario(sc, gd))
+    expect(out.completion.status).toBe('engineError')
+    expect(out.completion.engineError?.message).toMatch(/not extensible|没声明/)
   })
 })
 

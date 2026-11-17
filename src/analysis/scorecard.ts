@@ -1,4 +1,4 @@
-// src/engine/scorecard.ts —— 轴卡片（TD-10 §6.3）：一条轴在四个维度上各是多少，几条轴放一起比，不合成一个分数。
+// src/analysis/scorecard.ts —— 轴卡片（TD-10 §6.3）：一条轴在四个维度上各是多少，几条轴放一起比，不合成一个分数。
 //   ① 目标：按场景 goal 的比较口径（缺省稳态），另列打死 1 / 2 / 3 倍敌人生命要多少战斗秒
 //   ② 好不好打：每个决策点晚高手 / 熟练 / 普通的平均帧数（3 / 6 / 10，同 plan --hand）各掉多少；每分钟几个决策点、抢帧 !、等切出者跳起的空中切人
 //   ③ 养成门槛：各人共鸣效率最少要多少（insight ①），折成约几条副词条；"5 星 0 链 1 精"基线（5 星角色 0 链、5 星武器精炼 1，4 星不动）；
@@ -8,12 +8,13 @@
 import type { GameData } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
 import { basisOf } from './analysis'
-import { sameDamageScope, scopeShortLabel, usableBasis, type DamageScope } from './basis'
+import { sameDamageScope, scopeShortLabel, usableBasis, type DamageScope } from '../engine'
 import { HAND_PROFILES, type HandProfile } from './sample'
 import { insight, type EnergyNeed } from './insight'
-import { resolveScenario } from './resolve'
-import { simulate } from './simulate'
-import type { SimResult } from './types'
+import { resolveScenario } from '../engine'
+import { runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
+import type { SimResult } from '../engine'
 
 export interface Downgrade { char: string; what: string; pct: number | null; error: string | null }
 export interface Scorecard {
@@ -44,10 +45,11 @@ const pctOf = (x: number, base: number) => (base > 0 ? x / base - 1 : null)
 /** 一张卡（不含 pareto，组里算） */
 export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scorecard, 'pareto' | 'scopeDiffersFromTop'> {
   let runs = 0
-  const run = (s: Scenario): SimResult => { runs++; return simulate(resolveScenario(s, data)) }
-  const r = resolveScenario(sc, data)
+  const run = (s: Scenario): SimResult => { runs++; return runPrepared(preparedScenario(s, data)) }
+  const p = preparedScenario(sc, data)
+  const r = p.resolved
   const delays = (Object.entries(HAND_PROFILES) as [HandProfile, { mean: number }][]).map(([tier, p]) => ({ tier, delay: Math.round(p.mean) }))
-  const ins = insight(r, { delays: [r.options.inputDelay, ...delays.map(d => r.options.inputDelay + d.delay)], tight: 0 })
+  const ins = insight(sc, data, { delays: [r.options.inputDelay, ...delays.map(d => r.options.inputDelay + d.delay)], tight: 0 })
   runs += ins.runs
   const base = ins.basis
 
@@ -62,7 +64,7 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
   })
 
   // 操作密度：循环轴每轮的决策点（切人、不是连段后续的出招；同卡帧点），按稳态每轮时长折成每分钟
-  const baseRes = simulate(r); runs++
+  const baseRes = runPrepared(p); runs++
   const st = baseRes.summary.steady
   const loopSecs = st ? st.frames / 60 / (st.to - st.from + 1) : null
   const decisions = r.commands.filter(c => c.kind === 'switch' || (c.kind === 'act' && !r.team[c.slot]!.actions[c.action]?.comboFrom?.length))

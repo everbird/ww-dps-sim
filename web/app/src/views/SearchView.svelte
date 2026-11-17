@@ -3,7 +3,7 @@
      比原轴好的改法是要拿实战核对的假设；可以另存成场景（只换循环轴），再去"对比"看差在哪 -->
 <script lang="ts">
   import { withRotation } from '../../../../src/data/scenario-text'
-  import { FAILURE_LABEL, type Candidate } from '../../../../src/engine/search'
+  import { FAILURE_LABEL, type Candidate } from '../../../../src/analysis/search'
   import { call } from '../api'
   import { find, ofKind, saveAs } from '../docs.svelte'
   import { teamOf } from '../peek'

@@ -49,6 +49,8 @@
 
 ## 2. 总体架构
 
+DD-10 落地后的代码边界：`src/engine/` 保留执行核心、①D 查询诊断与②规则台账，`src/analysis/` 放④分析；分析只经 `src/engine/index.ts` 公开入口。执行包内部拆为入口装配（`resolve`、`compile`）、逐帧执行、汇总不变量三组；`runPrepared` 接线，执行组不反向引用另外两组。`tests/layering.test.ts` 检查目录依赖、纯库、执行组单向依赖与数值/模块状态四条规则（DD-10 §4–§6）。
+
 四层，单向依赖：上层只消费下层的产出，不反向调用。
 
 | 层 | 职责 | 形态 | 何时运行 |
@@ -239,7 +241,7 @@ v0.2.4 另起一条路（TD-10 §6.2）：玩家排的不是一个个动作，�
 - 选：缺省按期望值算——每段判定分别算非暴击值和暴击值，再按暴击率加权；全程无随机数，同样输入同样输出。理论 DPS、对比、边际、择优都用它。另有抽样模式（蒙特卡洛）：显式给种子，逐段抽暴击、给每条指令加随机的操作延迟，用来看具体的样本和分布；同一种子结果相同。弃：只有期望值、不留随机的口子；弃：以抽样为主。
 - 理由：鸣潮的数值设计没有原神那种按概率触发、随状态反馈的机制，线性情况下期望值就是精确值，又快、又能直接比数字。分两支算是因为 xlsx 公式里有只在暴击时生效的乘区行。
 - 什么时候期望值不够：① 随机结果会回头影响后面的状态（"暴击时回能 / 叠层"这类效果改了能量、层数或出手时机），期望值只是近似；② 想看人为操作的抖动、容错、翻车，要看分布而不是平均。这两种情况用抽样模式量一下偏差，再决定要不要深究。
-- 接口（v0.2）：随机数只来自 `src/engine/rng.ts`（32 位整数运算，Rust 能逐位复现）；`simulate(r, { sample: { seed, jitter } })`；注入点两个——判定结算时抽暴击，调度器给每条指令抽操作延迟（`options.inputDelay` 是它的确定性版本，TD-09）。期望模式不走这些路径，结果不变。多次抽样的汇总见 TD-10。
+- 接口（DD-10）：随机数只来自 `src/engine/rng.ts`（32 位整数运算，Rust 能逐位复现）；`prepareRun(scenario, data, { sample: { seed, jitter } })` 后 `runPrepared(p)`；注入点两个——判定结算时抽暴击，调度器给每条指令抽操作延迟（`options.inputDelay` 是它的确定性版本，TD-09）。期望模式不走这些路径，结果不变。多次抽样的汇总见 TD-10。
 - 代价：期望模式下"暴击时触发"类效果只能按概率折算（现在的角色还没有这类效果）；抽样模式现在只是研究工具，操作失误（漏按、闪避失败）的模型以后再说。
 
 **T5 单目标**
@@ -772,11 +774,13 @@ wuwa-dps/
   tools/build/           ① 数据构建脚本（Python，v0.1.4）
   src/
     data/                ② 加载、schema 与装配
-    engine/              ③ 仿真引擎（禁止依赖 DOM / fs / 网络）
-      resolve.ts  simulate.ts  clock.ts  scheduler.ts  actions.ts  judgments.ts
-      resources.ts  enemy.ts  buffs.ts  events.ts  hooks.ts
-      damage/  collect.ts  formula.ts  abnormal.ts  tuneBreak.ts
-    analysis/            ④ 汇总、对比、边际
+    engine/              ③ 执行核心、查询诊断、规则台账（禁止依赖 DOM / fs / 网络）
+      index.ts           分析层唯一公开入口（DD-10 §5）
+      run.ts  resolve.ts  compile.ts       入口、装配、编译
+      kernel.ts  scheduler.ts  resources.ts  enemy.ts  buffs.ts  formula.ts
+      summary.ts  invariants.ts            汇总与不变量，检查由运行入口注入
+      query.ts  diagnostics.ts  wire.ts    查询、快照恢复与诊断
+    analysis/            ④ 对比、边际、搜索、择优、校准、录像贴合度等；只经 engine/index 调引擎
     cli/
     web/                 timeline.html：时间轴网页模板（M6 第一步）
   scenarios/             场景 + 汇总快照（回归用）
@@ -803,10 +807,11 @@ wuwa-dps/
 3. **带标签的联合，不用继承。** 事件、指令、时间线事件都用 `type` / `kind` 字段区分（对应 Rust 的 enum）；数据里不放函数、`Map`、`Set`、`class` 实例；可选字段对应 `Option`。
 4. **数值。** 数据里的帧是整数，局部帧、资源、伤害是双精度小数。取整只用 `src/engine/num.ts` 里的函数，那里写明了 Rust 里怎么写才一模一样（JS 的 `Math.round` 遇到负数的 .5 往大取，Rust 的 `round` 远离 0）。伤害公式的乘法顺序固定下来，移植时照抄、不要重排：浮点乘法换了顺序可能差最后一位，向上取整之后就差 1。
 5. **遍历顺序显式。** 对外输出的列表按固定规则排（队伍槽位、登记顺序、伤害），不依赖对象键的遍历顺序（JS 里整数样的键排在前面，Rust 的 `HashMap` 没有顺序）。
-6. **出错。** 仿真失败（等不来、等超时、超过帧数、不变量不成立）抛 `ScheduleError`，只在 `simulate` 一处接住，对应 Rust 的 `Result` 与 `?`；别的异常都是程序错误。
+6. **出错。** 仿真失败（等不来、等超时、超过帧数、不变量不成立）抛 `ScheduleError`，执行运行体集中接住，由 `runPrepared` 分类完成状态，对应 Rust 的 `Result` 与 `?`；别的引擎异常记 `engineError`，观察回调抛错仍交还调用方。兼容入口 `simulate` 与 `prepareResolved` 在 DD-10 删除。
 7. **随机数只来自 `src/engine/rng.ts`**（T4），期望模式不用。
-8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表，`src/engine/portable.ts`）、事件日志、汇总写成 JSON，放到 `out/conformance/`；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。零干扰对拍是它的一部分（2026-11-16，DD-05 §6.3）：每个场景另带全部诊断再跑一次，结果（去掉 `diag`）、终态 `SimState`、事件队列游标都要相同，不一致就打印第一个不同的路径并以退出码 1 结束；诊断本身不写进样例。
-9. **已知要改的两处。** `kernel.ts` 里有两处模块级的东西：`settleQueue`（P4 进行中新生成的判定）与 `timelineOf` 按对象身份的 WeakMap 缓存。JS 单线程、同步跑，没有问题；Rust 里前者放进仿真上下文，后者在装配时预先算好放进动作定义。
+8. **一致性样例。** `pnpm conformance` 把每个场景的装配结果（去掉钩子表，`src/engine/portable.ts`）、有效运行设置与身份、事件日志、汇总及必有输出（完成状态、干预、严格报告、伤害范围、规则使用）写成 JSON，放到 `out/conformance/`；DD-10 增加 `MANIFEST.json`（输出与 wire 版本、运行号、文件摘要）以及停止路径/相位的合成边界样例，`--verify <目录>` 比较另一实现的产物并报告首个差异路径；测试保证装配结果 JSON 往返后再仿真，结果逐条相同（§11 第 7 条）。零干扰对拍是它的一部分（2026-11-16，DD-05 §6.3）：每个场景另带全部诊断再跑一次，结果（去掉 `diag`）、终态 `SimState`、事件队列游标都要相同，不一致就打印第一个不同的路径并以退出码 1 结束；诊断本身不写进样例。
+9. **实例状态与缓存。** `settleQueue` 已在 DD-07 迁入 `Kernel` 实例；`timelineOf` 的 WeakMap 只缓存定义派生的只读时间线，不是运行状态。DD-10 的分层测试禁止引擎模块级 `let` / `var`，并禁止在 `num.ts` 外直接使用 `Math.round` / `Math.floor`。
+10. **快照与恢复（DD-10 §3）。** 只在 `S[f]` tick 边界取快照，定义对象保存标识，恢复时接回同一 `PreparedRun`，按动作 `instance` 保留 `action` / `last` / `combo` 别名。运行簿记、输出和诊断前缀全部恢复；先补做该边界尚未执行的帧数上限检查，未终止才从第 f 帧 P1 接续，不重新初始化。验收是从头执行、重算查询、恢复续跑的结果与终态一致，诊断开启时诊断也一致；不是仅证明能 `structuredClone`。内存查询缓存以 `runId` 隔离，并区分诊断配置，不落盘。
 
 ---
 

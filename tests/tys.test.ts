@@ -1,5 +1,7 @@
 // tests/tys.test.ts —— 桃祈 · 渊武 · 散华（桃渊散，2026-10-25，docs/tys-confirm.md）：渊武的雷柱（锋芒、协同、掀雷、引爆、敛光、雷厉风行）、
 // 桃祈的磐岩护壁与刚柔化势、御反之隙；照录像记的整局（scenarios/tys-video.yaml）每段对得上视频、血条出现后的累计伤害对得上录像。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -7,8 +9,8 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { compareMarks, traceCommands } from '../src/engine/trace'
+
+import { compareMarks, traceCommands } from '../src/analysis/trace'
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -17,7 +19,7 @@ dataDescribe('桃渊散', () => {
   let base: ScenarioInput
   const sim = (sc: ScenarioInput) => {
     const r = resolveScenario(ScenarioSchema.parse(sc), gd)
-    return { r, out: simulate(r) }
+    return { r, out: runPrepared(fixturePreparedRun(r)) }
   }
   const run = (rotation: string[], onField = 1) => {
     const { out } = sim({ ...base, tuneBreakOmitted: undefined, video: undefined, initial: { onField }, rotation, options: { repeat: 1, maxFrames: 6000 } })

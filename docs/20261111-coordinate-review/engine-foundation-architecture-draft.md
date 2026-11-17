@@ -28,6 +28,8 @@
 
 ### 1.1 现在的代码怎么分
 
+**DD-10 实施补充**：下表保留评审基线事实。阶段五的实现已将④移到 `src/analysis/`（原 14 个加 `candidates`、`observations`、`zero-interference`），只通过 `src/engine/index.ts` 引入引擎。`compileRotation` 独立到 `compile.ts`；汇总由 `runPrepared` 的运行入口调用，不变量检查由入口注入；错误类型与等待常量下沉。执行组不再反向 import 入口装配或汇总不变量。分层测试有四条规则且没有执行组迁移豁免；快照审计与恢复契约见 [DD-10](detailed-design/dd-10-snapshot-split.md)。
+
 `src/engine/` 共 32 个文件、6,977 行（各文件行数见附录 B）。
 
 | 层 | 内容 | 文件 | 约束 |
@@ -70,7 +72,7 @@ flowchart TD
 1. **核心不反向依赖**：① 、①D、② 的文件不 import ④ 的 14 个文件，也不 import `src/cli/`、`src/report/`、`web/`。
 2. **纯库**：`src/engine/` 下所有文件不 import `fs`、`path`、`child_process`、DOM，也不 import `src/data/load.ts`。
 
-包内部拆成无环结构是阶段五的目标，例如把 `summarize` 的调用挪到外层、把 `compileRotation` 移出 `scheduler.ts`。那时才搬目录，现在不动。
+阶段五（DD-10）将上述两条扩展为四条：③ 执行组不 import 入口装配、汇总不变量；④ 引擎无模块级 `let` / `var`，`Math.round` / `Math.floor` 只在 `num.ts`。分析目录不得直接 import 引擎内部文件；类型引用也受边界约束。基线的互相引用已按 DD-10 §4 拆开后搬目录。
 
 ## 2. 运行输入、完成状态与对外接口（路线图 §13 第 2 项）
 
