@@ -34,7 +34,7 @@
   }
 
   // 两种结果摊成同一种行，表格共用
-  type Row = { routines: string[]; counts: Record<string, number>; lines: string[]; dps: number; extra: string; isRef: boolean; same: number; introMissed: number }
+  type Row = { routines: string[]; counts: Record<string, number>; lines: string[]; dps: number; extra: string; isRef: boolean; same: number; introMissed: number; scopeLabel: string; scopeMismatch?: { note: string } }
   const rows = $derived.by((): Row[] => {
     if (!out) return []
     if (out.mode === 'rotation') return out.result.leaves.map(l => ({ ...l, extra: l.loopSecs !== null ? `${l.loopSecs.toFixed(2)} 秒` : '—' }))
@@ -47,7 +47,7 @@
   const countText = (c: Record<string, number>) => Object.entries(c).map(([line, d]) => `${d > 0 ? '+' : '−'}${Math.abs(d) > 1 ? Math.abs(d) : ''}${letter(line)}`).join(' ')
   const failed = $derived(out ? Object.entries(out.result.failures).sort((a, b) => b[1] - a[1]) : [])
   const runs = $derived(!out ? 0 : out.mode === 'rotation' ? out.result.prefixRuns : out.result.runs)
-  const FAIL: Record<string, string> = { ...FAILURE_LABEL, timeout: '等超时', introMissed: '写了变奏没变奏', noLoop: '没跑完一轮' }
+  const FAIL: Record<string, string> = { ...FAILURE_LABEL, noLoop: '没跑完一轮' }
 
   /** 另存成场景：其余照原文，只换循环轴 / 启动轴；返回新名字（存过的不再存） */
   function save(i: number): string {
@@ -117,6 +117,7 @@
               {#if changed}<span class="muted">（次数 {changed}）</span>{/if}
               {#if r.same}<span class="muted">（另有 {r.same} 种写法结果相同）</span>{/if}
               {#if r.introMissed}<span class="warn">写了变奏没变奏 {r.introMissed} 处</span>{/if}
+              {#if r.scopeMismatch}<span class="warn" title={r.scopeMismatch.note}>† 谐破口径变成"{r.scopeLabel}"</span>{/if}
             </td>
             <td class="act">
               {#if !r.isRef}
@@ -128,6 +129,7 @@
         {/each}
       </tbody>
     </table></div>
+    {#if rows.some(r => r.scopeMismatch)}<p class="muted">† 这个排法改变了谐度破坏口径（DD-03 §7.4）：DPS 不在同一口径上，差值里包含谐度破坏的伤害变化。</p>{/if}
     <p class="muted">鼠标停在"顺序"上看写成的轴。另存的场景在"场景"页的列表里（存在本浏览器），改了的行注明"按套路排轴改的"。</p>
   </section>
 {/if}

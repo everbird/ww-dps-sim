@@ -57,7 +57,8 @@ async function main(): Promise<number> {
     const isBase = c === x.base
     const change = isBase ? '原轴' : signedPct(c.dps! / x.base.dps! - 1)
     const warn = c.introMissed > x.base.introMissed ? `（写了变奏没变奏 ${c.introMissed} 处，轴可能有问题）` : ''
-    console.log(`${padStart(String(k), 4)}${padStart(fmt(c.dps!), 10)}${padStart(change, 10)}${padStart(loop(c), 11)}  ${isBase ? '' : c.steps.join(' → 再 ')}${warn}`)
+    const scope = c.scopeMismatch ? `（† 谐破口径变成"${c.scopeLabel}"）` : ''
+    console.log(`${padStart(String(k), 4)}${padStart(fmt(c.dps!), 10)}${padStart(change, 10)}${padStart(loop(c), 11)}  ${isBase ? '' : c.steps.join(' → 再 ')}${warn}${scope}`)
   }
   // 结果一样的（DPS 与每轮时长都相同，多半是同一处换个等价的位置）合成一行，排名照算
   const same = (a: Candidate, b: Candidate) => Math.abs(a.dps! - b.dps!) < 1e-6 && a.loopSecs === b.loopSecs
@@ -72,6 +73,8 @@ async function main(): Promise<number> {
   }
   if (rank > k) { console.log('   …'); row(x.base, rank) }
   console.log(`（原轴排第 ${rank} / ${x.results.length}）`)
+  if (x.results.some(c => c.scopeMismatch))
+    console.log(`† 这个改法改变了谐度破坏口径（原轴"${x.base.scopeLabel}"，DD-03 §7.4）：DPS 不在同一口径上，差值里包含谐度破坏的伤害变化，不全是轴的差别`)
 
   const best = x.results[0]!
   if (best !== x.base) {

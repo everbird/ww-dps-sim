@@ -115,6 +115,10 @@ describe('DD-10 快照', () => {
     if (!snap.ok) throw new Error('snapshot')
     expect(resumeFrom(fixture(true), snap.value, { kind: 'terminal' })).toMatchObject({ ok: false, error: { code: 'runIdMismatch' } })
     expect(resumeFrom(p, snap.value, { kind: 'terminal' }, { diag: ALL_DIAG })).toMatchObject({ ok: false, error: { code: 'unsupported' } })
+    // 载荷损坏：返回查询错误，不往外抛（Antigravity 审查 M2）
+    const broken = { ...snap.value, payload: { data: { view: 'x' }, schema: { kind: 'object', fields: { view: { kind: 'map' } } } } }
+    expect(resumeFrom(p, broken, { kind: 'terminal' })).toMatchObject({ ok: false, error: { code: 'unsupported', what: expect.stringContaining('快照载荷解码失败') } })
+    expect(resumeFrom(p, { ...snap.value, payload: null }, { kind: 'terminal' })).toMatchObject({ ok: false, error: { code: 'unsupported' } })
   })
   test('C10-9 非空队列与非边界拒绝', () => {
     const p = fixture()
@@ -134,6 +138,24 @@ describe('DD-10 快照', () => {
     expect(c.action).not.toBeNull()
     expect(c.action).toBe(c.last)
     expect(c.action).toBe(c.combo)
+  })
+  test('诊断关着拍的快照恢复到 evaluation 停止点：求值序号接得上，与从头跑停在同一帧、同一状态（DD-07 §4.4、DD-10 §3.1；Codex 审查 F5）', () => {
+    // wait 30 的每一帧都是一次真实求值：第 10 次在第 10 帧。改之前诊断关着时不计数，从 S[5] 恢复的停在第 15 帧
+    const X = action({ id: 'X', endFrame: 10 })
+    const data = synthData([{ name: '甲', actions: [X] }, idle('乙'), idle('丙')])
+    const sc = ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['wait 30', '甲 X'], options: { tuneBreak: 'off' } })
+    const p = preparedScenario(sc, data)
+    const direct = replayTo(p, { kind: 'evaluation', evaluationIndex: 10 })
+    if (direct.kind !== 'prefix') throw new Error('direct')
+    expect(direct.state.frame).toBe(10)
+    for (const at of [1, 5, 9]) {
+      const snap = snapshotAt(p, at)
+      if (!snap.ok) throw new Error('snapshot')
+      const r = resumeFrom(p, JSON.parse(JSON.stringify(snap.value)), { kind: 'evaluation', evaluationIndex: 10 })
+      if (!r.ok || r.value.kind !== 'prefix') throw new Error(`resume from ${at}`)
+      expect([at, r.value.state.frame]).toEqual([at, 10])
+      expect(canonicalJson(viewOf(r.value.state))).toBe(canonicalJson(viewOf(direct.state)))
+    }
   })
   test('C10-6 缓存状态与无缓存逐帧相同，缓存副本不可污染', () => {
     const p = fixture(), cache = new MemorySnapshotCache()

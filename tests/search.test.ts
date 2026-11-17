@@ -99,6 +99,28 @@ describe('轴搜索：人造角色', () => {
     const capped = searchRotation({ ...sc, rotation: ['甲 X Q Y'] }, data, { maxRuns: 2 })
     expect([capped.runs, capped.stoppedBy]).toEqual([2, 'maxRuns'])
   })
+
+  test('去掉手写的谐度破坏：那一行的谐破口径从"含"变成"未含·量表累积"，标 scopeMismatch；口径没变的不标（DD-03 §7.4；Codex 审查 F4）', () => {
+    // E 打满偏谐值（谐度系数 1，偏谐上限 100），接着 TB（谐度破坏）放得出来；manual：轴里写了才放
+    const tb: SynthChar = { name: '甲', actions: [
+      action({ id: 'E', endFrame: 20, judgments: [judgment({ name: 'hit', gauges: { toughness: 0, tunability: 100 } })] }),
+      action({ id: 'TB', kind: 'tuneBreak', endFrame: 10, priority: [{ fromFrame: 0, value: 11 }], judgments: [judgment({ name: 'tb', tags: ['谐度破坏'], multiplier: 1 })] }),
+    ] }
+    const d = synthData([tb, idle('乙'), idle('丙')])
+    d.characters['甲']!.tunabilityRate = 1
+    d.tuneBreak = { variants: [], baseByLevel: Array(100).fill(10000), costFactor: { 1: 1, 3: 1, 4: 1 }, rules: { lockFrames: { 1: 1, 3: 1, 4: 1 }, buttonFrames: 180 } }
+    const s = ScenarioSchema.parse({
+      team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90, tunabilityMax: 100 } },
+      rotation: ['甲 E TB'], options: { tuneBreak: 'manual', repeat: 3 },
+    })
+    const x = searchRotation(s, d, { move: [], drop: ['TB'] })
+    expect(x.base).toMatchObject({ scopeLabel: '含', error: null })
+    expect(x.base.scopeMismatch).toBeUndefined()
+    const dropped = x.results.find(c => c !== x.base)!
+    expect(dropped.lines).toEqual(['甲 E'])
+    expect(dropped.scopeLabel).toBe('未含·量表累积')
+    expect(dropped.scopeMismatch).toMatchObject({ base: { tuneBreak: { mode: 'written' } }, other: { tuneBreak: { mode: 'omitted', gauge: 'accumulates' } }, differsIn: ['mode'] })
+  })
 })
 
 dataDescribe('轴搜索：M0 代表轴（依赖生成数据）', () => {

@@ -120,3 +120,19 @@ describe('C07-23：拒绝函数 / ResolvedScenario，envelope 可序列化且不
     expect(reparsed.data).toEqual({ count: res.log.length, ok: true })
   })
 })
+
+describe('信封的伤害口径披露（DD-02 §3.7；Antigravity 审查 H1）', () => {
+  const env = (options: Record<string, unknown>, extra: Record<string, unknown> = {}) => {
+    const p = prepareRun(ScenarioSchema.parse({ ...scenario, options: { ...scenario.options, ...options }, ...extra }), data)
+    if (!p.ok) throw new Error(p.issues.map(i => i.message).join('；'))
+    return envelope(p.run, runPrepared(p.run), null, ['run'], ['自己的'])
+  }
+  test('未含谐度破坏：加一项写明原因；量表也关了（gauge off）再加 damage.disharmonyDependent；查询自己的那几项在前、不重复', () => {
+    expect(env({ tuneBreak: 'off' }, { tuneBreakOmitted: { reason: 'deliberate' } }).capability.unsupported)
+      .toEqual(['自己的', 'damage.tuneBreak: 未含谐度破坏（deliberate）', 'damage.disharmonyDependent'])
+    expect(env({ tuneBreak: 'manual' }).capability.unsupported).toEqual(['自己的', 'damage.tuneBreak: 未含谐度破坏（undeclared）'])
+  })
+  test('自动谐破（缺省）：不加', () => {
+    expect(env({}).capability.unsupported).toEqual(['自己的'])
+  })
+})

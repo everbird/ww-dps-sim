@@ -35,6 +35,7 @@ import {
 } from '../src/engine/query'
 import { prepareRun, runPrepared, runToExecution } from '../src/engine/run'
 import type { PreparedRun, RunOverrides } from '../src/engine/run-types'
+import { MemorySnapshotCache } from '../src/engine/snapshot'
 import { envelope, toWire } from '../src/engine/wire'
 import type { HitEvent, SimResult, WaitCode } from '../src/engine/types'
 import { diagBase, preparedSynth } from './helpers/diag-team'
@@ -1316,6 +1317,86 @@ describe('DD-07 状态查询与可解释性验收', () => {
       expect(dRem.value.correspondences).toHaveLength(1)
       expect(dRem.value.correspondences[0]!.status).toBe('addedOrRemoved')
       expect(dRem.value.firstDivergence).not.toBeNull()
+    }
+  })
+})
+
+describe('PR #127～#137 审查确认的边界（docs/20261111-coordinate-review/detailed-design/20261116-*-pr-reviews.md）', () => {
+  test('消耗：全队实例、切人两个触发点——切入者的实例被消耗了就是 fired，分组按实例列出（DD-07 §6；Codex 审查 F6）', () => {
+    // 甲 给全队挂常驻的 甲.全队（每人一个实例），切入时被消耗；切人事件的触发点是 甲 switchOut、乙 switchIn
+    const 甲: SynthChar = {
+      name: '甲',
+      actions: [action({ id: 'X', kind: 'skill', endFrame: 5 })],
+      buffs: [buff({ id: '甲.全队', target: 'team', duration: 'inf', trigger: 'always', consume: { on: 'switchIn', where: { by: 'team' }, stacks: 'all' } })],
+    }
+    const p = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 X', 'switch 乙'] })
+    const res = runPrepared(p)
+    const swSeq = res.log.findIndex(e => e.type === 'switch')
+    expect(res.log.filter(e => e.type === 'buffExpire' && e.buff === '甲.全队').map(e => e.type === 'buffExpire' && [e.target, e.reason]))
+      .toEqual([['乙', 'removed']])                                  // 前提：只有乙的实例被消耗
+    const w = whyDidEventNotTrigger(p, { runId: p.runId, eventSeq: swSeq }, { kind: 'consume', owner: 0, id: '甲.全队' })
+    expect(w.ok).toBe(true)
+    if (!w.ok) return
+    expect(w.value.outcome).toBe('fired')
+    expect(w.value.groups.map(g => [g.instance?.target, g.occurrence])).toEqual([['甲', 'switchOut'], ['乙', 'switchIn']])
+  })
+
+  test('同一条轴、轮数不同：两侧的指令取并集，多跑的那一轮列为新增；反过来是删掉（DD-07 §9；Codex 审查 F7）', () => {
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'A', kind: 'normal', endFrame: 20, judgments: [judgment({ name: 'a', spawnFrame: 5 })] })] }
+    const p1 = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 A'], options: { repeat: 1 } })
+    const p2 = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 A'], options: { repeat: 2 } })
+    const r1 = runPrepared(p1), r2 = runPrepared(p2)
+    const more = diffRuns({ p: p1, res: r1 }, { p: p2, res: r2 }, { kind: 'commands' })
+    if (!more.ok) throw new Error('diff')
+    expect(more.value.sameAxis).toBe(true)
+    expect(more.value.correspondences.map(c => [c.status, c.base !== undefined, c.cand !== undefined])).toEqual([['matched', true, true], ['addedOrRemoved', false, true]])
+    expect(more.value.firstDivergence?.summary).toContain('2:1:1')
+    const fewer = diffRuns({ p: p2, res: r2 }, { p: p1, res: r1 }, { kind: 'commands' })
+    if (!fewer.ok) throw new Error('diff')
+    expect(fewer.value.correspondences.map(c => [c.status, c.base !== undefined, c.cand !== undefined])).toEqual([['matched', true, true], ['addedOrRemoved', true, false]])
+  })
+
+  test('改了轴：空的对应表当作没给（全部 ambiguous）；--cmd 指的指令不在对应表里时，对照一侧没有可比的事件（不退回同一个编号）', () => {
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'A', kind: 'normal', endFrame: 20, judgments: [judgment({ name: 'a', spawnFrame: 5 })] })] }
+    const pA = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 A', '甲 A'] })
+    const pB = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 A'] })
+    const a = { p: pA, res: runPrepared(pA) }, b = { p: pB, res: runPrepared(pB) }
+    const empty = diffRuns(a, b, { kind: 'commands' }, { commandMapping: [] })
+    if (!empty.ok) throw new Error('diff')
+    expect(empty.value.correspondences.every(c => c.status === 'ambiguous')).toBe(true)
+    // 只给了第 2 条 ↔ 第 1 条；看第 1 条（没有对应）引出的事件：B 那边的第 1 条是另一条指令，不能拿来比
+    const mapping = [[{ loop: 1, line: 2, item: 1 }, { loop: 1, line: 1, item: 1 }]] as const
+    const ev = diffRuns(a, b, { kind: 'events', cmd: { loop: 1, line: 1, item: 1 } }, { commandMapping: mapping })
+    if (!ev.ok) throw new Error('diff')
+    expect(ev.value.correspondences.length).toBeGreaterThan(0)
+    expect(ev.value.correspondences.every(c => c.status === 'unanalyzed' && c.cand === undefined)).toBe(true)
+    // 给了对应的那一条照常配上
+    const ok = diffRuns(a, b, { kind: 'events', cmd: { loop: 1, line: 2, item: 1 } }, { commandMapping: mapping })
+    if (!ok.ok) throw new Error('diff')
+    expect(ok.value.correspondences.some(c => c.status === 'matched')).toBe(true)
+  })
+
+  test('假想事件的角色名不在队伍里：查询错误 unsupported，不抛 TypeError（DD-07 §6；Antigravity 审查 H2）', () => {
+    const 甲: SynthChar = { name: '甲', actions: [action({ id: 'X', kind: 'skill', endFrame: 10 })], buffs: [buff({ id: '甲.攻击', trigger: { on: 'judgmentSettle' } })] }
+    const p = prep([甲, idle('乙'), idle('丙')], { rotation: ['甲 X'] })
+    const target = { kind: 'buff', owner: 0, id: '甲.攻击' } as const
+    for (const ev of [
+      { type: 'hit', char: '丁', action: 'X', judgment: 'x', tags: [], element: '物理' },
+      { type: 'heal', char: '丁', source: 't' },
+      { type: 'switch', from: '甲', to: '丁' },
+      { type: 'actionStart', char: '丁', action: 'X', instance: 1 },
+    ]) {
+      const r = wouldHypotheticalEventTrigger(p, 3, ev as never, target)
+      expect(r).toMatchObject({ ok: false, error: { code: 'unsupported', what: expect.stringContaining('不在队伍中') } })
+    }
+  })
+
+  test('stateAt 带缓存、帧越界：直接按 600 帧边界的结果报 outOfRange（completedTicks 对得上），不再从头重放一遍', () => {
+    const p = prep([{ name: '甲', actions: [action({ id: 'X', endFrame: 20 })] }, idle('乙'), idle('丙')], { rotation: ['甲 X'] })
+    const end = runPrepared(p).completion.coverage.completedTicks
+    for (const f of [700, 1300]) {
+      expect(stateAt(p, f, { cache: new MemorySnapshotCache() })).toMatchObject({ ok: false, error: { code: 'outOfRange', completedTicks: end, message: expect.stringContaining(`帧 ${f}`) } })
+      expect(stateAt(p, f)).toMatchObject({ ok: false, error: { code: 'outOfRange', completedTicks: end } })
     }
   })
 })

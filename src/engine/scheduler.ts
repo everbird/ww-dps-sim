@@ -5,29 +5,13 @@ import type { ActionDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
 import { ProbeStop, type CommandVerdict } from './diagnostics'
+import { fillerTarget } from './filler'
 import { airborne, cooldownKey, gate, log, settled, startAction, tick, type GateResult, type Kernel } from './kernel'
 import type { UnmetIntentDetail, StrictReport } from './run-types'
 import { floor, roundTo } from './num'
 import { ScheduleError, type ScheduleErrorCode } from './types'
 import { INTENDED } from './wait-codes'
-export { INTENDED, INTENT_WAITS } from './wait-codes'
-export { ScheduleError, type ScheduleErrorCode } from './types'
 import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
-
-/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）、
- *  "at <世界秒>"（还没到就接着补）；遇到别的切人、等待或别的角色就没有 */
-function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' | 'switch' | 'at' }> | undefined {
-  const c = list[i]
-  if (c?.kind !== 'act') return undefined
-  for (let j = i + 1; j < list.length; j++) {
-    const n = list[j]!
-    if (n.kind === 'switch' && n.expectIntro) return n
-    if (n.kind === 'at') return n
-    if (n.kind !== 'act' || n.slot !== c.slot) return undefined
-    if (!n.filler) return n
-  }
-  return undefined
-}
 
 // ---------------------------------------------------------------------------
 // §3 调度
@@ -148,11 +132,12 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         }
       }
       let v: Verdict
-      let lastEvalIdx = progress.evalCount
+      // 每一次真实求值都编号（DD-07 §4.4），诊断关着也计：快照恢复后 evaluation 停止点的序号要与从头跑的接得上
+      // （DD-10 §3.1；原来只在开了 commandVerdicts 或 afterEvaluate 时加，诊断关着拍的快照里是 0，Codex 审查 F5）
+      const lastEvalIdx = progress.evalCount++
       if (!k.diag?.opts.commandVerdicts && !opts.afterEvaluate) {
         v = evaluate(s, k, actions, opts, c, ref)
       } else {
-        lastEvalIdx = progress.evalCount++
         const force = c.kind === 'act' ? c.force : false
         const delay = c.kind === 'act' ? c.delay : 0
         let caught: unknown = null

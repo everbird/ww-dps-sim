@@ -6,7 +6,26 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { scorecards, type Scorecard } from '../src/analysis/scorecard'
-import { dataDescribe } from './helpers/kernel-harness'
+import { usableBasis } from '../src/engine/basis'
+import { runPrepared } from '../src/engine/run'
+import { action, dataDescribe, judgment } from './helpers/kernel-harness'
+import { preparedScenario } from './helpers/prepared-fixture'
+import { idle, synthData, type SynthChar } from './helpers/synth'
+
+test('打死几倍血的各列各自过闸门：基准稳态可用，击杀重跑截断在没打死时不可用，不拿估计值当结论（DD-03 §7.1；Codex 审查 F3）', () => {
+  // 甲 E：冷却 30 帧，另有一段 29 帧后才命中的判定；第 140 帧截断时最后一轮的那段还在路上（指令发完、判定在途）
+  const 甲: SynthChar = { name: '甲', actions: [action({ id: 'E', endFrame: 1, cooldown: 30, judgments: [judgment({ name: 'hit', spawnFrame: 0, multiplier: 1 }), judgment({ name: 'late', spawnFrame: 0, delayFrames: 29, multiplier: 1 })] })] }
+  const data = synthData([甲, idle('乙'), idle('丙')])
+  const sc = ScenarioSchema.parse({
+    team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90, hp: 1e12 } },
+    rotation: ['甲 E'], options: { tuneBreak: 'manual', repeat: 5, maxFrames: 140 },
+  })
+  const base = runPrepared(preparedScenario(sc, data))
+  expect([base.completion.status, base.completion.truncation?.kind, usableBasis(base).ok]).toEqual(['truncated', 'inFlightRemains', true])   // 前提
+  const [card] = scorecards([{ name: '截断', sc }], data)
+  expect(card!.kills.map(k => [k.scale, k.secs, k.estimated])).toEqual([[1, null, false], [2, null, false], [3, null, false]])
+  expect(card!.kills.every(k => k.error?.startsWith('truncated：到帧数上限时目标还没达到'))).toBe(true)
+}, 60_000)
 
 let gd: GameData
 let cards: Scorecard[]

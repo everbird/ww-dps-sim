@@ -19,7 +19,7 @@ import { runPrepared, runToExecution } from './run'
 import { snapshotAt, snapshotFrom, resumeFrom, type SnapshotCache } from './snapshot'
 import type { Inspect } from './simulate'
 import type { PreparedRun, RunCompletion, RunOptions, RunStatus, StatePrefix } from './run-types'
-import { INTENT_WAITS } from './scheduler'
+import { INTENT_WAITS } from './wait-codes'
 import { battleFrameOf, hitValue } from './summary'
 import { occurrencesOf } from './triggers'
 import type {
@@ -398,6 +398,12 @@ export function stateAt(p: PreparedRun, f: Frame, opts?: { diag?: RunOptions['di
     const boundary = f - f % 600
     const snap = cached ? snapshotFrom(p, cached, boundary, opts) : snapshotAt(p, boundary, opts)
     if (snap.ok) { opts.cache.put(snap.value); cached = snap.value }
+    // 连这个 600 帧边界都没有合法状态：f ≥ 边界，也不会有；不再从头重放一遍去发现同一个结论（Antigravity 审查 M2）
+    else if (snap.error.code === 'noLegalState') return snap
+    else if (snap.error.code === 'outOfRange') {
+      const completedTicks = snap.error.completedTicks
+      return { ok: false, error: { code: 'outOfRange', completedTicks, message: `帧 ${f} 超出合法状态边界 [0, ${completedTicks}]` } }
+    }
   }
   const resumed = cached ? resumeFrom(p, cached, { kind: 'boundary', frame: f }, opts) : undefined
   if (resumed && !resumed.ok) return resumed
@@ -422,10 +428,16 @@ export function stateAt(p: PreparedRun, f: Frame, opts?: { diag?: RunOptions['di
 }
 
 export function statesAt(p: PreparedRun, frames: readonly Frame[], opts?: { diag?: RunOptions['diag'] }): QueryResult<StateAt[]> {
+  return statesAndResult(p, frames, opts).states
+}
+
+/** 同 statesAt，另把这一次完整运行的结果交出来：观察点不停下，跑完就是一次完整的运行。
+ *  命令行要拿它写信封（完成状态、假设、规则使用），不为此另跑一遍（DD-07 §3.5；Antigravity 审查 M1） */
+export function statesAndResult(p: PreparedRun, frames: readonly Frame[], opts?: { diag?: RunOptions['diag'] }): { states: QueryResult<StateAt[]>; result: SimResult } {
   if (frames.length === 0) {
-    const term = runPrepared(p)
-    if (!term.completion.coverage.initCompleted) return { ok: false, error: { code: 'noLegalState', message: '初始化未完成，没有任何合法状态边界' } }
-    return { ok: true, value: [] }
+    const term = runPrepared(p, opts?.diag ? { diag: opts.diag } : {})
+    if (!term.completion.coverage.initCompleted) return { states: { ok: false, error: { code: 'noLegalState', message: '初始化未完成，没有任何合法状态边界' } }, result: term }
+    return { states: { ok: true, value: [] }, result: term }
   }
   const captured = new Map<number, StateAt>()
   const validSet = new Set(frames.filter(f => Number.isInteger(f) && f >= 0))
@@ -443,36 +455,37 @@ export function statesAt(p: PreparedRun, frames: readonly Frame[], opts?: { diag
       },
     },
   })
-  const cov = result!.completion.coverage
-  if (!cov.initCompleted) return { ok: false, error: { code: 'noLegalState', message: '初始化未完成，没有任何合法状态边界' } }
+  const res = result!
+  const cov = res.completion.coverage
+  if (!cov.initCompleted) return { states: { ok: false, error: { code: 'noLegalState', message: '初始化未完成，没有任何合法状态边界' } }, result: res }
   for (const f of frames) {
     if (!captured.has(f)) {
       return {
-        ok: false,
-        error: { code: 'outOfRange', completedTicks: cov.completedTicks, message: `帧 ${f} 超出合法状态边界 [0, ${cov.completedTicks}]` },
+        states: { ok: false, error: { code: 'outOfRange', completedTicks: cov.completedTicks, message: `帧 ${f} 超出合法状态边界 [0, ${cov.completedTicks}]` } },
+        result: res,
       }
     }
   }
-  return { ok: true, value: frames.map(f => captured.get(f)!) }
+  return { states: { ok: true, value: frames.map(f => captured.get(f)!) }, result: res }
 }
 
-export function terminalState(
-  p: PreparedRun,
-  opts?: { diag?: RunOptions['diag'] },
-): QueryResult<StateAt & { readonly kind: RunCompletion['coverage']['terminal']['kind']; readonly completion: RunCompletion }> {
-  const r = replayTo(p, { kind: 'terminal' }, opts) as ReplayComplete
+export type TerminalStateAt = StateAt & { readonly kind: RunCompletion['coverage']['terminal']['kind']; readonly completion: RunCompletion }
+
+export function terminalState(p: PreparedRun, opts?: { diag?: RunOptions['diag'] }): QueryResult<TerminalStateAt> {
+  return { ok: true, value: terminalStateOf(replayTo(p, { kind: 'terminal' }, opts) as ReplayComplete) }
+}
+
+/** 一次跑完的重放的终态视图（terminalState 的后半）：已经拿到 replayTo(terminal) 的调用方不必再跑一遍 */
+export function terminalStateOf(r: ReplayComplete): TerminalStateAt {
   const c = r.result.completion
   const ledgerEnd = r.result.diag?.ledgerMarks?.terminalEndExclusive
   return {
-    ok: true,
-    value: {
-      frame: r.state.frame,
-      view: viewOf(r.state),
-      prefix: c.coverage.terminal.prefix,
-      ...(ledgerEnd !== undefined ? { ledgerEndExclusive: ledgerEnd } : {}),
-      kind: c.coverage.terminal.kind,
-      completion: c,
-    },
+    frame: r.state.frame,
+    view: viewOf(r.state),
+    prefix: c.coverage.terminal.prefix,
+    ...(ledgerEnd !== undefined ? { ledgerEndExclusive: ledgerEnd } : {}),
+    kind: c.coverage.terminal.kind,
+    completion: c,
   }
 }
 
@@ -587,12 +600,14 @@ function findCommandDef(p: PreparedRun, cmd: CommandRef): Command | undefined {
   return undefined
 }
 
-export function commandCheck(p: PreparedRun, cmd: CommandRef, opts?: { evaluationIndex?: number }): QueryResult<CommandCheck> {
+/** opts.res：调用方已经用同一个 PreparedRun 带 diag.commandVerdicts 跑好的结果（命令行拿它写信封），给了就不再重跑；
+ *  runId 对不上或没带这项诊断时照旧重跑 */
+export function commandCheck(p: PreparedRun, cmd: CommandRef, opts?: { evaluationIndex?: number; res?: SimResult }): QueryResult<CommandCheck> {
   const cDef = findCommandDef(p, cmd)
   if (!cDef) {
     return { ok: false, error: { code: 'unsupported', what: `场景里没有指令 ${cmd.loop}:${cmd.line}.${cmd.item}` } }
   }
-  const res = runPrepared(p, { diag: { commandVerdicts: true } })
+  const res = opts?.res && opts.res.runId === p.runId && opts.res.diag?.commandVerdicts ? opts.res : runPrepared(p, { diag: { commandVerdicts: true } })
   const verdicts = res.diag?.commandVerdicts ?? []
   const headRec = verdicts.find(v => v.kind === 'head' && sameCmd(v.cmd, cmd))
   const execRec = verdicts.find(v => v.kind === 'execute' && sameCmd(v.cmd, cmd))
@@ -839,6 +854,19 @@ export function whyDidEventNotTrigger(p: PreparedRun, event: EventHandle, target
   }
 }
 
+/** 假想事件里写角色名的字段（occurrencesOf 会按名字找槽位的那些）；值不是字符串（漏写、写错类型）的也列出来 */
+function charFieldsOf(ev: SimEvent): string[] {
+  const pick = (...xs: unknown[]) => xs.map(x => (typeof x === 'string' ? x : `（${String(x)}）`))
+  switch (ev.type) {
+    case 'actionStart': case 'hit': case 'heal': case 'shield': case 'intro': case 'resourceFull': return pick(ev.char)
+    case 'outro': return pick(ev.char, ev.to)
+    case 'switch': return pick(ev.from, ev.to)
+    case 'enemyState': return ev.by !== undefined ? pick(ev.by) : []
+    default: return []
+  }
+}
+const isSlot = (x: unknown): x is Slot => x === 0 || x === 1 || x === 2
+
 export function wouldHypotheticalEventTrigger(
   p: PreparedRun,
   f: Frame,
@@ -877,12 +905,18 @@ export function wouldHypotheticalEventTrigger(
     }
   }
 
+  // 假想事件里的角色名要在队伍里：occurrencesOf 只在 actionStart 上会抛错，其余的发出者是 undefined，
+  // 要到后面解释条件时才抛 TypeError（Antigravity 审查 H2）。先查字段，再查触发点的发出者
+  const unknown = charFieldsOf(fullEvent).filter(n => !r.sim.slotOf.has(n))
+  if (unknown.length) return { ok: false, error: { code: 'unsupported', what: `假想事件里的角色名不在队伍中：${unknown.join('、')}` } }
   let occs: Occurrence[]
   try {
     occs = occurrencesOf(r.sim, fullEvent, false)
-  } catch {
-    return { ok: false, error: { code: 'unsupported', what: '假想事件里的角色名不在队伍中' } }
+  } catch (e) {
+    return { ok: false, error: { code: 'unsupported', what: `假想事件写不成触发点：${e instanceof Error ? e.message : String(e)}` } }
   }
+  if (occs.some(o => !isSlot(o.by) || (o.to !== undefined && !isSlot(o.to))))
+    return { ok: false, error: { code: 'unsupported', what: '假想事件里的角色名不在队伍中' } }
   if (occs.length === 0) {
     return {
       ok: true,
@@ -1010,17 +1044,22 @@ export interface EventExplanation {
   readonly scope: 'direct_causes_and_immediate_inputs_only'
 }
 
+/** explainEvent 要的诊断（DD-07 §7、§8）：调用方自己先带这些跑一遍、把结果传进来，就不用再跑 */
+export const EXPLAIN_DIAG = { eventMeta: true, resourceLedger: true, ruleTrace: true, hitInputs: true, hitMargins: true } as const
+
+/** opts.res：同一个 PreparedRun 带 EXPLAIN_DIAG 跑好的结果；给了就不再重跑（runId 对不上或诊断不全时照旧重跑） */
 export function explainEvent(
   p: PreparedRun,
   event: EventHandle,
-  opts: { readonly lookback?: number; readonly lookahead?: number } = {},
+  opts: { readonly lookback?: number; readonly lookahead?: number; readonly res?: SimResult } = {},
 ): QueryResult<EventExplanation> {
   if (event.runId !== p.runId) {
     return { ok: false, error: { code: 'runIdMismatch', expected: p.runId, got: event.runId } }
   }
-  const res = runPrepared(p, {
-    diag: { eventMeta: true, resourceLedger: true, ruleTrace: true, hitInputs: true, hitMargins: true },
-  })
+  const given = opts.res
+  const d = given?.diag
+  const res = given && given.runId === p.runId && d?.eventMeta && d.resourceLedger && d.ruleTrace && d.hitInputs && d.hitMargins
+    ? given : runPrepared(p, { diag: EXPLAIN_DIAG })
   const logged = res.completion.coverage.loggedEventEndExclusive
   if (!Number.isInteger(event.eventSeq) || event.eventSeq < 0 || event.eventSeq >= logged) {
     return { ok: false, error: { code: 'eventOutOfRange', loggedEventEndExclusive: logged } }
@@ -1343,6 +1382,8 @@ export function diffRuns(
     }
   }
 
+  // 空的对应表当作没给：否则改轴的比较会绕过"没有对应依据就全标 ambiguous"，把每条指令都当成新增或删掉（DD-07 §9；Antigravity 审查 M2）
+  const mapping = opts?.commandMapping?.length ? opts.commandMapping : undefined
   const needMeta = true
   const needVerdicts = target.kind === 'commands'
   const resA = (!a.res.diag?.eventMeta && needMeta) || (needVerdicts && !a.res.diag?.commandVerdicts)
@@ -1353,7 +1394,7 @@ export function diffRuns(
     : b.res
 
   if (target.kind === 'commands') {
-    const { correspondences, firstDivergence } = diffCommands(a.p, resA, b.p, resB, sameAxis, covA, covB, opts?.commandMapping)
+    const { correspondences, firstDivergence } = diffCommands(a.p, resA, b.p, resB, sameAxis, covA, covB, mapping)
     return {
       ok: true,
       value: { base: baseInfo, cand: candInfo, firstDivergence, correspondences, ...baseExtra },
@@ -1361,7 +1402,7 @@ export function diffRuns(
   }
 
   const { correspondences, firstDivergence } = diffEvents(
-    a.p, resA, b.p, resB, sameAxis, covA, covB, target, opts?.commandMapping,
+    a.p, resA, b.p, resB, sameAxis, covA, covB, target, mapping,
   )
   return {
     ok: true,
@@ -1440,10 +1481,16 @@ function diffCommands(
     return { correspondences, firstDivergence: null }
   }
 
-  const basis: 'commandRef' | 'explicitMapping' = sameAxis ? 'commandRef' : 'explicitMapping'
+  const basis: 'commandRef' | 'explicitMapping' = sameAxis && !mapping ? 'commandRef' : 'explicitMapping'
   const pairs: { refA?: CommandRef; refB?: CommandRef }[] = []
   if (sameAxis && !mapping) {
-    for (const a of cmdsA) pairs.push({ refA: a.cmd, refB: a.cmd })
+    // 同一条轴按 CommandRef 对应，两侧取并集：轮数不同时只有一侧有的那几轮也要列出来
+    // （原来只遍历基准一侧，对照多跑的轮次没进比较，firstDivergence 也就是 null；Codex 审查 F7）。
+    // 另一侧根本没有这条指令（轮数少）不是"没执行到"，不给对应的引用，按确认缺失处理
+    const inB = new Set(cmdsB.map(x => keyOf(x.cmd)))
+    const inA = new Set(cmdsA.map(x => keyOf(x.cmd)))
+    for (const a of cmdsA) pairs.push({ refA: a.cmd, ...(inB.has(keyOf(a.cmd)) ? { refB: a.cmd } : {}) })
+    for (const b of cmdsB) if (!inA.has(keyOf(b.cmd))) pairs.push({ refB: b.cmd })
   } else {
     const mappedA = new Set<string>()
     const mappedB = new Set<string>()
@@ -1608,7 +1655,9 @@ function diffEvents(
     return { correspondences, firstDivergence: null }
   }
 
-  const basis: 'commandRef' | 'explicitMapping' = sameAxis ? 'commandRef' : 'explicitMapping'
+  // 显式给了对应表就按它（同 commands 的做法），没给才在同一条轴上按 CommandRef
+  const byRef = sameAxis && !mapping
+  const basis: 'commandRef' | 'explicitMapping' = byRef ? 'commandRef' : 'explicitMapping'
   const mapA = new Map<string, number>()
   const mapB = new Map<string, number>()
   if (mapping) {
@@ -1618,14 +1667,16 @@ function diffEvents(
     })
   }
 
-  const filterCmdB = target.cmd && mapping
-    ? (mapping.find(([ra]) => sameCmd(ra, target.cmd!))?.[1] ?? target.cmd)
-    : target.cmd
+  // 只看某条指令引出的事件：对照一侧取它对应的指令；对应表里没有它时对照一侧没有可比的事件（null），
+  // 不退回同一个编号——不是同一条轴时同一个编号可能是另一条指令（Antigravity 审查 M2）
+  const filterCmdB: CommandRef | null | undefined = !target.cmd ? undefined
+    : byRef ? target.cmd
+      : mapping!.find(([ra]) => sameCmd(ra, target.cmd!))?.[1] ?? null
 
   const rootKeyOf = (origin: EventMeta['origin'], side: 'A' | 'B'): { key: string; mapped: boolean } => {
     switch (origin.kind) {
       case 'command': {
-        if (sameAxis) return { key: `cmd:${cmdKey(origin.cmd)}`, mapped: true }
+        if (byRef) return { key: `cmd:${cmdKey(origin.cmd)}`, mapped: true }
         const m = side === 'A' ? mapA.get(cmdKey(origin.cmd)) : mapB.get(cmdKey(origin.cmd))
         return m !== undefined ? { key: `map:${m}`, mapped: true } : { key: `unmapped${side}:${cmdKey(origin.cmd)}`, mapped: false }
       }
@@ -1638,10 +1689,11 @@ function diffEvents(
   }
 
   interface SideItem { seq: number; ev: SimEvent; mapped: boolean }
-  const collect = (res: SimResult, meta: readonly EventMeta[], side: 'A' | 'B', cmdFilter?: CommandRef) => {
+  const collect = (res: SimResult, meta: readonly EventMeta[], side: 'A' | 'B', cmdFilter?: CommandRef | null) => {
     const items = new Map<string, SideItem>()
     const order: string[] = []
     const counts = new Map<string, number>()
+    if (cmdFilter === null) return { items, order }
     for (let seq = 0; seq < res.log.length; seq++) {
       const ev = res.log[seq]!
       if (target.types && !target.types.includes(ev.type)) continue

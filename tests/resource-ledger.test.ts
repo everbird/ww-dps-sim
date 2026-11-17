@@ -396,6 +396,23 @@ describe('C06-12 调试表改用账本', () => {
     expect(rows[0]!.label).toContain('只在账本里')
     expectClosed(run)
   })
+
+  test('同步之后紧跟着没有事件的写入：排在同步后面；给不给账本，同步那一步的说明相同（Antigravity 审查 H3）', () => {
+    // 协奏一直是满的：两次 C 起手时钩子各给 3（全被截掉、不写事件），中间同步到 100。第二笔的账本顺序在同步之后，
+    // 改之前它的锚点还是第一次命中，排序后跑到了同步前面
+    const p = prepared({ rotation: ['甲 C', 'wait 20', '同步 甲 协奏 =100', '甲 C'], initial: { concerto: [100, 0, 0] } }, {
+      onEvent: (ctx, ev) => { if (ev.type === 'actionStart' && ev.action === 'C') ctx.addResource('concerto', 3, ctx.self, '满了还给') },
+    })
+    const run = ledgerRun(p, [], true)
+    const res = run.res
+    const mine = (steps: ReturnType<typeof gainSteps>) => steps.filter(g => g.resource === 'concerto' && '甲' in g.deltas)
+    const steps = mine(gainSteps(res.log, p.resolved, metaOf(res), run.ledger, res.interventions))
+    expect(steps.map(g => g.how)).toEqual(['hook', 'hit', 'sync', 'hook', 'hit'])
+    const sync = steps.find(g => g.how === 'sync')!
+    expect(mine(gainSteps(res.log, p.resolved, metaOf(res), undefined, res.interventions)).find(g => g.how === 'sync')!.label).toBe(sync.label)
+    expect(sync.label).toBe('状态同步（外部指定 甲 的 concerto = 100，不发触发）')
+    expectClosed(run)
+  })
 })
 
 describe('C06-13 降级续跑的上界（DD-02 C02-11）', () => {

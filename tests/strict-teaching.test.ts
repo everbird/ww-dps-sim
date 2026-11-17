@@ -2,6 +2,7 @@
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { prepareRun, runPrepared } from '../src/engine/run'
+import { usableBasis } from '../src/engine/basis'
 import { action, judgment } from './helpers/kernel-harness'
 import { synthData, idle, eventsOfLog } from './helpers/synth'
 const data = synthData([
@@ -112,6 +113,11 @@ describe('DD-02 严格教学入口', () => {
     const r = run({ initial: { concerto: [89, 0, 0] }, rotation: ['甲 打', 'switch 乙 变奏', '乙 长', '乙 出场'] }, { continueAfterIntentUnmet: true })
     expect(r.strictReport.unmetIntents.map(d => [d.kind, d.continued])).toEqual([['introMissed', true], ['entrySkill', false]])
     expect(r.completion.axisFailure?.unmetIntent?.kind).toBe('introMissed')
+    // 闸门报的原因跟完成状态走：是终止意图 introMissed，不是续跑里后来那个调度错误（res.error 是后来的出场技意图；Antigravity 审查 H5）
+    const u = usableBasis(r)
+    expect(u).toMatchObject({ ok: false, status: 'axisFailed', reason: expect.stringMatching(/^introMissed：/) })
+    expect(r.error).toBeDefined()
+    expect(!u.ok && u.reason).not.toBe(`${r.error!.code}：${r.error!.message}`)
   })
 
 })

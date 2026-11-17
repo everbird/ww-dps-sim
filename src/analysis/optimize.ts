@@ -6,7 +6,7 @@ import { STAT_KEYS, STAT_TO_ZONE, type Slot, type StatKey, type ZoneId } from '.
 import type { GameData } from '../data/gamedata'
 import type { InvPiece } from '../data/inventory.schema'
 import type { Scenario } from '../data/scenario.schema'
-import { basisOf, tierValue, usableBasis, type Basis } from './analysis'
+import { tierValue, usableBasis, type Basis } from './analysis'
 import type { HitRecord } from '../engine'
 import { accumulate, computeHit, matchesFilter, type HitContext } from '../engine'
 import { echoSpecies, resolveScenario, setPieces } from '../engine'
@@ -49,10 +49,15 @@ export interface Replayer {
   dps(t: Totals): number                   // 换成词条合计 t 时的估计 DPS（同 basis 的口径）
 }
 
-/** 由一次完整仿真的记录建：窗口（稳态或整个窗口）里这个角色的直接伤害结算按新面板重算，其余伤害不变 */
+/** 由一次完整仿真的记录建：窗口（稳态或整个窗口）里这个角色的直接伤害结算按新面板重算，其余伤害不变。
+ *  运行要能当结论用（usableBasis，DD-03 §7.1）；击杀口径（basis.lethal）的窗口是致死那一下及之前的命中，
+ *  与按击杀拆分的口径一致（DD-03 §6.2；按战斗帧过滤会把致死那一帧的命中漏掉） */
 export function buildReplayer(r: ResolvedScenario, res: SimResult, recs: readonly HitRecord[], slot: Slot): Replayer {
-  const basis = basisOf(res)
+  const u = usableBasis(res)
+  if (!u.ok) throw new Error(`快速重算要一次能当结论用的运行：${u.status}：${u.reason}`)
+  const basis = u.basis
   const secs = (basis.hi - basis.lo) / 60
+  const inWindow = (index: number, f: number) => (basis.lethal ? index <= basis.lethal.eventSeq : f >= basis.lo && f < basis.hi)
   const m = r.team[slot]!
   const prefix = `${m.def.name}.声骸.`
   const totals0 = totalsOf(m.echoes)
@@ -64,8 +69,7 @@ export function buildReplayer(r: ResolvedScenario, res: SimResult, recs: readonl
     if (rec.slot !== slot) continue
     const e = res.log[rec.index]
     if (e?.type !== 'hit' || !e.dmg) continue
-    const f = battleFrameOf(e)
-    if (f < basis.lo || f >= basis.hi) continue
+    if (!inWindow(rec.index, battleFrameOf(e))) continue
     const acc = accumulate(rec.view, rec.active.filter(b => !b.def.id.startsWith(prefix)), rec.draft)
     const keys = FILTERED.filter(k => {
       const z = STAT_TO_ZONE[k]

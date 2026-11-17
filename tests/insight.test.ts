@@ -8,11 +8,12 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { panelsOf } from '../src/analysis/analysis'
-import { insight } from '../src/analysis/insight'
+import { insight, mergeOverrides } from '../src/analysis/insight'
+import { sensitivityMatrix } from '../src/analysis/sensitivity'
 import { resolveScenario } from '../src/engine/resolve'
 
 import { action, dataDescribe } from './helpers/kernel-harness'
-import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
+import { eventsOfLog, idle, synthData, synthRun, type SynthChar } from './helpers/synth'
 
 describe('操作延迟 options.inputDelay', () => {
   const 甲: SynthChar = { name: '甲', actions: [action({ id: 'X', kind: 'skill', endFrame: 30 }), action({ id: 'Y', kind: 'skill', endFrame: 30 })] }
@@ -36,6 +37,28 @@ describe('操作延迟 options.inputDelay', () => {
   test('+N 与操作延迟相加：先 +N，再操作延迟', () => {
     const out = synthRun([甲, idle('乙'), idle('丙')], { rotation: ['甲 X Y+10'], options: { inputDelay: 3 } })
     expect(starts(out)).toEqual([['X', 3], ['Y', 3 + 30 + 10 + 3]])   // X 第 3 帧开始、第 33 帧结束；+10 之后再晚 3 帧
+  })
+})
+
+describe('命令行的 --strict 经 RunOverrides 进运行，不写回场景（DD-01 §3.2、DD-02 §3.1；Codex 审查补查第 5 条）', () => {
+  const 甲: SynthChar = { name: '甲', actions: [action({ id: 'X', kind: 'skill', endFrame: 30 })] }
+  const data = synthData([甲, idle('乙'), idle('丙')])
+  // 缺省自动谐破：严格入口要拒绝（strict.tuneBreakAuto）；场景本身没写 strict
+  const sc = ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['甲 X'] })
+
+  test('mergeOverrides：后一份优先，rules / options / inputDelayAt / panelDeltas 逐键合并', () => {
+    expect(mergeOverrides({ strict: true, rules: { a: 1 }, options: { inputDelay: 3 } }, { rules: { b: 2 }, inputDelayAt: { '1.1': 6 } }))
+      .toEqual({ strict: true, rules: { a: 1, b: 2 }, options: { inputDelay: 3 }, inputDelayAt: { '1.1': 6 } })
+    expect(mergeOverrides({ options: { inputDelay: 3 } }, { options: { inputDelay: 6 } })).toEqual({ options: { inputDelay: 6 } })
+  })
+
+  test('insight、敏感度矩阵：基础覆盖的 strict 用上了（严格入口拒绝自动谐破），场景对象原样不动', () => {
+    const before = structuredClone(sc)
+    expect(() => insight(sc, data, { tight: 0, overrides: { strict: true } })).toThrow(/tuneBreakAuto/)
+    expect(insight(sc, data, { tight: 0 }).basis.dps).toBeGreaterThanOrEqual(0)
+    const m = sensitivityMatrix([{ name: 'x', sc }], data, undefined, { strict: true })
+    expect(m.rows[0]!.base).toMatchObject({ dps: null, status: 'engineError', error: expect.stringContaining('tuneBreakAuto') })
+    expect(sc).toEqual(before)
   })
 })
 

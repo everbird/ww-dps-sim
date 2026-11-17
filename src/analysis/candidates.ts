@@ -1,7 +1,7 @@
 // DD-04 §4–5：候选检查属于分析层；所有变体重新 prepareRun，不修改装配结果。
 import { PER_CHAR_RULES, type GameData, type Rules } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
-import { damageShareByTag, usableBasis } from '../engine'
+import { damageShareByTag, scopeMismatchOf, usableBasis, usableSteady } from '../engine'
 import { canonicalJson } from '../engine'
 import { PROPOSITIONS, type Binding, type Candidate, type Proposition, type ScenarioFeature } from '../engine'
 import { prepareRun, runPrepared } from '../engine'
@@ -76,7 +76,10 @@ export function steadyFrames(res: SimResult): number[] | null {
 }
 const meanSeconds = (f: readonly number[] | null) => f?.length ? f.reduce((a, b) => a + b, 0) / f.length / 60 : null
 export function compareOutcome(base: SimResult, res: SimResult, candidates: readonly PlannedCandidate[] = []) {
-  const a = usableBasis(base), b = usableBasis(res), sa = base.summary.steady, sb = res.summary.steady
+  // 报告的口径是稳态（DD-04 §5.3），闸门也按稳态判：场景目标是前 N 秒时 usableBasis 按目标放行，稳态却可能被 endAt 截掉一半（Codex 审查 F2）
+  const a = usableSteady(base), b = usableSteady(res), sa = base.summary.steady, sb = res.summary.steady
+  // 变体改变了谐破口径的（候选把 tuneBreak 翻成 auto…），那一行标出来（DD-03 §7.4）
+  const scopeMismatch = scopeMismatchOf(base.damageScope, res.damageScope)
   const comparable = a.ok && b.ok && !!sa && !!sb && sa.from === sb.from && sa.to === sb.to
   const frames = b.ok ? steadyFrames(res) : null
   const ratio = comparable && sa.dps !== 0 ? sb.dps / sa.dps - 1 : null
@@ -90,6 +93,7 @@ export function compareOutcome(base: SimResult, res: SimResult, candidates: read
       delta: comparable ? sb.dps - sa.dps : null, ratio, withinWindowVariation: ratio === null ? null : Math.abs(ratio) <= sa!.spread },
     intentWaitCount: res.strictReport.intentWaits.length, identicalLog: canonicalJson(base.log) === canonicalJson(res.log),
     ...(!b.ok ? { failureDetail: b.reason } : {}),
+    ...(scopeMismatch ? { scopeMismatch } : {}),
   }
 }
 export type CandidateOutcome = ReturnType<typeof compareOutcome>
@@ -163,10 +167,9 @@ export function runCandidateReport(scenario: Scenario, data: GameData, opts: {
     const { tuneBreakOmitted: _omitted, ...referenceScenario } = scenario
     const prep = prepareRun(referenceScenario, data, { ...overrides, strict: false, options: { ...overrides.options, tuneBreak: 'auto' } })
     if (!prep.ok) throw new Error(`参考运行：${prep.issues.map(i => i.message).join('; ')}`)
-    const res = runPrepared(prep.run), o = compareOutcome(base, res), u = usableBasis(res), rs = res.summary.steady
-    const lo = rs ? res.summary.perLoop!.find(l => l.loop === rs.from)!.start : 0
+    const res = runPrepared(prep.run), o = compareOutcome(base, res), u = usableBasis(res), us = usableSteady(res)
     scopeReference = { runId: res.runId, status: res.completion.status, steadyDps: o.steadyDps, steadyLoopBattleFrames: o.steadyLoopBattleFrames,
-      tuneBreakDamageShare: { steady: u.ok && rs ? damageShareByTag(res, '谐度破坏', { lo, hi: lo + rs.frames }) : null,
+      tuneBreakDamageShare: { steady: us.ok ? damageShareByTag(res, '谐度破坏', { lo: us.basis.lo, hi: us.basis.hi }) : null,
         wholeWindow: u.ok ? damageShareByTag(res, '谐度破坏', { lo: 0, hi: res.summary.windowFrames }) : null },
       dpsDeltaVsBaseline: o.dps.ratio, loopTimeChanged: o.loopTime === 'notComparable' ? null : o.loopTime === 'changed' }
   }

@@ -551,6 +551,7 @@ function hookContext(sim: Sim, s: SimState, self: Slot): HookContext {
 function hookRuleValue(rules: Rules, point: HookRulePointId, char: CharName): boolean {
   switch (point) {
     case 'char.心.forteKeep': case 'char.卜灵.forteKeep': return forteKept(rules, char)
+    case 'char.心.summonAsChar': return rules.summonCountsAsChar
     case 'char.爱弥斯.trackNoConsume': return rules.trackNoConsume
   }
 }

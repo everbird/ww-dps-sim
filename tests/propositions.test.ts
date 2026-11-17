@@ -278,11 +278,12 @@ dataDescribe('台账与真实数据', () => {
     for (const p of ALL) for (const c of p.appliesToChars ?? []) expect([p.id, c, gd.characters[c] !== undefined]).toEqual([p.id, c, true])
   })
 
-  // 代表轴 m0-video-eq-不打谐破.yaml 要等 DD-02 的严格入口与 T04-9；在那之前用原场景关掉谐度破坏（同它的谐破口径）。T04-9 后换成正式的场景
-  test('代表轴碰到的假设都有命题（DD-04 §3.2 第二类）：m0-video-eq.yaml 覆盖 tuneBreak: off', () => {
-    const sc = ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-video-eq.yaml', import.meta.url), 'utf8')))
-    const p = prepareRun(sc, gd, { options: { tuneBreak: 'off' } })
+  // 正式的严格代表轴（DD-04 §7、T04-9）：严格入口、谐度破坏按原文没给位置省略。原来在它就绪之前用 m0-video-eq.yaml 覆盖 tuneBreak: off 代替
+  test('代表轴碰到的假设都有命题（DD-04 §3.2 第二类）：m0-video-eq-不打谐破.yaml', () => {
+    const sc = ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-video-eq-不打谐破.yaml', import.meta.url), 'utf8')))
+    const p = prepareRun(sc, gd)
     if (!p.ok) throw new Error(p.issues.map(i => i.message).join('；'))
+    expect(p.run.identity.execution.entryMode).toBe('strict')
     const res = runPrepared(p.run)
     expect(res.completion.status).toBe('completed')
     const covered = new Set<string>(ALL.flatMap(x => (x.assumptionId ? [x.assumptionId] : [])))

@@ -1,5 +1,6 @@
 // tests/rule-usage.test.ts —— 规则使用（DD-05 §4；架构 §4.2）：判定点登记表、必有的摘要 ruleUsage、可选的逐次明细 diag.ruleTrace。
-// C05-8、C05-9、C05-10 用人造动作；角色模块的三个判定点（心、卜灵的 forteKeep，爱弥斯的 trackNoConsume）用代表场景，缺数据时跳过。
+// C05-8、C05-9、C05-10 用人造动作；角色模块的判定点（心、卜灵的 forteKeep，心的 summonAsChar，爱弥斯的 trackNoConsume）用代表场景，缺数据时跳过。
+// 卜灵的按角色协奏时机（concertoTimingBy，DD-08 §6）在执行核心里读：人造角色起名"卜灵"即可，别人不记。
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -19,9 +20,10 @@ const usage = (res: SimResult, id: string) => res.ruleUsage.byProposition.find(x
 const pointTrace = (res: SimResult, point: RulePointId) => res.diag!.ruleTrace!.filter(x => x.point === point)
 
 describe('判定点登记表（DD-05 §4.1）', () => {
-  test('16 个判定点，ID 不重复，命题都在台账里', () => {
-    expect(RULE_POINTS).toHaveLength(16)
-    expect(new Set(RULE_POINTS.map(p => p.id)).size).toBe(16)
+  test('18 个判定点，ID 不重复，命题都在台账里', () => {
+    // DD-05 首版 16 个；心读 summonCountsAsChar、卜灵按角色的协奏时机（DD-08 §6 的 concertoTimingBy）两处后来补上（Antigravity 审查 M4）
+    expect(RULE_POINTS).toHaveLength(18)
+    expect(new Set(RULE_POINTS.map(p => p.id)).size).toBe(18)
     expect(RULE_POINTS.filter(p => propositionOf(p.propositionId) === undefined)).toEqual([])
   })
 })
@@ -66,6 +68,30 @@ describe('C05-8、C05-9 大招的切人锁来自"不响应输入"（ult-input-lo
       expect([u.readCount > 0, u.decisiveCount]).toEqual([true, 0])
       expect(switchLockWaits(res)).toBe(0)
     }
+  })
+})
+
+describe('按角色覆盖的协奏时机（res.concertoTiming.卜灵，命题 buling-concerto-timing）', () => {
+  // 卜灵 E：第 5 帧命中给 10 协奏；B：第 5 帧命中、不给协奏；甲做同样的事不记
+  const E = action({ id: 'E', endFrame: 20, judgments: [judgment({ name: 'e', spawnFrame: 5, gains: { energy: 0, concerto: 10, core: [0, 0, 0] } })] })
+  const B = action({ id: 'B', endFrame: 20, judgments: [judgment({ name: 'b', spawnFrame: 5 })] })
+  const go = (who: string, rotation: string[], timing?: 'onHit' | 'onCast') => runPrepared(preparedSynth(
+    [{ name: who, actions: [E, B] }, idle('乙'), idle('丙')], { rotation: rotation.map(l => `${who} ${l}`) },
+    timing ? { rules: { [`concertoTimingBy.${who}`]: timing } } : {},
+  ), { diag: { ruleTrace: true } })
+
+  test('卜灵起手与命中各读一次；带协奏的判定决定分支（换个时机就是另一种给法），不带的只是读到', () => {
+    for (const timing of [undefined, 'onCast'] as const) {
+      const withConcerto = pointTrace(go('卜灵', ['E'], timing), 'res.concertoTiming.卜灵')
+      expect(withConcerto.map(x => x.decisive)).toEqual([true, true])
+      expect(new Set(withConcerto.map(x => x.value))).toEqual(new Set([timing ?? 'onHit']))
+      expect(pointTrace(go('卜灵', ['B'], timing), 'res.concertoTiming.卜灵').map(x => x.decisive)).toEqual([false, false])
+    }
+    expect(usage(go('卜灵', ['E']), 'buling-concerto-timing')).toMatchObject({ readCount: 2, decisiveCount: 2 })
+  })
+
+  test('别的角色读的是共享的 concertoTiming（不在台账）：不记', () => {
+    expect(usage(go('甲', ['E']), 'buling-concerto-timing')).toMatchObject({ readCount: 0, decisiveCount: 0, firstFrame: null })
   })
 })
 
@@ -136,6 +162,15 @@ dataDescribe('代表场景里的判定点（DD-05 §4.1）', () => {
     const res = run('xin-team-r5-按套路重排.yaml')
     expect(usage(res, 'forte-keep.心-照世相').decisiveCount).toBeGreaterThan(0)
     expect(usage(res, 'forte-keep.卜灵-卦象').decisiveCount).toBeGreaterThan(0)
+  }, 60_000)
+
+  test('xin-team.yaml：卜灵的阵附加电磁效应时，心的钩子读 summonCountsAsChar（与 occurrencesOf 那一处次数相同、都决定分支）；卜灵的协奏时机也读到了', () => {
+    const res = run('xin-team.yaml', true)
+    const mine = pointTrace(res, 'char.心.summonAsChar'), engine = pointTrace(res, 'triggers.summonAsChar')
+    expect(mine.length).toBeGreaterThan(0)
+    expect(mine.length).toBe(engine.length)
+    expect(mine.every(x => x.decisive && x.value === true)).toBe(true)
+    expect(usage(res, 'buling-concerto-timing').decisiveCount).toBeGreaterThan(0)
   }, 60_000)
 
   test('alm-爱琳莫.yaml：爱弥斯过载后第一次光翼共奏读 trackNoConsume，读到就决定分支', () => {

@@ -18,8 +18,7 @@ import { roundTo, snap9 } from './num'
 import type { TriggerCheckGroup, TriggerOutcome, TriggerTarget } from './probe'
 import { RULE_POINTS, type RulePointId } from './rule-points'
 import type { RuleUsageReport, TickPhase } from './run-types'
-import type { ScheduleErrorCode } from './scheduler'
-import type { CommandRef, HitFactors, SimEvent, SimState, WaitCode, ZoneAccumulator } from './types'
+import type { CommandRef, HitFactors, ScheduleErrorCode, SimEvent, SimState, WaitCode, ZoneAccumulator } from './types'
 
 // ---------------------------------------------------------------------------
 // 类型（架构 §3.3；总览 §6 的 S-05、S-08、S-12）
@@ -419,7 +418,7 @@ export class DiagSink {
   private fill(sc: Scope, end: number, phase: TickPhase): void {
     const p = this.phaseOf(phase)
     for (let i = sc.start; i < end; i++) {
-      if (this.filled[i] !== undefined) continue
+      if (this.filled[i] != null) continue                       // 快照经 JSON 往返后空洞是 null（DD-10 §3），与 undefined 同样算没标
       this.filled[i] = { phase: p, origin: sc.origin, parent: sc.parentSeq, scope: sc.id }
     }
   }

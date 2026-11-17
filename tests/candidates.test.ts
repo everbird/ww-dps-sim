@@ -5,6 +5,7 @@ import { parse } from 'yaml'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { loadGameData } from '../src/data/load'
 import { classifyCandidates, compareOutcome, pathConflict, runCandidateReport, scenarioFeatures } from '../src/analysis/candidates'
+import { usableBasis } from '../src/engine/basis'
 import { canonicalJson } from '../src/engine/digest'
 import { PROPOSITIONS, type Binding, type Proposition } from '../src/engine/propositions'
 import { prepareRun, runPrepared } from '../src/engine/run'
@@ -104,6 +105,29 @@ describe('运行与覆盖', () => {
   test('C04-12 报告完整可重复，包括对照 runId', () => {
     const data = dataOf(), s = sc()
     expect(canonicalJson(runCandidateReport(s, data, { pairs: true, ledger: [A, B] }))).toBe(canonicalJson(runCandidateReport(s, data, { pairs: true, ledger: [A, B] })))
+  })
+  test('稳态报告用稳态的闸门：目标是前 N 秒、endAt 把稳态的一轮截掉一半时不可比（DD-03 §7.1、DD-04 §5.3；Codex 审查 F2）', () => {
+    // E 冷却 30 帧：每轮 60 帧，第 2 轮真实结束在 120；endAt 65 时统计只剩 [60, 65)
+    const s = sc({ rotation: ['甲 E', '甲 E'], options: { tuneBreak: 'manual', repeat: 5, maxFrames: 2000, maxWait: 60, endAt: 65 } })
+    const steady = runPrepared(prepared(s)), window = runPrepared(prepared({ ...s, goal: { window: 0.1 } }))
+    expect([usableBasis(steady).ok, usableBasis(window).ok]).toEqual([false, true])   // 前提：按目标（前 0.1 秒）是可用的
+    for (const res of [steady, window]) {
+      const o = compareOutcome(res, res)
+      expect(o).toMatchObject({ steadyDps: null, steadyLoopBattleFrames: null, loopTime: 'notComparable', dps: { status: 'notComparable', delta: null } })
+      expect(o.failureDetail).toContain('统计被截断')
+    }
+  })
+  test('变体改变了谐破口径的那一行标 scopeMismatch，报告里带 †（DD-03 §7.4）；不适用、未实现用顿号列，不写成组合', () => {
+    const auto: Proposition = { ...A, id: 'auto-data', candidates: [{ ...A.candidates[1]!, binding: { kind: 'option', path: 'tuneBreak', value: 'auto' } }] }
+    const missing = (id: string): Proposition => ({ ...A, id, candidates: [{ id: 'm', label: 'm', changes: 'mechanism', implemented: false, binding: { kind: 'unimplemented' } }] })
+    const r = runCandidateReport(sc(), dataOf(), { pairs: false, ledger: [auto, missing('X1'), missing('X2')] })
+    const o = r.mechanismOutcomes.find(x => x.candidates[0]!.propositionId === 'auto-data')!
+    expect(o.scopeMismatch).toMatchObject({ base: { tuneBreak: { mode: 'omitted' } }, other: { tuneBreak: { mode: 'auto' } } })
+    expect(r.baseline.scopeMismatch).toBeUndefined()
+    const md = candidateMarkdown(r, 'test')
+    expect(md).toContain('auto-data=flip †')
+    expect(md).toContain('- 未实现：X1=m、X2=m')
+    expect(md).not.toContain('X1=m × X2=m')
   })
   test('C04-15 小于窗口幅度也必须标 changed；不同稳态轮次不可比', () => {
     const base = runPrepared(prepared()), other = structuredClone(base)

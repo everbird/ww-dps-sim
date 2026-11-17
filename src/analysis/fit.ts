@@ -47,12 +47,22 @@ export const DEFAULT_FIT_TOLERANCES: Readonly<Record<Channel, number>> = { switc
 /** 一条观测只在这么多秒之内找仿真事件 */
 export const FIT_WINDOW_SECONDS = 10
 
+/** 评分集合只能放评分用的观测：被用作输入的（!given，同步的依据）不能再拿来评分（DD-09 §3.2：同一项读数不能两用），
+ *  只展示的（!display）也不进（§4.4 第 2 条）。显式给子集、直接传评分定义的入口都查（Codex 审查 F9） */
+function checkScoreIds(obs: readonly VideoObservation[], ids: readonly string[]): void {
+  const byId = new Map(obs.map(o => [o.id, o]))
+  const unknown = ids.filter(id => !byId.has(id))
+  if (unknown.length) throw new Error(`评分集合里有不存在的观测：${unknown.join('、')}`)
+  const wrong = ids.filter(id => byId.get(id)!.purpose !== 'score')
+  if (wrong.length)
+    throw new Error(`评分集合只能放评分用的观测：${wrong.map(id => `${id}（!${byId.get(id)!.purpose}）`).join('、')} 不行——`
+      + '!given 是同步用的输入，同一项读数不能再拿来评分；!display 只展示（DD-09 §3.2、§4.4）')
+}
+
 /** 缺省的评分定义：评分集合是全部不带 !given、!display 的观测；也可以给一个子集（只能是这些观测的 ID） */
 export function scoreDefOf(obs: readonly VideoObservation[], over: Partial<FitScoreDef> = {}): FitScoreDef {
   const ids = over.scoreObservationIds ?? obs.filter(o => o.purpose === 'score').map(o => o.id)
-  const known = new Set(obs.map(o => o.id))
-  const unknown = ids.filter(id => !known.has(id))
-  if (unknown.length) throw new Error(`评分集合里有不存在的观测：${unknown.join('、')}`)
+  checkScoreIds(obs, ids)
   return {
     scoreObservationIds: [...ids],
     weights: { ...DEFAULT_FIT_WEIGHTS, ...over.weights },
@@ -132,6 +142,7 @@ interface SimItem { readonly seq: number; readonly f: number; readonly e: SimEve
 export function replayFit(r: ResolvedScenario, res: SimResult, video: Video, opts: ReplayFitOptions = {}): FitResult {
   const obs = opts.observations ?? videoObservations(video, video.switches?.length ? [] : frozenSwitches(r, video))
   const def = opts.scoreDef ?? scoreDefOf(obs)
+  if (opts.scoreDef) checkScoreIds(obs, def.scoreObservationIds)
   const scored = new Set(def.scoreObservationIds)
   // 时间对齐：按第一个对上的锚点（视频秒 ↔ 世界帧，视图 F、pnpm trace 同样）
   const cmds = traceCommands(res.log, r, video.loop)
@@ -196,7 +207,23 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video, opt
         if (alt) {
           // 跳字的残差照样按数值算（配上的那一下），时刻的通道按时刻差
           const hv = o.channel === 'hit' && x.e.type === 'hit' ? hitCheck(o, x.e.dmg!, def.tolerances.hit) : null
-          out.set(o.id, { ...base, ...extra, ...(hv ? { sim: hv.sim } : {}), status: 'ambiguous', residual: hv ? hv.residual : simT - o.t, candidates: alt.map(k => handle(evs[k]!.seq)) })
+          const candidates = alt.map(k => handle(evs[k]!.seq))
+          // 匹配身份的歧义与定性冲突分开判（DD-09 §4.2；Codex 审查 F8）：可配的每一个仿真事件都与录像定性冲突，
+          // 配哪个都冲突——这是确定的冲突，不藏在 ambiguous 里；有的冲突、有的不冲突，才是分不清的 ambiguous
+          const conflicts = alt.map(k => qualitativeConflict(o, evs[k]!.e, def.tolerances.hit))
+          const n = conflicts.filter(c => c !== null).length
+          if (n === alt.length) {
+            const mine = conflicts[alt.indexOf(j)] ?? conflicts.find(c => c !== null)!
+            out.set(o.id, {
+              ...base, ...extra, ...(hv ? { sim: hv.sim } : {}), status: 'conflicted', residual: hv ? hv.residual : simT - o.t, candidates,
+              conflict: `${mine}（${alt.length} 个可配的仿真事件都冲突）`,
+            })
+            return
+          }
+          out.set(o.id, {
+            ...base, ...extra, ...(hv ? { sim: hv.sim } : {}), status: 'ambiguous', residual: hv ? hv.residual : simT - o.t, candidates,
+            ...(n > 0 ? { note: `${alt.length} 个可配的仿真事件里有 ${n} 个与录像冲突、${alt.length - n} 个不冲突` } : {}),
+          })
           return
         }
         if (o.channel === 'hit' && x.e.type === 'hit') {
@@ -250,6 +277,14 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video, opt
     anchors: cmp.rows.length, firstLine: first?.line ?? null, lastFrame, frameOf, vsec,
     ...(opts.fillCombo !== undefined ? { fillCombo: opts.fillCombo } : {}),
   })
+}
+
+/** 一条观测配一个仿真事件时的定性冲突（DD-09 §4.2：只有切人类型与跳字分支两种）；不冲突为 null */
+function qualitativeConflict(o: VideoObservation, e: SimEvent, tol: number): string | null {
+  if (o.channel === 'hit' && e.type === 'hit' && e.dmg) return hitCheck(o, e.dmg, tol).conflict ?? null
+  if (o.channel === 'switch' && e.type === 'switch' && o.type !== null && (o.type === 'intro') !== e.intro)
+    return `switchType: 录像 ${o.type}，仿真 ${e.intro ? 'intro' : 'normal'}`
+  return null
 }
 
 /** 跳字：按标明的分支比；分支未知时两支都比，有一支在容差内算对上，都不在是冲突 */

@@ -19,8 +19,10 @@ async function main(): Promise<number> {
   const files = loaded.filter(x => !skipped.includes(basename(x.f, '.yaml')))
   const data = await loadGameData()
   const t0 = Date.now()
-  const scen = files.map(({ f, sc }) => { const effective = withOverrides(sc, opt); if (opt.strict !== undefined) effective.options.strict = opt.strict === 'true'; return { name: basename(f, '.yaml'), sc: effective } })
-  const m = sensitivityMatrix(scen, data, row => console.error(`  ${row.name}：${((Date.now() - t0) / 1000).toFixed(0)} 秒`))
+  const scen = files.map(({ f, sc }) => ({ name: basename(f, '.yaml'), sc: withOverrides(sc, opt) }))
+  // --strict / --no-strict 经 RunOverrides 进运行（身份里 strictSource 记 cli-override），不写回场景（DD-01 §3.2、DD-02 §3.1）
+  const overrides = opt.strict !== undefined ? { strict: opt.strict === 'true' } : {}
+  const m = sensitivityMatrix(scen, data, row => console.error(`  ${row.name}：${((Date.now() - t0) / 1000).toFixed(0)} 秒`), overrides)
   const out: string[] = []
   out.push('# 假设敏感度矩阵', '', `${files.length} 个场景 × ${m.flips.length} 个开关，${((Date.now() - t0) / 1000).toFixed(0)} 秒；比较口径同轴搜索（有分轮取稳态，否则整个窗口）。`, '')
   if (skipped.length) out.push(`没跑的录像剖析场景（purpose: replay）：${skipped.join('、')}。`, '')

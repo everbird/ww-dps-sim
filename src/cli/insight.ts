@@ -15,10 +15,11 @@ async function main(): Promise<number> {
   }
   const data = await loadGameData()
   const sc = withOverrides(loadScenario(file), opt)
-  if (opt.strict !== undefined) sc.options.strict = opt.strict === 'true'
+  // --strict / --no-strict 经 RunOverrides 进运行（身份里 strictSource 记 cli-override），不写回场景（DD-01 §3.2、DD-02 §3.1）
+  const overrides = opt.strict !== undefined ? { strict: opt.strict === 'true' } : {}
   const delays = opt.delays ? opt.delays.split(',').map(Number) : DEFAULT_DELAYS
   const t0 = Date.now()
-  const x = insight(sc, data, { delays, tight: opt.tight ? Number(opt.tight) : DEFAULT_TIGHT })
+  const x = insight(sc, data, { delays, tight: opt.tight ? Number(opt.tight) : DEFAULT_TIGHT, overrides })
   console.log(`场景 ${file} · 口径：${x.basis.label}，DPS ${fmt(x.basis.dps)}（跑了 ${x.runs} 次仿真，${((Date.now() - t0) / 1000).toFixed(1)} 秒）`)
 
   console.log('\n① 共鸣效率需求：轴里的大招不等能量，最低要多少（按单调二分，精确到 0.25%）')

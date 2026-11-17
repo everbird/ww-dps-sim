@@ -296,12 +296,16 @@ const syncList = (interventions: readonly InterventionRecord[] | undefined): Int
   (interventions ?? []).filter(x => x.kind === 'sync' && x.target?.slot !== undefined && x.target.resource !== undefined && x.adopted !== undefined)
     .sort((a, b) => a.afterEventSeq - b.afterEventSeq || a.orderInAnchor - b.orderInAnchor)
 
+/** 同步那一步的"事件"列：按账本与按干预记录两条路写法相同 */
+const syncLabel = (name: CharName, resource: ResourceKind, adopted: number) =>
+  `状态同步（外部指定 ${name} 的 ${resource} = ${roundTo(adopted, 100)}，不发触发）`
+
 /** 一次同步写成一步：变化 = 采用值 − 前值，变化之后的值 = 采用值；战斗秒取它所接的那条事件的（同步在 P2 执行，与它同一帧） */
 function syncStep(rec: InterventionRecord, names: readonly CharName[], log: readonly SimEvent[]): GainStep {
   const name = names[rec.target!.slot!]!
   return {
     f: rec.f, t: log[rec.afterEventSeq]?.t ?? 0, resource: rec.target!.resource!, deltas: { [name]: rec.delta ?? 0 }, value: rec.adopted!, values: { [name]: rec.adopted! },
-    how: 'sync', what: '', label: `状态同步（外部指定 ${name} 的 ${rec.target!.resource} = ${roundTo(rec.adopted!, 100)}，不发触发）`, owner: null,
+    how: 'sync', what: '', label: syncLabel(name, rec.target!.resource!, rec.adopted!), owner: null,
   }
 }
 
@@ -427,22 +431,25 @@ export function gainSteps(
   const members = new Map(r.team.map(m => [m.def.name, m]))
   const names = r.team.map(m => m.def.name)
   const byEvent = new Map<number, ResourceLedgerEntry[]>()
-  const loose: { anchor: number; step: GainStep }[] = []            // 没有事件的写入：anchor = 它之前最近一条有事件的条目的事件
+  // 没有事件的写入：anchor = 它之前最后一条已写出的事件。账本与日志同序，按账本顺序走时 anchor 只往后移：
+  // 碰到同步也要把 anchor 推到它的 afterEventSeq，后面那些没有事件的写入才不会排到这次同步之前（同一个 anchor 里照账本顺序，Antigravity 审查 H3）
+  const loose: { anchor: number; step: GainStep }[] = []
   let anchor = -1
   for (const e of ledger ?? []) {
     if (e.relatedEventSeq !== undefined) {
-      anchor = e.relatedEventSeq
-      let list = byEvent.get(anchor)
-      if (!list) byEvent.set(anchor, (list = []))
+      anchor = Math.max(anchor, e.relatedEventSeq)
+      let list = byEvent.get(e.relatedEventSeq)
+      if (!list) byEvent.set(e.relatedEventSeq, (list = []))
       list.push(e)
     } else if (e.kind === 'change') loose.push({ anchor, step: looseStep(e, names) })
     else if (e.kind === 'sync') {
       const rec = e.relatedInterventionIndex !== undefined ? interventions?.[e.relatedInterventionIndex] : undefined
-      loose.push({ anchor: rec?.afterEventSeq ?? anchor, step: { ...looseStep(e, names), how: 'sync', what: '', label: `状态同步（外部指定，不发触发）`, t: e.battleFrame / 60 } })
+      if (rec) anchor = Math.max(anchor, rec.afterEventSeq)
+      loose.push({ anchor, step: { ...looseStep(e, names), how: 'sync', what: '', label: syncLabel(names[e.slot]!, e.resource, e.after), t: e.battleFrame / 60 } })
     }
   }
   if (!ledger) for (const rec of syncList(interventions)) loose.push({ anchor: rec.afterEventSeq, step: syncStep(rec, names, log) })
-  loose.sort((a, b) => a.anchor - b.anchor)
+  loose.sort((a, b) => a.anchor - b.anchor)                          // 稳定排序：同一个 anchor 保持账本（或干预记录）的先后
   const fromLedger = (es: readonly ResourceLedgerEntry[]) => ({
     deltas: Object.fromEntries(es.map(x => [names[x.slot]!, x.actualDelta])),
     values: Object.fromEntries(es.map(x => [names[x.slot]!, x.after])),

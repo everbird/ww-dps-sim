@@ -6,7 +6,7 @@ import type { BuffDef, TriggerFilter, TriggerSpec } from '../data/buff.schema'
 import { applyTriggered, bookKey, extendBuff, ownerName, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { log } from './kernel'
-import { explainExtend, explainFiring, groupsWouldFire, type Occurrence, type TriggerTarget } from './probe'
+import { explainExtend, explainFiring, type Occurrence, type TriggerCheckGroup, type TriggerTarget } from './probe'
 import { grant } from './resources'
 import { ScheduleError } from './types'
 import type { SimEvent, SimState } from './types'
@@ -267,16 +267,23 @@ function firing(
   return occ
 }
 
-/** 消耗型"下次 X…"（§6）：先于触发处理。相关实例 = 挂在事件发出者身上的、挂在敌人身上的。每个被消耗的实例一个作用域（DD-05 §3.2） */
+/** 消耗型"下次 X…"（§6）：先于触发处理。相关实例 = 挂在事件发出者身上的、挂在敌人身上的。每个被消耗的实例一个作用域（DD-05 §3.2）。
+ *  触发检查（DD-07 §6）：一个目标可能有几个实例（全队 buff 每人一个），一条事件也可能有几个触发点（切人：切出、切入），各实例对的触发点不同。
+ *  每个实例在自己被处理的那一刻记下解释，所有实例都看完再给结论：有一个真的被消耗就是 fired，都没有才是 checkedNotFired
+ *  （原来在第一个相关实例上就定了结论，切人时切出者的实例对 switchOut，就报了"没触发"，而切入者的实例其实被消耗了；Codex 审查 F6） */
 function consume(
   sim: Sim, s: SimState, occs: Occurrence[], seq: number,
   tc?: readonly TriggerTarget[], recorded?: Set<number>,
 ): void {
   const k = sim.k
   const seenInstance = tc && recorded ? new Set<number>() : null
+  const acc = tc && recorded ? new Map<number, { groups: TriggerCheckGroup[]; fired: boolean }>() : null
   for (const b of [...s.buffs]) {
     const c = sim.book.get(bookKey(b.owner, b.defId))?.def.consume
-    if (tc && recorded && seenInstance) {
+    // 这个实例对应的检查目标（诊断关着时是空的）：解释在处理它之前取，前面的实例已经被消耗的照实反映。业务判断照旧在下面单独算
+    const mine: number[] | null = acc ? [] : null
+    if (tc && recorded && seenInstance && acc && mine) {
+      const relevant = occs.filter(o => b.target === o.by || b.target === 'enemy')
       tc.forEach((t, idx) => {
         if (recorded.has(idx) || t.kind !== 'consume' || t.owner !== b.owner || t.id !== b.defId) return
         seenInstance.add(idx)
@@ -288,15 +295,19 @@ function consume(
           })
           return
         }
-        const matchedOccs = occs.filter(o => b.target === o.by || b.target === 'enemy')
-        if (matchedOccs.length === 0) return
-        recorded.add(idx)
-        const groups = explainFiring(s, { on: c.on, ...(c.where ? { where: c.where } : {}) }, b.owner, b.defId, undefined, matchedOccs)
-        k.diag!.triggerCheck({ eventSeq: seq, target: t, outcome: groupsWouldFire(groups) ? 'fired' : 'checkedNotFired', groups })
+        if (relevant.length === 0) return
+        mine.push(idx)
+        const instance = { id: b.id, target: b.target === 'enemy' ? 'enemy' : s.chars[b.target].name }
+        const groups = explainFiring(s, { on: c.on, ...(c.where ? { where: c.where } : {}) }, b.owner, b.defId, undefined, relevant).map(g => ({ ...g, instance }))
+        const e = acc.get(idx)
+        if (e) e.groups.push(...groups)
+        else acc.set(idx, { groups, fired: false })
       })
     }
     if (!c) continue
-    if (!occs.some(o => (b.target === o.by || b.target === 'enemy') && matches(s, c.on, c.where, b.owner, o))) continue
+    const hit = occs.some(o => (b.target === o.by || b.target === 'enemy') && matches(s, c.on, c.where, b.owner, o))
+    if (mine && hit) for (const idx of mine) acc!.get(idx)!.fired = true   // 诊断：按真实结果标（DD-07 §6）
+    if (!hit) continue
     const sc = k.diag?.open({ kind: 'trigger', directParentSeq: seq, handlerKind: 'consume', handlerId: b.defId }, s.log.length)
     if (c.stacks === 'all' || b.stacks <= c.stacks) removeBuff(s, b, 'removed')
     else {
@@ -305,7 +316,11 @@ function consume(
     }
     if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
   }
-  if (tc && recorded && seenInstance) {
+  if (tc && recorded && seenInstance && acc) {
+    for (const [idx, e] of acc) {
+      recorded.add(idx)
+      k.diag!.triggerCheck({ eventSeq: seq, target: tc[idx]!, outcome: e.fired ? 'fired' : 'checkedNotFired', groups: e.groups })
+    }
     tc.forEach((t, idx) => {
       if (recorded.has(idx) || t.kind !== 'consume') return
       recorded.add(idx)
