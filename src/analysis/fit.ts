@@ -161,7 +161,12 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video, opt
         if (e.type === 'actionStart') return e.char === o.char && e.action === actionIdOf(r, o.char, o.action)
         if (e.type === 'judgmentSpawn') return e.char === o.char && e.judgment === o.action
         return e.type === 'outro' && e.char === o.char && o.action === '延奏'
-      case 'hit': return e.type === 'hit' && e.char === o.char && e.judgment === o.judgment
+      case 'hit': {
+        // 判定名可写成"动作/判定"（同名判定在几个动作里都有时，如照世·E 与应世 E 的 E-2）
+        if (e.type !== 'hit' || e.char !== o.char) return false
+        const k = o.judgment.lastIndexOf('/')
+        return k < 0 ? e.judgment === o.judgment : e.judgment === o.judgment.slice(k + 1) && e.action === actionIdOf(r, o.char, o.judgment.slice(0, k))
+      }
       default: return false
     }
   }
@@ -189,7 +194,9 @@ export function replayFit(r: ResolvedScenario, res: SimResult, video: Video, opt
         }
         const alt = a.alternatives[i]
         if (alt) {
-          out.set(o.id, { ...base, ...extra, status: 'ambiguous', residual: simT - o.t, candidates: alt.map(k => handle(evs[k]!.seq)) })
+          // 跳字的残差照样按数值算（配上的那一下），时刻的通道按时刻差
+          const hv = o.channel === 'hit' && x.e.type === 'hit' ? hitCheck(o, x.e.dmg!, def.tolerances.hit) : null
+          out.set(o.id, { ...base, ...extra, ...(hv ? { sim: hv.sim } : {}), status: 'ambiguous', residual: hv ? hv.residual : simT - o.t, candidates: alt.map(k => handle(evs[k]!.seq)) })
           return
         }
         if (o.channel === 'hit' && x.e.type === 'hit') {
@@ -486,7 +493,7 @@ export function fitVariants(sc: Scenario, data: GameData, opts: FitVariantsOptio
       ruleRows.push(runRow(sc, data, ov, `${c.propositionId} → ${c.candidateId}（${b.kind === 'rule' ? 'rules' : 'options'}.${b.path} = ${String(b.value)}）`, 'rule', fitOpts, video, { propositionId: c.propositionId, candidateId: c.candidateId }))
     }
     for (const c of plan.policy) ruleNotRun.push({ ref: { propositionId: c.propositionId, candidateId: c.candidateId }, reason: '策略类：录像里的操作是观测到的输入，不当候选翻' })
-    for (const x of plan.excluded) for (const ref of x.candidates) ruleNotRun.push({ ref, reason: `和这条轴冲突：${x.reason}` })
+    for (const x of plan.excluded) for (const ref of x.candidates) ruleNotRun.push({ ref, reason: x.reason === '改变的是轴的输入' ? '改变的是轴的输入（另一份场景，见证据闭环），不当规则候选翻' : `和这条轴冲突：${x.reason}` })
     for (const ref of plan.unimplemented) ruleNotRun.push({ ref, reason: '没实现' })
     for (const ref of plan.notApplicable) ruleNotRun.push({ ref, reason: '不适用（队里没有这个角色）' })
   }

@@ -49,7 +49,7 @@ export function setupOf(record: Pick<ClosureRecord, 'setups' | 'id'>, o: Observa
 export const runnable = (c: Candidate): boolean => c.implemented && c.binding.kind !== 'unimplemented'
 
 /** 候选怎么落到运行上（DD-04 §3.1）：rule / option 显式写进 RunOverrides（不靠缺省，DD-08 §4.2 的 rerun 同样）；
- *  curated / hook 只有当前采用的那个能跑，照现在的代码；不能跑的返回 null */
+ *  curated / hook 只有当前采用的那个能跑，照现在的代码；scenario 不改覆盖、换场景跑（scenarioFor）；不能跑的返回 null */
 export function overridesFor(c: Candidate): RunOverrides | null {
   if (!runnable(c)) return null
   const b = c.binding
@@ -57,6 +57,9 @@ export function overridesFor(c: Candidate): RunOverrides | null {
   if (b.kind === 'option') return { options: { [b.path!]: b.value } as RunOverrides['options'] }
   return {}
 }
+
+/** 这个候选在 setup 上用哪份场景：scenario 绑定的换成它自己的（DD-09 §5：录像里漏记的一下这类"轴的输入"候选），其余用 setup 的 */
+export const scenarioFor = (c: Candidate, setupScenario: string): string => (c.binding.kind === 'scenario' ? c.binding.path! : setupScenario)
 
 /** 记录的候选要与台账这条命题的候选一一对上（DD-08 §4.1：其余候选的情况照记，不漏） */
 function checkCandidates(record: ClosureRecord, p: Proposition): void {
@@ -131,13 +134,15 @@ export function predictClosure(record: ClosureRecord, ctx: EvidenceContext): Pre
   const identities = new Map<string, RunIdentity>()
   const results: { candidateId: string; setupId: string; run: PreparedRun; result: SimResult }[] = []
   const candidates = record.candidates.map(rc => {
-    const ov = overridesFor(candidateOf(ctx.proposition, rc.candidateId))
+    const cand = candidateOf(ctx.proposition, rc.candidateId)
+    const ov = overridesFor(cand)
     if (ov === null) return { ...rc, runs: [], predictions: rc.predictions.filter(p => p.manual) }   // 没实现：只留手算的
     const runs: ClosureRunRef[] = []
     const preds = new Map<string, ClosurePrediction>()
     for (const s of record.setups) {
-      const sc = ctx.scenarios.get(s.scenario)
-      if (!sc) throw new EvidenceError(`${record.id}：没有给 setup ${s.id} 的场景 ${s.scenario}`)
+      const file = scenarioFor(cand, s.scenario)
+      const sc = ctx.scenarios.get(file)
+      if (!sc) throw new EvidenceError(`${record.id}：没有给 setup ${s.id} 的场景 ${file}`)
       const prep = prepareRun(sc, ctx.data, { ...ov, ...(ctx.environment ? { environment: ctx.environment } : {}) })
       if (!prep.ok) throw new EvidenceError(`${record.id}：候选 ${rc.candidateId} 在 setup ${s.id} 上准备不了：${prep.issues.map(i => i.message).join('；')}`)
       const list = bySetup.get(s.id)!
@@ -527,6 +532,8 @@ export interface RerunOutput {
   readonly identities: ReadonlyMap<string, RunIdentity>
   readonly affected: readonly { readonly scenario: string; readonly why: string }[]
   readonly problems: readonly string[]
+  /** 没有要重跑的场景时说明为什么（scenario 绑定：采用的是轴的输入，DD-09 §5） */
+  readonly note?: string
 }
 
 const sideOf = (res: SimResult): ClosureRecord['reruns'][number]['before'] => {
@@ -547,6 +554,12 @@ export function rerunClosure(record: ClosureRecord, p: Proposition, data: GameDa
   if (p.adopted !== d.adopted) problems.push(`台账 ${p.id} 采用的还是 ${p.adopted}，与采用决定的 ${d.adopted} 不一致：先改 propositions.ts 与规则的缺省值`)
   const before = candidateOf(p, d.adoptedBefore), after = candidateOf(p, d.adopted)
   if (!before || !after) throw new EvidenceError(`${record.id}：采用决定里的候选 ${d.adoptedBefore} / ${d.adopted} 不在台账里`)
+  // scenario 绑定（DD-09 §5）：采用前后各是一份场景，改的是那一份场景的输入，引擎的缺省没变——没有别的场景要重跑；
+  // 两份场景各自的运行 predict 已经跑过（runs 里有 runId）
+  if (before.binding.kind === 'scenario' || after.binding.kind === 'scenario') {
+    if (d.defaultChanged) problems.push(`${d.adoptedBefore} → ${d.adopted} 是轴的输入（scenario 绑定），引擎的缺省没变：defaultChanged 应为 false`)
+    return { reruns: [], identities: new Map(), affected: [], problems, note: `${d.adoptedBefore} → ${d.adopted} 改的是轴的输入（scenario 绑定，采用的场景 ${after.binding.kind === 'scenario' ? after.binding.path! : '—'}）：引擎的缺省没变，没有要重跑的场景；采用前后两份场景的运行见 predict 的 runs` }
+  }
   let ovBefore = overridesFor(before), ovAfter = overridesFor(after)
   if (ovBefore === null || ovAfter === null) throw new EvidenceError(`${record.id}：采用前后的候选要能跑（${d.adoptedBefore} → ${d.adopted}）`)
   const flippable = (c: Candidate) => c.binding.kind === 'rule' || c.binding.kind === 'option'

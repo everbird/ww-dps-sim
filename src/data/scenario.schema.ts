@@ -95,7 +95,8 @@ export const ScenarioSchema = z.strictObject({
     events: z.array(videoLine(String.raw`\S+\s+\S+`, '写成"<视频秒> <角色> <动作>"，如 15.0 散华 E（后台来源写 @动作）')).optional(),
     // 录像里看到的切人（DD-09 §4.1）："<视频秒> <切出>→<切入> [intro|normal]"；写了类型的才比类型（切人类型的参照只来自这里，§4.3）
     switches: z.array(videoLine(String.raw`\S+?(→|->)\S+(\s+(intro|normal))?`, '写成"<视频秒> <切出>→<切入> [intro|normal]"，如 22.6 卜灵→雷主·男 intro')).optional(),
-    // 录像里读到的单下跳字（DD-09 §4.1，R15）："<视频秒> <角色> <判定名> <数> [crit|nonCrit]"，不写分支是不知道（两支都比）
+    // 录像里读到的单下跳字（DD-09 §4.1，R15）："<视频秒> <角色> <判定名> <数> [crit|nonCrit]"，不写分支是不知道（两支都比）；
+    // 同名判定在几个动作里都有时写"动作/判定"（照世·E/E-2）
     hits: z.array(videoLine(String.raw`\S+\s+\S+\s+\d+(\.\d+)?(\s+(crit|nonCrit|unknown))?`, '写成"<视频秒> <角色> <判定名> <数> [crit|nonCrit]"，如 41.5 心 增幅强化重击-3 288240 crit')).optional(),
     // 录像里敌人的血条（2026-10-26，视图 F 拿仿真的累计伤害对照）："<视频秒> <剩余比例>"，如 55.25 0.998；
     // 第一条是血条出现（开始打这个敌人）的时刻，仿真从那一刻起算伤害（之前打的是别的敌人，如深塔开头的小怪）；

@@ -1,0 +1,67 @@
+# 回填（DD-09 §5 第 5 条，路线图 §7 案例与 §10.2"窗口边界"）：雷主首位改成绝息魄、卜灵第一段的声骸补上之后，中 4 第 1 轮心的跳字只剩镇寰宇
+# 对不上（录像 202284 / 仿真 180256 = 1.1222，正好是两条 15 秒 buff 的加成）。仿真里这两条在镇寰宇命中前 18 个战斗帧到期。
+# 材料是 docs/calibration/2026-11-16-录像-中3中4卜灵首段声骸与镇寰宇窗口.md 第 3 节：心变奏入场到镇寰宇起手的深塔倒计时差 G。
+id: zhenhuanyu-window.backfill
+propositionId: zhenhuanyu-window
+question: 中 4 第 1 轮心的镇寰宇命中时，变奏入场挂上的两条 15 秒 buff 还在不在（B-1 的窗口要求）
+kind: backfill
+setups:
+  - id: tower4
+    scenario: xin-tower4-video.yaml
+    note: 深塔 41 期中 4 录像剖析（第六版）；世界秒 = 视频秒 − 2.75
+candidates:
+  - candidateId: expired-as-sim
+    conditions: 照现在的场景与时序：心 30.0 变奏入场（第 1180 战斗帧）挂上镜影流电之瞬 5 件的延奏加成（+25%）与绝息魄首位的导电加成（+12%），各 900 战斗帧；镇寰宇第 2096 帧起手、第 2098 帧命中，两条在第 2080 帧到期
+    runs:
+      - setupId: tower4
+        runId: run-82b1fa22bccee4bb
+        status: completed
+    predictions:
+      - observationId: 窗口.中4.入场到镇寰宇
+        predicted: 15.266666666666667
+        covered: true
+      - observationId: 窗口.中4.镇寰宇
+        predicted:
+          - 78852
+          - 180256
+        covered: true
+  - candidateId: in-window
+    conditions: 游戏里从入场（挂上）到镇寰宇命中不到 15 战斗秒，两条都在（录像的比值 1.1222 与两条都在时的 1 + 0.369 / 3.016 = 1.1224 一致）。没有可运行的模型：仿真的镇寰宇起手比录像晚 0.45 秒，另缺约 0.2 秒的战斗时钟停顿
+    runs: []
+    predictions: []
+criteria: 路线图 §10.2：由倒计时得到的"施加到命中"间隔整个落在 15 秒以内算支持 in-window，整个超出算冲突，跨过边界或端点对应不了算分不清；不靠调钉点让它贴上。仿真的 G 与录像比要先让仿真的镇寰宇起手对齐录像（requires），现在没对齐
+observationIds:
+  - 窗口.中4.入场到镇寰宇
+  - 窗口.中4.镇寰宇
+verdicts:
+  - candidateId: expired-as-sim
+    perObservation:
+      - observationId: 窗口.中4.入场到镇寰宇
+        status: insufficientCondition
+        residual: null
+        purpose: independent_validation
+        covered: true
+      - observationId: 窗口.中4.镇寰宇
+        status: insufficientCondition
+        residual: null
+        purpose: formulation
+        covered: true
+    runStatuses:
+      - completed
+    overall: notAssessed
+    notAssessedReason: allInsufficient
+  - candidateId: in-window
+    perObservation: []
+    overall: notAssessed
+    notAssessedReason: unimplemented
+    runStatuses: []
+conclusion:
+  proposition: unverified
+  about: null
+  basis:
+    independent: []
+    other: []
+  rule: 1
+scopeTested: 游戏版本 3.7；深塔 41 期中 4 第 1 轮，xin-tower4-video.yaml 第六版的配装；倒计时读数精度约 ±0.05 秒
+discriminatingObservationNeeded: 训练场：雷主放过声骸（绝息魄首位）后延奏切心变奏入场，入场后按倒计时掐在 14.5 秒与 15.5 秒各放一次镇寰宇（各三次），比两组跳字是否差 1.1222 倍；或者在本局里找镇寰宇离入场更远（明显超过 15 秒）或更近（明显不到）的一轮看跳字
+notes: '按判据直接拿 G 与 15 秒比：G = 4:40.32 − 4:25.30 = 15.02 战斗秒（[14.97, 15.07]），镇寰宇在起手后约 2 个战斗帧命中，施加到命中约 [15.00, 15.10]——下端正好在 15 秒上，跨边界：分不清。两条观测与仿真比都是条件不足（仿真的镇寰宇比录像晚 0.45 秒起手，等照世·强化A4 的派生窗口；游戏在万阙连衡前后又多停约 0.2 秒战斗时钟），所以按决策表也没有可评估的候选。顺带的事实：入场那一刻倒计时（已打 19.68 秒）与仿真（19.667 秒）对得上；仿真入场到镇寰宇起手 15.27 秒，比游戏长约 0.25 秒。'

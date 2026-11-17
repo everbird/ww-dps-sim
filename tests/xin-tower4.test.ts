@@ -91,20 +91,21 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(out.log.filter(e => e.type === 'enemyState' && e.change === 'disharmony' && e.detail === '轴里写的（敌人 失谐）')).toHaveLength(2)
   })
 
-  test('跳字（校准线索）：万阙垂天第 1 轮对上录像 298012；镇红尘第 1 轮仿真少约 7%；第 2 轮仿真多吃了卜灵声骸的全队攻击（录像两轮一样）', () => {
+  test('跳字：卜灵第一段的声骸补上（视频 9.73 LT 冷却 20.0，DD-09 §5 第 6 条）、雷主首位改成绝息魄之后，心第 1、2 轮应世相与万阙垂天都与录像差 0.04%；镇寰宇仍少 10.9%（15 秒窗口）', () => {
     const crit = (judgment: string, t: number) => {
       const h = out.log.filter(e => e.type === 'hit' && e.judgment === judgment && e.dmg)
         .sort((a, b) => Math.abs(vsec(a.f) - t) - Math.abs(vsec(b.f) - t))[0]!
       return h.type === 'hit' ? { v: h.dmg!.crit, buffs: h.buffs } : null!
     }
     const ult = crit('大招-6', 58.0)
-    expect(Math.abs(ult.v / 298012 - 1)).toBeLessThan(0.005)
+    expect(Math.abs(298012 / ult.v - 1)).toBeLessThan(0.001)
     const z1 = crit('增幅强化重击-3', 36.8), z2 = crit('增幅强化重击-3', 90.5)
-    expect(288240 / z1.v).toBeGreaterThan(1.06)                       // 录像 288240、仿真 267644：差 7.7%，还没找到是哪一项
-    expect(288240 / z1.v).toBeLessThan(1.09)
-    expect(z2.buffs).toContain('无归的谬误.攻击')                     // 录像第 1、2 轮都是 288240；仿真第 2 轮多 4.4%
-    expect(z1.buffs).not.toContain('无归的谬误.攻击')
-    expect(z2.v / z1.v).toBeGreaterThan(1.04)
+    expect(Math.abs(288240 / z1.v - 1)).toBeLessThan(0.001)          // 原来 1.077（m ≈ 1.044 × 绝息魄）：卜灵第一段的声骸漏记了
+    expect(Math.abs(288240 / z2.v - 1)).toBeLessThan(0.001)
+    expect(z1.buffs).toContain('无归的谬误.攻击')                     // 两轮都吃到卜灵声骸的全队攻击（录像两轮一样）
+    expect(z2.buffs).toContain('无归的谬误.攻击')
+    const zh = crit('增幅强化重击-2', 51.9)
+    expect(202284 / zh.v).toBeGreaterThan(1.1)                        // 镇寰宇：两条 15 秒 buff 在仿真里早 18 帧到期（docs/evidence/zhenhuanyu-window.backfill.yaml）
   })
 
   test('阵打出的判定带 summon（卜灵冲击波）：缺省算"角色附加"；rules.summonCountsAsChar = false 时不触发、心不转霆心域，踏月归心小一半多（假设 summon-as-char）', async () => {

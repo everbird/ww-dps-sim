@@ -323,3 +323,45 @@ describe('采用决定之后的重跑（DD-08 §4.2 rerun；DF-17）', () => {
     expect(rerunClosure(judged('onHit', 'onCast', true), timing('onHit'), synthData(chars()), scenarios).problems.join('\n')).toMatch(/台账/)
   })
 })
+
+describe('scenario 绑定的候选（DD-09 §5：录像里漏记的一下这类“轴的输入”）', () => {
+  // 两份场景只差大招前有没有那一下 C：观测是大招起手前甲的协奏
+  const noC: Scenario = ScenarioSchema.parse({ ...scenario, rotation: ['wait 10', '甲 大招'] })
+  const input = (adopted = 'with-c'): Proposition => ({
+    id: 'syn-input', proposition: '合成：大招前打了一下 C', scope: 'conditioning', adopted, candidatesExhaustive: true,
+    candidates: [
+      { id: 'with-c', label: '打了', implemented: true, changes: 'input', binding: { kind: 'scenario', path: 'syn.yaml' } },
+      { id: 'no-c', label: '没打', implemented: true, changes: 'input', binding: { kind: 'scenario', path: 'syn-noc.yaml' } },
+    ],
+    evidence: [], conclusion: 'unverified', impact: { dps: 'none' },
+  })
+  const beforeUlt = ObservationSchema.parse({
+    id: 'before-ult', record: 'syn.md', scenario: 'syn.yaml', kind: 'resourceAt', at: { type: 'actionStart', action: '大招' }, when: 'before',
+    char: '甲', resource: 'concerto', game: null, purpose: 'independent_validation',
+  })
+  const rec = (): ClosureRecord => ClosureRecordSchema.parse({
+    id: 'syn.input', propositionId: 'syn-input', question: '大招前打没打 C', kind: 'backfill', setups: [{ id: 'S', scenario: 'syn.yaml' }],
+    candidates: [{ candidateId: 'with-c', conditions: '打了' }, { candidateId: 'no-c', conditions: '没打' }],
+    criteria: '协奏点值', observationIds: ['before-ult'], scopeTested: '合成',
+  })
+  const ctx = ctxOf({ proposition: input(), observations: [beforeUlt], scenarios: new Map([['syn.yaml', scenario], ['syn-noc.yaml', noC]]) })
+
+  test('predict：候选在 setup 上换成自己的场景跑（覆盖不变）；场景没给时报错', () => {
+    const out = predictClosure(rec(), ctx)
+    const pred = (id: string) => out.record.candidates.find(c => c.candidateId === id)!
+    expect(pred('with-c').predictions.map(p => p.predicted)).toEqual([10])
+    expect(pred('no-c').predictions.map(p => p.predicted)).toEqual([0])
+    const [a, b] = [pred('with-c').runs[0]!.runId, pred('no-c').runs[0]!.runId]
+    expect(a).not.toBe(b)
+    expect(out.identities.get(a)!.execution.scenarioDigest).not.toBe(out.identities.get(b)!.execution.scenarioDigest)
+    expect(() => predictClosure(rec(), { ...ctx, scenarios: new Map([['syn.yaml', scenario]]) })).toThrow(/syn-noc\.yaml/)
+  })
+
+  test('rerun：引擎的缺省没变，没有要重跑的场景（带说明）；defaultChanged 写成 true 时报问题', () => {
+    const judged = (defaultChanged: boolean): ClosureRecord => ({ ...predictClosure(rec(), ctx).record, decision: { adoptedBefore: 'no-c', adopted: 'with-c', defaultChanged, note: '合成' } })
+    const out = rerunClosure(judged(false), input(), synthData(chars()), new Map([['syn.yaml', scenario]]))
+    expect([out.reruns, out.affected, out.problems]).toEqual([[], [], []])
+    expect(out.note).toMatch(/轴的输入/)
+    expect(rerunClosure(judged(true), input(), synthData(chars()), new Map([['syn.yaml', scenario]])).problems.join('\n')).toMatch(/defaultChanged 应为 false/)
+  })
+})

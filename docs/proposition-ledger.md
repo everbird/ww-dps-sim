@@ -39,3 +39,5 @@
 | cast-gain-at-start | 资源公式的末项（起手即得）在动作开始那一帧就给，不等命中：散华 E 的协奏 15（角色-女"协奏回收"公式的 +15）就是这一项 | data | at-start | at-first-hit（未实现） | 否 | 暂定 | 1；闭环 sanhua-e.backfill；游戏版本不详 |
 | yanhen-extend | 焰痕的被动：变奏 / 大招后共鸣解放伤害 +24% 6 秒，造成重击伤害时延长 4 秒、最多 1 次，延长成功时才给全队热熔 +24% 30 秒 | data | nanoka-text | xlsx-three-sentences（未实现） | 否 | 暂定 | 1；闭环 yanhen.backfill |
 | buling-concerto-timing | 卜灵的协奏按数据的时刻到账：普攻、重击逐段命中给，E、大招、变奏的起手即得在动作开始时给（总量是 nanoka 的 E 23、重击 15、大招 20、变奏 10） | character | as-data | on-cast、later-split（未实现） | 否 | 分不清 | 2；闭环 buling-concerto-timing.backfill |
+| buling-first-echo | 深塔 41 期中 3、中 4 两局里，卜灵第一段上场（中 3 还有第四段）放了声骸（无归的谬误：全队攻击 +10%，20 秒），心第 1 轮应世相的各下都吃到：路线图 §7 案例里录像对仿真的共同乘数 m ≈ 1.044 由此而来 | conditioning | echo-cast | no-echo、xin-only-atk（未实现）、target-side（未实现） | 否 | 暂定 | 3；闭环 buling-first-echo.backfill |
+| zhenhuanyu-window | 深塔 41 期中 4 第 1 轮，心的镇寰宇（照世·增幅强化重击）命中时，心变奏入场挂上的两条 15 秒 buff（镜影流电之瞬 5 件的延奏加成、绝息魄首位的导电加成）还在（路线图 §7 案例里 B-1 的窗口要求） | conditioning | expired-as-sim | in-window（未实现） | 是 | 未验证 | 0 |
