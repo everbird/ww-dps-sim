@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { canonicalJson, digestOf, sha256Hex } from '../src/engine/digest'
 import { resolveScenario } from '../src/engine/resolve'
-import { prepareResolved, prepareRun, resolvedDigestOf, runPrepared } from '../src/engine/run'
+import { prepareRun, resolvedDigestOf, runPrepared } from '../src/engine/run'
 import type { PreparedRun, RunOverrides } from '../src/engine/run-types'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -19,6 +19,26 @@ const prepared = (sc: Partial<ScenarioInput> = {}, overrides: RunOverrides = {})
   if (!p.ok) throw new Error(p.issues.map(i => i.message).join('；'))
   return p.run
 }
+
+describe('DD-10 面板增量的正式准备入口', () => {
+  test('真实源场景身份、面板差值与旧分析口径，不修改共享数据', () => {
+    const base = prepared()
+    const changed = prepared({}, { panelDeltas: { 甲: { energyRegen: 0.25, atkFlat: 50, hpFlat: 500, defFlat: 50 } } })
+    expect(changed.resolved.team[0].panel.energyRegen).toBe(base.resolved.team[0].panel.energyRegen + 0.25)
+    expect(changed.resolved.team[0].panel.atk.flat).toBe(base.resolved.team[0].panel.atk.flat + 50)
+    expect(changed.resolved.team[0].panel.hp.flat).toBe(base.resolved.team[0].panel.hp.flat + 500)
+    expect(changed.resolved.team[0].panel.def.flat).toBe(base.resolved.team[0].panel.def.flat + 50)
+    expect(changed.resolved.team[0].stats).toEqual(base.resolved.team[0].stats)
+    expect(changed.identity.execution.scenarioDigest).toBe(base.identity.execution.scenarioDigest)
+    expect(changed.identity.execution.resolvedDigest).not.toBe(base.identity.execution.resolvedDigest)
+    expect(changed.runId).not.toBe(base.runId)
+    expect(prepared().runId).toBe(base.runId)
+  })
+  test('拒绝未知角色、未知字段与非有限增量', () => {
+    for (const panelDeltas of [{ 不在队伍: { atkFlat: 1 } }, { 甲: { bad: 1 } }, { 甲: { energyRegen: NaN } }, { 甲: { atkFlat: Infinity } }])
+      expect(prepareRun(scenario(), data, { panelDeltas } as unknown as RunOverrides).ok).toBe(false)
+  })
+})
 
 describe('摘要（DD-01 §3.3）', () => {
   test('C01-1 sha256Hex 等于标准测试向量', () => {
@@ -44,16 +64,17 @@ describe('摘要（DD-01 §3.3）', () => {
   })
 
   test('C01-3 resolvedDigest：走缓存、不走缓存重算、运行一次之后，三次相同', () => {
-    const r = resolveScenario(scenario(), data)
+    const p = prepared()
+    const r = p.resolved
     const cached = resolvedDigestOf(r)
     expect(resolvedDigestOf(r, true)).toBe(cached)
-    const res = runPrepared(prepareResolved(r))
+    const res = runPrepared(p)
     expect(res.completion.status).toBe('completed')
     expect(resolvedDigestOf(r, true)).toBe(cached)                           // 引擎没有改写装配结果
     expect(resolvedDigestOf(r)).toBe(cached)
     // 另一次装配（对象都是新的，GameData 是同一份）内容相同，摘要相同
     expect(resolvedDigestOf(resolveScenario(scenario(), data))).toBe(cached)
-    expect(prepareResolved(r).identity.execution.resolvedDigest).toBe(cached)
+    expect(p.identity.execution.resolvedDigest).toBe(cached)
   })
 })
 

@@ -5,7 +5,7 @@ import type { Rules } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
 import type { HitRecord, SimOptions } from './context'
 import type { DiagOptions } from './diagnostics'
-import type { CommandRef, ResolvedScenario, WaitCode } from './types'
+import type { CommandRef, ResolvedScenario, SimState, WaitCode } from './types'
 
 /** SimResult 或事件的业务字段每变一次加 1（DD-01 §3.3）。'2' = DD-03：buffApply/buffExpire 增加 owner/instanceId，新增 buffUptimeBy、kill.eventSeq/overflow、goal.lethal */
 export const OUTPUT_SCHEMA_VERSION = '2'
@@ -15,6 +15,8 @@ export const OUTPUT_SCHEMA_VERSION = '2'
 
 /** 命令行与调用方能覆盖的东西。没给的项不覆盖；优先级：这里给了的 > 场景写了的 > schema 缺省 */
 export interface RunOverrides {
+  /** DD-10 §5：分析的面板增量（角色名键），进入运行身份；不修改装配结果。 */
+  readonly panelDeltas?: Readonly<Record<string, { readonly energyRegen?: number; readonly hpFlat?: number; readonly atkFlat?: number; readonly defFlat?: number }>>
   readonly strict?: boolean                              // --strict / --no-strict（严格入口由 DD-02 做；此前给 true 会被拒绝）
   readonly continueAfterIntentUnmet?: boolean            // 缺省 false
   readonly options?: Partial<Pick<Scenario['options'], 'repeat' | 'maxFrames' | 'maxWait' | 'endAt' | 'tuneBreak' | 'inputDelay'>>
@@ -258,4 +260,11 @@ export type { DiagOptions, Diagnostics } from './diagnostics'
 export interface RunOptions {
   readonly diag?: DiagOptions
   readonly onHit?: (rec: HitRecord) => void   // 择优的快速重算在用，原样透传
+}
+
+export interface BoundaryObserver {
+  readonly frames: ReadonlySet<Frame>
+  /** 到了 S[f]：s 是本体，只读；要留就自己拷贝（DD-07 的 viewOf）。返回 'stop' 就在这里停下。ledgerLength：开了账本诊断（diag.resourceLedger）时
+   *  这个边界的 ledgerEndExclusive（DD-06 §3.3，与 prefix 同一刻取，等于 ledgerPrefixForBoundary(账本, f) 的长度），没开时 null */
+  onBoundary(f: Frame, s: SimState, prefix: StatePrefix, ledgerLength: number | null): void | 'stop'
 }

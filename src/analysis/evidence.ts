@@ -1,4 +1,4 @@
-// src/engine/evidence.ts —— 证据闭环（DD-08 §4、§5.2；架构 §8.1 的证据部分）。④ 分析层：纯函数，不读盘、不调 git，文件与身份由命令行给。
+// src/analysis/evidence.ts —— 证据闭环（DD-08 §4、§5.2；架构 §8.1 的证据部分）。④ 分析层：纯函数，不读盘、不调 git，文件与身份由命令行给。
 // 一条闭环 = 候选 → 条件化预测 → 观测及误差范围 → 判断 → 采用决定 → 受影响场景重跑（路线图 §9.1 第 4 条）：
 //   predictClosure   每个候选在每个 setup 上跑一次，逐个观测取仿真值作为预测（截断、轴失败的运行覆盖范围以内照常有预测，DF-16）；
 //   registerClosure  登记：冻结预测运行的完整身份、观测定义与预测值的两个摘要（DF-17）；
@@ -10,15 +10,10 @@ import { toleranceOf, type Observation } from '../data/calibration.schema'
 import type { CandidateVerdict, ClosurePrediction, ClosureRecord, ClosureRunRef, ConclusionRecord } from '../data/evidence.schema'
 import type { GameData } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
-import { usableBasis } from './basis'
+// DD-10 §5：DD-08 闭环也属于分析层，只经公开入口调用引擎。
+import { usableBasis, canonicalJson, digestOf, RULE_POINTS, prepareRun, runPrepared, type Candidate, type Evidence, type EvidencePurpose, type Proposition, type PreparedRun, type RunEnvironment, type RunIdentity, type RunOverrides, type RunStatus, type SimResult } from '../engine'
 import { steadyFrames } from './candidates'
-import { canonicalJson, digestOf } from './digest'
 import { compareValue, hasReading, readObservation, type ComparisonStatus, type PredictedValue } from './observations'
-import type { Candidate, Evidence, EvidencePurpose, Proposition } from './propositions'
-import { RULE_POINTS } from './rule-points'
-import { prepareRun, runPrepared } from './run'
-import type { PreparedRun, RunEnvironment, RunIdentity, RunOverrides, RunStatus } from './run-types'
-import type { SimResult } from './types'
 
 // ---------------------------------------------------------------------------
 // 共用

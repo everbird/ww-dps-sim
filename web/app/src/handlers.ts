@@ -6,14 +6,14 @@ import type { GameData } from '../../../src/data/gamedata'
 import { InventorySchema, resolveInventory } from '../../../src/data/inventory.schema'
 import { ScenarioSchema, type Scenario } from '../../../src/data/scenario.schema'
 import { parseOrThrow } from '../../../src/data/validate'
-import { basisOf, marginal, panelsOf, runScenario, tryCompareRuns, usableBasis } from '../../../src/engine/analysis'
+import { basisOf, marginal, panelsOf, runScenario, tryCompareRuns, usableBasis } from '../../../src/analysis/analysis'
 import { scopeNoteForRun } from '../../../src/engine/basis'
-import { insight } from '../../../src/engine/insight'
-import { optimize, withEchoes } from '../../../src/engine/optimize'
+import { insight } from '../../../src/analysis/insight'
+import { optimize, withEchoes } from '../../../src/analysis/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
-import { planOpening, planRotation } from '../../../src/engine/plan'
-import { searchRotation } from '../../../src/engine/search'
-import { simulate } from '../../../src/engine/simulate'
+import { planOpening, planRotation } from '../../../src/analysis/plan'
+import { searchRotation } from '../../../src/analysis/search'
+import { prepareRun, runPrepared } from '../../../src/engine/run'
 import type { ResolvedScenario, SimResult } from '../../../src/engine/types'
 import { diffTimeline } from '../../../src/report/diff-timeline'
 import { renderDesign, renderTimeline, timelineModel, type TimelineModel } from '../../../src/report/timeline'
@@ -51,8 +51,10 @@ async function simulated(s: Source) {
   const key = `${s.name}\n${s.text}`
   if (last?.key === key) return last
   const sc = scenarioOf(s)
-  const r = resolveScenario(sc, await gd())
-  const res = simulate(r, { diag: { eventMeta: true } })         // 时间轴的出处按记录下来的事件来源（DD-05 §3.4）
+  const p = prepareRun(sc, await gd())
+  if (!p.ok) throw new Error(p.issues.map(i => i.message).join('；'))
+  const r = p.run.resolved
+  const res = runPrepared(p.run, { diag: { eventMeta: true } })         // 时间轴的出处按记录下来的事件来源（DD-05 §3.4）
   last = { key, r, res, model: timelineModel(s.name, sc, r, res) }
   return last
 }
@@ -107,7 +109,7 @@ export const handlers: Handlers = {
     return { ...cr.value, timeline }
   },
   async insight({ scenario }) {
-    return insight(resolveScenario(scenarioOf(scenario), await gd()))   // 结论（TD-10 §6）：约 25 次仿真，加卡帧点（每个决策点一次）再多二三十次
+    return insight(scenarioOf(scenario), await gd())   // 结论（TD-10 §6）：约 25 次仿真，加卡帧点（每个决策点一次）再多二三十次
   },
   async marginal({ scenario, char, tier }) {
     const sc = scenarioOf(scenario)
@@ -132,9 +134,8 @@ export const handlers: Handlers = {
   },
   async search({ scenario, move, drop, swap, insert, chars, rounds, beam, maxRuns, top }) {
     const sc = scenarioOf(scenario)
-    const r = resolveScenario(sc, await gd())
     const t0 = performance.now()
-    const x = searchRotation(r, sc.rotation, sc.opening, {
+    const x = searchRotation(sc, await gd(), {
       ...(move ? { move } : {}), drop, swap, insert, ...(chars.length ? { chars } : {}), rounds, beam, maxRuns,
     })
     const { basis, results, ...rest } = x

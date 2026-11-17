@@ -1,7 +1,7 @@
 // src/report/diff-timeline.ts —— 两条轴的时间轴对照（网页对比页，TD-12 原型 2026-10-21）：两份场景按战斗秒对齐，
 // 每人的动作条、轴里改过的那几条、每轮开始的时刻，以及累计伤害差（对比 − 基准）随时间怎么拉开。只从事件日志算，不改仿真
 import type { CharName } from '../data/common'
-import type { Basis } from '../engine/analysis'
+import type { Basis } from '../analysis/analysis'
 import type { SimResult } from '../engine/types'
 
 /** 一个动作：t0–t1 是战斗秒；changed = 来自循环轴里与另一份不同的那几条 */

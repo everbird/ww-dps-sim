@@ -1,13 +1,13 @@
 // DD-04 §4–5：候选检查属于分析层；所有变体重新 prepareRun，不修改装配结果。
 import { PER_CHAR_RULES, type GameData, type Rules } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
-import { damageShareByTag, usableBasis } from './basis'
-import { canonicalJson } from './digest'
-import { PROPOSITIONS, type Binding, type Candidate, type Proposition, type ScenarioFeature } from './propositions'
-import { prepareRun, runPrepared } from './run'
-import type { PreparedRun, RunOverrides } from './run-types'
-import { INTENDED, INTENT_WAITS } from './scheduler'
-import type { CommandRef, ResolvedScenario, SimResult, WaitCode } from './types'
+import { damageShareByTag, usableBasis } from '../engine'
+import { canonicalJson } from '../engine'
+import { PROPOSITIONS, type Binding, type Candidate, type Proposition, type ScenarioFeature } from '../engine'
+import { prepareRun, runPrepared } from '../engine'
+import type { PreparedRun, RunOverrides } from '../engine'
+import { INTENDED, INTENT_WAITS } from '../engine'
+import type { CommandRef, ResolvedScenario, SimResult, WaitCode } from '../engine'
 
 export interface CandidateRef { readonly propositionId: string; readonly candidateId: string }
 export interface PlannedCandidate extends CandidateRef { readonly candidate: Candidate }

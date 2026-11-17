@@ -1,18 +1,19 @@
-// src/engine/matrix.ts —— 矩阵（终焉矩阵 · 奇点扩张）计分（docs/matrix.md）：几支队按顺序接力打一串 boss，每队限时，按伤害折分。
+// src/analysis/matrix.ts —— 矩阵（终焉矩阵 · 奇点扩张）计分（docs/matrix.md）：几支队按顺序接力打一串 boss，每队限时，按伤害折分。
 // 规则取 DPM-Team-Builder v4.9.2（S2-3、3.7 版）的缺省值；它的各轮血量与我们敌人表的"矩8"逐只对得上（到小数点后 4 位）。
 // 做法：每支队对每只 boss 各跑一次仿真（换敌人预设，循环轴跑够一队的时限），再按队伍的战斗时钟接力——
 // 第 k 只从某一帧起承受"对它那次仿真"在这一帧之后的命中，累计到剩余血量就打死，下一只在转场之后出来，转场期间的命中作废。
 // 假设（matrix-relay）：轴不因换 boss 停顿；敌人身上的状态（偏谐、异常效应层数、白条）按"这只 boss 从开场就在"算，没有在换 boss 时清空。
 import type { EnemyPreset, GameData } from '../data/gamedata'
-import type { TrackedId } from './assumptions'
+import type { TrackedId } from '../engine'
 import type { Scenario } from '../data/scenario.schema'
-import { scopeShortLabel } from './basis'
-import { resolveScenario } from './resolve'
-import { damageScopeOf } from './run'
-import type { DamageScope } from './run-types'
-import { simulate } from './simulate'
-import { battleFrameOf, hitValue } from './summary'
-import type { HitEvent } from './types'
+import { scopeShortLabel } from '../engine'
+import { resolveScenario } from '../engine'
+import { damageScopeOf } from '../engine'
+import type { DamageScope } from '../engine'
+import { runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
+import { battleFrameOf, hitValue } from '../engine'
+import type { HitEvent } from '../engine'
 
 export interface MatrixRules {
   teamFrames: number                         // 每队限时（战斗帧；大招时停也停，假设 matrix-relay）
@@ -125,7 +126,7 @@ export function teamHits(sc: Scenario, data: GameData, enemy: string, rules: Mat
       ...sc, enemy: { preset: enemy }, goal: 'steady',
       options: { ...sc.options, repeat, maxFrames: Math.max(sc.options.maxFrames, Math.ceil(sc.options.maxFrames * repeat / sc.options.repeat) * 2) },
     }
-    return simulate(resolveScenario(s, data))
+    return runPrepared(preparedScenario(s, data))
   }
   let res = run(sc.options.repeat)
   if (res.completion.status !== 'completed') throw new Error(`${enemy}：${res.error?.message ?? res.completion.status}`)

@@ -3,14 +3,16 @@
 // 第三版（同日）：镇红尘按跳字往回推起手、E 后转相照录像抢帧、转相第 254 帧降优先级，15 次切人都差不到 2 秒。
 // 第四版（同日）：第三轮万阙垂天前写"能量满 心"、194 改回变奏、boss 血条按正确的时间重读、心应世 E 的落地段后移。依赖 data/generated（缺数据时跳过）
 // 第五版（2026-10-28）：大招、转相、镇寰宇、万阙垂天钉到 HUD 消失帧（同中 4），超负荷按冷却数字 25.0 出现的那一格，钉住的动作写 !；15 次切人、22 个录像动作都差不到 0.1 秒。
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { compareMarks, traceCommands } from '../src/engine/trace'
+
+import { compareMarks, traceCommands } from '../src/analysis/trace'
 import type { ResolvedScenario, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -22,7 +24,7 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     const gd = await loadGameData()
     sc = parse(readFileSync(new URL('../scenarios/xin-tower3-video.yaml', import.meta.url), 'utf8'))
     r = resolveScenario(ScenarioSchema.parse(sc), gd)
-    out = simulate(r)
+    out = runPrepared(fixturePreparedRun(r))
   })
 
   test('整局跑得通，15 次切人都出现，都差不到 0.5 秒、类型都和录像一致（第四版）', () => {

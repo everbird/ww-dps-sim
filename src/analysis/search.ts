@@ -1,4 +1,4 @@
-// src/engine/search.ts —— 轴搜索（TD-10 §6.1，总设计 §3.7、M7；第一版 2026-10-20，第二版 2026-10-21）：从一条现成的轴出发做局部搜索。
+// src/analysis/search.ts —— 轴搜索（TD-10 §6.1，总设计 §3.7、M7；第一版 2026-10-20，第二版 2026-10-21）：从一条现成的轴出发做局部搜索。
 //   候选 = 在循环轴（rotation）上改一处：把一个动作挪到同一角色别的位置（move），去掉一个动作（drop），
 //   对调同一角色相邻的两个动作（swap，第二版），或插入一个动作（insert，第二版）；启动轴不动。
 //   每个候选只重新编译轴（compileRotation）、完整跑一遍仿真，按比较口径打分（basisOf：有分轮取稳态，否则整个窗口）。
@@ -7,9 +7,12 @@
 //   用途是检验与启发：比原轴好的改法是"游戏里也该更好"的假设，要拿实战核对。纯函数，输入装配结果与轴的原文。
 import { parseRotationLine, type RotationItem } from '../data/scenario.schema'
 import { usableBasis, type Basis } from './analysis'
-import { compileRotation, type CompileMember } from './scheduler'
-import { simulate } from './simulate'
-import type { ResolvedScenario, SimResult } from './types'
+import { compileRotation, type CompileMember } from '../engine'
+import { prepareRun, runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
+import type { Scenario } from '../data/scenario.schema'
+import type { GameData } from '../data/gamedata'
+import type { ResolvedScenario, SimResult } from '../engine'
 
 type Act = Extract<RotationItem, { kind: 'act' }>
 /** 轴的一行：同一角色的出招（可以改），或切人、等待（原样保留） */
@@ -88,7 +91,7 @@ export function neighbors(lines: readonly Line[], opts: NeighborOptions = {}): C
 
 type NeighborOptions = Pick<SearchOptions, 'move' | 'drop' | 'swap' | 'insert' | 'chars'> & {
   has?: (char: string, action: string) => boolean
-  near?: number                             // 挪动只挪到前后这么多行之内（录像剖析的贴合度，src/engine/fit.ts）；缺省不限
+  near?: number                             // 挪动只挪到前后这么多行之内（录像剖析的贴合度，src/analysis/fit.ts）；缺省不限
 }
 
 /** 同 neighbors，按需一条条给出；改过的轴（lines）在取用时才算（2026-10-27：几千个动作的长轴，候选全摊开会把内存用完，pnpm fuzz 只取其中几十条） */
@@ -166,13 +169,13 @@ function edit(lines: readonly Line[], li: number, ii: number, to: { line: number
 
 /** 跑一条轴：只重新编译循环轴，启动轴与其余装配结果照用。basis 是这次的比较口径（跑不通时 null） */
 function evaluate(
-  r: ResolvedScenario, members: CompileMember[], opening: readonly string[], lines: Line[], steps: string[],
+  sc: Scenario, data: GameData, lines: Line[], steps: string[],
 ): { c: Candidate; basis: Basis | null; res?: SimResult } {
   const text = lines.map(lineText)
   const blank = { lines: text, steps, dps: null, loopSecs: null, introMissed: 0 }
-  const compiled = compileRotation(text, members, r.initial.onField, r.options.repeat, [...opening])
-  if (!compiled.ok) return { c: { ...blank, error: { code: 'compile', message: compiled.issues[0]!.message } }, basis: null }
-  const res = simulate({ ...r, commands: compiled.commands, opening: compiled.opening })
+  const p = prepareRun({ ...sc, rotation: text }, data)
+  if (!p.ok) return { c: { ...blank, error: { code: 'compile', message: p.issues[0]!.message } }, basis: null }
+  const res = runPrepared(p.run)
   const u = usableBasis(res)
   if (!u.ok) {
     const f = res.completion.axisFailure
@@ -200,8 +203,9 @@ export const FAILURE_LABEL: Readonly<Record<string, string>> = {
 }
 
 export function searchRotation(
-  r: ResolvedScenario, rotation: readonly string[], opening: readonly string[], opts: SearchOptions = {},
+  sc: Scenario, data: GameData, opts: SearchOptions = {},
 ): SearchResult {
+  const r = preparedScenario(sc, data).resolved
   const members: CompileMember[] = r.team.map(m => ({ name: m.def.name, actions: m.actions, aliases: m.aliases }))
   const has = (char: string, action: string) => {
     const m = members.find(x => x.name === char)
@@ -213,8 +217,8 @@ export function searchRotation(
   }
   const rounds = opts.rounds ?? 1, width = opts.beam ?? 3, maxRuns = opts.maxRuns ?? 500
   let runs = 0
-  const lines0 = parseLines(rotation)
-  const first = evaluate(r, members, opening, lines0, [])
+  const lines0 = parseLines(sc.rotation)
+  const first = evaluate(sc, data, lines0, [])
   const base = first.c
   runs++
   const baseU = first.res ? usableBasis(first.res) : null
@@ -235,7 +239,7 @@ export function searchRotation(
         seen.add(key)
         if (runs >= maxRuns) { stoppedBy = 'maxRuns'; done = k; break outer }
         tried++
-        const { c } = evaluate(r, members, opening, lines, [...parent.c.steps, ch.desc])
+        const { c } = evaluate(sc, data, lines, [...parent.c.steps, ch.desc])
         runs++
         if (c.error) { failures[c.error.code] = (failures[c.error.code] ?? 0) + 1; continue }
         ok.push(c)

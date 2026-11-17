@@ -3,9 +3,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
 import { withRotation } from '../data/scenario-text'
-import { ResolveError, resolveScenario } from '../engine/resolve'
-import { HAND_PROFILES, type HandProfile } from '../engine/sample'
-import { FAILURE_LABEL, searchRotation, type Candidate } from '../engine/search'
+import { HAND_PROFILES, type HandProfile } from '../analysis/sample'
+import { FAILURE_LABEL, searchRotation, type Candidate } from '../analysis/search'
 import { argsOf, fmt, loadScenario, padStart, withOverrides, OVERRIDE_FLAGS } from './format'
 
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
@@ -31,17 +30,12 @@ async function main(): Promise<number> {
   // --hand：所有候选与原轴都在 options.inputDelay 之上再晚这么多帧（同 pnpm plan --hand）
   const sc = handDelay ? { ...sc0, options: { ...sc0.options, inputDelay: sc0.options.inputDelay + handDelay } } : sc0
   if (handDelay) console.log(`按真人操作打分：手速"${opt.hand}"，每个决策点晚 ${handDelay} 帧（这一档的平均，假设 hand-speed）`)
-  let r
-  try { r = resolveScenario(sc, data) } catch (e) {
-    if (e instanceof ResolveError) { console.error(e.message); return 1 }
-    throw e
-  }
   const move = list(opt.move), drop = list(opt.drop), insert = list(opt.insert), chars = list(opt.char), swap = pos.includes('--swap')
   const rounds = Number(opt.rounds ?? 1), beam = Number(opt.beam ?? 3), top = Number(opt.top ?? 10), maxRuns = Number(opt['max-runs'] ?? 500)
   const t0 = Date.now()
   let x
   try {
-    x = searchRotation(r, sc.rotation, sc.opening, {
+    x = searchRotation(sc, data, {
       ...(move ? { move } : {}), ...(drop ? { drop } : {}), ...(insert ? { insert } : {}), ...(chars ? { chars } : {}), swap, rounds, beam, maxRuns,
     })
   } catch (e) { console.error(e instanceof Error ? e.message : e); return 1 }

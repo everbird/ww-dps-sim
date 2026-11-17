@@ -1,6 +1,8 @@
 // tests/scenarios.test.ts —— 场景回归快照（总设计 §11 第 5 条、TD-08 §6）
 // scenarios/ 下每个场景跑一遍，汇总存成快照。数据或引擎改动导致数值变化时，人工确认后用 `pnpm test -u` 更新快照。
 // 依赖 data/generated（缺数据时跳过）。
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -9,7 +11,7 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { checkLog } from '../src/engine/invariants'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { Summary } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -44,8 +46,9 @@ dataDescribe('场景回归快照', () => {
   for (const f of files) {
     test(f, () => {
       const sc = ScenarioSchema.parse(parse(readFileSync(new URL(f, DIR), 'utf8')))
-      const r = resolveScenario(sc, gd)
-      const out = simulate(r)
+      const prepared = preparedScenario(sc, gd)
+      const r = prepared.resolved
+      const out = runPrepared(prepared)
       expect(out.error).toBeUndefined()
       expect(checkLog(r, out)).toEqual([])                         // 日志自洽（docs/engine-quality-plan.md P1）
       expect(view(out.summary)).toMatchSnapshot()

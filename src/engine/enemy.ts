@@ -1,3 +1,4 @@
+import { floor } from './num'
 // src/engine/enemy.ts —— 敌人量表（TD-06 §13）：偏谐值与失谐、谐度破坏的消耗与真空期、白条与破盾回能、瘫痪
 // 每次结算的伤害（TD-03）与资源（§2–§4）之后、hit 事件记下之后调用 hitGauges；瘫痪的结束由 P6 的 enemyTimers 判断。
 // 计时一律按战斗帧：全局时停（大招、谐度破坏的演出）时战斗时钟停走，谐破冷却、按钮与瘫痪也停（2026-10-04 用户确认，m0-confirm §9.2 测5）。
@@ -12,7 +13,6 @@ import { assume } from './assumptions'
 import { activeFor, bookKey, removeBuff } from './buffs'
 import type { Sim } from './context'
 import { abnormalBase, abnormalHit, accumulate, contributes, type HitView } from './formula'
-import { checkHit } from './invariants'
 import { log, SLOTS, spawnJudgment, type Kernel } from './kernel'
 import { grant } from './resources'
 import type { EnemyPreset } from '../data/gamedata'
@@ -272,7 +272,7 @@ function effectHit(sim: Sim, s: SimState, by: Slot, effect: EffectName, multipli
     enemy: { def: s.enemy.preset.def, res: s.enemy.preset.res[def.element] },
   }, accumulate(view, active), r.rules, sim.k.rule)
   const dmg = { nonCrit: value, crit: value, expected: value }
-  checkHit(s, dmg, s.chars[by].name, `${effect} ${judgment}`)
+  sim.k.hooks.checkHit?.(s, dmg, s.chars[by].name, `${effect} ${judgment}`)
   log(s, {
     type: 'hit', char: s.chars[by].name, action: effect, judgment, id: s.nextId++, tick: 0, element: def.element, tags: ['异常效应'],
     dmg, factors, buffs: active.filter(b => contributes(b, view)).map(b => (b.stacks > 1 ? `${b.def.id}×${b.stacks}` : b.def.id)),
@@ -307,7 +307,7 @@ export function effectTicks(sim: Sim, s: SimState, rates: Rates): void {
       log(s, { type: 'warning', code: 'effect', message: `${name} 没有逐层倍率（data/generated/effects.json，先 pnpm build:data），结算的伤害记 0（TD-06 §18）` })
     }
     const damage = stacks > 0 ? effectHit(sim, s, owner, name, multOf(def, stacks) + multOf(def, burst), `${name}·定时结算`) : 0
-    x.stacks = sim.keepStacks.has(name) ? stacks : stacks - Math.floor(stacks * def.decay)
+    x.stacks = sim.keepStacks.has(name) ? stacks : stacks - floor(stacks * def.decay)
     x.burst = 0
     log(s, { type: 'effectTick', effect: name, stacks, ...(def.burstMax > 0 ? { burst } : {}), left: x.stacks, damage, source: who })
     if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)

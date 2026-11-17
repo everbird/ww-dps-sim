@@ -4,7 +4,7 @@ import { describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { generateRoutines, planOpening, planRotation, renderOpening, renderRoutines, routineSequence } from '../src/engine/plan'
+import { generateRoutines, planOpening, planRotation, renderOpening, renderRoutines, routineSequence } from '../src/analysis/plan'
 import { dataDescribe } from './helpers/kernel-harness'
 
 describe('套路序列与写回成轴', () => {

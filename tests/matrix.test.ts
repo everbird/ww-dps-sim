@@ -6,7 +6,7 @@ import { parse } from 'yaml'
 import type { EnemyPreset, GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { MATRIX_RULES, matrixBosses, matrixOrders, ratioOf, relay, type MatrixBoss, type Tick } from '../src/engine/matrix'
+import { MATRIX_RULES, matrixBosses, matrixOrders, ratioOf, relay, type MatrixBoss, type Tick } from '../src/analysis/matrix'
 import { dataDescribe } from './helpers/kernel-harness'
 
 const boss = (label: string, round: number, pos: number, hp: number): MatrixBoss =>

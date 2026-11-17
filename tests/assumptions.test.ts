@@ -1,4 +1,6 @@
 // tests/assumptions.test.ts —— 假设登记表（总设计 T16）：表本身、记录点、开关 rules.defFloor（TD-03 Q1）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readdirSync, readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import type { BuffDefInput } from '../src/data/buff.schema'
@@ -7,14 +9,13 @@ import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { ASSUMPTIONS } from '../src/engine/assumptions'
 import { defFactor } from '../src/engine/formula'
-import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import { action, dataDescribe, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
 // 记录点：引擎里的 assume()，角色模块里的 ctx.assume()。假设表自己、规则台账（propositions.ts 按 assumptionId 引用假设，DD-04 §3.1）不算
 const codeOf = (dir: URL, skip: readonly string[] = []) => readdirSync(dir).filter(f => f.endsWith('.ts') && !skip.includes(f)).map(f => readFileSync(new URL(f, dir), 'utf8'))
-const engineCode = [...codeOf(new URL('../src/engine/', import.meta.url), ['assumptions.ts', 'propositions.ts']), ...codeOf(new URL('../data/curated/characters/', import.meta.url))].join('\n')
+const engineCode = [...codeOf(new URL('../src/engine/', import.meta.url), ['assumptions.ts', 'propositions.ts']), ...codeOf(new URL('../src/analysis/', import.meta.url)), ...codeOf(new URL('../data/curated/characters/', import.meta.url))].join('\n')
 
 describe('假设登记表', () => {
   test('编号不重复；碰到才记的在引擎或角色模块里有记录点，每次都适用的没有', () => {
@@ -88,7 +89,7 @@ dataDescribe('M0 场景碰到的假设', () => {
       enemy: { preset: '全息6/朔雷之鳞' },
       rotation: ['椿 E1 A1 A2 A3 A4 A5', 'switch 散华', '散华 E', 'switch 维里奈', '维里奈 E', 'switch 椿', '椿 A1 A2 A3'],
     })
-    const s = simulate(resolveScenario(sc, gd)).summary
+    const s = runPrepared(preparedScenario(sc, gd)).summary
     const ids = s.assumptions.map(a => a.id)
     expect(ids).toEqual(ASSUMPTIONS.map(a => a.id).filter(id => ids.includes(id)))   // 表的顺序
     expect(ids).toContain('dilation-rules')

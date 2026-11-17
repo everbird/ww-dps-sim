@@ -1,10 +1,10 @@
 // tests/fuzz.test.ts —— 模糊测试的变体生成（src/engine/fuzz.ts，docs/engine-quality-plan.md P1）：按连段整块挪动、去掉、对调；
 // 带资源账本跑的检查（DD-06 T06-4）
+import { preparedScenario } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { blockChanges, fuzzScenario, ledgerRun } from '../src/engine/fuzz'
-import { resolveScenario } from '../src/engine/resolve'
-import { lineText, parseLines } from '../src/engine/search'
+import { blockChanges, fuzzScenario, ledgerRun } from '../src/analysis/fuzz'
+import { lineText, parseLines } from '../src/analysis/search'
 import type { SimState } from '../src/engine/types'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData, type SynthChar } from './helpers/synth'
@@ -40,25 +40,26 @@ describe('带资源账本（pnpm fuzz --ledger，DD-06 §3.6、T06-4）', () => 
   }
   const scenario = (hooks?: SynthChar['hooks']) => {
     const chars: [SynthChar, SynthChar, SynthChar] = [{ ...甲, ...(hooks ? { hooks } : {}) }, idle('乙'), idle('丙')]
-    return resolveScenario(ScenarioSchema.parse({
+    return { sc: ScenarioSchema.parse({
       team: chars.map(c => ({ char: c.name, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } },
       rotation: ['甲 X E X'], initial: { energy: 'empty' },
-    }), synthData(chars))
+    }), data: synthData(chars) }
   }
 
   test('正常的轴：终态闭合、与日志对得上，没有问题；变体也都带账本跑', () => {
-    expect(ledgerRun(scenario()).problems).toEqual([])
-    const x = fuzzScenario(scenario(), ['甲 X E X'], [], 10, { ledger: true })
+    const { sc, data } = scenario()
+    expect(ledgerRun(preparedScenario(sc, data)).problems).toEqual([])
+    const x = fuzzScenario(sc, data, 10, { ledger: true })
     expect(x.ran).toBeGreaterThan(0)
     expect(x.problems).toEqual([])
   })
 
   test('绕过账本改资源（没接进账本的写入点）：报出闭合的问题', () => {
     const bad = scenario({ onEvent: (ctx, ev) => { if (ev.type === 'actionStart' && ev.action === 'E') (ctx.state as SimState).chars[0].core[0] += 1 } })
-    const { problems } = ledgerRun(bad)
+    const { problems } = ledgerRun(preparedScenario(bad.sc, bad.data))
     expect(problems.length).toBeGreaterThan(0)
     expect(problems.every(p => p.startsWith('账本闭合：'))).toBe(true)
     expect(problems.join('\n')).toContain('甲 的 core1')
-    expect(fuzzScenario(bad, ['甲 X E X'], [], 5, { ledger: true }).problems.length).toBeGreaterThan(0)
+    expect(fuzzScenario(bad.sc, bad.data, 5, { ledger: true }).problems.length).toBeGreaterThan(0)
   })
 })

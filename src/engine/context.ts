@@ -1,6 +1,6 @@
 // src/engine/context.ts —— 一次仿真的运行环境（总设计 §3.4）
 // 与 SimState 分开：SimState 是可 structuredClone 的纯数据；这里放只读的装配结果、buff 登记表、钩子接口，
-// 以及事件队列的簿记（TD-07 §5）。队列在每个 tick 结束前处理完，所以 tick 之间簿记总是空的，分支时不用复制。
+// 以及事件队列的簿记（TD-07 §5）。DD-10 §3.1：边界须保留 cursor；S[0] 还可能保留 spawned，快照显式检查其余簿记为空。
 import type { EffectName, Slot } from '../data/common'
 import type { BuffBook } from './buffs'
 import type { DiagOptions } from './diagnostics'
@@ -19,9 +19,9 @@ export interface HitRecord {
   draft: Pick<HitDraft, 'zones' | 'critOnly'>
 }
 
-/** simulate 的可选项。sample：抽样模式（总设计 T4）——seed 定下全部随机数；逐段抽暴击；jitter > 0 时每个决策点的
+/** 内部执行体的可选项。sample：抽样模式（总设计 T4）——seed 定下全部随机数；逐段抽暴击；jitter > 0 时每个决策点的
  *  操作延迟另加 [0, jitter] 帧的均匀抖动；hand 时另加 max(0, round(正态(mean, sd))) 帧（手速档，HAND_PROFILES，假设 hand-speed）。
- *  都在 options.inputDelay 之上。不给就是期望模式。diag：可选诊断（DD-05），观察选项，兼容外壳 simulate 原样交给 runPrepared */
+ *  都在 options.inputDelay 之上。不给就是期望模式。diag：可选诊断（DD-05），由正式运行入口传给执行体 */
 export interface SimOptions {
   continueAfterIntentUnmet?: boolean; onHit?: (rec: HitRecord) => void; sample?: { seed: number; jitter?: number; hand?: { mean: number; sd: number } }
   diag?: DiagOptions

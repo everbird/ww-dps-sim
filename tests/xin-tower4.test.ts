@@ -1,15 +1,17 @@
 // tests/xin-tower4.test.ts —— 心 · 雷主 · 卜灵 深塔 41 期中 4 的录像剖析（scenarios/xin-tower4-video.yaml，2026-10-27，docs/tower-20261026.md 中 4）：
 // 和中 3 同一套配装、同样只照录像读；两只 boss 先后打（异构武装打死后无冠者出来，轴里写"敌人 换"）。
 // 跳字对照的几处是校准线索（镇红尘仿真少约 7%、卜灵声骸的全队攻击在录像里没体现），这里按现在的值钉住，改了引擎要回来看。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
-import { replayFit } from '../src/engine/fit'
+import { replayFit } from '../src/analysis/fit'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { compareMarks, hpPoints, traceCommands } from '../src/engine/trace'
+
+import { compareMarks, hpPoints, traceCommands } from '../src/analysis/trace'
 import type { ResolvedScenario, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -22,7 +24,7 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     const gd = await loadGameData()
     sc = ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/xin-tower4-video.yaml', import.meta.url), 'utf8')))
     r = resolveScenario(sc, gd)
-    out = simulate(r)
+    out = runPrepared(fixturePreparedRun(r))
   })
   const vsec = (f: number) => f / 60 + T0
 
@@ -112,7 +114,7 @@ dataDescribe('心雷卜深塔 41 期中 4 的录像', () => {
     expect(out.summary.assumptions.map(a => a.id)).toContain('summon-as-char')
     const tread = (res: SimResult) => res.log.flatMap(e => (e.type === 'hit' && e.judgment === '踏月归心·电磁效应' ? [e.dmg!.expected] : []))
     const gd = await loadGameData()
-    const off = simulate(resolveScenario({ ...sc, options: { ...sc.options, rules: { ...sc.options.rules, summonCountsAsChar: false } } }, gd))
+    const off = runPrepared(preparedScenario({ ...sc, options: { ...sc.options, rules: { ...sc.options.rules, summonCountsAsChar: false } } }, gd))
     expect(off.error).toBeUndefined()
     // 录像两次踏月归心 62476、32596；缺省 126811、72464，不算阵 54348、36232（2026-10-28 卜灵大招按逐帧量的时刻写之后一度是 42271；同日钉住的动作写 ! 之后回到 54348——第一次的值看卜灵冲击波和心 E 的先后，差几帧就变）
     const [a, b] = tread(out), [c, d] = tread(off)

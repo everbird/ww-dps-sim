@@ -1,11 +1,12 @@
 // tests/resonance.test.ts —— 偏移 / 干涉 / 响应（TD-06 §19，2026-10-25 爱弥斯 · 琳奈 · 莫宁）：钩子挂偏移、谐度破坏命中挂着震谐·偏移的目标
 // → 震谐·干涉（偏移消耗、偏谐值不累积）、队里有"震谐响应"动作的角色在后台也各出一次响应（8 秒一次）、响应按谐度破坏的公式算。
 // 人造角色，不依赖生成数据
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import type { TuneBreakTable } from '../src/data/gamedata'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
-import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimResult } from '../src/engine/types'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -39,7 +40,7 @@ function run(sc: Partial<ScenarioInput>): SimResult {
   const data = synthData([甲, 乙, idle('丙')])
   data.tuneBreak = TABLE
   data.characters['甲']!.tunabilityRate = 1
-  return simulate(resolveScenario(ScenarioSchema.parse({
+  return runPrepared(preparedScenario(ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })),
     enemy: { custom: { level: 90, tunabilityMax: 100, whiteBar: 0, paralysisSec: 1 } }, ...sc,
   }), data))

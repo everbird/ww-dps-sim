@@ -1,6 +1,8 @@
 // tests/jys.test.ts —— 景燃 · 尤诺 · 守岸人（2026-10-24，docs/jys-confirm.md）：引擎新加的护盾事件、按属性换算的 buff、
 // 变奏动作随状态换（introAction）、并入别组的行（absorb）、触发时加几层（TriggerSpec.stacks），以及三人模块的主要机制。
 // 依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,7 +10,7 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario, scaledValue } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -29,7 +31,7 @@ dataDescribe('景尤守', () => {
   const sc = () => ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/jys-team.yaml', import.meta.url), 'utf8')))
   beforeAll(async () => {
     gd = await loadGameData()
-    const out = simulate(resolveScenario(sc(), gd))
+    const out = runPrepared(preparedScenario(sc(), gd))
     expect(out.error).toBeUndefined()
     log = out.log
   }, 60_000)

@@ -1,6 +1,8 @@
 // tests/spawn-note.test.ts —— 备注"命中后立即生成X""持续帧结束后自行生成X"推出的 spawns（AGENTS 差异第 37 条）：
 // 装配从备注推出要生成的事件判定（flag spawnFromNote），引擎在来源判定第一次结算后 / 自然到期时生成；模块写 spawns: null 的由钩子自己生成。
 // 依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,7 +10,7 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { ResolvedScenario, SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -35,7 +37,7 @@ dataDescribe('备注推出的事件判定生成', () => {
 
   test('引擎：每次破敌、迫近都生成一次；到期生成的在来源判定持续帧走完那一刻生成', () => {
     const r = load(gd, 'fire-tower1-video.yaml')
-    const log = simulate(r).log
+    const log = runPrepared(fixturePreparedRun(r)).log
     const of = <T extends SimEvent['type']>(t: T) => log.filter((e): e is Extract<SimEvent, { type: T }> => e.type === t)
     const starts = (who: string, a: string) => of('actionStart').filter(e => e.char === who && e.action === a)
     const spawns = (who: string, j: string) => of('judgmentSpawn').filter(e => e.char === who && e.judgment === j)
@@ -46,7 +48,7 @@ dataDescribe('备注推出的事件判定生成', () => {
   })
 
   test('声骸也生成：梦魇·云闪之鳞的标枪爆炸（405%）每次扔标枪一次', () => {
-    const log = simulate(load(gd, 'tys-video.yaml')).log
+    const log = runPrepared(fixturePreparedRun(load(gd, 'tys-video.yaml'))).log
     const throws = log.filter(e => e.type === 'actionStart' && e.char === '渊武' && e.action === 'Q·扔标枪').length
     expect(throws).toBeGreaterThan(0)
     expect(log.filter(e => e.type === 'hit' && e.char === '渊武' && e.judgment === '标枪爆炸').length).toBe(throws)

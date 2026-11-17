@@ -16,6 +16,8 @@ import {
   type ConditionCheck, type Occurrence, type TriggerCheckGroup, type TriggerOutcome, type TriggerTarget,
 } from './probe'
 import { runPrepared, runToExecution } from './run'
+import { snapshotAt, snapshotFrom, resumeFrom, type SnapshotCache } from './snapshot'
+import type { Inspect } from './simulate'
 import type { PreparedRun, RunCompletion, RunOptions, RunStatus, StatePrefix } from './run-types'
 import { INTENT_WAITS } from './scheduler'
 import { battleFrameOf, hitValue } from './summary'
@@ -73,15 +75,15 @@ export interface ReplayComplete {
   readonly sim: Sim
 }
 
-export function replayTo(p: PreparedRun, stop: StopPoint, opts: RunOptions = {}): ReplayPrefix | ReplayComplete {
+export function replayTo(p: PreparedRun, stop: StopPoint, opts: RunOptions = {}, resume?: Inspect['resume']): ReplayPrefix | ReplayComplete {
   if (stop.kind === 'terminal') {
-    const { x, result } = runToExecution(p, opts)
+    const { x, result } = runToExecution(p, { ...opts, ...(resume ? { resume } : {}) })
     return { kind: 'complete', result: result!, state: x.s, sim: x.sim }
   }
   if (stop.kind === 'boundary') {
     let captured: { prefix: StatePrefix; ledgerLength: number | null } | null = null
     const { x, result } = runToExecution(p, {
-      ...opts,
+      ...opts, ...(resume ? { resume } : {}),
       observer: {
         frames: new Set([stop.frame]),
         onBoundary: (_f, _s, prefix, ledgerLength) => {
@@ -108,7 +110,7 @@ export function replayTo(p: PreparedRun, stop: StopPoint, opts: RunOptions = {})
   if (stop.kind === 'boundaries') {
     const set = new Set(stop.frames)
     const { x, result } = runToExecution(p, {
-      ...opts,
+      ...opts, ...(resume ? { resume } : {}),
       observer: {
         frames: set,
         onBoundary: (f, s, prefix) => {
@@ -120,7 +122,7 @@ export function replayTo(p: PreparedRun, stop: StopPoint, opts: RunOptions = {})
   }
   // stop.kind === 'evaluation'
   const { x, result } = runToExecution(p, {
-    ...opts,
+    ...opts, ...(resume ? { resume } : {}),
     afterEvaluate: (_s, _c, _ref, _v, idx) => (idx === stop.evaluationIndex ? 'stop' : undefined),
   })
   if (result === null) {
@@ -381,7 +383,7 @@ export interface StateAt {
   readonly ledgerEndExclusive?: number
 }
 
-export function stateAt(p: PreparedRun, f: Frame, opts?: { diag?: RunOptions['diag'] }): QueryResult<StateAt> {
+export function stateAt(p: PreparedRun, f: Frame, opts?: { diag?: RunOptions['diag']; cache?: SnapshotCache }): QueryResult<StateAt> {
   if (!Number.isInteger(f) || f < 0) {
     const term = runPrepared(p)
     const cov = term.completion.coverage
@@ -391,7 +393,15 @@ export function stateAt(p: PreparedRun, f: Frame, opts?: { diag?: RunOptions['di
       error: { code: 'outOfRange', completedTicks: cov.completedTicks, message: `帧 ${f} 超出合法状态边界 [0, ${cov.completedTicks}]` },
     }
   }
-  const r = replayTo(p, { kind: 'boundary', frame: f }, opts)
+  let cached = opts?.cache?.get(p.runId, f, opts.diag)
+  if (opts?.cache && (!cached || f - cached.frame >= 600)) {
+    const boundary = f - f % 600
+    const snap = cached ? snapshotFrom(p, cached, boundary, opts) : snapshotAt(p, boundary, opts)
+    if (snap.ok) { opts.cache.put(snap.value); cached = snap.value }
+  }
+  const resumed = cached ? resumeFrom(p, cached, { kind: 'boundary', frame: f }, opts) : undefined
+  if (resumed && !resumed.ok) return resumed
+  const r = resumed?.ok ? resumed.value : replayTo(p, { kind: 'boundary', frame: f }, opts)
   if (r.kind === 'prefix') {
     return {
       ok: true,

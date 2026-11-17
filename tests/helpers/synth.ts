@@ -1,11 +1,12 @@
 // tests/helpers/synth.ts —— 人造角色的 GameData 与场景：TD-05 / TD-06 / TD-07 / TD-08 里"人造角色甲乙丙"的用例用它，不依赖生成数据
 // 动作用 kernel-harness 的 action() / judgment() 构造；别名 R 的 energyCost 不会自动设（那是注册层的事），要的话直接写在动作上。
+import { runPrepared } from '../../src/engine/run'
+import { preparedScenario } from './prepared-fixture'
 import { BuffDefSchema, ResourceEffectSchema, type BuffDefInput, type ResourceEffectInput } from '../../src/data/buff.schema'
 import type { CoreResourceDef } from '../../src/data/gamedata'
 import { DEFAULT_RULES, type ActionDef, type CharacterDef, type GameData } from '../../src/data/gamedata'
 import { ScenarioSchema, type ScenarioInput } from '../../src/data/scenario.schema'
-import { resolveScenario } from '../../src/engine/resolve'
-import { simulate } from '../../src/engine/simulate'
+
 import type { CharacterHooks, HookVars, SimEvent, SimResult } from '../../src/engine/types'
 
 export interface SynthChar {
@@ -57,7 +58,7 @@ export function synthData(chars: SynthChar[]): GameData {
 
 /** 三个人造角色跑一个场景（敌人：90 级自定义）；sc 覆盖场景的其余字段 */
 export function synthRun(chars: [SynthChar, SynthChar, SynthChar], sc: Partial<ScenarioInput>): SimResult {
-  return simulate(resolveScenario(ScenarioSchema.parse({
+  return runPrepared(preparedScenario(ScenarioSchema.parse({
     team: chars.map(c => ({ char: c.name, weapon: { name: '测试武器' } })),
     enemy: { custom: { level: 90 } }, ...sc,
   }), synthData(chars)))

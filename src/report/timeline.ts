@@ -1,7 +1,7 @@
 // src/report/timeline.ts —— 时间轴网页的数据模型与嵌入（TD-10 §5.1）：纯函数，CLI（pnpm timeline）与网页（web/app）共用
 import { basename, extname } from './path'
 import type { Scenario } from '../data/scenario.schema'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type GainStep, type HitTrigger } from '../engine/trace'
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, resourceTracks, traceCommands, traceLedger, traceSegments, hpPoints, videoSeconds, type GainStep, type HitTrigger } from '../analysis/trace'
 import type { ResolvedScenario, SimEvent, SimResult } from '../engine/types'
 
 export type TimelineModel = ReturnType<typeof timelineModel>

@@ -3,7 +3,7 @@
 // 退出码：0 成功；1 场景有错或运行期报错；2 用法错误。
 import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
-import { tryCompareRuns, runScenario, type Diff, type PanelView } from '../engine/analysis'
+import { tryCompareRuns, runScenario, type Diff, type PanelView } from '../analysis/analysis'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padEnd, padStart, pct, pct2, signed, width, withOverrides, OVERRIDE_FLAGS, OVERRIDE_USAGE } from './format'
 

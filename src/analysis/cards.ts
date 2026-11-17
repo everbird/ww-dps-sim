@@ -1,4 +1,4 @@
-// src/engine/cards.ts —— 套路卡（TD-10 §6.2 ②、⑥ 第 1 步）：把同一角色的一行轴当一个"套路"，用仿真量出它在几种上下文里的
+// src/analysis/cards.ts —— 套路卡（TD-10 §6.2 ②、⑥ 第 1 步）：把同一角色的一行轴当一个"套路"，用仿真量出它在几种上下文里的
 //   时长、资源、伤害、给的 buff、异常效应——入场方式（接着打 / 普通切入 / 变奏切入）× 有没有铺垫（同一角色的上一个套路，给前置状态）
 //   × 出口（切走 / 接自己的下一招）。另外量原场景里每轮的这一段，看队里与单独量的对不对得上（§6.2 ③）。
 //   只用现有仿真，不改引擎；纯函数，输入场景与数据。量出来的是"这一行在这几种上下文里的样子"，不是规则：
@@ -6,11 +6,12 @@
 import type { CharName } from '../data/common'
 import type { GameData } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
-import { resolveScenario } from './resolve'
-import { simulate } from './simulate'
-import type { EventMeta } from './diagnostics'
+import { resolveScenario } from '../engine'
+import { runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
+import type { EventMeta } from '../engine'
 import { gainSteps, hitCauses, metaOf } from './trace'
-import type { ResolvedScenario, SimEvent, WaitCode } from './types'
+import type { ResolvedScenario, SimEvent, WaitCode } from '../engine'
 
 export type Entry = 'field' | 'switch' | 'intro'
 export type Exit = 'switch' | 'self'
@@ -192,9 +193,10 @@ function measureAlone(sc: Scenario, data: GameData, base: ResolvedScenario, card
     initial: { ...sc.initial, onField: withSetup || entry === 'field' ? slot : other, concerto, energy },
     options: { ...options, repeat: 1, maxFrames: 6000 },
   }
-  let r: ResolvedScenario
-  try { r = resolveScenario(variant, data) } catch (e) { row.error = (e as Error).message.replace(/\s+/g, ' ').slice(0, 120); return row }
-  const res = simulate(r, { diag: { eventMeta: true } })
+  let p
+  try { p = preparedScenario(variant, data) } catch (e) { row.error = (e as Error).message.replace(/\s+/g, ' ').slice(0, 120); return row }
+  const r = p.resolved
+  const res = runPrepared(p, { diag: { eventMeta: true } })
   const n = body.length
   const c = res.completion
   if (c.status === 'engineError') { row.error = `${c.engineError?.code ?? 'engineError'}：${c.engineError?.message ?? ''}`; return row }
@@ -215,8 +217,9 @@ export interface CardsOptions { chars?: readonly string[]; lines?: readonly stri
 
 /** 量一份场景里全部套路的卡：先跑原场景（每轮的这一段），再逐个单独量 */
 export function measureCards(sc: Scenario, data: GameData, opts: CardsOptions = {}): { cards: Card[]; runs: number } {
-  const base = resolveScenario(sc, data)
-  const res = simulate(base, { diag: { eventMeta: true } })
+  const p = preparedScenario(sc, data)
+  const base = p.resolved
+  const res = runPrepared(p, { diag: { eventMeta: true } })
   let runs = 1
   const loops = [...new Set(res.log.flatMap(e => (e.type === 'loop' ? [e.loop] : [])))]
   const cards: Card[] = []

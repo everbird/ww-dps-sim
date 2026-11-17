@@ -1,13 +1,13 @@
-// src/engine/trace.ts —— 调试用的表（TD-11 §3）：分段（每次上场多久）、逐条（每条指令的开始、到下一条多久、之前在等什么）、
+// src/analysis/trace.ts —— 调试用的表（TD-11 §3）：分段（每次上场多久）、逐条（每条指令的开始、到下一条多久、之前在等什么）、
 // 资源逐步（某种资源每次怎么变、为什么变），以及对游戏跳字用的面板与逐下伤害（TD-11 §2 的前两层）。都从装配结果与事件日志算，
 // 不改仿真；时刻按本轮开始算，世界帧与战斗秒都给（视频播放器的时间对世界帧，"X 秒一轮"对战斗秒，TD-11 §1.2）。
 import { FLAT_STATS, RESOURCE_KINDS, STAT_TO_ZONE, type ActionId, type CharName, type DamageTag, type Element, type ResourceKind, type Slot, type StatKey } from '../data/common'
-import { composeStat } from './formula'
+import { composeStat } from '../engine'
 import type { Scenario } from '../data/scenario.schema'
-import type { EventMeta, ResourceLedgerEntry } from './diagnostics'
-import type { ResolvedScenario, SimEvent, SimResult } from './types'
-import { round, roundTo, snap9 } from './num'
-import { outroOf } from './switch'
+import type { EventMeta, ResourceLedgerEntry } from '../engine'
+import type { ResolvedScenario, SimEvent, SimResult } from '../engine'
+import { round, roundTo, snap9 } from '../engine'
+import { outroOf } from '../engine'
 
 /** 第 k 轮：[本轮 loop 事件, 下一轮 loop 事件)；最后一轮到日志里最后一个事件 */
 export interface LoopSpan { loop: number; f: number; t: number; endF: number; endT: number }

@@ -1,4 +1,4 @@
-// src/engine/plan.ts —— 按套路排轴（TD-10 §6.2 ④ 的第一版，⑥ 第 2 步"排回原轴"）：把循环轴拆成套路（同一角色的一行），
+// src/analysis/plan.ts —— 按套路排轴（TD-10 §6.2 ④ 的第一版，⑥ 第 2 步"排回原轴"）：把循环轴拆成套路（同一角色的一行），
 //   打乱后重新排顺序，看能不能排回原轴或更好的。每个套路用的次数与原轴一样（多重集合的排列）；相邻两个套路角色不同就插 switch，
 //   循环轴开头切到第一个套路的角色。
 //   第一版不在卡上排：每个前缀直接跑仿真（启动轴 + 前缀当一轮），按"盈余 = 这一轮的伤害 − 原轴稳态 DPS × 这一轮的时长"留前 width 个
@@ -8,9 +8,10 @@ import type { CharName } from '../data/common'
 import type { GameData } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
 import { basisOf, usableBasis } from './analysis'
-import type { SimResult } from './types'
-import { resolveScenario } from './resolve'
-import { simulate } from './simulate'
+import type { SimResult } from '../engine'
+import { resolveScenario } from '../engine'
+import { runPrepared } from '../engine'
+import { preparedScenario } from './analysis'
 
 export interface PlanOptions {
   width?: number                            // beam 宽度：每层留几个前缀
@@ -173,8 +174,8 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
   const run = (rotation: string[], repeat: number) => {
     const variant: Scenario = { ...sc, rotation, options: { ...sc.options, repeat } }
     let r
-    try { r = resolveScenario(variant, data) } catch { return null }                 // 编译不过
-    return simulate(r)
+    try { r = preparedScenario(variant, data) } catch { return null }                 // 编译不过
+    return runPrepared(r)
   }
   const refRes = run(sc.rotation, sc.options.repeat)
   if (!refRes) throw new Error('原轴跑不通')
@@ -376,8 +377,8 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
   const evaluate = (seq: readonly string[]) => {
     runs++
     let r
-    try { r = resolveScenario({ ...sc, opening: renderOpening(seq, onField) }, data) } catch { fail('compile'); return null }
-    const res = simulate(r)
+    try { r = preparedScenario({ ...sc, opening: renderOpening(seq, onField) }, data) } catch { fail('compile'); return null }
+    const res = runPrepared(r)
     const fk = failKeyOf(res)
     if (fk) { fail(fk); return null }
     return res

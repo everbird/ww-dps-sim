@@ -1,10 +1,12 @@
 # DD-10 快照恢复、执行核心拆环与分析层切出
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-21、DF-22 与 `fromWire` 的非阻塞意见）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。还没实现。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。T10-1～T10-8 已落地；实际验收范围与本地产物见 [DD-10 快照审计](dd-10-snapshot-audit.md)，未创建提交。
 **阶段**：五。**前置**：DD-01、DD-05、DD-07。执行与查询的契约稳定之后再动工。
 
-离动工最远。本文写到"任务与验收条件能评审"的程度，动工前按当时的代码再修订一次。
+动工时复核（历史记录，以下待拆项现已完成）：DD-01、DD-05、DD-07 已落地。运行汇总已在 `runCore` 调用，不再从执行体调用；待拆的是执行体/敌人对不变量的引用、编译与运行期调度混置、报告对调度常量/错误类的引用。分析层实际为原 14 个加 `candidates`、`observations`、`zero-interference` 共 17 个文件。运行状态审计单独记在 [DD-10 快照审计](dd-10-snapshot-audit.md)，以其中逐项核对结果补充 §3.1。
+
+合入 DD-08 的 main 后复核：新增的 `evidence.ts` 也是④分析层，一并迁到 `src/analysis/`（现共 18 个文件）。保留 DD-08 观测比较与校准薄包装，全部分析运行经公开入口；不恢复已删除的生产兼容入口。
 
 ## 1. 范围与依据
 
@@ -69,16 +71,18 @@ export function resumeFrom(p: PreparedRun, snap: Snapshot, stop: StopPoint, opts
 
 - `snap.runId !== p.runId` 时返回 `runIdMismatch`。
 - `opts.diag` 与 `snap.diagOptions` 不同时返回错误：诊断的前缀接不上。
-- 快照只在 tick 边界取。`resumeFrom` 之后的第一步是那一帧的 P1。
+- 快照只在 tick 边界取。`resumeFrom` 先补做该边界尚未执行的帧数上限检查；未到上限才进入那一帧的 P1（避免在 S[maxFrames] 恢复后多走一帧）。
 - 抽样模式：`rng` 在 `SimState` 里，自然带上。
 - `payload` 的 JSON 编解码复用 DD-07 §10.2 按 schema 的 `toWire` / `fromWire`，不另起一套规则。
 
 ### 3.3 缓存
 
-- `query.ts` 加一个可选的缓存参数：`cache?: SnapshotCache`，接口是 `get(runId, f)` 返回不晚于 `f` 的最近一个快照、`put(snapshot)`。
+- `query.ts` 加一个可选的缓存参数：`cache?: SnapshotCache`，接口是 `get(runId, f, diagOptions?)` 返回不晚于 `f` 的最近一个快照、`put(snapshot)`。`MemorySnapshotCache` 由调用方持有，按需存入 600 帧边界；跨到下一个间隔也从已保存的快照推进。
 - `stateAt` 有缓存时从最近的快照续跑。
 - 缺省的实现放内存，按固定间隔存（每 600 帧一个，数字按 DD-07 §3.5 的实测定）；命令行不落盘。
 - **键只用 `runId`**。它是整份运行身份的摘要（架构 §9），输入、规则、代码、种子任何一项变了都会换键。诊断开关不在 `runId` 里，所以缓存条目另按 `diagOptions` 的摘要分开。
+
+实施验收与完整可变状态审计见 [DD-10 快照审计](dd-10-snapshot-audit.md)。其中记录了两条长轴 100 次查询的缓存耗时、分析命令前后对照，以及 `panelDeltas` 的归一入口扩展。
 
 ## 4. 执行核心拆环
 
@@ -161,11 +165,11 @@ flowchart LR
 
 ## 9. 验收清单（阶段五）
 
-- [ ] 路线图 P4 的完成标准：从头执行、重算查询、恢复续跑三者一致（C10-1、C10-2 与 DD-07 的 C07-2）；agent 经 `pnpm query` 拿到带单位与状态的 JSON，不用读网页。
-- [ ] `src/engine/` 里没有分析层的文件；`tests/layering.test.ts` 的四条规则全过，豁免名单为空。
-- [ ] `simulate` 与 `prepareResolved` 已删除，全库没有调用。
-- [ ] conformance 的样例含全部必有输出、清单与边界样例；`--verify` 可用。
-- [ ] 搬目录前后，全部场景的结果与各分析命令的输出相同。
+- [x] 路线图 P4 的完成标准：从头执行、重算查询、恢复续跑三者一致（C10-1、C10-2 与 DD-07 的 C07-2）；agent 经 `pnpm query` 拿到带单位与状态的 JSON，不用读网页。
+- [x] `src/engine/` 里没有分析层的文件；`tests/layering.test.ts` 的四条规则全过，豁免名单为空。
+- [x] `simulate` 与 `prepareResolved` 已删除，全库没有调用。
+- [x] conformance 的样例含全部必有输出、清单与边界样例；`--verify` 可用。
+- [x] 搬目录前后，全部场景的结果与各分析命令的输出相同。
 
 ## 10. 要同步的正式文档
 

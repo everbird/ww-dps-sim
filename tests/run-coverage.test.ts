@@ -1,11 +1,11 @@
 // tests/run-coverage.test.ts —— 完成状态与覆盖范围（DD-01 §3.5–§3.8；架构 §2.2、§2.3 的七条停止路径；用例 C01-8～C01-24）
 // 人造角色，不依赖生成数据。每条停止路径都断言 status、loopExitAt、finalization、terminal.kind、completedTicks 与两个上界。
+import { preparedScenario } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
-import { resolveScenario } from '../src/engine/resolve'
 import { RULE_POINTS } from '../src/engine/rule-points'
 import { prepareRun, runPrepared } from '../src/engine/run'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimResult } from '../src/engine/types'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -21,7 +21,7 @@ function go(甲: SynthChar, sc: Partial<ScenarioInput>): SimResult {
   return runPrepared(p.run)
 }
 /** 兼容外壳 */
-const old = (甲: SynthChar, sc: Partial<ScenarioInput>): SimResult => simulate(resolveScenario(scenarioOf(甲, sc), synthData([甲, 乙, 丙])))
+const runSource = (甲: SynthChar, sc: Partial<ScenarioInput>): SimResult => runPrepared(preparedScenario(scenarioOf(甲, sc), synthData([甲, 乙, 丙])))
 /** 两个上界 [已处理, 已记日志] */
 const bounds = (r: SimResult) => { const p = r.completion.coverage.terminal.prefix; return [p.handledEndExclusive, p.eventEndExclusive] }
 
@@ -259,26 +259,26 @@ describe('endAt 只截统计窗口（DD-01 §3.6；DF-01、DF-25）', () => {
   })
 })
 
-describe('兼容外壳 simulate（DD-01 §3.7）', () => {
+describe('正式运行结果（DD-10 §5；DD-01 §3.7）', () => {
   test('C01-19 error 字段照旧：没有 / maxFrames / comboBroken；新字段也带着', () => {
-    const ok = old(甲, { rotation: ['甲 X'] })
+    const ok = runSource(甲, { rotation: ['甲 X'] })
     expect(ok.error).toBeUndefined()
     expect(ok.completion.status).toBe('completed')
-    expect(ok.identity.execution.scenarioDigest).toBe('unknown')                     // 过渡入口不知道场景内容
+    expect(ok.identity.execution.scenarioDigest).toMatch(/^[0-9a-f]{64}$/)                     // 正式入口记录源场景摘要
     expect(ok.runId).toMatch(/^run-[0-9a-f]{16}$/)
-    expect(old(甲, COOLDOWN).error).toEqual({ code: 'maxFrames', message: '超过 100 帧，第 1 条第 2 个还没执行；调大 options.maxFrames', frame: 100, line: 1, loop: 1 })
-    expect(old(甲, COMBO).error).toEqual({ code: 'comboBroken', message: '第 2 条 甲 Y：Y 只能接在 Z 之后', frame: 0, line: 2, loop: 1 })
-    expect(old(甲, { rotation: ['甲 L'], options: { maxFrames: 100 } }).error).toBeUndefined()
-    // 同一份装配结果，两个入口的日志与汇总相同
-    const neu = go(甲, COOLDOWN), was = old(甲, COOLDOWN)
+    expect(runSource(甲, COOLDOWN).error).toEqual({ code: 'maxFrames', message: '超过 100 帧，第 1 条第 2 个还没执行；调大 options.maxFrames', frame: 100, line: 1, loop: 1 })
+    expect(runSource(甲, COMBO).error).toEqual({ code: 'comboBroken', message: '第 2 条 甲 Y：Y 只能接在 Z 之后', frame: 0, line: 2, loop: 1 })
+    expect(runSource(甲, { rotation: ['甲 L'], options: { maxFrames: 100 } }).error).toBeUndefined()
+    // 同一份源场景，重复执行的日志与汇总相同
+    const neu = go(甲, COOLDOWN), was = runSource(甲, COOLDOWN)
     expect(was.log).toEqual(neu.log)
     expect(was.summary).toEqual(neu.summary)
     expect(was.completion).toEqual(neu.completion)
   })
 
-  test('C01-20 钩子抛的错照旧往外抛（DD01-Q3）', () => {
-    expect(() => old(boom, { rotation: ['甲 X'] })).toThrow('boom')
-    expect(() => old({ name: '甲', actions: [X], hooks: { onResolve: () => { throw new Error('init boom') } } }, { rotation: ['甲 X'] })).toThrow('init boom')
+  test('C01-20 钩子异常记为 engineError，观察回调异常仍抛出（DD-10 §5）', () => {
+    expect(runSource(boom, { rotation: ['甲 X'] }).completion).toMatchObject({ status: 'engineError', engineError: { code: 'uncaught', message: 'boom' } })
+    expect(runSource({ name: '甲', actions: [X], hooks: { onResolve: () => { throw new Error('init boom') } } }, { rotation: ['甲 X'] }).completion).toMatchObject({ status: 'engineError', engineError: { code: 'uncaught', message: 'init boom' }, coverage: { initCompleted: false } })
     // 观察回调自己抛的错，新入口也原样抛：那是调用方的错，不是这次运行的结论
     const p = prepareRun(scenarioOf(甲, { rotation: ['甲 X'] }), synthData([甲, 乙, 丙]))
     expect(() => p.ok && runPrepared(p.run, { onHit: () => { throw new Error('observer') } })).toThrow('observer')

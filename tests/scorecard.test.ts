@@ -5,7 +5,7 @@ import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { scorecards, type Scorecard } from '../src/engine/scorecard'
+import { scorecards, type Scorecard } from '../src/analysis/scorecard'
 import { dataDescribe } from './helpers/kernel-harness'
 
 let gd: GameData

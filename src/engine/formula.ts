@@ -7,7 +7,7 @@ import type { BuffDef, BuffFilter } from '../data/buff.schema'
 import type { Rules, TuneBreakTable } from '../data/gamedata'
 import type { RuleRecorder } from './diagnostics'
 import type { HitDraft, HitFactors, StaticPanel, StatParts, ZoneAccumulator } from './types'
-import { roundTo } from './num'
+import { roundTo, floor } from './num'
 
 export type ZoneSums = Record<ZoneId, number>
 export type FormulaRules = Pick<Rules, 'critRateCap' | 'defFactorCap' | 'highResThreshold'> & Partial<Pick<Rules, 'defFloor'>>
@@ -27,7 +27,7 @@ function addZones(a: ZoneSums, b: Partial<ZoneSums>): ZoneSums {
 
 /** 面板合成：floor(基础 × (1 + 百分比)) + 固定值（xlsx 伤害配置 R2147 的写法） */
 export function composeStat(p: StatParts, pct: number, flat: number): number {
-  return Math.floor(p.base * (1 + p.pct + pct)) + p.flat + flat
+  return floor(p.base * (1 + p.pct + pct)) + p.flat + flat
 }
 
 /** RelatedProperty 对应的属性值；共鸣效率按游戏内单位（1 = 0.01%）换算，倍率 × 它 = 原始倍率 × 共鸣效率 */
@@ -44,18 +44,18 @@ export function relatedAttrValue(attr: RelatedAttr, panel: StaticPanel, z: ZoneS
  * 防御系数：min(cap, 1 / (有效防御 / (800 + 8·Lv) + 1))，有效防御 = 目标防御 × (1 + 防御±%) × (1 − 无视防御)。
  * 减防超过 100% 时有效防御为负、系数 > 1；分母 ≤ 0 时 xlsx 会算出负数，这里直接取上限（TD-03 §3.2）。
  */
-export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2, floor = false): number {
+export function defFactor(targetDef: number, defRate: number, ignore: number, level: number, cap = 2, doFloor = false): number {
   // 减防之后的目标防御；floor：先对它取整、再乘无视防御，同 xlsx 物理与谐度破坏公式的 FLOOR(U3 × (1 + B2456 − 减防) / (1 + B2456)) × (1 − 无视)
   // （TD-03 §3.2、Q1）。不取整时与原来的 targetDef × (1 + defRate) × (1 − ignore) 逐位相同
   const reduced = targetDef * (1 + defRate)
-  const d = (floor ? Math.floor(reduced) : reduced) * (1 - ignore) / (800 + level * 8) + 1
+  const d = (doFloor ? floor(reduced) : reduced) * (1 - ignore) / (800 + level * 8) + 1
   return d <= 0 ? cap : Math.min(cap, 1 / d)
 }
 
 /** 减防之后的目标防御是不是整数：不是整数时 rules.defFloor 取不取整才有区别（DD-05 §4.1 的判定点 formula.defFloor）。纯函数 */
 export const defFloorMatters = (targetDef: number, defRate: number): boolean => {
   const reduced = targetDef * (1 + defRate)
-  return Math.floor(reduced) !== reduced
+  return floor(reduced) !== reduced
 }
 
 /** 抗性系数（三段）：r ≤ 0 → 1 − r/2；r < 0.8 → 1 − r；否则 1 / (1 + 5r) */

@@ -1,11 +1,13 @@
 // tests/td06-enemy.test.ts —— 敌人量表（TD-06 §13）：偏谐值与失谐、谐度破坏（自动插入、对失谐、真空期、手写与关闭）、
 // 白条与破盾回能、瘫痪与回满、Summary.enemy；异常效应的层数（§18）。人造角色，不依赖生成数据
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { ELEMENTS } from '../src/data/common'
 import type { DilationDef, EffectDef, EnemyPreset, TuneBreakTable } from '../src/data/gamedata'
 import { parseRotationLine, ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import { computeAbnormal, emptyAccumulator } from '../src/engine/formula'
 import type { ResolvedScenario, SimResult } from '../src/engine/types'
 import { action, judgment } from './helpers/kernel-harness'
@@ -47,7 +49,7 @@ function run(sc: Partial<ScenarioInput>, rate = 1, enemy: Record<string, unknown
   data.tuneBreak = TABLE
   data.enemies = Object.fromEntries([NEXT, { ...NEXT, id: '测试/三费', cost: 3 as const }].map(e => [e.id, e]))
   data.characters['甲']!.tunabilityRate = rate
-  return simulate(resolveScenario(ScenarioSchema.parse({
+  return runPrepared(preparedScenario(ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })),
     enemy: { custom: { level: 90, tunabilityMax: 100, whiteBar: 1000, paralysisSec: 1, ...enemy } }, ...sc,
   }), data))
@@ -230,7 +232,7 @@ function runEffects(rotation: string[], withRule = true): SimResult {
   }
   const data = synthData([甲e, 乙e, idle('丙')])
   if (withRule) data.effects = { 电磁效应: 电磁 }
-  return simulate(resolveScenario(ScenarioSchema.parse({
+  return runPrepared(preparedScenario(ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
   }), data))
 }
@@ -279,7 +281,7 @@ describe('T06-13b 到上限即结算的异常效应（聚爆效应）', () => {
     const data = synthData([甲e, idle('乙'), idle('丙')])
     data.effects = { 聚爆效应: { ...聚爆, settleAtMax: cd } }
     data.abnormalBaseByLevel = Array.from({ length: 100 }, (_, i) => (i === 89 ? 3674 : 0))
-    return simulate(resolveScenario(ScenarioSchema.parse({
+    return runPrepared(preparedScenario(ScenarioSchema.parse({
       team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation,
     }), data))
   }
@@ -312,7 +314,7 @@ function runTicks(rotation: string[], extra: Partial<SynthChar> = {}, rules: Rec
   const R = resolveScenario(ScenarioSchema.parse({
     team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation, options: { rules },
   }), data)
-  return { res: simulate(R), R }
+  return { res: runPrepared(fixturePreparedRun(R)), R }
 }
 const ticks = (r: SimResult) => eventsOfLog(r.log, 'effectTick').map(e => [e.f, e.stacks, e.burst, e.left, e.source])
 const effectHits = (r: SimResult) => eventsOfLog(r.log, 'hit').filter(h => h.effect).map(h => [h.f, h.char, h.judgment, h.dmg!.expected])

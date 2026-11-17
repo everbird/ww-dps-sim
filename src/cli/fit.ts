@@ -1,9 +1,8 @@
-// src/cli/fit.ts —— pnpm fit 场景.yaml [--n 60] [--near 4] [--top 15]：录像剖析的贴合度（src/engine/fit.ts）。
+// src/cli/fit.ts —— pnpm fit 场景.yaml [--n 60] [--near 4] [--top 15]：录像剖析的贴合度（src/analysis/fit.ts）。
 // 原场景与各变体（假设开关翻过来、轴里读到的动作去掉 / 挪到附近 / 对调）逐个按"和录像差多少"打分排名——不是比 DPS。
 // 比原场景更贴合的改法是线索：要回录像里核对（这一下到底按没按、是不是另一种状态），不要直接改场景
 import { loadGameData } from '../data/load'
-import { fitVariants, FIT_WEIGHTS, type Fit } from '../engine/fit'
-import { resolveScenario } from '../engine/resolve'
+import { fitVariants, FIT_WEIGHTS, type Fit } from '../analysis/fit'
 import { argsOf, loadScenario } from './format'
 
 const fmt = (f: Fit) => [
@@ -18,9 +17,9 @@ async function main(): Promise<number> {
   const { pos, opt } = argsOf(process.argv.slice(2), ['--n', '--near', '--top'])
   if (pos.length !== 1) { console.error('用法：pnpm fit 场景.yaml [--n 60] [--near 4] [--top 15]'); return 2 }
   const sc = loadScenario(pos[0]!)
-  const r = resolveScenario(sc, await loadGameData())
+  const data = await loadGameData()
   const t = Date.now()
-  const x = fitVariants(r, sc, { n: Number(opt.n ?? 60), near: Number(opt.near ?? 4) })
+  const x = fitVariants(sc, data, { n: Number(opt.n ?? 60), near: Number(opt.near ?? 4) })
   const baseScore = x.base.score!
   const ran = x.rows.filter(row => row.fit && row.fit.score !== null)
   const failedCount = x.rows.length - ran.length

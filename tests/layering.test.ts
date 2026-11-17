@@ -1,106 +1,120 @@
-// tests/layering.test.ts —— 分层检查（DD-01 §3.9；架构 §1.2）：读源码文本做静态检查，不执行被测模块。
-// 规则 1 核心不反向依赖：执行核心、查询与诊断、台账不 import 分析层的文件，也不 import src/cli、src/report、web。
-// 规则 2 纯库：src/engine 下所有文件不 import fs、path、child_process、crypto（含 node: 写法），也不 import src/data/load.ts。
-// 防呆：src/engine 下出现了没归层的新文件就失败，提示把它归到某一层。
+// tests/layering.test.ts —— 四条边界（DD-10 §4–§6；总设计 §10.1）。用 TypeScript AST 检查，注释不算 import / 取整。
 import { readdirSync, readFileSync } from 'node:fs'
-import { dirname, join, normalize } from 'node:path'
+import { dirname, join, normalize, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 
-const ENGINE = fileURLToPath(new URL('../src/engine/', import.meta.url))
+const SRC = fileURLToPath(new URL('../src/', import.meta.url))
+const EXECUTION = new Set([
+  'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula',
+  'simulate', 'execution', 'context', 'num', 'rng', 'types', 'wait-codes', 'event-util',
+])
+const ENTRY_REPORT = new Set(['resolve', 'compile', 'run', 'strict', 'portable', 'summary', 'invariants', 'basis'])
+// DD-10 §4–§5：显式分类，不允许新执行文件因漏列 EXECUTION 而绕过规则 3。
+const QUERY_DIAGNOSTICS = new Set(['diagnostics', 'digest', 'probe', 'query', 'run-types', 'snapshot', 'wire'])
+const LEDGER = new Set(['assumptions', 'propositions', 'rule-points'])
+const ENGINE_GROUPS = [EXECUTION, ENTRY_REPORT, QUERY_DIAGNOSTICS, LEDGER, new Set(['index'])]
+const NODE_ONLY = new Set(['fs', 'path', 'child_process', 'crypto', 'http', 'https', 'net', 'worker_threads'])
 
-/** ④ 分析与应用：架构附录 B 的 14 个，加详细设计新增的 candidates（DD-04）、observations（DD-08、DD-09）、zero-interference（DD-05 §6 的零干扰对拍）、
- *  evidence（DD-08 §4 的证据闭环） */
-const ANALYSIS = [
-  'analysis', 'calibration', 'cards', 'fit', 'fuzz', 'insight', 'matrix', 'optimize', 'plan', 'sample', 'scorecard', 'search', 'sensitivity', 'trace',
-  'candidates', 'observations', 'zero-interference', 'evidence',
-]
-/** ① 执行核心、①D 查询与诊断、② 台账：架构 §1.1 的 18 个，加 DD-01 新增的 run、run-types、digest，DD-04 新增的 propositions（② 台账），
- *  DD-05 新增的 diagnostics（①D 诊断旁路）、rule-points（② 判定点登记表）。新文件先在这里归层 */
-const CORE = [
-  'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula', 'simulate', 'context', 'num', 'rng',
-  'resolve', 'portable', 'types', 'summary', 'invariants', 'assumptions',
-  'run', 'run-types', 'digest', 'strict', 'basis', 'propositions', // DD-02 编译检查属于执行入口
-  'diagnostics', 'rule-points', 'wire', 'probe', 'query',
-]
-const NODE_ONLY = ['fs', 'path', 'child_process', 'crypto']
-const CONSUMERS = ['../cli/', '../report/', '../../web/']
-
-/** 源码里 import / export … from '…'、import '…'、import('…') 的路径 */
-function importsOf(source: string): string[] {
-  const out: string[] = []
-  const res = [
-    /(?:^|[\s;])(?:import|export)\s[^'"]*?\bfrom\s*['"]([^'"]+)['"]/g,
-    /(?:^|[\s;])import\s*['"]([^'"]+)['"]/g,
-    /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
-  ]
-  for (const re of res) for (const m of source.matchAll(re)) out.push(m[1]!)
-  return out
+function parse(text: string): ts.SourceFile {
+  return ts.createSourceFile('source.ts', text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
 }
-
-/** 相对路径解析到 src/engine 下的哪个文件（去掉扩展名）；不在 src/engine 下的返回 null */
-function engineFile(from: string, spec: string): string | null {
-  if (!spec.startsWith('.')) return null
-  const abs = normalize(join(dirname(join(ENGINE, `${from}.ts`)), spec)).replace(/\.ts$/, '')
-  const dir = normalize(ENGINE).replace(/[\\/]$/, '')
-  return dirname(abs) === dir ? abs.slice(dir.length + 1) : null
-}
-const isLoad = (from: string, spec: string): boolean =>
-  spec.startsWith('.') && normalize(join(ENGINE, dirname(`${from}.ts`), spec)).replace(/\.ts$/, '') === normalize(join(ENGINE, '../data/load'))
-
-/** sources：文件名（不带扩展名）→ 源码。返回违反的地方，每条一行 */
-function violations(sources: ReadonlyMap<string, string>): string[] {
-  const out: string[] = []
-  for (const [file, text] of sources) {
-    const analysis = ANALYSIS.includes(file)
-    if (!analysis && !CORE.includes(file)) out.push(`${file}.ts：没归层，把它加进 tests/layering.test.ts 的 ANALYSIS（分析层）或 CORE（执行核心、查询与诊断、台账）`)
-    for (const spec of importsOf(text)) {
-      const bare = spec.replace(/^node:/, '')
-      if (NODE_ONLY.includes(bare) || NODE_ONLY.some(n => bare.startsWith(`${n}/`))) out.push(`${file}.ts：纯库不能 import ${spec}（规则 2）`)
-      if (isLoad(file, spec)) out.push(`${file}.ts：纯库不能 import src/data/load.ts（规则 2）`)
-      if (analysis) continue
-      const target = engineFile(file, spec)
-      if (target !== null && ANALYSIS.includes(target)) out.push(`${file}.ts：核心不能 import 分析层的 ${target}.ts（规则 1）`)
-      if (CONSUMERS.some(c => spec.startsWith(c))) out.push(`${file}.ts：核心不能 import ${spec}（规则 1）`)
-    }
+function importsOf(source: ts.SourceFile): string[] {
+  const result: string[] = []
+  function visit(node: ts.Node): void {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier))
+      result.push(node.moduleSpecifier.text)
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword && node.arguments[0] && ts.isStringLiteral(node.arguments[0]))
+      result.push(node.arguments[0].text)
+    ts.forEachChild(node, visit)
   }
-  return out
+  visit(source)
+  return result
+}
+function targetOf(file: string, spec: string): string | null {
+  if (!spec.startsWith('.')) return null
+  return relative(SRC, normalize(join(SRC, dirname(file), spec))).replace(/\\/g, '/').replace(/\.ts$/, '').replace(/\/index$/, '')
 }
 
-const sources = new Map(readdirSync(ENGINE).filter(f => f.endsWith('.ts')).sort().map(f => [f.replace(/\.ts$/, ''), readFileSync(join(ENGINE, f), 'utf8')] as const))
+/** 无迁移豁免名单：类型 import 也受单向边界约束（DD-10 §4）。 */
+function violations(sources: ReadonlyMap<string, string>): string[] {
+  const result: string[] = []
+  for (const [file, text] of sources) {
+    const tree = parse(text)
+    const engine = file.startsWith('engine/')
+    const analysis = file.startsWith('analysis/')
+    const name = file.slice(file.lastIndexOf('/') + 1).replace(/\.ts$/, '')
+    if (engine && (file !== `engine/${name}.ts` || ENGINE_GROUPS.filter(group => group.has(name)).length !== 1))
+      result.push(`${file}: 引擎文件必须唯一显式归层（DD-10 §4）`)
+    for (const spec of importsOf(tree)) {
+      const target = targetOf(file, spec)
+      const bare = spec.replace(/^node:/, '').split('/')[0]!
+      if (NODE_ONLY.has(bare) || target === 'data/load') result.push(`${file}: 纯库不能 import ${spec}（规则 2）`)
+      if (engine && target !== null && !target.startsWith('engine/') && target !== 'engine' && !target.startsWith('data/'))
+        result.push(`${file}: 核心不能 import ${spec}（规则 1）`)
+      if (analysis && target !== null && target !== 'engine' && !target.startsWith('analysis/') && !target.startsWith('data/'))
+        result.push(`${file}: 分析层只能经 engine/index、data 或本层引入 ${spec}（规则 1）`)
+      if (engine && EXECUTION.has(name) && (target === 'engine' || (target?.startsWith('engine/') && ENTRY_REPORT.has(target.slice('engine/'.length)))))
+        result.push(`${file}: 执行组不能 import ${spec}（规则 3）`)
+    }
+    if (!engine) continue
+    for (const statement of tree.statements) {
+      if (ts.isVariableStatement(statement) && !(statement.declarationList.flags & ts.NodeFlags.Const))
+        result.push(`${file}: 模块级可变变量（规则 4）`)
+    }
+    function numbers(node: ts.Node): void {
+      if (name !== 'num' && ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'Math' && ['round', 'floor'].includes(node.name.text))
+        result.push(`${file}: Math.${node.name.text} 必须经 num.ts（规则 4）`)
+      ts.forEachChild(node, numbers)
+    }
+    numbers(tree)
+  }
+  return result
+}
+function sourcesIn(dir: string): [string, string][] {
+  return readdirSync(join(SRC, dir), { withFileTypes: true }).flatMap(e => {
+    const name = `${dir}/${e.name}`
+    return e.isDirectory() ? sourcesIn(name) : e.name.endsWith('.ts') ? [[name, readFileSync(join(SRC, name), 'utf8')] as [string, string]] : []
+  })
+}
 
-describe('分层检查（DD-01 §3.9）', () => {
-  it('src/engine 现有的文件没有违反', () => {
+describe('四层边界（DD-10 §4–§6）', () => {
+  it('实际源文件满足四条规则，无执行组迁移豁免', () => {
+    const dirs = readdirSync(SRC)
+    const sources = new Map(['engine', 'analysis'].filter(d => dirs.includes(d)).flatMap(sourcesIn))
     expect(violations(sources)).toEqual([])
   })
-
-  it('取得到各种写法的 import', () => {
-    expect(importsOf(`import { a,\n  b } from './x'\nimport type { T } from "../y"\nexport * from './z'\nexport { q } from './w'\nimport './side'\nconst m = await import('./dyn')`))
-      .toEqual(['./x', '../y', './z', './w', './side', './dyn'])
+  it('新增或嵌套引擎文件不能靠未归层绕过执行组约束', () => {
+    for (const file of ['engine/new-execution.ts', 'engine/nested/kernel.ts'])
+      expect(violations(new Map([[file, `import { x } from '../summary'`]])))
+        .toContain(`${file}: 引擎文件必须唯一显式归层（DD-10 §4）`)
+    expect(violations(new Map([['engine/new-execution.ts', '']]))).toHaveLength(1)
   })
-
-  it('核心 import 分析层、外围消费层时失败（规则 1）', () => {
-    const doctored = (line: string) => violations(new Map([...sources, ['kernel', `${line}\n${sources.get('kernel')!}`]]))
-    expect(doctored(`import { replayFit } from './fit'`)).toEqual(['kernel.ts：核心不能 import 分析层的 fit.ts（规则 1）'])
-    expect(doctored(`import type { Basis } from './analysis'`)).toHaveLength(1)
-    expect(doctored(`import { fmt } from '../cli/format'`)).toHaveLength(1)
-    expect(doctored(`import { x } from '../report/timeline'`)).toHaveLength(1)
-    // 分析层互相引用、引用核心都可以
-    expect(violations(new Map([...sources, ['fit', `import { panelsOf } from './analysis'\n${sources.get('fit')!}`]]))).toEqual([])
+  it('识别静态、类型、转发和动态 import，忽略注释', () => {
+    expect(importsOf(parse(`import { a } from './a'; import type { B } from './b'; export * from './c'; import './d'; const x = import('./e'); // import './fake'`)))
+      .toEqual(['./a', './b', './c', './d', './e'])
   })
-
-  it('任何一层 import Node 专有模块、读盘适配时失败（规则 2）', () => {
-    const doctored = (file: string, line: string) => violations(new Map([...sources, [file, `${line}\n${sources.get(file)!}`]]))
-    expect(doctored('kernel', `import { readFileSync } from 'node:fs'`)).toHaveLength(1)
-    expect(doctored('fit', `import { join } from 'path'`)).toHaveLength(1)
-    expect(doctored('digest', `import { createHash } from 'node:crypto'`)).toHaveLength(1)
-    expect(doctored('trace', `import { execSync } from 'child_process'`)).toHaveLength(1)
-    expect(doctored('sensitivity', `import { loadGameData } from '../data/load'`)).toHaveLength(1)
+  it('规则 1：引擎不依赖分析或外围，分析只经公开入口', () => {
+    for (const path of ['../analysis/fit', '../report/timeline', '../cli/format', '../../web/app/x'])
+      expect(violations(new Map([['engine/kernel.ts', `import { x } from '${path}'`]]))).toHaveLength(1)
+    expect(violations(new Map([['analysis/fit.ts', `import { x } from '../engine/query'`]]))).toHaveLength(1)
+    expect(violations(new Map([['analysis/fit.ts', `import { x } from '../engine'; import type { Y } from '../engine/index'; import { z } from '../data/gamedata'; import { q } from './trace'`]]))).toEqual([])
   })
-
-  it('没归层的新文件失败并提示', () => {
-    const v = violations(new Map([...sources, ['brand-new', 'export const x = 1\n']]))
-    expect(v).toHaveLength(1)
-    expect(v[0]).toContain('没归层')
+  it('规则 2：两层都是纯库', () => {
+    for (const file of ['engine/kernel.ts', 'analysis/fit.ts'])
+      for (const path of ['node:fs', 'fs/promises', 'path', 'child_process', 'crypto', '../data/load'])
+        expect(violations(new Map([[file, `import { x } from '${path}'`]]))).toHaveLength(1)
+  })
+  it('规则 3：执行组不能倒引入口、汇总与不变量，报告可引用执行组', () => {
+    for (const path of ['run', 'resolve', 'compile', 'summary', 'invariants', 'index'])
+      expect(violations(new Map([['engine/kernel.ts', `import type { X } from './${path}'`]]))).toHaveLength(1)
+    expect(violations(new Map([['engine/summary.ts', `import type { X } from './types'`]]))).toEqual([])
+  })
+  it('规则 4：模块级 let/var 与散落取整失败，函数内局部状态合法', () => {
+    for (const source of ['let x = 1', 'var x = 1', 'export let x = 1', 'const f = Math.round', 'const f = (n: number) => Math.floor(n)'])
+      expect(violations(new Map([['engine/kernel.ts', source]]))).toHaveLength(1)
+    expect(violations(new Map([['engine/kernel.ts', '// Math.round(x)\nfunction f() { let n = 0; return n }']]))).toEqual([])
+    expect(violations(new Map([['engine/num.ts', 'export const round = (x: number) => Math.round(x)']]))).toEqual([])
   })
 })

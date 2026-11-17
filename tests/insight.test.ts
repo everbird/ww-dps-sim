@@ -1,14 +1,16 @@
 // tests/insight.test.ts —— 操作延迟 options.inputDelay（TD-09 §3、总设计 T4）与结论（TD-10 §6）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { panelsOf } from '../src/engine/analysis'
-import { insight } from '../src/engine/insight'
+import { panelsOf } from '../src/analysis/analysis'
+import { insight } from '../src/analysis/insight'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import { action, dataDescribe } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthRun, type SynthChar } from './helpers/synth'
 
@@ -40,11 +42,12 @@ describe('操作延迟 options.inputDelay', () => {
 dataDescribe('结论（M0 代表轴）', () => {
   let gd: GameData
   beforeAll(async () => { gd = await loadGameData() })
-  const load = () => resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-team.yaml', import.meta.url), 'utf8'))), gd)
+  const source = () => ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/m0-team.yaml', import.meta.url), 'utf8')))
+  const load = () => resolveScenario(source(), gd)
 
   test('连段的后续（有 comboFrom 的动作）不加操作延迟：玩家会预输入', () => {
     const r = load()
-    const out = simulate({ ...r, options: { ...r.options, inputDelay: 6 } })
+    const out = runPrepared(fixturePreparedRun({ ...r, options: { ...r.options, inputDelay: 6 } }))
     expect(out.error).toBeUndefined()
     const inputs = eventsOfLog(out.log, 'wait').filter(w => w.code === 'input')
     expect(inputs.length).toBeGreaterThan(0)
@@ -55,7 +58,7 @@ dataDescribe('结论（M0 代表轴）', () => {
   }, 60_000)
 
   test('四项结论：能量需求不高于现在（这条轴不等能量）、操作越晚 DPS 越低、敏感度列出能翻的假设', () => {
-    const x = insight(load(), { delays: [0, 3, 6], tight: 0 })
+    const x = insight(source(), gd, { delays: [0, 3, 6], tight: 0 })
     expect(x.energy.map(e => e.char)).toEqual(['椿', '散华', '维里奈'])
     for (const e of x.energy) {
       expect(e.waitSecs).toBe(0)
@@ -80,10 +83,10 @@ dataDescribe('结论（M0 代表轴）', () => {
 
   test('共鸣效率需求：把现在的共鸣效率压到需求以下就会等能量', () => {
     const r = load()
-    const need = insight(r, { delays: [0], tight: 0 }).energy.find(e => e.char === '维里奈')!.need!
+    const need = insight(source(), gd, { delays: [0], tight: 0 }).energy.find(e => e.char === '维里奈')!.need!
     const buffPart = panelsOf(r)[2]!.energyRegen - r.team[2].panel.energyRegen   // 常驻共鸣效率 buff 那部分（需求按面板 + 它算）
     const panel = need - 0.05 - buffPart                                            // 比需求低 5%
-    const low = simulate({ ...r, team: r.team.map(t => (t.slot === 2 ? { ...t, panel: { ...t.panel, energyRegen: panel } } : t)) as typeof r.team })
+    const low = runPrepared(fixturePreparedRun({ ...r, team: r.team.map(t => (t.slot === 2 ? { ...t, panel: { ...t.panel, energyRegen: panel } } : t)) as typeof r.team }))
     const waits = eventsOfLog(low.log, 'wait').filter(w => w.code === 'resource' && w.reason.startsWith('大招能量'))
     expect(low.error !== undefined || waits.length > 0).toBe(true)
   }, 60_000)
@@ -94,8 +97,8 @@ dataDescribe('卡帧点（TD-10 §6 ⑥）：M0 视频轴 EQ 版', () => {
   // 2026-10-25 声骸起手能打断后摇（假设 echo-input-priority）后一轮回到 25.00 秒、等维里奈大招冷却：只有它晚了一轮跟着变长
   test('一轮 25.00 秒、等维里奈大招冷却：只有维里奈大招晚 6 帧一轮多 6 帧，其余不加长', async () => {
     const data = await loadGameData()
-    const r = resolveScenario(ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8'))), data)
-    const x = insight(r, { delays: [0] })
+    const sc = ScenarioSchema.parse(parse(readFileSync('scenarios/m0-video-eq.yaml', 'utf8')))
+    const x = insight(sc, data, { delays: [0] })
     expect(x.tightFrames).toBe(6)
     expect(x.tight.filter(t => (t.extraFrames ?? 0) > 0).map(t => t.what)).toEqual(['维里奈 大招'])
     expect(x.tight.filter(t => t.kind === 'slack').length).toBeGreaterThan(10)

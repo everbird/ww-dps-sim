@@ -1,26 +1,27 @@
-// src/engine/analysis.ts —— 配装对比与副词条边际（总设计 §3.5"对比"，M5；TD-10 §3、§4）
-// 做法就是把场景改几处、各跑一次 simulate 再做差。比较的口径：有分轮时取稳态（完整的轮），否则取整个统计窗口；
+import { ResolveError } from '../engine'
+// src/analysis/analysis.ts —— 配装对比与副词条边际（总设计 §3.5"对比"，M5；TD-10 §3、§4）
+// 做法就是把场景改几处、各跑一次 runPrepared 再做差。比较的口径：有分轮时取稳态（完整的轮），否则取整个统计窗口；
 // "差在哪"按这个窗口里各角色、各动作的每秒伤害（加起来就是 DPS）与 buff 覆盖率来拆，面板另列。
 // 纯函数：输入 Scenario 与 GameData，不读文件（命令行在 src/cli/compare.ts、marginal.ts）。
 import type { Slot, StatKey } from '../data/common'
 import type { GameData } from '../data/gamedata'
 import type { Scenario } from '../data/scenario.schema'
-import { composeStat } from './formula'
-import { resolveScenario } from './resolve'
-import { simulate } from './simulate'
-import { battleFrameOf, buffUptimeDetail, hitValue } from './summary'
-import type { ResolvedScenario, SimResult } from './types'
-import { round, roundTo } from './num'
+import { composeStat } from '../engine'
+import { resolveScenario } from '../engine'
+import { prepareRun, runPrepared, type PreparedRun, type RunOverrides } from '../engine'
+import { battleFrameOf, buffUptimeDetail, hitValue } from '../engine'
+import type { ResolvedScenario, SimResult } from '../engine'
+import { round, roundTo } from '../engine'
 
 export interface Run { r: ResolvedScenario; res: SimResult }
 
 export function runScenario(sc: Scenario, data: GameData): Run {
-  const r = resolveScenario(sc, data)
-  return { r, res: simulate(r) }
+  const p = preparedScenario(sc, data)
+  return { r: p.resolved, res: runPrepared(p) }
 }
 
-import { basisOf, scopeMismatchOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from './basis'
-export { basisOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from './basis'
+import { basisOf, scopeMismatchOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from '../engine'
+export { basisOf, usableBasis, type Basis, type BasisResult, type BasisStatus, type ScopeMismatch } from '../engine'
 
 /** 窗口内各角色、各动作（"角色 动作"）的伤害与每秒伤害；同一个窗口里加起来就是 basis.dps（DD-03 §6.2） */
 export interface DamageBreakdown {
@@ -223,4 +224,11 @@ export function marginal(sc: Scenario, data: GameData, slot: Slot, tier: Tier = 
   }
   rows.sort((x, y) => Number(x.error !== undefined) - Number(y.error !== undefined) || y.delta - x.delta)
   return { base, rows }
+}
+
+/** DD-10 §5：分析使用真实源场景归一，不从装配结果逆造场景。 */
+export function preparedScenario(sc: Scenario, data: GameData, overrides: RunOverrides = {}): PreparedRun {
+  const p = prepareRun(sc, data, overrides)
+  if (!p.ok) throw new ResolveError(p.issues.map(i => `${i.code}: ${i.message}`))
+  return p.run
 }

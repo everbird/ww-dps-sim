@@ -1,15 +1,15 @@
-// src/engine/zero-interference.ts —— 零干扰对拍（DD-05 §6；架构 §4.3）。④ 分析层：tests/zero-interference.test.ts 与 pnpm conformance 共用。
+// src/analysis/zero-interference.ts —— 零干扰对拍（DD-05 §6；架构 §4.3）。④ 分析层：tests/zero-interference.test.ts 与 pnpm conformance 共用。
 // 同一份 PreparedRun 诊断全关跑一次、全开跑一次，比三样：
 //   ① 结果去掉 diag：日志、汇总、forte、cooldowns、completion（整份，没有豁免字段）、interventions、strictReport、ruleUsage、runId；
 //     报错行为也在里面——completion.status 与 engineError，以及兼容外壳会不会抛（error.code 为 'uncaught' 时它把原异常抛出，消息相同）；
 //   ② 终态 SimState 的全部字段（会影响后续执行的状态也要相同，结果暂时相同不够）；
 //   ③ 事件队列的游标 busCursor。
 // 逐字段深比较：同一个引用直接算相同，对象比键的集合（值为 undefined 的键也算），所以比 canonicalJson 后逐字节相等更严。
-import { ALL_DIAG, type DiagSink } from './diagnostics'
-import { statesAt } from './query'
-import { runForInspection, type InspectOptions } from './run'
-import type { PreparedRun } from './run-types'
-import type { SimState } from './types'
+import { ALL_DIAG, type DiagSink } from '../engine'
+import { statesAt } from '../engine'
+import { runForInspection, type InspectOptions } from '../engine'
+import type { PreparedRun } from '../engine'
+import type { SimState } from '../engine'
 
 type Inspection = ReturnType<typeof runForInspection>
 

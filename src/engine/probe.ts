@@ -7,7 +7,7 @@ import type { ActionDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
 import { canTuneBreakWith } from './enemy'
 import { airborne, cooldownKey, gate, settled, type Kernel } from './kernel'
-import { roundTo } from './num'
+import { roundTo, floor } from './num'
 import { canAfford } from './resources'
 import { introOf } from './switch'
 import type {
@@ -333,7 +333,7 @@ export function explainAct(s: SimState, k: Kernel, env: ProbeEnv, slot: Slot, de
     id: 'resource',
     status: res === true ? 'met' : 'unmet',
     expected: (def.energyCost ?? 0) > 0 ? `大招能量 ≥ ${def.energyCost}` : '无大招能量门槛',
-    actual: res === true ? `大招能量 ${Math.floor(ch.energy * 10) / 10}` : res,
+    actual: res === true ? `大招能量 ${floor(ch.energy * 10) / 10}` : res,
   })
 
   // 10. hook.canStart（含谐度破坏的 canTuneBreak）

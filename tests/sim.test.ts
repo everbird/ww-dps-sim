@@ -1,5 +1,7 @@
 // tests/sim.test.ts —— M2 单人仿真（总设计 §12：单人轴的 DPS 与手算一致）
 // 依赖 data/generated（pnpm build:data）；没有时整组跳过。
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun, preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import type { GameData } from '../src/data/gamedata'
@@ -9,7 +11,7 @@ import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { AMPLIFY_ZONES, FINAL_ZONES } from '../src/data/common'
 import { computeHit, emptyAccumulator } from '../src/engine/formula'
 import { ResolveError, resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { HitEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -22,7 +24,7 @@ const M0: ScenarioInput['team'] = [
 const scenario = (o: Partial<ScenarioInput> = {}) => ScenarioSchema.parse({
   team: M0, enemy: { preset: '全息6/朔雷之鳞' }, initial: { onField: 1 }, rotation: ['散华 E'], ...o,
 })
-const run = (o: Partial<ScenarioInput> = {}) => simulate(resolveScenario(scenario(o), gd))
+const run = (o: Partial<ScenarioInput> = {}) => runPrepared(preparedScenario(scenario(o), gd))
 const hitsOf = (log: ReturnType<typeof run>['log']) => log.filter((e): e is HitEvent => e.type === 'hit' && e.dmg !== null)
 
 dataDescribe('M2 单人仿真', () => {
@@ -79,7 +81,7 @@ dataDescribe('M2 单人仿真', () => {
     const r = resolveScenario(scenario({ team, rotation: ['散华 E A1'] }), gd)
     expect(r.team[1].panel.atk).toMatchObject({ base: 612, flat: 150 })
     expect(r.team[1].panel.atk.pct).toBeCloseTo(0.17, 12)
-    const res = simulate(r)
+    const res = runPrepared(fixturePreparedRun(r))
     const [e, a1] = hitsOf(res.log)
     const atk = Math.floor(612 * (1 + 0.12 + 0.05)) + 150, def = 1 / (1512 / 1520 + 1)
     expect(e!.dmg!.nonCrit).toBe(Math.ceil(3.5985 * atk * 1 * def * (1 + 0.12 + 0.3) * 0.9))          // 共鸣技能不吃普攻加成

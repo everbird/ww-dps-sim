@@ -1,4 +1,4 @@
-// src/engine/insight.ts —— 结论（TD-10 §6，总设计 §0.1 第 7 条）：同一个场景改一处、多跑几次，推出几条能直接用的结论：
+// src/analysis/insight.ts —— 结论（TD-10 §6，总设计 §0.1 第 7 条）：同一个场景改一处、多跑几次，推出几条能直接用的结论：
 //   ① 共鸣效率需求：这条轴的大招不等能量，每人最低要多少共鸣效率（二分）；
 //   ② 操作容错：每条指令都晚 N 帧执行时 DPS 掉多少（options.inputDelay，确定性的，不用抽样）；
 //   ③ 假设敏感度：假设表里能自动翻的开关逐个翻一下，DPS 差多少（总设计 T16）；
@@ -7,11 +7,14 @@
 // 全部按期望值算；比较口径同对比（basisOf：有分轮取稳态，否则整个窗口）。纯函数，输入装配结果。
 import type { Slot } from '../data/common'
 import { basisOf, panelsOf, usableBasis, type Basis } from './analysis'
-import { ASSUMPTIONS, type AdjustPath } from './assumptions'
-import { INTENDED } from './scheduler'
-import { simulate } from './simulate'
-import { battleFrameOf } from './summary'
-import type { CommandRef, ResolvedScenario, SimEvent, SimResult, WaitCode } from './types'
+import { ASSUMPTIONS, type AdjustPath } from '../engine'
+import { INTENDED } from '../engine'
+import { runPrepared, type RunOverrides } from '../engine'
+import { preparedScenario } from './analysis'
+import type { Scenario } from '../data/scenario.schema'
+import type { GameData } from '../data/gamedata'
+import { battleFrameOf } from '../engine'
+import type { CommandRef, ResolvedScenario, SimEvent, SimResult, WaitCode } from '../engine'
 
 export interface EnergyNeed {
   char: string
@@ -56,10 +59,12 @@ const WAIT_LABEL: Partial<Record<WaitCode, string>> = {
 }
 export const DEFAULT_DELAYS = [0, 3, 6, 10, 15] as const
 
-export function insight(r: ResolvedScenario, opts: { delays?: readonly number[]; tight?: number } = {}): Insight {
+export function insight(sc: Scenario, data: GameData, opts: { delays?: readonly number[]; tight?: number } = {}): Insight {
   let runs = 0
-  const run = (x: ResolvedScenario): SimResult => { runs++; return simulate(x) }
-  const base = run(r)
+  const p = preparedScenario(sc, data)
+  const r = p.resolved
+  const run = (overrides: RunOverrides = {}): SimResult => { runs++; return runPrepared(preparedScenario(sc, data, overrides)) }
+  const base = run()
   const u0 = usableBasis(base)
   if (!u0.ok) throw new Error(`场景跑不通，先把轴修好再看结论：${u0.status}：${u0.reason}`)
   const basis = u0.basis
@@ -72,7 +77,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     const offset = panels[m.slot]!.energyRegen - m.panel.energyRegen
     const current = panels[m.slot]!.energyRegen
     const ok = (total: number): boolean => {
-      const res = run(withEnergyRegen(r, m.slot, total - offset))
+      const res = run({ panelDeltas: { [m.def.name]: { energyRegen: total - offset - m.panel.energyRegen } } })
       const u = usableBasis(res)
       return u.ok && energyWaitFrames(res, r, m.slot, u.basis) === 0
     }
@@ -85,7 +90,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
 
   // ② 操作容错
   const tolerance: ToleranceRow[] = (opts.delays ?? DEFAULT_DELAYS).map(delay => {
-    const res = delay === r.options.inputDelay ? base : run({ ...r, options: { ...r.options, inputDelay: delay } })
+    const res = delay === r.options.inputDelay ? base : run({ options: { inputDelay: delay } })
     const u = usableBasis(res)
     if (!u.ok) return { delay, dps: null, change: null, loopSecs: null, error: `${u.status}：${u.reason}` }
     const b = u.basis
@@ -105,7 +110,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     if (!adj || !('path' in adj) || !adj.path) continue
     if (a.tracked && !hit.has(a.id)) { notHit.push(a.id); continue }
     for (const v of adj.values ?? []) {
-      const res = run(adjusted(r, adj.path, v))
+      const res = run(adjustment(adj.path, v))
       const change = `${adj.path} = ${String(v)}`
       const u = usableBasis(res)
       if (!u.ok) { sensitivity.push({ id: a.id, what: a.what, change, dps: null, delta: null, pct: null, error: `${u.status}：${u.reason}` }); continue }
@@ -128,7 +133,7 @@ export function insight(r: ResolvedScenario, opts: { delays?: readonly number[];
     if (c.kind === 'wait' || c.kind === 'at' || c.kind === 'enemy' || c.kind === 'fill') continue
     if (c.kind === 'act' && r.team[c.slot]!.actions[c.action]?.comboFrom?.length) continue
     const what = c.kind === 'switch' ? `switch ${name(c.to)}${c.expectIntro ? ' 变奏' : ''}` : `${name(c.slot)} ${c.action}${c.filler ? '~' : ''}`
-    const res = run({ ...r, options: { ...r.options, inputDelayAt: { [`${c.line}.${c.item}`]: tightFrames } } })
+    const res = run({ inputDelayAt: { [`${c.line}.${c.item}`]: tightFrames } })
     const u = usableBasis(res)
     if (!u.ok) {
       tight.push({ line: c.line, item: c.item, what, dps: null, pct: null, loopSecs: null, extraFrames: null, dmgPct: null, kind: null, error: `${u.status}：${u.reason}` })
@@ -167,16 +172,10 @@ function search(lo: number, hi: number, ok: (x: number) => boolean): number {
 const castsUlt = (r: ResolvedScenario, slot: Slot): boolean =>
   [...r.opening, ...r.commands].some(c => c.kind === 'act' && c.slot === slot && (r.team[slot].actions[c.action]?.energyCost ?? 0) > 0)
 
-const withEnergyRegen = (r: ResolvedScenario, slot: Slot, panelValue: number): ResolvedScenario => ({
-  ...r,
-  team: r.team.map(m => (m.slot === slot ? { ...m, panel: { ...m.panel, energyRegen: panelValue } } : m)) as ResolvedScenario['team'],
-})
-
-/** 假设表里的开关（AdjustPath）：rules.<键> 或 options.<键>。只支持两段路径，留给还在用它的分析：
- *  把 rules.forteKeepOnSwitchBy.心 交给它会把整个按角色的表写成一个值。新代码用 prepareRun 的 overrides.rules（多段路径，DD-04 §4.2） */
-export function adjusted(r: ResolvedScenario, path: AdjustPath, v: number | boolean | string): ResolvedScenario {
-  const [where, key] = path.split('.') as ['rules' | 'options', string]
-  return where === 'rules' ? { ...r, rules: { ...r.rules, [key]: v } } : { ...r, options: { ...r.options, [key]: v } }
+/** DD-10 §5、DD-04 §4.2：通过归一入口覆盖规则，支持多段规则路径。 */
+export function adjustment(path: AdjustPath, v: number | boolean | string): RunOverrides {
+  if (path.startsWith('rules.')) return { rules: { [path.slice(6)]: v } }
+  return { options: { [path.slice(8)]: v } }
 }
 
 const commandOf = (r: ResolvedScenario, c: CommandRef) => (c.loop === 0 ? r.opening : r.commands).find(x => x.line === c.line && x.item === c.item)

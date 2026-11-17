@@ -1,5 +1,7 @@
 // tests/sensitivity.test.ts —— 假设的开关（docs/engine-quality-plan.md P2）与敏感度矩阵：
 // forteKeepOnSwitch、ultInputLocksSwitch、invincibleLocksSwitch 翻过来各自起作用；对照场景找得到基准。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -7,14 +9,14 @@ import type { GameData, Rules } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { baseOf, flipsOf, sensitivityMatrix } from '../src/engine/sensitivity'
-import { simulate } from '../src/engine/simulate'
+import { baseOf, flipsOf, sensitivityMatrix } from '../src/analysis/sensitivity'
+
 import type { ResolvedScenario, SimEvent } from '../src/engine/types'
 import { block, dataDescribe, run } from './helpers/kernel-harness'
 
 let gd: GameData
-const load = (f: string): ResolvedScenario =>
-  resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${f}`, import.meta.url), 'utf8'))), gd)
+const source = (f: string) => ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${f}`, import.meta.url), 'utf8')))
+const load = (f: string): ResolvedScenario => resolveScenario(source(f), gd)
 const withRule = (r: ResolvedScenario, k: string, v: unknown): ResolvedScenario => ({ ...r, rules: { ...r.rules, [k]: v } })
 const waits = (log: SimEvent[]) => log.filter((e): e is Extract<SimEvent, { type: 'wait' }> => e.type === 'wait')
 
@@ -38,7 +40,7 @@ dataDescribe('假设的开关', () => {
   // 椿大招的全局时停（240 帧）盖过了"不响应输入"（239 帧），2026-10-22 起用卜灵：全局时停 231 帧之后还挡到 238 帧
   test('ultInputLocksSwitch = false：大招的"不响应输入"不再挡切人（心队卜灵大招后切雷主）', () => {
     const r = load('xin-team-r5.yaml')
-    const on = simulate(r), off = simulate(withRule(r, 'ultInputLocksSwitch', false))
+    const on = runPrepared(fixturePreparedRun(r)), off = runPrepared(fixturePreparedRun(withRule(r, 'ultInputLocksSwitch', false)))
     expect(waits(on.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(true)
     expect(waits(off.log).some(w => w.reason.includes('不响应输入（按不能切人算）'))).toBe(false)
     expect(off.summary.assumptions.map(a => a.id)).not.toContain('ult-no-switch')
@@ -57,21 +59,21 @@ dataDescribe('假设的开关', () => {
     expect(go({ invincibleLocksSwitch: false }).s.log.filter(e => e.type === 'switch').map(e => e.f)).toEqual([0])
     // 心队原轴：2026-10-22 起这类推断的锁都被全局时停盖住或用不到，关掉也一样
     const r = load('xin-team-r5.yaml')
-    const on = simulate(r), off = simulate(withRule(r, 'invincibleLocksSwitch', false))
+    const on = runPrepared(fixturePreparedRun(r)), off = runPrepared(fixturePreparedRun(withRule(r, 'invincibleLocksSwitch', false)))
     expect(waits(off.log).some(w => w.code === 'globalStop' && w.reason.startsWith('照世·大招'))).toBe(true)
     expect(off.summary.steady!.dps).toBeCloseTo(on.summary.steady!.dps, 6)
   }, 60_000)
 
   test('forteKeepOnSwitch = false：卜灵切走清卦象，心切走回到应世相（按套路重排的轴因此跑不通）', () => {
     // 按套路重排：卜灵下落AAEA 后带着卦象切雷主放大招，再切回来出雷山小过
-    const re = simulate(withRule(load('xin-team-r5-按套路重排.yaml'), 'forteKeepOnSwitch', false))
+    const re = runPrepared(fixturePreparedRun(withRule(load('xin-team-r5-按套路重排.yaml'), 'forteKeepOnSwitch', false)))
     const cleared = re.log.filter(e => e.type === 'resource' && e.char === '卜灵' && e.resource === 'core1' && e.delta < 0 && e.note?.includes('切走清卦象'))
     expect(cleared.length).toBeGreaterThan(0)
     expect(re.error?.code).toBe('timeout')
   }, 60_000)
 
   test('矩阵：对照比基准的收益，缺省与翻过来各一份', () => {
-    const m = sensitivityMatrix([{ name: 'm0-video-eq', r: load('m0-video-eq.yaml') }, { name: 'm0-video-eq-维里奈Q后移', r: load('m0-video-eq-维里奈Q后移.yaml') }])
+    const m = sensitivityMatrix([{ name: 'm0-video-eq', sc: source('m0-video-eq.yaml') }, { name: 'm0-video-eq-维里奈Q后移', sc: source('m0-video-eq-维里奈Q后移.yaml') }], gd)
     expect(m.rows).toHaveLength(2)
     expect(m.pairs).toHaveLength(1)
     expect(m.pairs[0]).toMatchObject({ name: 'm0-video-eq-维里奈Q后移', base: 'm0-video-eq' })

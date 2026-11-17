@@ -1,61 +1,18 @@
-// src/engine/scheduler.ts —— 排轴的编译与调度（TD-09）
-// compileRotation：场景的 rotation 行 → Command[]（总设计 §3.3 第 7 步）；静态能查出来的错一次报全。
+// src/engine/scheduler.ts —— 运行期调度（TD-09；DD-10 §4① 的编译见 compile.ts）
 // createScheduler：每个 tick 的 P2"执行指令"（TD-04 §1）：按顺序、在最早合法帧执行；能等就等并记下原因，等不来就报错。
 import type { ActionId, Slot } from '../data/common'
 import type { ActionDef } from '../data/gamedata'
-import { parseRotationLine, type Command } from '../data/scenario.schema'
+import type { Command } from '../data/scenario.schema'
 import { assume } from './assumptions'
 import { ProbeStop, type CommandVerdict } from './diagnostics'
 import { airborne, cooldownKey, gate, log, settled, startAction, tick, type GateResult, type Kernel } from './kernel'
 import type { UnmetIntentDetail, StrictReport } from './run-types'
-import { roundTo } from './num'
+import { floor, roundTo } from './num'
+import { ScheduleError, type ScheduleErrorCode } from './types'
+import { INTENDED } from './wait-codes'
+export { INTENDED, INTENT_WAITS } from './wait-codes'
+export { ScheduleError, type ScheduleErrorCode } from './types'
 import type { CommandRef, EntryBlock, QueueState, SimState, WaitCode } from './types'
-
-export const INTENT_WAITS = ['concertoSettle', 'airborne', 'entryBusy'] as const
-
-export type ScheduleErrorCode = 'intentUnmet' | 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill' | 'airEntry'
-
-/** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
-export class ScheduleError extends Error {
-  intent?: UnmetIntentDetail
-  blocked?: NonNullable<StrictReport['timeoutContext']>['blocked']
-  readonly code: ScheduleErrorCode
-  readonly cmd: CommandRef | null
-  readonly frame: number
-  /** 是不是经调度器的 fail() 抛出的：是的话失败收尾（关掉正在累计的等待段）已经做过（DD-01 §3.5）。连锁过深、不变量不成立不经 fail */
-  readonly viaFail: boolean
-  constructor(code: ScheduleErrorCode, message: string, cmd: CommandRef | null, frame: number, viaFail = false) {
-    super(message)
-    this.name = 'ScheduleError'
-    this.code = code
-    this.cmd = cmd
-    this.frame = frame
-    this.viaFail = viaFail
-  }
-}
-
-// ---------------------------------------------------------------------------
-// §4 编译
-
-export interface CompileMember { name: string; actions: Record<ActionId, ActionDef>; aliases: Record<string, ActionId> }
-export interface CompileIssue { line: number; item?: number; message: string; opening?: true }
-export type CompileResult = { ok: true; commands: Command[]; opening: Command[] } | { ok: false; issues: CompileIssue[] }
-
-/** rotation（与可选的启动轴 opening）的每一行 → 指令；line 从 1 起（= 场景里第几条），item 是行内第几个动作。
- *  启动轴只跑一次，前台从 onField 推到它结束时，循环轴从那里开始（§3.7） */
-export function compileRotation(lines: string[], team: CompileMember[], onField: Slot, repeat = 1, openingLines: string[] = []): CompileResult {
-  const open = compileLines(openingLines, team)
-  const rot = compileLines(lines, team)
-  const issues = [...open.issues.map(i => ({ ...i, opening: true as const })), ...rot.issues]
-  if (rot.issues.length === 0 && rot.commands.length === 0) issues.push({ line: 0, message: '排轴里没有指令' })
-  // 有错的那一项已跳过，其余照查；切人写错时前台推不下去，不再查前台，免得连带报一串
-  if (!open.switchFailed && !rot.switchFailed) {
-    issues.push(...checkOnField(open.commands, team, onField, 1).map(i => ({ ...i, opening: true as const })))
-    issues.push(...checkOnField(rot.commands, team, endOnField(open.commands, onField), repeat))
-  }
-  issues.sort((a, b) => Number(!a.opening) - Number(!b.opening) || a.line - b.line || (a.item ?? 0) - (b.item ?? 0))
-  return issues.length > 0 ? { ok: false, issues } : { ok: true, commands: rot.commands, opening: open.commands }
-}
 
 /** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）、
  *  "at <世界秒>"（还没到就接着补）；遇到别的切人、等待或别的角色就没有 */
@@ -72,81 +29,12 @@ function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act
   return undefined
 }
 
-/** 指令跑完时谁在前台 */
-const endOnField = (commands: Command[], onField: Slot): Slot =>
-  commands.reduce<Slot>((cur, c) => (c.kind === 'switch' ? c.to : cur), onField)
-
-function compileLines(lines: string[], team: CompileMember[]): { commands: Command[]; issues: CompileIssue[]; switchFailed: boolean } {
-  const issues: CompileIssue[] = []
-  const commands: Command[] = []
-  const slotOf = new Map(team.map((m, i) => [m.name, i as Slot]))
-  let switchFailed = false
-  lines.forEach((text, i) => {
-    const line = i + 1
-    const items = parseRotationLine(text)
-    if ('error' in items) { issues.push({ line, message: items.error }); return }
-    items.forEach((it, j) => {
-      const item = j + 1
-      if (it.kind === 'wait') { commands.push({ kind: 'wait', line, item, frames: it.frames }); return }
-      if (it.kind === 'at') { commands.push({ kind: 'at', line, item, frame: Math.round(it.seconds * 60) }); return }
-      if (it.kind === 'enemy') { commands.push({ line, item, ...it }); return }
-      const slot = slotOf.get(it.char)
-      if (slot === undefined) {
-        issues.push({ line, item, message: `${it.char} 不在队伍里（队伍：${team.map(m => m.name).join('、')}）` })
-        if (it.kind === 'switch') switchFailed = true
-        return
-      }
-      if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot, ...(it.expectIntro ? { expectIntro: true } : {}) }); return }
-      if (it.kind === 'fill') { commands.push({ kind: 'fill', line, item, slot, resource: it.resource }); return }
-      const m = team[slot]!
-      const id = Object.hasOwn(m.actions, it.action) ? it.action : Object.hasOwn(m.aliases, it.action) ? m.aliases[it.action] : undefined
-      const def = id !== undefined && Object.hasOwn(m.actions, id) ? m.actions[id] : undefined
-      if (id === undefined || !def) {
-        issues.push({ line, item, message: `${m.name} 没有动作"${it.action}"（别名：${Object.keys(m.aliases).join('、') || '无'}）` })
-        return
-      }
-      if (def.kind === 'intro' || def.kind === 'outro') {
-        issues.push({ line, item, message: `${m.name} ${id} 是${def.kind === 'intro' ? '变奏' : '延奏'}，由切人自动触发（协奏满时），不能单独写` })
-        return
-      }
-      commands.push({
-        kind: 'act', line, item, slot, action: id, delay: it.delay, force: it.force,
-        ...(it.optional ? { optional: true } : {}), ...(it.filler ? { filler: true } : {}),
-      })
-    })
-  })
-  // 补位 "~" 后面（隔着同一角色的别的补位）要接同一角色的普通动作：它看的就是那一个（§3.2）
-  commands.forEach((c, i) => {
-    if (c.kind === 'act' && c.filler && !fillerTarget(commands, i))
-      issues.push({ line: c.line, item: c.item, message: `${team[c.slot]!.name} ${c.action}~：补位后面要接同一角色的动作或"switch <角色> 变奏"（中间不能有别的切人、等待）` })
-  })
-  return { commands, issues, switchFailed }
-}
-
-/** 前台只由 switch 改变，"出招的人在不在前台"编译期就能查（§4.2）。循环时第 2 轮从第 1 轮结束时的前台开始，再查一遍，只报第一处 */
-function checkOnField(commands: Command[], team: CompileMember[], onField: Slot, repeat: number): CompileIssue[] {
-  const out: CompileIssue[] = []
-  let cur = onField
-  for (let pass = 1; pass <= Math.min(repeat, 2) && out.length === 0; pass++) {
-    const where = pass === 2 ? '循环第 2 轮：' : ''
-    for (const c of commands) {
-      if (pass === 2 && out.length > 0) break
-      if (c.kind === 'switch') {
-        if (c.to === cur) out.push({ line: c.line, item: c.item, message: `${where}switch ${team[c.to]!.name}：${team[c.to]!.name} 已经在前台` })
-        cur = c.to
-      } else if (c.kind === 'act' && c.slot !== cur) {
-        const hint = pass === 2 ? `；循环的轴，末尾要让前台回到 ${team[onField]!.name}` : `；先写 switch ${team[c.slot]!.name}`
-        out.push({ line: c.line, item: c.item, message: `${where}${team[c.slot]!.name} 不在前台（前台是 ${team[cur]!.name}）${hint}` })
-      }
-    }
-  }
-  return out
-}
-
 // ---------------------------------------------------------------------------
 // §3 调度
 
 export interface SchedulerOptions {
+  /** DD-10 §3.1：查询检查点的游标可随运行体快照恢复。 */
+  progress?: { evalCount: number; headKey: string }
   strict?: boolean
   onIntentUnmet?(s: SimState, detail: UnmetIntentDetail): 'fail' | 'continue'
   introAvailable?(s: SimState, to: Slot): boolean
@@ -182,8 +70,6 @@ const listOf = (q: QueueState): Command[] => (q.loop === 0 ? q.opening : q.comma
 
 type Verdict = { go: true } | { go: false; code: WaitCode; reason: string }
 const GO: Verdict = { go: true }
-/** 写轴的人要求的等待与操作延迟：不计入 maxWait，汇总的 waits 也不列 */
-export const INTENDED: readonly WaitCode[] = ['delay', 'wait', 'at', 'input']
 /** 可选指令遇到这几种"状态条件"不满足时跳过；门（优先级、输入锁、派生）与"等出手"照常等 */
 // entry：写成可选的出场技（A2-地面出场技?），这次是变奏 / 空中 / 后台没走完入场时跳过，不报错（2026-10-26 照录像记的轴：
 // 录像里是变奏入场、仿真里协奏差一点没满成了普通切人，或者反过来；按 A 在游戏里也是看入场方式出不同的招）
@@ -191,8 +77,7 @@ const SKIPPABLE: WaitCode[] = ['cooldown', 'resource', 'hook', 'entry']
 
 /** 返回 P2 用的 schedule(s)：执行队首起能执行的指令（一个 tick 可以执行多条），返回"还有没有没执行完的指令" */
 export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[], opts: SchedulerOptions): (s: SimState) => boolean {
-  let evalCount = 0
-  let headKey = ''
+  const progress = opts.progress ?? { evalCount: 0, headKey: '' }
   return (s: SimState): boolean => {
     const q = s.queue
     if (q.commands.length === 0) return false
@@ -207,9 +92,9 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
       const ref: CommandRef = { line: c.line, item: c.item, loop: q.loop }
       if (k.diag?.opts.commandVerdicts) {
         const key = `${ref.loop}:${ref.line}:${ref.item}`
-        if (key !== headKey) {
-          headKey = key
-          k.diag.commandVerdict({ evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'head' })
+        if (key !== progress.headKey) {
+          progress.headKey = key
+          k.diag.commandVerdict({ evaluationIndex: progress.evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'head' })
         }
       }
       // 对队首指令的这一轮处理，来源是这条指令（DD-05 §3.2）：算出 ref 之后立刻打开，插队分支写出的 wait 也落在它里面（DF-06）。
@@ -228,7 +113,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         }
         closeSeg(s, ref)
         k.diag?.commandVerdict({
-          evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'interject',
+          evaluationIndex: progress.evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'interject',
           interject: { slot: ij.slot, action: ij.def.id },
         })
         const ia = k.diag?.open({ kind: 'autoInterject', slot: ij.slot, action: ij.def.id }, s.log.length)
@@ -250,7 +135,7 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
             : t!.kind === 'at' ? `到第 ${t!.frame} 帧了，不用补 ${c.action}` : `${t!.action} 已经能放，不用补 ${c.action}`
           log(s, { type: 'skip', cmd: ref, code: 'filler', reason: why })
           k.diag?.commandVerdict({
-            evaluationIndex: evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'skip',
+            evaluationIndex: progress.evalCount, f: s.frame, battleFrame: s.battleFrames, cmd: ref, kind: 'skip',
             verdict: { go: false, code: 'filler', reason: why },
           })
           q.next += 1
@@ -263,11 +148,11 @@ export function createScheduler(k: Kernel, actions: Record<ActionId, ActionDef>[
         }
       }
       let v: Verdict
-      let lastEvalIdx = evalCount
+      let lastEvalIdx = progress.evalCount
       if (!k.diag?.opts.commandVerdicts && !opts.afterEvaluate) {
         v = evaluate(s, k, actions, opts, c, ref)
       } else {
-        lastEvalIdx = evalCount++
+        lastEvalIdx = progress.evalCount++
         const force = c.kind === 'act' ? c.force : false
         const delay = c.kind === 'act' ? c.delay : 0
         let caught: unknown = null
@@ -431,7 +316,7 @@ function evaluateAct(
   }
   const v = input ? afterInput(s, k, opts, delay) : GO
   if (v.go && g.via === 'echoInput')
-    assume(s, 'echo-input-priority', `${ch.name} ${def.id} 打断 ${ch.action!.id}（第 ${Math.floor(ch.action!.localFrame)} 帧）`)
+    assume(s, 'echo-input-priority', `${ch.name} ${def.id} 打断 ${ch.action!.id}（第 ${floor(ch.action!.localFrame)} 帧）`)
   return v
 }
 
@@ -598,11 +483,10 @@ function where(q: QueueState, ref: CommandRef): string {
  *  afterTick：边界观察点（DD-05 §6.1），每个 tick 走完 P7 之后、检查帧数上限之前调，这时是 S[s.frame]；返回 'stop' 就抛 ProbeStop 停下
  *  （不经 fail、不做失败收尾）。在帧数上限之前调，S[maxFrames] 才取得到 */
 export function runLoop(
-  s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number, afterTick?: (s: SimState) => 'stop' | void,
+  s: SimState, k: Kernel, schedule: (s: SimState) => boolean, maxFrames: number, afterTick?: (s: SimState) => 'stop' | void, resumeBoundary = false,
 ): 'idle' | 'maxFramesInFlight' {
-  while (tick(s, k, schedule)) {
-    if (afterTick?.(s) === 'stop') throw new ProbeStop(s.frame)
-    if (s.frame < maxFrames) continue
+  const atLimit = (): 'maxFramesInFlight' | null => {
+    if (s.frame < maxFrames) return null
     const q = s.queue
     if (q.next < listOf(q).length || q.loop < q.repeat) {
       const wrap = q.next >= listOf(q).length
@@ -614,6 +498,16 @@ export function runLoop(
     log(s, { type: 'warning', code: 'maxFrames', message: `到达帧数上限 ${maxFrames}，场上还有 ${s.judgments.length} 个判定、${s.tails.length} 条尾部没走完` })
     if (sc !== undefined) k.diag!.close(sc, s.log.length, k.at.phase)
     return 'maxFramesInFlight'
+  }
+  // DD-10 §3.2：快照在 afterTick 处取得，恢复时先补做原边界的上限检查。
+  if (resumeBoundary) {
+    const limit = atLimit()
+    if (limit) return limit
+  }
+  while (tick(s, k, schedule)) {
+    if (afterTick?.(s) === 'stop') throw new ProbeStop(s.frame)
+    const limit = atLimit()
+    if (limit) return limit
   }
   return 'idle'
 }

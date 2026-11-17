@@ -3,8 +3,8 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { loadGameData } from '../data/load'
 import { withOpening, withRotation } from '../data/scenario-text'
-import { planOpening, planRotation } from '../engine/plan'
-import { HAND_PROFILES, type HandProfile } from '../engine/sample'
+import { planOpening, planRotation } from '../analysis/plan'
+import { HAND_PROFILES, type HandProfile } from '../analysis/sample'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padStart, withOverrides, OVERRIDE_FLAGS } from './format'
 

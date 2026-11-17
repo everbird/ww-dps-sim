@@ -4,9 +4,9 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { basename, dirname, extname, resolve } from 'node:path'
 import { loadGameData } from '../data/load'
-import { panelsOf } from '../engine/analysis'
+import { panelsOf } from '../analysis/analysis'
 import { prepareRun, runPrepared } from '../engine/run'
-import { HAND_PROFILES, sampleRuns, type HandProfile } from '../engine/sample'
+import { HAND_PROFILES, sampleRuns, type HandProfile } from '../analysis/sample'
 import type { ResolvedScenario, SimResult } from '../engine/types'
 import { scopeNoteForRun, usableBasis } from '../engine/basis'
 import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, sec, withOverrides, OVERRIDE_FLAGS } from './format'
@@ -43,7 +43,7 @@ async function main(): Promise<number> {
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, strictReport: res.strictReport, damageScope: res.damageScope, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
-  if (runs > 0 && res.completion.status === 'completed') printSampling(r, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
+  if (runs > 0 && res.completion.status === 'completed') printSampling(sc, data, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
   return res.completion.status !== 'completed' ? 1 : 0
 }
 
@@ -126,11 +126,11 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
 }
 
 /** 抽样 N 次（总设计 T4）：逐段抽暴击，jitter > 0 时每个决策点另加 [0, jitter] 帧的操作抖动 */
-function printSampling(r: ResolvedScenario, runs: number, seed: number, jitter: number, hand?: HandProfile): void {
+function printSampling(sc: Parameters<typeof sampleRuns>[0], data: Parameters<typeof sampleRuns>[1], runs: number, seed: number, jitter: number, hand?: HandProfile): void {
   if (hand && !(hand in HAND_PROFILES)) throw new Error(`--hand 只能是 ${Object.keys(HAND_PROFILES).join(' / ')}`)
   const t0 = Date.now()
   const h = hand ? HAND_PROFILES[hand] : undefined
-  const x = sampleRuns(r, { runs, seed, jitter, ...(h ? { hand: h } : {}) })
+  const x = sampleRuns(sc, data, { runs, seed, jitter, ...(h ? { hand: h } : {}) })
   const what = ['逐段抽暴击', ...(jitter > 0 ? [`操作抖动 0–${jitter} 帧`] : []), ...(h ? [`手速"${hand}"：每个决策点晚 正态(${h.mean}, ${h.sd}) 帧（假设 hand-speed）`] : [])].join('，')
   console.log(`\n抽样 ${runs} 次（${what}；种子 ${seed}；${((Date.now() - t0) / 1000).toFixed(1)} 秒）· 口径：${x.label}，期望值 DPS ${fmt(x.expected)}`)
   if (x.stats) {

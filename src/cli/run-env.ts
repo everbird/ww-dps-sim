@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import type { RunEnvironment } from '../engine/run-types'
 
 /** 影响运行结果的路径：这些地方有没提交的改动时，提交号说明不了跑的是什么，另算内容指纹 */
-const TRACKED = ['src/engine', 'src/data', 'data/curated', 'scenarios', 'inventory', 'data/xlsx-versions.json']
+const TRACKED = ['src/engine', 'src/analysis', 'src/data', 'data/curated', 'scenarios', 'inventory', 'data/xlsx-versions.json']
 /** data/generated 不进 git、逐个文件算太慢：拿构建写的 meta.json 代表它（里面有 xlsx 的 sha256 与构建时刻） */
 const GENERATED_META = 'data/generated/meta.json'
 

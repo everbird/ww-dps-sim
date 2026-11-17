@@ -11,8 +11,9 @@ import { GenActionFileSchema, type GenActionFile } from '../../src/data/generate
 import type { Command } from '../../src/data/scenario.schema'
 import { describe } from 'vitest'
 import { RuleCounter } from '../../src/engine/diagnostics'
+import type { CompileMember } from '../../src/engine/compile'
 import type { Kernel } from '../../src/engine/kernel'
-import { createScheduler, newQueue, runLoop, ScheduleError, type CompileMember, type SchedulerOptions } from '../../src/engine/scheduler'
+import { createScheduler, newQueue, runLoop, ScheduleError, type SchedulerOptions } from '../../src/engine/scheduler'
 import type { CharRuntime, SimEvent, SimState } from '../../src/engine/types'
 
 export type Cmd =

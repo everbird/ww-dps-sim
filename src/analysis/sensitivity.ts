@@ -1,13 +1,16 @@
-// src/engine/sensitivity.ts —— 假设敏感度矩阵（docs/engine-quality-plan.md P2）：每个场景在假设表里每个开关（AdjustPath）翻过来后各跑一遍，
+// src/analysis/sensitivity.ts —— 假设敏感度矩阵（docs/engine-quality-plan.md P2）：每个场景在假设表里每个开关（AdjustPath）翻过来后各跑一遍，
 // 再看对照场景（文件名 = 基准名 + "-差异"，见 AGENTS.md"约定"）比基准好多少，在哪条假设下会翻。
 // 用来给进游戏验证的项排先后：让结论翻得越多的假设越先测（docs/verify-guide.md）
-import { sameDamageScope, scopeShortLabel, usableBasis } from './basis'
-import type { DamageScope, RunStatus } from './run-types'
-import { ASSUMPTIONS, type AdjustPath } from './assumptions'
-import { PROPOSITIONS, type Proposition, type CandidateChange } from './propositions'
-import { adjusted } from './insight'
-import { simulate } from './simulate'
-import type { ResolvedScenario } from './types'
+import { sameDamageScope, scopeShortLabel, usableBasis } from '../engine'
+import type { DamageScope, RunStatus } from '../engine'
+import { ASSUMPTIONS, type AdjustPath } from '../engine'
+import { PROPOSITIONS, type Proposition, type CandidateChange } from '../engine'
+import { adjustment } from './insight'
+import { preparedScenario } from './analysis'
+import type { Scenario } from '../data/scenario.schema'
+import type { GameData } from '../data/gamedata'
+import { runPrepared, type RunOverrides } from '../engine'
+import type { ResolvedScenario } from '../engine'
 
 export interface Flip { id: string; path: AdjustPath; value: number | boolean | string; label: string; changes: CandidateChange }
 /** 一格：DPS（比较口径同轴搜索：有分轮取稳态，否则整个窗口），跑不通时 error 是报错代码 */
@@ -40,9 +43,9 @@ export function flipsOf(): Flip[] {
   })
 }
 
-function cell(r: ResolvedScenario, baseScope?: DamageScope): Cell {
+function cell(sc: Scenario, data: GameData, overrides: RunOverrides = {}, baseScope?: DamageScope): Cell {
   try {
-    const res = simulate(r)
+    const res = runPrepared(preparedScenario(sc, data, overrides))
     const u = usableBasis(res)
     const scopeChanged = baseScope && !sameDamageScope(baseScope, res.damageScope)
       ? { from: baseScope, to: res.damageScope }
@@ -63,11 +66,11 @@ export function baseOf(name: string, names: readonly string[]): string | null {
   return best
 }
 
-export function sensitivityMatrix(scenarios: readonly { name: string; r: ResolvedScenario }[], onRow?: (row: Row) => void): Matrix {
+export function sensitivityMatrix(scenarios: readonly { name: string; sc: Scenario }[], data: GameData, onRow?: (row: Row) => void): Matrix {
   const flips = flipsOf()
-  const rows = scenarios.map(({ name, r }) => {
-    const base = cell(r)
-    const row: Row = { name, base, flips: flips.map(f => cell(adjusted(r, f.path, f.value), base.scope)) }
+  const rows = scenarios.map(({ name, sc }) => {
+    const base = cell(sc, data)
+    const row: Row = { name, base, flips: flips.map(f => cell(sc, data, adjustment(f.path, f.value), base.scope)) }
     onRow?.(row)
     return row
   })

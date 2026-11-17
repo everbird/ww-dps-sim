@@ -1,10 +1,12 @@
 // tests/trace.test.ts —— 调试用的表（TD-11 §3、§6）：分段、逐条、资源逐步、对照视频，以及开局核心资源 initial.core（TD-06 Q7）。
 // 人造角色，不依赖生成数据
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { resolveScenario, ResolveError } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, videoSeconds } from '../src/engine/trace'
+
+import { actionGains, compareMarks, gainSteps, hitCauses, loopSpan, loopsOf, metaOf, resourceSel, traceCommands, traceHits, traceLedger, tracePanel, traceSegments, videoSeconds } from '../src/analysis/trace'
 import { timelineModel } from '../src/report/timeline'
 import { action, judgment } from './helpers/kernel-harness'
 import { eventsOfLog, idle, synthData, type SynthChar } from './helpers/synth'
@@ -23,7 +25,7 @@ const 乙: SynthChar = { ...idle('乙'), actions: [action({ id: 'Y', endFrame: 4
 function run(sc: Partial<ScenarioInput>) {
   const data = synthData([甲, 乙, idle('丙')])
   const r = resolveScenario(ScenarioSchema.parse({ team: ['甲', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, ...sc }), data)
-  return { r, res: simulate(r, { diag: { eventMeta: true } }) }   // 出处按记录下来的事件来源（DD-05 §3.4）
+  return { r, res: runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } }) }   // 出处按记录下来的事件来源（DD-05 §3.4）
 }
 // 每轮：甲 X X → 切乙 → 乙 Y → 切甲（切人冷却 60 帧，第二次切人要等）
 const ROT = ['甲 X X', 'switch 乙', '乙 Y', 'switch 甲']
@@ -115,7 +117,7 @@ describe('资源出处：每次变化归到哪个动作（时间轴的检查器�
     rotation: ['丁 Y Q'], initial: { energy: [50, 0, 0], core: { 丁: { 蕊: 50 } } },
   })
   const r = resolveScenario(sc, data)
-  const res = simulate(r, { diag: { eventMeta: true } })
+  const res = runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } })
   const meta = metaOf(res)
 
   test('按动作合计：效果、起手即得、命中、钩子归 Y；扣除与钩子生成的判定归引发它的 Q；同一种资源里按先后', () => {
@@ -176,7 +178,7 @@ describe('命中触发：钩子在命中后生成的判定，记下由谁的命�
     rotation: ['戊 R', 'switch 甲', '甲 X'],
   })
   const r = resolveScenario(sc, data)
-  const res = simulate(r, { diag: { eventMeta: true } })
+  const res = runPrepared(fixturePreparedRun(r), { diag: { eventMeta: true } })
 
   test('自己命中触发的归那一下、记触发者；队友命中触发的仍归 R、触发者是队友；时间轴模型的命中带上 trigger', () => {
     const causes = hitCauses(res.log, r, metaOf(res))
@@ -234,7 +236,7 @@ describe('面板与逐下伤害（TD-11 §2：先对面板，再对单招的跳�
   const r = resolveScenario(ScenarioSchema.parse({
     team: ['丁', '乙', '丙'].map(char => ({ char, weapon: { name: '测试武器' } })), enemy: { custom: { level: 90 } }, rotation: ['丁 X'],
   }), synthData([丁, 乙, idle('丙')]))
-  const res = simulate(r)
+  const res = runPrepared(fixturePreparedRun(r))
 
   test('面板：静态面板 + 自己的常驻 buff，伤害加成用游戏面板的叫法；要求在前台的、加深、触发型的不算', () => {
     const rows = tracePanel(r, '丁')

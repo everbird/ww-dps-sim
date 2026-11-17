@@ -1,13 +1,14 @@
 // tests/jms.test.ts —— 景燃 · 莫特斐 · 守岸人（景莫守，2026-10-25，docs/jms-confirm.md）：莫特斐的火焰闪电、怒气值、浮翼狂想的协同攻击
 // 与公用冷却、节奏自由、5 链；出场技（景燃阳A2、莫特斐 A4）与"等自己在后台的动作走完再切进来"。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -16,7 +17,7 @@ dataDescribe('景莫守', () => {
   let log: SimEvent[] = []
   beforeAll(async () => {
     gd = await loadGameData()
-    const out = simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/jms-5r18z.yaml', import.meta.url), 'utf8'))), gd))
+    const out = runPrepared(preparedScenario(ScenarioSchema.parse(parse(readFileSync(new URL('../scenarios/jms-5r18z.yaml', import.meta.url), 'utf8'))), gd))
     expect(out.error).toBeUndefined()
     expect(out.summary.warnings.filter(w => w.code === 'introMissed')).toEqual([])
     log = out.log
@@ -82,7 +83,7 @@ dataDescribe('景莫守', () => {
     sc.opening = ['景燃 阳A1 阳A2 阳A3', 'switch 莫特斐', '莫特斐 A4-地面出场技', 'switch 景燃', '景燃 阳A2-地面出场技 阳A3']
     sc.rotation = ['景燃 阳A4']
     sc.options = { ...sc.options, repeat: 1 }
-    const out = simulate(resolveScenario(ScenarioSchema.parse(sc), gd))
+    const out = runPrepared(preparedScenario(ScenarioSchema.parse(sc), gd))
     expect(out.error).toBeUndefined()
     const w = out.log.filter(e => e.type === 'wait' && e.code === 'entryBusy')
     expect(w).toHaveLength(1)

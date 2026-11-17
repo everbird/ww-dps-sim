@@ -1,6 +1,8 @@
 // tests/xin-team.test.ts —— 心 · 雷主 · 卜灵 队伍（2026-10-19）：带前缀并入的岁主形态、落地段、按角色换技能版本的声骸、
 // 三个角色模块的机制（卦象与四式重击、雷法、电髓、两种形态、敕令、电磁+1），电磁效应的结算（第二步：不减层、霆心域、踏月归心）。机制用 5 阶奇幻变奏那份（xin-team-r5.yaml，每次都变奏）；
 // 1 阶那份（xin-team.yaml）看工具报出"卜灵切雷主没变奏"（docs/xin-confirm.md X1）。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -8,8 +10,8 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { resourceSteps, resourceTracks } from '../src/engine/trace'
+
+import { resourceSteps, resourceTracks } from '../src/analysis/trace'
 import type { SimEvent, SimResult } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 import { eventsOfLog } from './helpers/synth'
@@ -17,7 +19,8 @@ import { eventsOfLog } from './helpers/synth'
 let gd: GameData
 let out: SimResult      // 5 阶
 let r1: SimResult       // 1 阶
-const load = (file = 'xin-team-r5.yaml') => resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${file}`, import.meta.url), 'utf8'))), gd)
+const preparedLoad = (file = 'xin-team-r5.yaml') => preparedScenario(ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${file}`, import.meta.url), 'utf8'))), gd)
+const load = (file = 'xin-team-r5.yaml') => preparedLoad(file).resolved
 /** 第 k 轮（0 = 启动轴）的事件 */
 function loopEvents(log: readonly SimEvent[], k: number): SimEvent[] {
   const marks = log.filter(e => e.type === 'loop')
@@ -29,8 +32,8 @@ function loopEvents(log: readonly SimEvent[], k: number): SimEvent[] {
 dataDescribe('心 · 雷主 · 卜灵', () => {
   beforeAll(async () => {
     gd = await loadGameData()
-    out = simulate(load())
-    r1 = simulate(load('xin-team.yaml'))
+    out = runPrepared(preparedLoad())
+    r1 = runPrepared(preparedLoad('xin-team.yaml'))
   })
 
   test('心的岁主形态带前缀并入：动作 ID、块内连段、覆盖都按"照世·"；R 是万阙垂天（收能量），转相不收', () => {
@@ -54,7 +57,7 @@ dataDescribe('心 · 雷主 · 卜灵', () => {
   })
 
   test('绝息魄在雷主首位（对照场景，只差这一处）：放完 15 秒内雷主延奏，变奏登场的心导电伤害加成 +12%（15 秒），心吃到；天演溯心的首位加成不在雷主身上', () => {
-    const jx = simulate(load('xin-team-r5-绝息魄.yaml'))
+    const jx = runPrepared(preparedLoad('xin-team-r5-绝息魄.yaml'))
     const k2 = loopEvents(jx.log, 2)
     expect(eventsOfLog(k2, 'buffApply').filter(e => e.buff === '绝息魄.导电').map(e => [e.target, e.remaining])).toEqual([['心', 900]])
     expect(eventsOfLog(k2, 'hit').some(h => h.char === '心' && h.buffs.includes('绝息魄.导电'))).toBe(true)

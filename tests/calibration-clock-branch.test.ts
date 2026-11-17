@@ -1,10 +1,12 @@
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { describe, expect, test } from 'vitest'
 import { CalibrationFileSchema, CalibrationPointSchema, type CalibrationPoint } from '../src/data/calibration.schema'
 import { ScenarioSchema } from '../src/data/scenario.schema'
-import { calibrate, simValue } from '../src/engine/calibration'
+import { calibrate, simValue } from '../src/analysis/calibration'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
-import { loopSpan } from '../src/engine/trace'
+
+import { loopSpan } from '../src/analysis/trace'
 import { action, judgment } from './helpers/kernel-harness'
 import { idle, synthData } from './helpers/synth'
 
@@ -54,7 +56,7 @@ describe('calibrate 时钟、区间与分支语义（DD-03 §3–4）', () => {
     rotation: ['甲 大招'],
     options: { repeat: 2 },
   }), gd)
-  const log = simulate(r).log
+  const log = runPrepared(fixturePreparedRun(r)).log
 
   test('C03-1：loop 点显式区分 clock: battle 与 clock: world', () => {
     const span = loopSpan(log, 1)!

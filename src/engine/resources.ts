@@ -10,7 +10,7 @@ import type { Sim } from './context'
 import type { LedgerCauseKind } from './diagnostics'
 import { log, SLOTS, ticksWithinLife, type EventSource } from './kernel'
 import type { HitEvent, JudgmentRuntime, SimEvent, SimState } from './types'
-import { snap9 } from './num'
+import { snap9, floor } from './num'
 
 type FullEvent = Omit<Extract<SimEvent, { type: 'resourceFull' }>, 'f' | 't'>
 
@@ -129,7 +129,7 @@ function coreMissing(sim: Sim, s: SimState, slot: Slot, res: ResourceKind): bool
 export function canAfford(s: SimState, slot: Slot, def: ActionDef): true | string {
   const cost = def.energyCost ?? 0
   const e = s.chars[slot].energy
-  return cost > 0 && e < cost ? `大招能量 ${Math.floor(e * 10) / 10} / ${cost}` : true
+  return cost > 0 && e < cost ? `大招能量 ${floor(e * 10) / 10} / ${cost}` : true
 }
 
 /** 开始动作时扣大招能量（在 actionStart 的触发之前）。动作的施放资源里已经有负的能量（数据自带的扣除）时不另扣 */

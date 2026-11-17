@@ -1,12 +1,14 @@
 // tests/fit.test.ts —— 录像剖析的贴合度（src/engine/fit.ts，2026-10-27）：按和录像差多少打分、变体按贴合度排，不比 DPS。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { fixturePreparedRun } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
-import { fitVariants, replayFit, FIT_WEIGHTS } from '../src/engine/fit'
+import { fitVariants, replayFit, FIT_WEIGHTS } from '../src/analysis/fit'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { ResolvedScenario } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -19,7 +21,7 @@ dataDescribe('录像剖析的贴合度', () => {
   })
 
   test('中 3：切人、录像动作、血条、协奏环、回路条资源五项都算上；score 按权重折成秒', () => {
-    const f = replayFit(r, simulate(r), sc.video!)
+    const f = replayFit(r, runPrepared(fixturePreparedRun(r)), sc.video!)
     expect(f.switches.n).toBe(15)
     expect(f.events.n).toBe(sc.video!.events!.length)
     expect(f.events.matched).toBe(f.events.n)
@@ -41,16 +43,16 @@ dataDescribe('录像剖析的贴合度', () => {
   })
 
   test('切人晚了贴合度变差：开头多等 2 秒，切人平均差变大', () => {
-    const f0 = replayFit(r, simulate(r), sc.video!)
+    const f0 = replayFit(r, runPrepared(fixturePreparedRun(r)), sc.video!)
     const late = ScenarioSchema.parse({ ...sc, rotation: ['wait 120', ...sc.rotation] })
     const r2 = resolveScenario(late, r.data)
     const marks = Object.fromEntries(Object.entries(sc.video!.marks).map(([k, v]) => [String(Number(k) + 1), v]))
-    const f1 = replayFit(r2, simulate(r2), { ...sc.video!, marks })
+    const f1 = replayFit(r2, runPrepared(fixturePreparedRun(r2)), { ...sc.video!, marks })
     expect(f1.switches.mae).toBeGreaterThan(f0.switches.mae)
   })
 
   test('变体按贴合度从好到差排（跑不通的放最后）；有假设开关的变体', () => {
-    const x = fitVariants(r, sc, { n: 4 })
+    const x = fitVariants(sc, r.data, { n: 4 })
     const scores = x.rows.flatMap(row => (row.fit && row.fit.score !== null ? [row.fit.score] : []))
     expect(scores).toEqual([...scores].sort((a, b) => a - b))
     expect(x.rows.some(row => row.desc.startsWith('假设 '))).toBe(true)
@@ -58,7 +60,7 @@ dataDescribe('录像剖析的贴合度', () => {
   }, 30_000) // 多个变体各跑完整仿真；验证排序与假设覆盖，不把默认 5 秒当性能门槛。
 
   test('C03-15：锚点全部失配且无有效锚点时 assessable 为 false、score 为 null', () => {
-    const f = replayFit(r, simulate(r), { loop: sc.video!.loop, marks: { '9999': '0:01' } })
+    const f = replayFit(r, runPrepared(fixturePreparedRun(r)), { loop: sc.video!.loop, marks: { '9999': '0:01' } })
     expect(f.assessable).toBe(false)
     expect(f.score).toBeNull()
     expect(f.coverage.anchors).toBe(0)
@@ -75,7 +77,7 @@ dataDescribe('录像剖析的贴合度', () => {
       video: { loop: 1, marks: { '3': '0:02' }, events: ['0:01 卜灵 A1'] },
     })
     const r2 = resolveScenario(sc2, r.data)
-    const x = fitVariants(r2, sc2, { n: 60, near: 4 })
+    const x = fitVariants(sc2, r.data, { n: 60, near: 4 })
     expect(x.base.assessable).toBe(true)
     expect(x.unassessable.length).toBeGreaterThan(0)
     expect(x.unassessable.every(u => u.fit !== null && !u.fit.assessable && u.fit.score === null)).toBe(true)

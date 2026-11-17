@@ -4,7 +4,7 @@
 import type { Observation } from '../data/calibration.schema'
 import type { CandidateVerdict, ClosureRecord, ConclusionRecord } from '../data/evidence.schema'
 import { canonicalJson } from '../engine/digest'
-import { concludeFromVerdicts, observationsOf } from '../engine/evidence'
+import { concludeFromVerdicts, observationsOf } from '../analysis/evidence'
 import type { Conclusion, Proposition } from '../engine/propositions'
 
 /** 命题结论（路线图 §5.1 的七种） */

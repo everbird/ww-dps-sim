@@ -10,7 +10,7 @@ import type { BuffDef, EnemyStateChange, ResourceEffect } from '../data/buff.sch
 import type { ActionDef, CharacterDef, EchoDef, EnemyPreset, GameData, JudgmentDef, Rules, WeaponDef } from '../data/gamedata'
 import type { Command } from '../data/scenario.schema'
 import type { RngState } from './rng'
-import type { DamageScope, Diagnostics, InterventionRecord, RuleUsageReport, RunCompletion, RunIdentity, StrictReport } from './run-types'
+import type { DamageScope, Diagnostics, InterventionRecord, RuleUsageReport, RunCompletion, RunIdentity, StrictReport, UnmetIntentDetail } from './run-types'
 
 // ---------------------------------------------------------------------------
 // 装配结果 ResolvedScenario（总设计 §3.3）：仿真过程中只读
@@ -515,4 +515,26 @@ export interface HitDraft {
 export interface ZoneAccumulator {
   zones: Record<ZoneId, number>
   critOnly: Record<ZoneId, number>
+}
+
+// DD-10 §4⑤：运行错误属于共享执行契约，汇总与检查无需依赖调度器。
+export type ScheduleErrorCode = 'intentUnmet' | 'comboBroken' | 'timeout' | 'maxFrames' | 'notOnField' | 'switchSelf' | 'chainDepth' | 'invariant' | 'entrySkill' | 'airEntry'
+
+/** 运行期报错：等不来（连段已断、出场技不是普通切人入场后第一个出）、等超时、超过帧数上限、事件连锁过深（TD-07 §5）、不变量不成立（总设计 §11 第 4 条）。cmd 指出第几轮第几条 */
+export class ScheduleError extends Error {
+  intent?: UnmetIntentDetail
+  blocked?: NonNullable<StrictReport['timeoutContext']>['blocked']
+  readonly code: ScheduleErrorCode
+  readonly cmd: CommandRef | null
+  readonly frame: number
+  /** 是不是经调度器的 fail() 抛出的：是的话失败收尾（关掉正在累计的等待段）已经做过（DD-01 §3.5）。连锁过深、不变量不成立不经 fail */
+  readonly viaFail: boolean
+  constructor(code: ScheduleErrorCode, message: string, cmd: CommandRef | null, frame: number, viaFail = false) {
+    super(message)
+    this.name = 'ScheduleError'
+    this.code = code
+    this.cmd = cmd
+    this.frame = frame
+    this.viaFail = viaFail
+  }
 }

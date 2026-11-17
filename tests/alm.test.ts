@@ -1,5 +1,7 @@
 // tests/alm.test.ts —— 爱弥斯 · 琳奈 · 莫宁 / 守岸人（2026-10-25，docs/alm-confirm.md）：震谐的干涉与响应、爱弥斯的轨迹与两次光翼共奏、
 // 过载 → 终结、莫宁的观测与谐振场、琳奈的绮彩巡游与视觉冲击。依赖 data/generated（缺数据时跳过）
+import { runPrepared } from '../src/engine/run'
+import { preparedScenario } from './helpers/prepared-fixture'
 import { readFileSync } from 'node:fs'
 import { beforeAll, expect, test } from 'vitest'
 import { parse } from 'yaml'
@@ -7,7 +9,7 @@ import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema } from '../src/data/scenario.schema'
 import { resolveScenario } from '../src/engine/resolve'
-import { simulate } from '../src/engine/simulate'
+
 import type { SimEvent } from '../src/engine/types'
 import { dataDescribe } from './helpers/kernel-harness'
 
@@ -15,7 +17,7 @@ dataDescribe('爱琳莫 / 爱琳守', () => {
   let gd: GameData
   const logs: Record<string, SimEvent[]> = {}
   const run = (f: string) => {
-    const out = simulate(resolveScenario(ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${f}`, import.meta.url), 'utf8'))), gd))
+    const out = runPrepared(preparedScenario(ScenarioSchema.parse(parse(readFileSync(new URL(`../scenarios/${f}`, import.meta.url), 'utf8'))), gd))
     expect(out.error).toBeUndefined()
     expect(out.summary.warnings.filter(w => w.code === 'introMissed')).toEqual([])
     return out.log

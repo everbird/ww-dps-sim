@@ -1,8 +1,9 @@
 // tests/helpers/m0.ts —— M0 队伍（椿 · 散华 · 维里奈）的场景与日志速记：TD-05 / TD-06 / TD-07 的用例共用（依赖 data/generated）
+import { runPrepared } from '../../src/engine/run'
+import { preparedScenario } from './prepared-fixture'
 import type { GameData } from '../../src/data/gamedata'
 import { ScenarioSchema, type ScenarioInput } from '../../src/data/scenario.schema'
-import { resolveScenario } from '../../src/engine/resolve'
-import { simulate } from '../../src/engine/simulate'
+
 import type { SimEvent, SimResult } from '../../src/engine/types'
 
 /** docs/m0-confirm.md 第 4 节的配置：椿 0 链千古洑流 R5、散华 6 链行进序曲 R5、维里奈 3 链奇幻变奏 R5 */
@@ -13,7 +14,7 @@ export const M0: ScenarioInput['team'] = [
 ]
 
 export function m0Run(gd: GameData, sc: Partial<ScenarioInput>): SimResult {
-  return simulate(resolveScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, rotation: [], ...sc }), gd))
+  return runPrepared(preparedScenario(ScenarioSchema.parse({ team: M0, enemy: { preset: '全息6/朔雷之鳞' }, rotation: [], ...sc }), gd))
 }
 
 /** 一条事件的速记，断言事件顺序用 */

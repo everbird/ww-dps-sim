@@ -2,7 +2,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { loadGameData } from '../data/load'
-import { runCandidateReport } from '../engine/candidates'
+import { runCandidateReport } from '../analysis/candidates'
 import { canonicalJson } from '../engine/digest'
 import { candidateMarkdown } from '../report/candidates'
 import { argsOf, loadScenario } from './format'

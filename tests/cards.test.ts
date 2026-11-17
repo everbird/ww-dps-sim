@@ -5,7 +5,7 @@ import { parse } from 'yaml'
 import type { GameData } from '../src/data/gamedata'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
-import { measureCards, routinesOf, type Card } from '../src/engine/cards'
+import { measureCards, routinesOf, type Card } from '../src/analysis/cards'
 import { dataDescribe } from './helpers/kernel-harness'
 
 const load = (f: string): Scenario => ScenarioSchema.parse(parse(readFileSync(f, 'utf8')))
