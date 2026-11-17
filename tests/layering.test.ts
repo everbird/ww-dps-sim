@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest'
 const SRC = fileURLToPath(new URL('../src/', import.meta.url))
 const EXECUTION = new Set([
   'kernel', 'scheduler', 'switch', 'resources', 'triggers', 'buffs', 'enemy', 'formula',
-  'simulate', 'execution', 'context', 'num', 'rng', 'types', 'wait-codes', 'event-util',
+  'simulate', 'context', 'num', 'rng', 'types', 'wait-codes', 'event-util', 'filler',   // filler：补位看哪一条，编译与调度共用（原来两边各抄一份）
 ])
 const ENTRY_REPORT = new Set(['resolve', 'compile', 'run', 'strict', 'portable', 'summary', 'invariants', 'basis', 'resource-replay'])   // resource-replay：DD-09 §3.2，按日志重放资源（checkLog、汇总共用）
 // DD-10 §4–§5：显式分类，不允许新执行文件因漏列 EXECUTION 而绕过规则 3。

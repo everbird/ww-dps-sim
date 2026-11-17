@@ -125,6 +125,7 @@
               {#if !isBase}{g.c.steps.join(' → 再 ')}{/if}
               {#if g.same}<span class="muted">（另有 {g.same} 种结果相同）</span>{/if}
               {#if g.c.introMissed > out.base.introMissed}<span class="warn">写了变奏没变奏 {g.c.introMissed} 处，轴可能有问题</span>{/if}
+              {#if g.c.scopeMismatch}<span class="warn" title={g.c.scopeMismatch.note}>† 谐破口径变成"{g.c.scopeLabel}"</span>{/if}
             </td>
             <td class="act">
               {#if !isBase}
@@ -136,6 +137,7 @@
         {/each}
       </tbody>
     </table></div>
+    {#if out.results.some(c => c.scopeMismatch)}<p class="muted">† 这个改法改变了谐度破坏口径（原轴"{out.base.scopeLabel}"，DD-03 §7.4）：DPS 不在同一口径上，差值里包含谐度破坏的伤害变化。</p>{/if}
     <p class="muted">另存的场景在"场景"页的列表里（存在本浏览器），只换了循环轴，改了的行注明"轴搜索改的"；要留下来就下载后放回仓库。</p>
   </section>
 {/if}

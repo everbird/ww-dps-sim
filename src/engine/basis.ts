@@ -39,6 +39,16 @@ export type BasisResult =
 
 const DEFAULT_SCOPE: DamageScope = { tuneBreak: { mode: 'omitted', reason: 'undeclared', gauge: 'accumulates' } }
 
+/** 稳态口径（有分轮且选出了稳态时）；没有稳态为 null */
+function steadyBasisOf(res: SimResult): Basis | null {
+  const s = res.summary
+  const st = s.steady
+  if (!st || !s.perLoop) return null
+  const lo = s.perLoop.find(p => p.loop === st.from)!.start
+  const label = `稳态（第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮）`
+  return { label, lo, hi: lo + st.frames, damage: st.damage, dps: st.dps, spread: st.spread, scope: res.damageScope ?? DEFAULT_SCOPE }
+}
+
 /** 取出本结果的对比口径（不校验是否完整可用；调用方要做结论或比较请用 usableBasis） */
 export function basisOf(res: SimResult): Basis {
   const s = res.summary
@@ -55,32 +65,45 @@ export function basisOf(res: SimResult): Basis {
       ...(s.goal.lethal ? { lethal: { eventSeq: s.goal.lethal.eventSeq, overflow: s.goal.lethal.overflow } } : {}),
     }
   }
-  const st = s.steady
-  if (st && s.perLoop) {
-    const lo = s.perLoop.find(p => p.loop === st.from)!.start
-    const label = `稳态（第 ${st.from}${st.to > st.from ? `–${st.to}` : ''} 轮）`
-    return { label, lo, hi: lo + st.frames, damage: st.damage, dps: st.dps, spread: st.spread, scope }
-  }
-  return { label: '整个窗口', lo: 0, hi: s.windowFrames, damage: s.totalDamage, dps: s.dps, spread: 0, scope }
+  return steadyBasisOf(res) ?? { label: '整个窗口', lo: 0, hi: s.windowFrames, damage: s.totalDamage, dps: s.dps, spread: 0, scope }
 }
 
+/** 失败的原因：先读完成状态（引擎错误、轴失败的明细），旧的 res.error 只作退路。
+ *  严格入口意图未满足后续跑（continueAfterIntentUnmet）又碰到别的调度错误时，res.error 是后来那个，completion.axisFailure 记的是
+ *  终止意图（DD-02 §3.3）：报原因要跟完成状态走（Antigravity 审查 H5） */
 function completionReason(c: RunCompletion, res: SimResult): string {
-  if (res.error) return `${res.error.code}：${res.error.message}`
   if (c.engineError) return `${c.engineError.code}：${c.engineError.message}`
   if (c.axisFailure) {
     const f = c.axisFailure
     const kind = f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind
     return `${kind}：${f.detail}`
   }
+  if (res.error) return `${res.error.code}：${res.error.message}`
   return `运行未完成（${c.status}）`
 }
 
-function truncationRemainsText(c: RunCompletion): string {
+/** 截断时还剩什么（DD-03 §7.2：截断时列 remains）：命令行、网页与闸门的原因共用 */
+export function truncationRemainsText(c: RunCompletion): string {
   const t = c.truncation
   if (!t) return ''
+  const r = t.remains
+  const inFlight = [r.activeActions ? `动作 ${r.activeActions} 个` : '', r.pendingJudgments ? `判定 ${r.pendingJudgments} 个` : '', r.pendingTails ? `尾部 ${r.pendingTails} 个` : '']
+    .filter(Boolean).join('、')
   return t.kind === 'commandsPending'
-    ? `还有 ${t.remains.pendingCommands} 条指令没执行`
-    : '指令发完了，场上还有没走完的判定'
+    ? `还有 ${r.pendingCommands} 条指令没执行${inFlight ? `，场上还有${inFlight}没走完` : ''}`
+    : `指令发完了，场上还有${inFlight || '没走完的判定'}${inFlight ? '没走完' : ''}`
+}
+
+/** 稳态的每一轮是否完整（DD-03 §7.1）：执行上结束边界已确认，统计上真实的结束边界不晚于统计窗口终点。完整时返回 null，否则返回原因 */
+function steadyIncomplete(c: RunCompletion, s: SimResult['summary']): string | null {
+  const st = s.steady!
+  for (let r = st.from; r <= st.to; r++) {
+    if (r > c.loops.completed) return `稳态第 ${r} 轮执行未完整完成（已完 ${c.loops.completed} 轮）`
+    const endF = c.loops.roundEnds.find(x => x.loop === r)?.endBattleFrame
+    if (endF === undefined || endF > s.windowFrames)
+      return `稳态第 ${r} 轮统计被截断（真实结束帧 ${endF ?? '未记录'}，统计窗口终点 ${s.windowFrames}）`
+  }
+  return null
 }
 
 /** 校验本次仿真的比较口径能不能当结论用（DD-03 §7.1）：
@@ -118,25 +141,8 @@ export function usableBasis(res: SimResult, _policy?: string): BasisResult {
   }
 
   if (s.steady) {
-    for (let r = s.steady.from; r <= s.steady.to; r++) {
-      if (r > c.loops.completed) {
-        return {
-          ok: false,
-          status: c.status,
-          reason: `稳态第 ${r} 轮执行未完整完成（已完 ${c.loops.completed} 轮）`,
-          partial: b,
-        }
-      }
-      const endF = c.loops.roundEnds.find(x => x.loop === r)?.endBattleFrame
-      if (endF === undefined || endF > s.windowFrames) {
-        return {
-          ok: false,
-          status: c.status,
-          reason: `稳态第 ${r} 轮统计被截断（真实结束帧 ${endF ?? '未记录'}，统计窗口终点 ${s.windowFrames}）`,
-          partial: b,
-        }
-      }
-    }
+    const bad = steadyIncomplete(c, s)
+    if (bad) return { ok: false, status: c.status, reason: bad, partial: b }
     if (b.hi - b.lo <= 0) {
       return { ok: false, status: c.status, reason: '稳态窗口时长为 0 帧，无法计算 DPS', partial: b }
     }
@@ -155,6 +161,21 @@ export function usableBasis(res: SimResult, _policy?: string): BasisResult {
   if (b.hi - b.lo <= 0) {
     return { ok: false, status: 'completed', reason: '窗口时长为 0 帧，无法计算 DPS', partial: b }
   }
+  return { ok: true, basis: b }
+}
+
+/** 稳态专用的闸门（DD-03 §7.1 稳态那几行；DD-04 §5.3）：不看场景的目标，只问"稳态能不能当结论用"。
+ *  按稳态出数的报告（候选检查）用它：校验的口径必须就是报告的口径——目标是前 N 秒时 usableBasis 按目标放行，
+ *  而 endAt 可能把稳态的某一轮只统计了一半（Codex 审查 F2）。没有稳态（不到 2 轮完整的循环）时不可用 */
+export function usableSteady(res: SimResult): BasisResult {
+  const c = res.completion
+  if (c.status === 'engineError') return { ok: false, status: 'engineError', reason: completionReason(c, res) }
+  const b = steadyBasisOf(res)
+  if (c.status === 'axisFailed') return { ok: false, status: 'axisFailed', reason: completionReason(c, res), ...(b ? { partial: b } : {}) }
+  if (!b) return { ok: false, status: c.status, reason: '没有稳态（循环轴不到 2 轮完整的）' }
+  const bad = steadyIncomplete(c, res.summary)
+  if (bad) return { ok: false, status: c.status, reason: bad, partial: b }
+  if (b.hi - b.lo <= 0) return { ok: false, status: c.status, reason: '稳态窗口时长为 0 帧，无法计算 DPS', partial: b }
   return { ok: true, basis: b }
 }
 

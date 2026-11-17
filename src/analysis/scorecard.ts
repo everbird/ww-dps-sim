@@ -23,8 +23,9 @@ export interface Scorecard {
   scopeLabel: string
   scopeDiffersFromTop: boolean
   goal: { label: string; dps: number }
-  /** 打死 1 / 2 / 3 倍敌人生命的战斗秒；estimated = 日志里没打到、按稳态估的 */
-  kills: { scale: number; secs: number | null; estimated: boolean }[]
+  /** 打死 1 / 2 / 3 倍敌人生命的战斗秒；estimated = 日志里没打到、按稳态估的；error = 这一次重跑不能当结论用（状态与原因，secs 为 null）。
+   *  各列各自过闸门（DD-03 §7.1）：基准的稳态可用，不等于另跑的击杀目标也可用（截断在没打死时不能拿估计值当结论，Codex 审查 F3） */
+  kills: { scale: number; secs: number | null; estimated: boolean; error: string | null }[]
   /** 按手速档（每个决策点固定晚这一档的平均帧数）：比较口径的值与比零帧的变化 */
   hands: { tier: HandProfile; delay: number; dps: number | null; pct: number | null }[]
   density: { perMin: number | null; switchesPerMin: number | null; forced: number; airborne: number | null; loopSecs: number | null }
@@ -55,8 +56,10 @@ export function scorecard(name: string, sc: Scenario, data: GameData): Omit<Scor
 
   const kills = [1, 2, 3].map(scale => {
     const res = run({ ...sc, goal: { kill: scale } })
+    const u = usableBasis(res)
+    if (!u.ok) return { scale, secs: null, estimated: false, error: `${u.status}：${u.reason}` }
     const g = res.summary.goal
-    return { scale, secs: g ? g.hi / 60 : null, estimated: g ? !g.reached : false }
+    return { scale, secs: g ? g.hi / 60 : null, estimated: g ? !g.reached : false, error: null }
   })
   const hands = delays.map(({ tier, delay }) => {
     const row = ins.tolerance.find(t => t.delay === r.options.inputDelay + delay)

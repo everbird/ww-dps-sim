@@ -7,7 +7,7 @@ import { splitVideoLine, type VideoPurpose } from '../data/replay'
 import { videoTime, type Scenario } from '../data/scenario.schema'
 import type { ResourceKind } from '../data/common'
 // DD-10 §5：分析层只经显式公开入口调用执行与查询。
-import { battleFrameOf, envelope, runPrepared, type EventMeta, type ResourceLedgerEntry, type PreparedRun, type RunCompletion, type QueryEnvelope, type ResolvedMember, type ResolvedScenario, type SimEvent, type SimResult } from '../engine'
+import { battleFrameOf, envelope, runPrepared, type EventMeta, type InterventionRecord, type ResourceLedgerEntry, type PreparedRun, type RunCompletion, type QueryEnvelope, type ResolvedMember, type ResolvedScenario, type SimEvent, type SimResult } from '../engine'
 import { loopSpan, traceHits, tracePanel } from './trace'
 
 /** 比较结果的状态（架构 §10.2；DD-08 §3.2 的表）：passed 落在读数（加容差）里；conflicted 落在外面、类别不同；unmatched 选择器在日志里
@@ -150,13 +150,14 @@ export function compareValue(o: Observation, predicted: Predicted, opts: Compare
 // 从一次运行里取观测对应的仿真值
 
 /** 取值要用的运行材料：装配结果与日志必有；completion 给了时，运行提前停下的 unmatched 带上完成状态、记"没覆盖到"；
- *  resourceAt 另要资源账本与事件来源（DD-06、DD-05 的诊断） */
+ *  resourceAt 另要资源账本与事件来源（DD-06、DD-05 的诊断），账本里有状态同步时还要外部干预记录（同步的位置在那里） */
 export interface ObservationSource {
   readonly resolved: ResolvedScenario
   readonly log: readonly SimEvent[]
   readonly completion?: RunCompletion
   readonly ledger?: readonly ResourceLedgerEntry[]
   readonly meta?: readonly EventMeta[]
+  readonly interventions?: readonly InterventionRecord[]
 }
 
 /** 取到的仿真值；alternatives：同一帧还有几条分不清的事件时它们的值。取不到时 covered 说明这条观测在不在运行的覆盖范围里
@@ -231,12 +232,14 @@ function resourceKindOf(m: ResolvedMember, name: string): ResourceKind | null {
   return c ? (`core${c.slot}` as ResourceKind) : null
 }
 
-/** 账本里某人某资源在第 index 条事件前后的余额（DD-08 §3.2）。条目的位置取它关联的业务事件（relatedEventSeq）；没关联的条目
- *  （期初、实际变化为 0 的单人写入）不改余额。before：位置在事件之前的最后一条；after：位置是这条事件、或同一世界帧里由它直接引出
- *  （事件来源的 directParentSeq / subjectSeq 指向集合里的事件）的最后一条，没有就等于 before */
+/** 账本里某人某资源在第 index 条事件前后的余额（DD-08 §3.2）。条目的位置取它关联的业务事件（relatedEventSeq）；
+ *  状态同步（DD-09 §3.2）不写日志，位置取它的干预记录：排在 afterEventSeq 那条事件之后、下一条之前（记成 afterEventSeq + 0.5）。
+ *  不能沿用上一条条目的位置：第 70 帧才做的同步会被当成第 2 帧那笔账的位置，污染它之后任何事件的"之前"（Codex 审查 F1）。
+ *  没关联的条目（期初、实际变化为 0 的单人写入）不改余额。before：位置在事件之前的最后一条；after：位置是这条事件、或同一世界帧里
+ *  由它直接引出（事件来源的 directParentSeq / subjectSeq 指向集合里的事件）的最后一条，没有就等于 before（同步不是事件引出的，不算 after） */
 function balanceAround(
   ledger: readonly ResourceLedgerEntry[], meta: readonly EventMeta[] | undefined, log: readonly SimEvent[],
-  slot: number, res: ResourceKind, index: number, when: 'before' | 'after',
+  slot: number, res: ResourceKind, index: number, when: 'before' | 'after', interventions?: readonly InterventionRecord[],
 ): { value: number; cap: number } | string {
   const chain = ledger.filter(e => e.slot === slot && e.resource === res)
   const opening = chain.find(e => e.kind === 'initial')
@@ -251,11 +254,17 @@ function balanceAround(
       if (m && ((m.directParentSeq !== undefined && caused.has(m.directParentSeq)) || (m.subjectSeq !== undefined && caused.has(m.subjectSeq)))) caused.add(i)
     }
   }
-  let before = opening.after, after: number | null = null, pos = -1
+  let before = opening.after, after: number | null = null
   for (const e of chain) {
     if (e.kind === 'initial') continue
-    pos = e.relatedEventSeq ?? pos
-    if (e.relatedEventSeq === undefined && e.actualDelta === 0) continue
+    let pos: number
+    if (e.relatedEventSeq !== undefined) pos = e.relatedEventSeq
+    else if (e.relatedInterventionIndex !== undefined) {
+      const rec = interventions?.[e.relatedInterventionIndex]
+      if (!rec) return '账本里有状态同步的条目：要外部干预记录（SimResult.interventions）才定得了它在事件之间的位置'
+      pos = rec.afterEventSeq + 0.5
+    } else if (e.actualDelta === 0) continue
+    else return `账本条目 #${e.index} 变了余额，却没有关联业务事件或干预记录（写入点漏接了账本，DD-06）`
     if (pos < index) before = e.after
     else if (caused?.has(pos)) after = e.after
   }
@@ -305,7 +314,7 @@ export function readObservation(o: Observation, src: ObservationSource): SimRead
       if (typeof at === 'string') return miss(`at ${at}`, true)
       const values: number[] = []
       for (const i of [at.index, ...at.peers]) {
-        const b = balanceAround(src.ledger, src.meta, log, m.slot, res, i, o.when)
+        const b = balanceAround(src.ledger, src.meta, log, m.slot, res, i, o.when, src.interventions)
         if (typeof b === 'string') return { ok: false, reason: b, covered: true }
         if (o.as === 'ratio' && !Number.isFinite(b.cap)) return miss(`${o.char} 的"${o.resource}"没有上限，不能按比例`, false)
         values.push(o.as === 'ratio' ? b.value / b.cap : b.value)
@@ -347,7 +356,9 @@ export function compareObservations(p: PreparedRun, res: SimResult, observations
     meta = again.diag!.eventMeta
     used.push('diag.resourceLedger', 'diag.eventMeta')
   }
-  const src: ObservationSource = { resolved: p.resolved, log: res.log, completion: res.completion, ...(ledger ? { ledger } : {}), ...(meta ? { meta } : {}) }
+  const src: ObservationSource = {
+    resolved: p.resolved, log: res.log, completion: res.completion, interventions: res.interventions, ...(ledger ? { ledger } : {}), ...(meta ? { meta } : {}),
+  }
   const data = observations.map(o => compareOne(o, src))
   const env = envelope(p, res, data, used, [])
   return { ...env, capability: { ...env.capability, observationSummary: observationSummary(data) } }

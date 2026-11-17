@@ -101,6 +101,35 @@ describe('一对一、保序的匹配（DD-09 §4.2，DF-18）', () => {
     expect(a.mayBeUnmatched[2]).toBe(true)                      // O0→E0、O1→E1 同样配两对、只多 0.2 秒
   })
 
+  test('匹配有歧义、可配的每一下都与录像的跳字定性冲突：是 conflicted（进资格、最早偏差），不藏在 ambiguous 里；都对得上时仍是 ambiguous（DD-09 §4.2；Codex 审查 F8）', () => {
+    // 两下 e 在第 41、61 帧（第二个 E 等第一个放完），录像跳字记在两者正中间：两种配法一样好，是歧义
+    const rotation = ['甲 A', 'at 0.6', '甲 E', '甲 E']
+    const bad = fitOf(scenario(rotation, { ...MARKS, hits: ['0.85 甲 e 999999 nonCrit'] })).fit
+    const o = bad.observations.find(x => x.id === 'hit#1')!
+    expect(o).toMatchObject({ status: 'conflicted', conflict: expect.stringContaining('2 个可配的仿真事件都冲突') })
+    expect(o.candidates).toHaveLength(2)
+    expect(bad.eligibility.hasQualitativeConflict).toBe(true)
+    expect(bad.earliestDeviation).toMatchObject({ observationId: 'hit#1' })
+    // 读数就是仿真的那个值：两下都对得上，分不清配哪一下——ambiguous，没有冲突
+    const { res } = fitOf(scenario(rotation, MARKS))
+    const value = res.log.find((e): e is Extract<typeof e, { type: 'hit' }> => e.type === 'hit' && e.judgment === 'e')!.dmg!.nonCrit
+    const good = fitOf(scenario(rotation, { ...MARKS, hits: [`0.85 甲 e ${value} nonCrit`] })).fit
+    expect(good.observations.find(x => x.id === 'hit#1')).toMatchObject({ status: 'ambiguous' })
+    expect(good.eligibility.hasQualitativeConflict).toBe(false)
+  })
+
+  test('评分集合只能放评分用的观测：显式子集、直接传评分定义放进 !given、!display 的都拒绝（DD-09 §3.2、§4.4；Codex 审查 F9）', () => {
+    const sc = scenario(['甲 A'], { ...MARKS, events: ['0 甲 A', '0.5 甲 @e !display'], hp: ['0 1', '1 0.9 !given'] })
+    const obs = videoObservations(sc.video!)
+    expect(() => scoreDefOf(obs, { scoreObservationIds: ['action#1', 'hp#2'] })).toThrow(/hp#2（!given）/)
+    expect(() => scoreDefOf(obs, { scoreObservationIds: ['summon#2'] })).toThrow(/summon#2（!display）/)
+    // 绕过 scoreDefOf、直接拼一份评分定义传给 replayFit：同样拒绝
+    const p = prepareRun(sc, synthData(team()))
+    if (!p.ok) throw new Error('prepare')
+    const def = { ...scoreDefOf(obs), scoreObservationIds: ['action#1', 'hp#2'] }
+    expect(() => replayFit(p.run.resolved, runPrepared(p.run), sc.video!, { observations: obs, scoreDef: def })).toThrow(/!given/)
+  })
+
   test('C09-21 后台召唤与前台动作交错：两个通道各自匹配，召唤不受前台顺序约束', () => {
     // 仿真：A 第 0 帧、E 第 60 帧（它的判定 e 第 65 帧生成）。录像把 e 记早了（0.6 秒，在 E 之前）：放进同一列会和 E 交叉
     const sc = scenario(['甲 A', 'at 1.0', '甲 E'], { ...MARKS, events: ['0 甲 A', '1.0 甲 E', '0.6 甲 @e'] })

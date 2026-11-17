@@ -5,6 +5,7 @@ import { basename } from 'node:path'
 import { loadGameData } from '../data/load'
 import { MATRIX_RULES, matrixOrders, ratioOf, matrixBosses } from '../analysis/matrix'
 import { assumptionOf } from '../engine/assumptions'
+import { sameDamageScope } from '../engine/basis'
 import { argsOf, fmt, loadScenario } from './format'
 
 const wan = (x: number) => `${(x / 1e4).toFixed(0)} 万`
@@ -30,15 +31,19 @@ async function main(): Promise<number> {
   const out: string[] = ['# 矩阵计分', '',
     `${stage}，${teams.length} 支队；每队 ${r.teamFrames / 60} 秒（进场 ${r.entryFrames / 60} 秒、转场 ${r.transFrames / 60} 秒），` +
     `每万点伤害得分 R1 ${r.ratios[0]} / R2 ${r.ratios[1]} / R3 起 ${r.ratios[2]}，第 5 只 ${r.lastRatios.join(' / ')}，打死第 5 只加 ${r.killBonus}。`, '']
-  out.push('| 出场顺序 | 总分 | 比最好 | 总伤害 | 打到 |', '|---|---:|---:|---:|---|')
+  // 谐破口径（DD-03 §7.4）：一张表里有几条轴的都加一列；各队口径不同时表尾脚注，不自动剔除、不换算
+  const scopes = (x: (typeof results)[number]) => x.teams.map(t => t.scopeLabel ?? '—').join(' / ')
   const best = results[0]!
-  for (const x of results) out.push(`| ${x.order.join(' → ')} | ${fmt(x.score)} | ${x === best ? '最好' : `−${((1 - x.score / best.score) * 100).toFixed(1)}%`} | ${wan(x.damage)} | ${x.end} |`)
-  out.push('', `## 最好的顺序：${best.order.join(' → ')}`, '', '| 队 | boss | 血量 / 抗性高的 | 从（秒） | 到（秒） | 伤害 | 打死 | 分 |', '|---|---|---|---:|---:|---:|---|---:|')
+  const mixed = best.teams.some(t => t.scope && best.teams[0]!.scope && !sameDamageScope(t.scope, best.teams[0]!.scope))
+  out.push('| 出场顺序 | 谐破（各队） | 总分 | 比最好 | 总伤害 | 打到 |', '|---|:---:|---:|---:|---:|---|')
+  for (const x of results) out.push(`| ${x.order.join(' → ')} | ${scopes(x)} | ${fmt(x.score)} | ${x === best ? '最好' : `−${((1 - x.score / best.score) * 100).toFixed(1)}%`} | ${wan(x.damage)} | ${x.end} |`)
+  if (mixed) out.push('', '各队的谐度破坏口径不同：分数照算，但"未含"的队没算谐度破坏的伤害，不可直接混比（DD-03 §7.4）。')
+  out.push('', `## 最好的顺序：${best.order.join(' → ')}`, '', '| 队 | 谐破 | boss | 血量 / 抗性高的 | 从（秒） | 到（秒） | 伤害 | 打死 | 分 |', '|---|:---:|---|---|---:|---:|---:|---|---:|')
   const bosses = matrixBosses(data, stage)
   for (const t of best.teams) for (const s of t.segments) {
     const b = bosses.find(x => x.label === s.label)!
     const hi = Object.entries(b.preset.res).filter(([, v]) => v > 0.2).map(([k, v]) => `${k} ${v * 100}%`).join('、') || '全 20%'
-    out.push(`| ${t.name} | ${s.label} ${b.preset.name}（×${ratioOf(b)}） | ${wan(b.hp)} / ${hi} | ${((s.from + r.entryFrames) / 60).toFixed(1)} | ${((s.to + r.entryFrames) / 60).toFixed(1)} | ${wan(s.damage)} | ${s.killed ? '是' : '—'} | ${fmt(s.score)} |`)
+    out.push(`| ${t.name} | ${t.scopeLabel ?? '—'} | ${s.label} ${b.preset.name}（×${ratioOf(b)}） | ${wan(b.hp)} / ${hi} | ${((s.from + r.entryFrames) / 60).toFixed(1)} | ${((s.to + r.entryFrames) / 60).toFixed(1)} | ${wan(s.damage)} | ${s.killed ? '是' : '—'} | ${fmt(s.score)} |`)
   }
   out.push('')
   for (const t of best.teams) out.push(`- ${t.name}${t.scopeLabel ? `（谐破：${t.scopeLabel}）` : ''}：${fmt(t.score)} 分，${wan(t.damage)}（转场与溢出作废 ${wan(t.lostDamage)}）`)

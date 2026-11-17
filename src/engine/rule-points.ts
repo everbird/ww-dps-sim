@@ -66,8 +66,18 @@ export const RULE_POINTS = [
     decisiveWhen: '事件带 summon，且记了附加者（换个读法就触发 / 不触发"附加…后"）',
   },
   {
+    // 按角色覆盖的协奏时机（DD-08 §6 的 concertoTimingBy）：只有台账里有按角色命题的角色才记（CONCERTO_TIMING_POINTS），
+    // 别人读的是共享的 concertoTiming（2026-10-03 实测，不在台账）
+    id: 'res.concertoTiming.卜灵', propositionId: 'buling-concerto-timing', symbol: 'resources.ts castResources、settleGains（concertoTimingOf 处，施放者 / 出伤者是卜灵时）',
+    decisiveWhen: '起手时：这个动作有由时间线生成、带协奏的判定（onCast 在起手时一次给全）；结算时：判定由时间线生成、带协奏（onHit 才在这时给）',
+  },
+  {
     id: 'char.心.forteKeep', propositionId: 'forte-keep.心-照世相', symbol: 'data/curated/characters/心.ts onEvent（切出时）',
     decisiveWhen: '切出时有照世相、心相心生、统御众机这些状态可清',
+  },
+  {
+    id: 'char.心.summonAsChar', propositionId: 'summon-as-char', symbol: 'data/curated/characters/心.ts onEvent（enemyState 的电磁效应附加处）',
+    decisiveWhen: '阵、召唤物附加了电磁效应（事件带 summon、记了附加者）：换个读法固有1、霆霓、霆心域就算 / 不算',
   },
   {
     id: 'char.卜灵.forteKeep', propositionId: 'forte-keep.卜灵-卦象', symbol: 'data/curated/characters/卜灵.ts onEvent（切出时）',
@@ -82,3 +92,7 @@ export const RULE_POINTS = [
 export type RulePointId = (typeof RULE_POINTS)[number]['id']
 /** 角色模块能记的判定点（ctx.noteRule）：读到的值由钩子上下文按规则取（simulate.ts 的 hookContext） */
 export type HookRulePointId = Extract<RulePointId, `char.${string}`>
+
+/** 按角色覆盖的协奏时机在执行核心里的判定点：角色名 → 点。只列台账里有按角色命题的角色（buling-concerto-timing，DD-08 §13）；
+ *  数据放在台账这一层，引擎的代码不写角色名 */
+export const CONCERTO_TIMING_POINTS: Readonly<Partial<Record<string, RulePointId>>> = { 卜灵: 'res.concertoTiming.卜灵' }

@@ -4,10 +4,11 @@ import { parse } from 'yaml'
 import type { StatKey } from '../../../src/data/common'
 import type { GameData } from '../../../src/data/gamedata'
 import { InventorySchema, resolveInventory } from '../../../src/data/inventory.schema'
+import { fillCombos, narrowReplay } from '../../../src/data/replay'
 import { ScenarioSchema, type Scenario } from '../../../src/data/scenario.schema'
 import { parseOrThrow } from '../../../src/data/validate'
 import { basisOf, marginal, panelsOf, runScenario, tryCompareRuns, usableBasis } from '../../../src/analysis/analysis'
-import { scopeNoteForRun } from '../../../src/engine/basis'
+import { scopeNoteForRun, truncationRemainsText } from '../../../src/engine/basis'
 import { insight } from '../../../src/analysis/insight'
 import { optimize, withEchoes } from '../../../src/analysis/optimize'
 import { resolveScenario } from '../../../src/engine/resolve'
@@ -32,11 +33,21 @@ function designTemplate(file: string): string {
 let data: Promise<GameData> | null = null
 const gd = () => (data ??= loadGameData())
 
-const scenarioOf = (s: Source): Scenario => {
+/** 录像剖析有几个填法组合时（DD-09 §3.1）：网页没有 --fill，按第一个组合跑，提示里写明是哪个、还有哪些（命令行 pnpm fit 会分别跑每一个）。
+ *  只有一个组合时就是它（同命令行的 pickFillCombo） */
+function narrowFills(sc: Scenario, name: string): { sc: Scenario; note: string | null } {
+  const combos = fillCombos(sc)
+  if (combos.length <= 1) return { sc: combos.length ? narrowReplay(sc, combos[0]!.picks) : sc, note: null }
+  const first = combos[0]!
+  const rest = combos.slice(1, 8).map(c => c.name).join('、') + (combos.length > 8 ? '…' : '')
+  return { sc: narrowReplay(sc, first.picks), note: `${name} 有 ${combos.length} 个填法组合，网页按第一个（${first.name}）跑；其余：${rest}。命令行 pnpm sim / timeline 用 --fill <组合名> 选，pnpm fit 会分别跑每一个（DD-09 §3.1）` }
+}
+const scenarioNoted = (s: Source): { sc: Scenario; note: string | null } => {
   let raw: unknown
   try { raw = parse(s.text) } catch (e) { throw new Error(`${s.name}：YAML 写法有误：${e instanceof Error ? e.message : e}`) }
-  return parseOrThrow(ScenarioSchema, raw, s.name)
+  return narrowFills(parseOrThrow(ScenarioSchema, raw, s.name), s.name)
 }
+const scenarioOf = (s: Source): Scenario => scenarioNoted(s).sc
 const slotOf = (sc: Scenario, char: string) => {
   const i = sc.team.findIndex(m => m.char === char)
   if (i < 0) throw new Error(`队伍里没有 ${char}`)
@@ -46,16 +57,16 @@ const num = (v: number) => (Number.isInteger(v) ? String(v) : String(Math.round(
 const flow = (t: Partial<Record<StatKey, number>>) => `{ ${Object.entries(t).map(([k, v]) => `${k}: ${num(v!)}`).join(', ')} }`
 
 /** 最近一次仿真（按场景名 + 原文）：切换视图、"视图说明"页换视图时不再重跑 */
-let last: { key: string; r: ResolvedScenario; res: SimResult; model: TimelineModel } | null = null
+let last: { key: string; r: ResolvedScenario; res: SimResult; model: TimelineModel; fillNote: string | null } | null = null
 async function simulated(s: Source) {
   const key = `${s.name}\n${s.text}`
   if (last?.key === key) return last
-  const sc = scenarioOf(s)
+  const { sc, note: fillNote } = scenarioNoted(s)
   const p = prepareRun(sc, await gd())
   if (!p.ok) throw new Error(p.issues.map(i => i.message).join('；'))
   const r = p.run.resolved
   const res = runPrepared(p.run, { diag: { eventMeta: true } })         // 时间轴的出处按记录下来的事件来源（DD-05 §3.4）
-  last = { key, r, res, model: timelineModel(s.name, sc, r, res) }
+  last = { key, r, res, model: timelineModel(s.name, sc, r, res), fillNote }
   return last
 }
 const renderView = (view: string | undefined, model: TimelineModel) =>
@@ -68,15 +79,11 @@ export const handlers: Handlers = {
     return { version: d.version, characters: Object.keys(d.characters), xlsx: d.meta.xlsxFile }
   },
   async run({ scenario, view }) {
-    const { r, res, model } = await simulated(scenario)
+    const { r, res, model, fillNote } = await simulated(scenario)
     const b = basisOf(res)
     const u = usableBasis(res)
     const c = res.completion
-    const truncationNote = c.truncation
-      ? (c.truncation.kind === 'commandsPending'
-          ? `到帧数上限被截断：还有 ${c.truncation.remains.pendingCommands} 条指令没执行`
-          : '到帧数上限被截断：指令发完了，场上还有没走完的判定')
-      : null
+    const truncationNote = c.truncation ? `到帧数上限被截断：${truncationRemainsText(c)}` : null
     const failMsg = c.engineError?.message ?? c.axisFailure?.detail
     const failFrame = res.error?.frame
     return {
@@ -91,7 +98,7 @@ export const handlers: Handlers = {
       error: failMsg ? (failFrame !== undefined ? `第 ${failFrame} 帧：${failMsg}` : failMsg) : null,
       // 轴可能有问题：写了"变奏"的切人没变奏（TD-12 §2），单独列出、不折叠；其余是"提示"
       alerts: res.summary.warnings.filter(w => w.code === 'introMissed').map(w => w.message),
-      warnings: [...r.warnings, ...res.summary.warnings.filter(w => w.code !== 'introMissed').map(w => w.message)],
+      warnings: [...(fillNote ? [fillNote] : []), ...r.warnings, ...res.summary.warnings.filter(w => w.code !== 'introMissed').map(w => w.message)],
       assumptions: res.summary.assumptions,                     // 这次碰到的假设（总设计 T16）
     }
   },

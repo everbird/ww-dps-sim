@@ -7,7 +7,8 @@
 import type { CharName } from '../data/common'
 import type { GameData } from '../data/gamedata'
 import { parseRotationLine, type Scenario } from '../data/scenario.schema'
-import { basisOf, usableBasis } from './analysis'
+import { basisOf, usableBasis, type ScopeMismatch } from './analysis'
+import { scopeMismatchOf, scopeShortLabel } from '../engine'
 import type { SimResult } from '../engine'
 import { resolveScenario } from '../engine'
 import { runPrepared } from '../engine'
@@ -37,6 +38,9 @@ export interface PlanLeaf {
   introMissed: number
   isRef: boolean                            // 就是原轴的顺序
   same: number                              // 另有几种写法跑出来完全一样（DPS、每轮时长都相同：多半是补位被跳过，挪到哪都一样），只列这一条
+  scopeLabel: string                        // 谐度破坏的口径（DD-03 §7.4）
+  /** 口径与原轴不同（次数可变时少了写着谐破的套路…）：这一行要标出来 */
+  scopeMismatch?: ScopeMismatch
 }
 
 export interface PlanResult {
@@ -289,6 +293,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
     if (missed(res) > refMissed) { failures['introMissed'] = (failures['introMissed'] ?? 0) + 1; continue }
     const introAt = new Set(res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 2 ? [e.cmd.line] : [])))
     const diff = usedOf(node.seq).map((n, i) => n - library[i]!.count)   // 另加的套路 count 为 0，用了几次就是 +几
+    const scopeMismatch = scopeMismatchOf(refRes.damageScope, res.damageScope)
     leaves.push({
       routines: node.seq,
       counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
@@ -297,6 +302,7 @@ export function planRotation(sc: Scenario, data: GameData, opts: PlanOptions = {
       introMissed: res.summary.warnings.filter(w => w.code === 'introMissed').length,
       isRef: node.seq.join(' | ') === refKey,
       same: 0,
+      scopeLabel: scopeShortLabel(res.damageScope), ...(scopeMismatch ? { scopeMismatch } : {}),
     })
   }
   // 跑出来完全一样的合成一条：留原轴、次数改得少的、短的
@@ -327,6 +333,8 @@ export interface OpeningLeaf {
   openingSecs: number                       // 启动轴（第 0 轮）的战斗秒
   isRef: boolean
   same: number
+  scopeLabel: string                        // 谐度破坏的口径（DD-03 §7.4）
+  scopeMismatch?: ScopeMismatch             // 口径与原启动轴不同：这一行要标出来
 }
 
 export interface OpeningResult {
@@ -445,16 +453,18 @@ export function planOpening(sc: Scenario, data: GameData, opts: PlanOptions = {}
     const plain = renderOpening(n.seq, onField)
     const introAt = new Set(n.res.log.flatMap(e => (e.type === 'switch' && e.intro && e.cmd?.loop === 0 ? [e.cmd.line] : [])))
     const diff = usedOf(n.seq).map((c, i) => c - library[i]!.count)
+    const scopeMismatch = scopeMismatchOf(refRes.damageScope, n.res.damageScope)
     return {
       routines: n.seq,
       counts: Object.fromEntries(library.flatMap((l, i) => (diff[i] ? [[l.line, diff[i]!]] : []))),
       lines: plain.map((l, i) => (introAt.has(i + 1) && !l.endsWith(' 变奏') ? `${l} 变奏` : l)),
       dps: n.score, steady: steadyOf(n.res), openingSecs: openingSecs(n.res),
       isRef: n.seq.join(' | ') === refKey, same: 0,
+      scopeLabel: scopeShortLabel(n.res.damageScope), ...(scopeMismatch ? { scopeMismatch } : {}),
     }
   })
   if (!leaves.some(l => l.isRef)) {
-    leaves.push({ routines: refSeq, counts: {}, lines: renderOpening(refSeq, onField), dps: scoreOf(refRes), steady: steadyOf(refRes), openingSecs: openingSecs(refRes), isRef: true, same: 0 })
+    leaves.push({ routines: refSeq, counts: {}, lines: renderOpening(refSeq, onField), dps: scoreOf(refRes), steady: steadyOf(refRes), openingSecs: openingSecs(refRes), isRef: true, same: 0, scopeLabel: scopeShortLabel(refRes.damageScope) })
   }
   const changes = (l: OpeningLeaf) => Object.values(l.counts).reduce((a, d) => a + Math.abs(d), 0)
   leaves.sort((a, b) => b.dps - a.dps || Number(b.isRef) - Number(a.isRef) || changes(a) - changes(b) || a.routines.length - b.routines.length)

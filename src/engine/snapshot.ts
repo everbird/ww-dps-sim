@@ -110,19 +110,29 @@ export function resumeFrom(p: PreparedRun, snap: Snapshot, stop: StopPoint, opts
   if (snap.runId !== p.runId) return { ok: false, error: { code: 'runIdMismatch', expected: p.runId, got: snap.runId } }
   if (diagKey(opts.diag) !== diagKey(snap.diagOptions)) return { ok: false, error: { code: 'unsupported', what: 'snapshot diagnostic options mismatch' } }
   if (stop.kind === 'boundary' && stop.frame < snap.frame) return { ok: false, error: { code: 'unsupported', what: 'cannot resume backwards' } }
-  return { ok: true, value: replayTo(p, stop, opts, restore(p, snap)) }
+  const r = restore(p, snap)
+  if (!r.ok) return r
+  return { ok: true, value: replayTo(p, stop, opts, r.value) }
 }
-function restore(p: PreparedRun, snap: Snapshot): { state: SimState; memory: ExecutionMemory } {
-  const payload = snap.payload as { data: JsonValue; schema: WireSchema }
-  const data = fromWire<Payload>(structuredClone(payload.data), payload.schema)
-  return { state: stateFromView(p, data.view, data.log), memory: data.memory }
+/** 快照的载荷解码回状态与运行记忆；载荷损坏（不是 captureSnapshot 写出来的、存盘后被改过）时返回查询错误，不往外抛（Antigravity 审查 M2） */
+function restore(p: PreparedRun, snap: Snapshot): QueryResult<{ state: SimState; memory: ExecutionMemory }> {
+  try {
+    const payload = snap.payload as { data: JsonValue; schema: WireSchema }
+    if (!payload || typeof payload !== 'object' || payload.data === undefined) throw new Error('没有 data')
+    const data = fromWire<Payload>(structuredClone(payload.data), payload.schema)
+    return { ok: true, value: { state: stateFromView(p, data.view, data.log), memory: data.memory } }
+  } catch (e) {
+    return { ok: false, error: { code: 'unsupported', what: `快照载荷解码失败：${e instanceof Error ? e.message : String(e)}` } }
+  }
 }
 /** 查询缓存内部推进：跨过下一个 600 帧边界时也从旧快照续跑，不重新初始化。 */
 export function snapshotFrom(p: PreparedRun, snap: Snapshot, f: Frame, opts: RunOptions = {}): QueryResult<Snapshot> {
   if (snap.runId !== p.runId) return { ok: false, error: { code: 'runIdMismatch', expected: p.runId, got: snap.runId } }
   if (diagKey(opts.diag) !== diagKey(snap.diagOptions) || f < snap.frame)
     return { ok: false, error: { code: 'unsupported', what: 'snapshot options mismatch or backwards boundary' } }
-  return captureAt(p, f, opts, restore(p, snap))
+  const r = restore(p, snap)
+  if (!r.ok) return r
+  return captureAt(p, f, opts, r.value)
 }
 
 export interface SnapshotCache {

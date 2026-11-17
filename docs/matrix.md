@@ -2,7 +2,7 @@
 
 定位：检验仿真引擎的一个具体场景，辅助用；项目的重点是引擎本身。
 
-`pnpm matrix <场景.yaml …> [--stage 矩8] [--md 输出.md]`（`src/engine/matrix.ts`），数据 20261019 版。
+`pnpm matrix <场景.yaml …> [--stage 矩8] [--md 输出.md]`（`src/analysis/matrix.ts`），数据 20261019 版。
 
 ## 规则从哪来
 

@@ -37,6 +37,8 @@ export interface TriggerCheckGroup {
   readonly occurrence: string
   readonly spec: number
   readonly conditions: readonly ConditionCheck[]
+  /** 消耗型：这一组检查的是哪个在场实例（全队 buff 每人一个，各自对不同的触发点；DD-07 §6）。其余目标不写 */
+  readonly instance?: { readonly id: number; readonly target: string }
 }
 
 /** 一条日志事件对应的触发点（TD-07 §4.1）：switch 一条对应 switchOut、switchIn 两个 */

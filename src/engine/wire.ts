@@ -34,7 +34,16 @@ export interface QueryEnvelope<T> {
   readonly data: T
 }
 
-/** 构造信封：只放 identity，不放 resolved（DD-07 §10.2） */
+/** 结果的伤害口径要告诉使用者的那几项（DD-02 §3.7）：未含谐度破坏时加一项；量表也关了（gauge off）时，
+ *  依赖失谐的效果也不在，再加一项。每个信封都带，不靠各查询自己记得加 */
+export function scopeUnsupported(res: Pick<SimResult, 'damageScope'>): string[] {
+  const tb = res.damageScope?.tuneBreak
+  if (!tb || tb.mode !== 'omitted') return []
+  return [`damage.tuneBreak: 未含谐度破坏（${tb.reason}）`, ...(tb.gauge === 'off' ? ['damage.disharmonyDependent'] : [])]
+}
+
+/** 构造信封：只放 identity，不放 resolved（DD-07 §10.2）。unsupported 是这次查询自己的（DD-07 §10.1 的表），
+ *  伤害口径的两项由这里按 res.damageScope 补在后面（DD-02 §3.7；Antigravity 审查 H1） */
 export function envelope<T>(
   p: PreparedRun,
   res: SimResult,
@@ -51,7 +60,7 @@ export function envelope<T>(
       assumptionsEncountered: res.summary.assumptions.map(a => ({ id: a.id, count: a.count })),
       ruleUsage: res.ruleUsage,
       conditioning: res.completion.conditioning,
-      unsupported: [...unsupported],
+      unsupported: [...new Set([...unsupported, ...scopeUnsupported(res)])],
     },
     data,
   }

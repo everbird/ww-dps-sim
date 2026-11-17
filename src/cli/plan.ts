@@ -5,14 +5,19 @@ import { loadGameData } from '../data/load'
 import { withOpening, withRotation } from '../data/scenario-text'
 import { planOpening, planRotation } from '../analysis/plan'
 import { HAND_PROFILES, type HandProfile } from '../analysis/sample'
+import { FAILURE_LABEL } from '../analysis/search'
 import { ResolveError } from '../engine/resolve'
 import { argsOf, fmt, loadScenario, padStart, withOverrides, OVERRIDE_FLAGS } from './format'
 
 /** 套路的代号：A–Z，再 a–z，再 27、28…（自动生成的套路会超过 26 个） */
 const tag = (i: number) => (i < 26 ? String.fromCharCode(65 + i) : i < 52 ? String.fromCharCode(97 + i - 26) : String(i + 1))
 const signedPct = (x: number) => `${x > 0 ? '+' : x < 0 ? '−' : '±'}${(Math.abs(x) * 100).toFixed(2)}%`
-const FAILURE: Record<string, string> = {
-  timeout: '等超时', comboBroken: '连段中断', compile: '编译不过', introMissed: '写了变奏没变奏', entrySkill: '出场技不是从地面普通切人入场后第一个出', airEntry: '空中 / 地面入场对不上', maxFrames: '超过帧数上限', truncated: '到帧数上限被截断', engineError: '引擎报错', noLoop: '没跑完一轮',
+/** 跑不通的原因：同轴搜索（FAILURE_LABEL），另加排轴自己的两种 */
+const FAILURE: Record<string, string> = { ...FAILURE_LABEL, noLoop: '没跑完一轮' }
+/** 口径与原轴不同的行（DD-03 §7.4）：行尾标 †，表尾脚注 */
+const scopeMark = (l: { scopeMismatch?: unknown; scopeLabel: string }) => (l.scopeMismatch ? `（† 谐破口径变成"${l.scopeLabel}"）` : '')
+const scopeNote = (leaves: readonly { scopeMismatch?: unknown }[]) => {
+  if (leaves.some(l => l.scopeMismatch)) console.log('† 这个排法改变了谐度破坏口径（DD-03 §7.4）：DPS 不在同一口径上，差值里包含谐度破坏的伤害变化，不全是轴的差别')
 }
 
 async function main(): Promise<number> {
@@ -65,8 +70,9 @@ async function main(): Promise<number> {
   const countText = (c: Record<string, number>) => Object.entries(c).map(([line, d]) => `${d > 0 ? '+' : '−'}${Math.abs(d) > 1 ? Math.abs(d) : ''}${letter(line)}`).join(' ')
   x.leaves.forEach((l, i) => {
     const changed = countText(l.counts)
-    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(secs(l.loopSecs), 12)}  ${l.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}${l.same ? `；另 ${l.same} 种写法结果一样` : ''}`)
+    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(secs(l.loopSecs), 12)}  ${l.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}${l.same ? `；另 ${l.same} 种写法结果一样` : ''}${scopeMark(l)}`)
   })
+  scopeNote(x.leaves)
   const best = x.leaves[0]
   if (best && !best.isRef) {
     console.log('\n最好的一条：')
@@ -102,8 +108,9 @@ function mainOpening(file: string, sc: ReturnType<typeof loadScenario>, data: Aw
   console.log(`  ${padStart('排名', 4)}${padStart(x.label === '整个窗口' ? '窗口 DPS' : '口径', 10)}${padStart('变化', 10)}${padStart('稳态', 10)}${padStart('启动轴', 10)}  顺序`)
   x.leaves.forEach((l, i) => {
     const changed = countText(l.counts)
-    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(opt(l.steady), 10)}${padStart(`${l.openingSecs.toFixed(2)} 秒`, 10)}  ${l.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}${l.same ? `；另 ${l.same} 种写法结果一样` : ''}`)
+    console.log(`  ${padStart(String(i + 1), 4)}${padStart(fmt(l.dps), 10)}${padStart(l.isRef ? '原轴' : signedPct(l.dps / x.ref.dps - 1), 10)}${padStart(opt(l.steady), 10)}${padStart(`${l.openingSecs.toFixed(2)} 秒`, 10)}  ${l.routines.map(letter).join(' ')}${changed ? `（次数 ${changed}）` : ''}${l.same ? `；另 ${l.same} 种写法结果一样` : ''}${scopeMark(l)}`)
   })
+  scopeNote(x.leaves)
   const best = x.leaves[0]
   if (best && !best.isRef) {
     console.log('\n最好的启动轴：')

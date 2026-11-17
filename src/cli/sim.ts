@@ -8,7 +8,7 @@ import { panelsOf } from '../analysis/analysis'
 import { prepareRun, runPrepared } from '../engine/run'
 import { HAND_PROFILES, sampleRuns, type HandProfile } from '../analysis/sample'
 import type { ResolvedScenario, SimResult } from '../engine/types'
-import { scopeNoteForRun, usableBasis } from '../engine/basis'
+import { scopeNoteForRun, truncationRemainsText, usableBasis } from '../engine/basis'
 import { argsOf, assumptionLines, fmt, loadScenario, padEnd, padStart, pct, pickFillCombo, sec, withOverrides, OVERRIDE_FLAGS } from './format'
 import { collectRunEnvironment } from './run-env'
 
@@ -43,7 +43,12 @@ async function main(): Promise<number> {
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, JSON.stringify({ scenario: file, data: data.version, runId: res.runId, completion: res.completion, strictReport: res.strictReport, damageScope: res.damageScope, summary: res.summary, error: res.error, log: res.log }, null, 1) + '\n')
   console.log(`\n事件日志 → ${target}`)
-  if (runs > 0 && res.completion.status === 'completed') printSampling(sc, data, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
+  // 抽样按比较口径能不能当结论用来判（DD-03 §7.1）：截断了但稳态各轮完整的照样能抽；不能用的说一声，不静默跳过
+  if (runs > 0) {
+    const u = usableBasis(res)
+    if (u.ok) printSampling(sc, data, runs, Number(opt.seed ?? 1), Number(opt.jitter ?? 0), opt.hand as HandProfile | undefined)
+    else console.log(`\n不抽样：这次运行不能当结论用（${u.status}：${u.reason}）`)
+  }
   return res.completion.status !== 'completed' ? 1 : 0
 }
 
@@ -119,7 +124,8 @@ function print(file: string, r: ResolvedScenario, res: SimResult): void {
   // 运行身份与完成状态（DD-01 §3.3、§3.6）
   const x = res.identity.execution, c = res.completion, l = c.loops
   const STATUS = { completed: '跑完', truncated: '到帧数上限被截断', axisFailed: '轴失败', engineError: '引擎错误' } as const
-  const why = c.truncation ? (c.truncation.kind === 'commandsPending' ? `还有 ${c.truncation.remains.pendingCommands} 条指令没执行` : '指令发完了，场上还有没走完的')
+  // 截断时列出还剩什么（DD-03 §7.2：指令、动作、判定、尾部的余量）
+  const why = c.truncation ? truncationRemainsText(c)
     : c.axisFailure ? c.axisFailure.kind : c.engineError ? c.engineError.code : ''
   console.log(`\n运行 ${res.runId}（提交 ${x.gitCommit === 'unknown' ? '未知' : x.gitCommit.slice(0, 7)}${x.contentFingerprint ? `，工作区有改动 ${x.contentFingerprint.slice(0, 8)}` : ''}，${x.entryMode === 'replay' ? '录像剖析' : x.entryMode === 'strict' ? '严格入口' : '标准入口'}）`)
   console.log(`完成状态 ${c.status}（${STATUS[c.status]}${why ? `：${why}` : ''}）· ${c.coverage.completedTicks} 帧 · 循环 ${l.completed} / ${l.planned} 轮${l.openingCompleted === false ? '，启动轴没走完' : ''}${c.conditioning.basis === 'conditioned' ? ` · 有 ${res.interventions.length} 次外部干预` : ''}`)

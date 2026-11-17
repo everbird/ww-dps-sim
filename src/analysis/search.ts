@@ -6,7 +6,8 @@
 //   跑不通的（编译不过、运行报错：连段中断、等超时…）记下原因丢掉。
 //   用途是检验与启发：比原轴好的改法是"游戏里也该更好"的假设，要拿实战核对。纯函数，输入装配结果与轴的原文。
 import { parseRotationLine, type RotationItem } from '../data/scenario.schema'
-import { usableBasis, type Basis } from './analysis'
+import { usableBasis, type Basis, type ScopeMismatch } from './analysis'
+import { scopeMismatchOf, scopeShortLabel, type DamageScope } from '../engine'
 import { compileMembers, compileRotation, type CompileMember } from '../engine'
 import { prepareRun, runPrepared } from '../engine'
 import { preparedScenario } from './analysis'
@@ -37,6 +38,11 @@ export interface Candidate {
   loopSecs: number | null                   // 稳态每轮多少战斗秒；没有分轮时 null
   introMissed: number                       // 写了"变奏"的切人没变奏（轴可能有问题）的次数
   error: { code: string; message: string } | null
+  /** 谐度破坏的口径（DD-03 §7.4）；编译不过时 null */
+  scope: DamageScope | null
+  scopeLabel: string | null
+  /** 口径与原轴不同（去掉了手写的谐破…）：这一行要标出来，它的 DPS 与原轴不在同一口径上（DD-03 §7.4；Codex 审查 F4） */
+  scopeMismatch?: ScopeMismatch
 }
 
 export interface SearchResult {
@@ -168,27 +174,31 @@ function edit(lines: readonly Line[], li: number, ii: number, to: { line: number
   return keepEmpty ? next.map(l => (isChar(l) && l.items.length === 0 ? { text: '' } : l)) : next.filter(l => !isChar(l) || l.items.length > 0)
 }
 
-/** 跑一条轴：只重新编译循环轴，启动轴与其余装配结果照用。basis 是这次的比较口径（跑不通时 null） */
+/** 跑一条轴：只重新编译循环轴，启动轴与其余装配结果照用。basis 是这次的比较口径（跑不通时 null）。
+ *  baseScope：原轴的谐破口径，给了就拿它比，不同的记 scopeMismatch */
 function evaluate(
-  sc: Scenario, data: GameData, lines: Line[], steps: string[],
+  sc: Scenario, data: GameData, lines: Line[], steps: string[], baseScope?: DamageScope,
 ): { c: Candidate; basis: Basis | null; res?: SimResult } {
   const text = lines.map(lineText)
-  const blank = { lines: text, steps, dps: null, loopSecs: null, introMissed: 0 }
+  const blank = { lines: text, steps, dps: null, loopSecs: null, introMissed: 0, scope: null, scopeLabel: null }
   const p = prepareRun({ ...sc, rotation: text }, data)
   if (!p.ok) return { c: { ...blank, error: { code: 'compile', message: p.issues[0]!.message } }, basis: null }
   const res = runPrepared(p.run)
+  const scope = res.damageScope
+  const mismatch = baseScope ? scopeMismatchOf(baseScope, scope) : undefined
+  const scoped = { scope, scopeLabel: scopeShortLabel(scope), ...(mismatch ? { scopeMismatch: mismatch } : {}) }
   const u = usableBasis(res)
   if (!u.ok) {
     const f = res.completion.axisFailure
     const code = res.completion.status === 'axisFailed'
       ? (f ? (f.kind === 'intentUnmet' && f.unmetIntent ? f.unmetIntent.kind : f.kind) : 'axisFailed')
       : u.status
-    return { c: { ...blank, error: { code, message: u.reason } }, basis: null, res }
+    return { c: { ...blank, ...scoped, error: { code, message: u.reason } }, basis: null, res }
   }
   const st = res.summary.steady, basis = u.basis
   return {
     c: {
-      ...blank, dps: basis.dps, loopSecs: st ? st.frames / 60 / (st.to - st.from + 1) : null,
+      ...blank, ...scoped, dps: basis.dps, loopSecs: st ? st.frames / 60 / (st.to - st.from + 1) : null,
       introMissed: res.summary.warnings.filter(w => w.code === 'introMissed').length, error: null,
     },
     basis,
@@ -201,6 +211,8 @@ const byDps = (a: Candidate, b: Candidate) => b.dps! - a.dps!
 /** 跑不通的原因（SearchResult.failures 的键）怎么说；命令行与网页共用 */
 export const FAILURE_LABEL: Readonly<Record<string, string>> = {
   compile: '编译不过', comboBroken: '连段中断', timeout: '等超时', maxFrames: '超过帧数上限', truncated: '到帧数上限被截断', engineError: '引擎报错', notOnField: '不在前台', switchSelf: '切到自己', entrySkill: '出场技不是从地面普通切人入场后第一个出', airEntry: '空中 / 地面入场对不上',
+  // 严格入口的意图没满足（DD-02 §3.3）：失败的键取 unmetIntent.kind，没有明细时是 intentUnmet
+  intentUnmet: '意图没满足', introMissed: '写了变奏没变奏', cancelFrameIllegal: '取消帧不合法', axisFailed: '轴失败',
 }
 
 export function searchRotation(
@@ -221,6 +233,7 @@ export function searchRotation(
   const lines0 = parseLines(sc.rotation)
   const first = evaluate(sc, data, lines0, [])
   const base = first.c
+  const baseScope = base.scope ?? undefined
   runs++
   const baseU = first.res ? usableBasis(first.res) : null
   if (!baseU || !baseU.ok || !first.basis) throw new Error(`原轴跑不通，先把轴修好再搜：${baseU && !baseU.ok ? baseU.reason : base.error?.message}`)
@@ -240,7 +253,7 @@ export function searchRotation(
         seen.add(key)
         if (runs >= maxRuns) { stoppedBy = 'maxRuns'; done = k; break outer }
         tried++
-        const { c } = evaluate(sc, data, lines, [...parent.c.steps, ch.desc])
+        const { c } = evaluate(sc, data, lines, [...parent.c.steps, ch.desc], baseScope)
         runs++
         if (c.error) { failures[c.error.code] = (failures[c.error.code] ?? 0) + 1; continue }
         ok.push(c)

@@ -269,8 +269,12 @@ export default defineCharacter('心', {
           if (ev.effect !== '电磁效应') return
           if (ev.change === 'effectEnd') { fillIfEmpty(ctx); return }
           if (ev.change !== 'effectApplied' || ev.by === undefined) return
-          // 阵、召唤物附加的不算"队伍中的角色附加"时（rules.summonCountsAsChar = false，假设 summon-as-char）：固有1、霆霓、霆心域都不算，电磁爆发留在目标上
-          if (ev.summon && !ctx.rules.summonCountsAsChar) return
+          // 阵、召唤物附加的不算"队伍中的角色附加"时（rules.summonCountsAsChar = false，假设 summon-as-char）：固有1、霆霓、霆心域都不算，电磁爆发留在目标上。
+          // 规则使用（DD-05 §4.1）：只在事件带 summon 时读，读到就决定分支（换个读法这三样就算 / 不算）
+          if (ev.summon) {
+            ctx.noteRule('char.心.summonAsChar', true)
+            if (!ctx.rules.summonCountsAsChar) return
+          }
           const slot = ctx.state.chars.findIndex(c => c.name === ev.by)
           if (!(v.固有1角色 & (1 << slot))) {                       // 固有1：每名角色第一次附加时 +1 层（最多 2 层）
             v.固有1角色 |= 1 << slot

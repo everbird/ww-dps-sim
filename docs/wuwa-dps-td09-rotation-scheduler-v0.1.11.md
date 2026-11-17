@@ -252,7 +252,7 @@ rotation:
   - 决策点 = 切人，与不是连段后续的出招。连段的后续（有 `comboFrom` 的动作，如 A2–A5）按玩家会预输入不加；插队的谐度破坏不加。
   - 与 `+N` 相加：先 `+N`，再操作延迟。例：`X Y+10`、延迟 3 帧，X 结束后第 13 帧开始 Y。
   - 每条的延迟在它第一次全部合法时定下（`QueueState.extra`），换下一条清空。等待原因 `input`，不计入 maxWait，也不进 `Summary.waits`。
-  - 抽样模式（总设计 T4）在这里加随机抖动：`simulate(r, { sample: { seed, jitter } })` 时每条的延迟是 `inputDelay` 加上 [0, jitter] 上的均匀整数，从 `SchedulerOptions.inputDelay` 取——调度器里唯一的随机注入点。
+  - 抽样模式（总设计 T4）在这里加随机抖动：抽样运行（`prepareRun` 的覆盖给 `sample: { seed, jitter }`，再 `runPrepared`；原来写成 `simulate(r, { sample })`，DD-10 删了兼容入口）时每条的延迟是 `inputDelay` 加上 [0, jitter] 上的均匀整数，从 `SchedulerOptions.inputDelay` 取——调度器里唯一的随机注入点。
   - 用途：`pnpm insight` 的操作容错（TD-10 §6）。
 
 ### 3.7 循环

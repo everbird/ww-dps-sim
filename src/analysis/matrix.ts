@@ -7,8 +7,6 @@ import type { EnemyPreset, GameData } from '../data/gamedata'
 import type { TrackedId } from '../engine'
 import type { Scenario } from '../data/scenario.schema'
 import { scopeShortLabel } from '../engine'
-import { resolveScenario } from '../engine'
-import { damageScopeOf } from '../engine'
 import type { DamageScope } from '../engine'
 import { runPrepared } from '../engine'
 import { preparedScenario } from './analysis'
@@ -154,7 +152,8 @@ export function matrixRun(teams: readonly { name: string; sc: Scenario }[], data
       return h
     }
     const r = relay(t.name, hitsOf, bosses, st, rules)
-    const scope = damageScopeOf(resolveScenario(t.sc, data))
+    // 口径取归一入口的有效配置（DD-10：生产运行只走 prepareRun；不另调 resolveScenario 绕过它）。矩阵只改敌人、目标与轮数，不改谐破口径
+    const scope = preparedScenario(t.sc, data).effective.damageScope
     out.push({ ...r, scope, scopeLabel: scopeShortLabel(scope) })
     st = r.end
   }

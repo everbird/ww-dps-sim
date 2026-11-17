@@ -5,7 +5,7 @@ import { sameDamageScope, scopeShortLabel, usableBasis } from '../engine'
 import type { DamageScope, RunStatus } from '../engine'
 import { ASSUMPTIONS, type AdjustPath } from '../engine'
 import { PROPOSITIONS, type Proposition, type CandidateChange } from '../engine'
-import { adjustment } from './insight'
+import { adjustment, mergeOverrides } from './insight'
 import { preparedScenario } from './analysis'
 import type { Scenario } from '../data/scenario.schema'
 import type { GameData } from '../data/gamedata'
@@ -66,11 +66,14 @@ export function baseOf(name: string, names: readonly string[]): string | null {
   return best
 }
 
-export function sensitivityMatrix(scenarios: readonly { name: string; sc: Scenario }[], data: GameData, onRow?: (row: Row) => void): Matrix {
+/** overrides：每一格都带上的基础覆盖（命令行的 --strict 经这里进 RunOverrides.strict，不写进场景：DD-01 §3.2、DD-02 §3.1 的 strictSource） */
+export function sensitivityMatrix(
+  scenarios: readonly { name: string; sc: Scenario }[], data: GameData, onRow?: (row: Row) => void, overrides: RunOverrides = {},
+): Matrix {
   const flips = flipsOf()
   const rows = scenarios.map(({ name, sc }) => {
-    const base = cell(sc, data)
-    const row: Row = { name, base, flips: flips.map(f => cell(sc, data, adjustment(f.path, f.value), base.scope)) }
+    const base = cell(sc, data, overrides)
+    const row: Row = { name, base, flips: flips.map(f => cell(sc, data, mergeOverrides(overrides, adjustment(f.path, f.value)), base.scope)) }
     onRow?.(row)
     return row
   })

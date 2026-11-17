@@ -3,22 +3,8 @@ import type { ActionId, ResourceKind, Slot } from '../data/common'
 import type { ActionDef, CoreResourceDef } from '../data/gamedata'
 import type { ReplayInsert } from '../data/replay'
 import { parseRotationLine, type Command } from '../data/scenario.schema'
+import { fillerTarget } from './filler'
 import { round } from './num'
-
-/** 补位 "~" 看的那一条：往后跳过同一角色的补位，第一条同一角色的普通动作，或紧接着的"switch <角色> 变奏"（看切出者的协奏满没满）、
- *  "at <世界秒>"（还没到就接着补）；遇到别的切人、等待或别的角色就没有 */
-function fillerTarget(list: Command[], i: number): Extract<Command, { kind: 'act' | 'switch' | 'at' }> | undefined {
-  const c = list[i]
-  if (c?.kind !== 'act') return undefined
-  for (let j = i + 1; j < list.length; j++) {
-    const n = list[j]!
-    if (n.kind === 'switch' && n.expectIntro) return n
-    if (n.kind === 'at') return n
-    if (n.kind !== 'act' || n.slot !== c.slot) return undefined
-    if (!n.filler) return n
-  }
-  return undefined
-}
 
 /** core：角色的核心资源槽（同步按名字找槽、按比例要有上限，DD-09 §3.2）；不给时同步只认能量与协奏 */
 export interface CompileMember { name: string; actions: Record<ActionId, ActionDef>; aliases: Record<string, ActionId>; core?: readonly CoreResourceDef[] }

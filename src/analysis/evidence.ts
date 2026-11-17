@@ -103,7 +103,7 @@ function predictionOf(o: Observation, run: PreparedRun, res: SimResult): Closure
   if (res.completion.status === 'engineError')
     return { observationId: o.id, predicted: null, covered: false, reason: `引擎错误，这次运行作废：${res.completion.engineError?.message ?? ''}` }
   const x = readObservation(o, {
-    resolved: run.resolved, log: res.log, completion: res.completion,
+    resolved: run.resolved, log: res.log, completion: res.completion, interventions: res.interventions,
     ...(res.diag?.resourceLedger ? { ledger: res.diag.resourceLedger } : {}), ...(res.diag?.eventMeta ? { meta: res.diag.eventMeta } : {}),
   })
   if (x.ok) {

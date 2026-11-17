@@ -224,7 +224,7 @@ export function explainFiring(s: SimState, trigger: BuffDef['trigger'], owner: S
 
 ### 4.4 真实求值的记录与检查点（DF-11）
 
-诊断选项 `commandVerdicts: true` 时，调度器每做一件下面的事就记一条。`evaluationIndex` 在一次运行里从 0 递增，同一帧里多次经过同一条指令也分得开：
+诊断选项 `commandVerdicts: true` 时，调度器每做一件下面的事就记一条。`evaluationIndex` 在一次运行里从 0 递增，同一帧里多次经过同一条指令也分得开。编号本身不随诊断开关：诊断关着也计数（计数在运行记忆 `progress.evalCount` 里、随快照保存），诊断关着拍的快照恢复后 `evaluation` 停止点与从头跑停在同一处（2026-11-17，Codex 审查 F5；DD-10 §3.1）：
 
 ```ts
 export interface CommandVerdict {
@@ -333,7 +333,7 @@ export function wouldHypotheticalEventTrigger(p: PreparedRun, f: Frame, event: H
 | buff 触发、资源型效果：调 `firing` 之前 | `explainFiring` 的结果；调完按真实结果标 `fired` 或 `checkedNotFired` |
 | 延长：这个定义此刻没有实例（基线直接 `continue`） | `notEntered`、`noInstance` |
 | 延长：有实例 | 触发条件与 `extendLimit`（延长次数到没到上限），以及结果 |
-| 消耗：遍历在场实例之前，先看这个目标有没有实例 | 没有：`notEntered`、`noInstance`；有，但实例的目标既不是发出者也不是敌人：`notEntered`、`targetMismatch`；否则逐条件给结果（DF-08） |
+| 消耗：遍历在场实例之前，先看这个目标有没有实例 | 没有：`notEntered`、`noInstance`；有，但实例的目标既不是发出者也不是敌人：`notEntered`、`targetMismatch`；否则逐条件给结果（DF-08）。一个目标可能有几个实例（全队 buff 每人一个），一条事件也可能有几个触发点（切人：切出、切入）：每个相关实例在自己被处理的那一刻记解释（分组带 `instance`），所有实例看完再给结论，有一个真的被消耗了就是 `fired`（2026-11-17，Codex 审查 F6：原来在第一个相关实例上就定了结论） |
 | 角色钩子 | `unsupported`：钩子内部未插桩。不把"没生成事件"硬归到某个门槛上 |
 
 `explainFiring` 是纯函数，放在实参里不违反 DD-05 §3.1 的写法约束。
@@ -470,12 +470,13 @@ export function diffRuns(a: { p: PreparedRun; res: SimResult }, b: { p: Prepared
   - **同一个键出现多次**时按序数配；一边少了的那几次，照上一条判。
   - **`commonStateFrames`**（`min(completedTicks)`）只给"同一世界帧的状态比较"用：两边都有合法的 `S[f]`，才比状态。它不是事件对应的门槛。
 - **`commands`**：
-  - 同一条轴（`sameAxis`）时按 `CommandRef` 对应；
+  - 同一条轴（`sameAxis`）时按 `CommandRef` 对应，两侧的指令取并集：轮数不同时只有一侧有的那几轮也列出，另一侧根本没有这条指令的按确认缺失处理（`addedOrRemoved`），不是"没执行到"（2026-11-17，Codex 审查 F7）。显式给了对应表就按对应表，空的对应表当作没给；
   - 不是同一条轴时，给了 `commandMapping` 才按映射对应。没给时 `CommandRef` 相同也不当作同一意图：删掉第一行之后，原来的第二行变成了第一行。这时只按结构键（同一轮、同一角色、同一动作、第几次）列候选，全部标 `ambiguous`；
   - 对应上的再分：`matched`（双方都执行了，带世界帧与战斗帧的差）、`addedOrRemoved`（一方执行、另一方跳过；或另一方自然结束而始终没有执行它）、`unanalyzed`（另一方在到达它之前就停了，带原因）。
 - **`events`**：
   - 同一条轴，或给了 `commandMapping`：对应键是"链顶端的来源 + 事件类型 + 角色 + 动作 + 判定名 + 第几跳 + 同键里的第几个"。链顶端是 `command` 时用 `CommandRef`（不是同一条轴时先经映射换算）；是 `autoInterject`、`timer`、`init` 时用它们各自的派生键，不借用指令的编号。这要求两边都带 `eventMeta`，没带的话 `diffRuns` 自己带诊断重跑。`basis` 是 `'commandRef'` 或 `'explicitMapping'`。
   - 不是同一条轴、又没有对应表：只用结构键找候选，全部返回 `ambiguous`，`candidates` 列出，不报 `matched`（架构 §2.6）。
+  - 只看某条指令引出的事件（`target.cmd`）时，对照一侧取对应表里它对应的那条；对应表里没有它，对照一侧就没有可比的事件（基准一侧的记 `unanalyzed`），不退回同一个编号——不是同一条轴时同一个编号可能是另一条指令。
 - **`firstDivergence`**：在"已配对、但帧或数值不同"与"确认缺失"的事件里，取发生得最早的那个（按两边中较早的世界帧，同帧再按基准的事件序号）。`unanalyzed` 的不算分歧，所以它不会指向另一方还没执行到的事件。
 - **阶段一可以只比指标**：每轮时长、合法性、完成状态。事件级的对应随后补。
 
@@ -534,6 +535,8 @@ pnpm query <场景> diff <另一个场景> --target metrics|commands|events
 ```
 
 - 公共参数：`--strict` / `--no-strict`、`--rule <路径>=<值>`（可重复）、`--option <键>=<值>`、`--seed`、`--continue-after-intent-unmet`。它们都进 `RunOverrides`。
+- `diff` 另有（2026-11-17 补上，合入后审查）：`--cmd <轮>:<条>.<项>`（`--target events` 只比这条指令引出的事件）、`--mapping <轮>:<条>.<项>=<轮>:<条>.<项>`（可重复，改轴时两边指令的对应，即 `commandMapping`）、`--cand-fill <组合名>`（对比场景的填法组合，DD-09 §3.1）。空的对应表当作没给。
+- 每个子命令尽量只跑一次：查询函数复用这一次运行（`statesAndResult`、`terminalStateOf`、`explainEvent` 与 `commandCheck` 的 `res`），信封的完成状态就取它；只有 `why-not`、`would` 另跑一次。能力说明用 §10.1 的固定字符串（`run` 的是 `run`，`events` 的是 `diag.eventMeta`，`ledger` 的是 `diag.resourceLedger`、`ledger.closure`、`ledger.totals`），伤害口径的两项由 `envelope()` 自己补（DD-02 §3.7）。
 - 退出码：查询本身出错（参数错、`QueryError`）是 2；运行是 `engineError` 时照样输出信封，退出码 1；其余 0。`axisFailed`、`truncated` 是有效结果，退出码 0，状态在信封里。
 - 命令行负责采集 `RunEnvironment`（DD-01 的 `run-env.ts`）。
 
@@ -550,7 +553,7 @@ pnpm query <场景> diff <另一个场景> --target metrics|commands|events
 | T07-7 | `explainFiring`、`diag.triggerChecks`（含提前跳过的分支）、两个触发查询 | `probe.ts`、`triggers.ts`、`query.ts` | C07-13～C07-15、C07-29 |
 | T07-8 | `diag.hitInputs`、`diag.hitMargins`、`explainEvent` | `simulate.ts` 的 `settle`、`buffs.ts` 的 `activeFor`、`formula.ts` 的 `ActiveBuff`、`query.ts` | C07-16～C07-19 |
 | T07-9 | `diffRuns` 的对应与缺失判定、`commands`、`events` | `query.ts` | C07-21、C07-30、C07-31 |
-| T07-10 | 命令行 | `src/cli/query.ts` | C07-24；§12 的集成清单 |
+| T07-10 | 命令行 | `src/cli/query.ts` | C07-24；§13 的集成清单 |
 
 T07-5 的插桩与 T07-7、T07-8 的记录都走 DD-05 的收集器，每步之后零干扰对拍照跑。
 

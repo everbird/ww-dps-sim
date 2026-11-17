@@ -106,20 +106,25 @@ function videoModel(sc: Scenario, r: ResolvedScenario, res: SimResult) {
     loop: sc.video.loop, missing: cmp.missing,
     // at：视频里的绝对时刻（秒），视图 E 拿它当锚点把视频和时间轴对上
     marks: cmp.rows.map(x => ({ ...x, f: fOf(x.line), vf: f0 + x.video * 60, at: videoSeconds(sc.video!.marks[String(x.line)]!) })),
-    // 录像里看到的动作：动作按角色的别名换成动作 ID（换不了的 action 为 null，视图里标"仿真里没有"）；@ 开头的是后台来源（summon 通道，DD-09 §4.1）
+    // 录像里看到的动作：动作按角色的别名换成动作 ID（换不了的 action 为 null，视图里标"仿真里没有"）；@ 开头的是后台来源（summon 通道，DD-09 §4.1），
+    // 同贴合度的配法（fit.ts）也可以是判定名（召唤物、阵的攻击）或"延奏"：分别记 judgment / outro，不算"仿真里没有"
     events: (sc.video.events ?? []).map(line => {
       const x = splitVideoLine(line)
       const [char, raw] = x.tokens as [string, string]
       const summon = raw.startsWith('@'), act = summon ? raw.slice(1) : raw
       const m = r.team.find(y => y.def.name === char)
       const id = m ? (Object.hasOwn(m.actions, act) ? act : m.aliases[act] ?? null) : null
-      return { t: x.t, char, label: act, action: id && m && Object.hasOwn(m.actions, id) ? id : null, ...(summon ? { summon: true } : {}) }
+      const action = id && m && Object.hasOwn(m.actions, id) ? id : null
+      const outro = summon && !action && act === '延奏'
+      const judgment = summon && !action && !outro && m && Object.values(m.actions).some(a => a.judgments.some(j => j.name === act)) ? act : null
+      return { t: x.t, char, label: act, action, ...(summon ? { summon: true, ...(judgment ? { judgment } : {}), ...(outro ? { outro: true } : {}) } : {}) }
     }),
     // 录像里敌人的血条：left = 剩余比例；视图 F 拿第一条的时刻起仿真的累计伤害 / 敌人生命对照
     // 换了敌人的（末尾写了敌人预设）另起一段：seg / left0 / hp 是这一段的起点、起点读数、这只的生命
     hp: hpPoints(sc.video, r),
     // 贴合度（DD-09 §4，视图 F 按通道显示匹配状态）与有条件推演的起点（第一次外部干预的世界帧，DD-09 §3.2）、三种时段（§3.1）
     fit: fitModel(sc, r, res),
+    // 第一次外部干预的世界帧（视图 F 按世界帧画底色；视频秒由视图按锚点换算，贴合度的 FitResult.conditionedFrom 是视频秒）
     conditionedFrom: res.interventions[0]?.f ?? null,
     interventions: res.interventions.map(i => ({
       f: i.f, kind: i.kind, firedTriggers: i.firedTriggers,

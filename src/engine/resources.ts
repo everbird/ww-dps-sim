@@ -11,6 +11,7 @@ import { activeFor } from './buffs'
 import type { Sim } from './context'
 import type { LedgerCauseKind } from './diagnostics'
 import { log, SLOTS, ticksWithinLife, type EventSource } from './kernel'
+import { CONCERTO_TIMING_POINTS } from './rule-points'
 import type { HitEvent, JudgmentRuntime, SimEvent, SimState } from './types'
 import { snap9, floor } from './num'
 
@@ -175,7 +176,12 @@ export function payCost(sim: Sim, s: SimState, slot: Slot, def: ActionDef): void
 export function castResources(sim: Sim, s: SimState, slot: Slot, src: EventSource): void {
   const sum: Partial<Record<ResourceKind, number>> = {}
   for (const g of src.def.castGains) if (g.atFrame === 0) sum[g.resource] = (sum[g.resource] ?? 0) + g.amount
-  if (concertoTimingOf(sim.r.rules, s.chars[slot].name) === 'onCast') {
+  const name = s.chars[slot].name
+  const timing = concertoTimingOf(sim.r.rules, name)
+  // 规则使用（DD-05 §4.1）：有按角色命题的角色读到时记；这个动作有由时间线生成、带协奏的判定，换个时机就是另一种给法
+  const point = CONCERTO_TIMING_POINTS[name]
+  if (point) sim.k.rule.note(point, timing, src.def.judgments.some(j => j.spawnFrame !== null && !src.skip?.includes(j.name) && j.gains.concerto !== 0))
+  if (timing === 'onCast') {
     for (const j of src.def.judgments) {
       if (j.spawnFrame === null || src.skip?.includes(j.name) || !j.gains.concerto) continue
       sum.concerto = (sum.concerto ?? 0) + j.gains.concerto * ticksWithinLife(j)
@@ -215,7 +221,11 @@ export function settleGains(
       put(x, add(sim, s, x, 'energy', base * share * regenOf(sim, s, x), full, 'hit', 'hit'))
     }
   } else if (base < 0) put(j.owner, add(sim, s, j.owner, 'energy', base, full, 'hit', 'hit'))   // 消耗：只作用于出伤者，不乘效率
-  const concerto = concertoTimingOf(rules, s.chars[j.owner].name) === 'onHit' || d.spawnFrame === null
+  const name = s.chars[j.owner].name
+  const timing = concertoTimingOf(rules, name)
+  const point = CONCERTO_TIMING_POINTS[name]          // 规则使用：由时间线生成、带协奏的判定，换个时机这一下就给 / 不给
+  if (point) sim.k.rule.note(point, timing, d.spawnFrame !== null && d.gains.concerto !== 0)
+  const concerto = timing === 'onHit' || d.spawnFrame === null
     ? add(sim, s, j.owner, 'concerto', d.gains.concerto, full, 'hit', 'hit') : 0
   const core = [0, 0, 0]
   for (let k = 0; k < 3; k++) {

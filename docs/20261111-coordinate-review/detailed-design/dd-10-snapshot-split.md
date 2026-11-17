@@ -1,7 +1,7 @@
 # DD-10 快照恢复、执行核心拆环与分析层切出
 
 **版本**：v0.2，2026-11-14，Claude。按第一轮评审修订（[意见文件](detailed-design-feedback.md) §10；本文涉及 DF-21、DF-22 与 `fromWire` 的非阻塞意见）。
-**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。T10-1～T10-8 已落地；实际验收范围与本地产物见 [DD-10 快照审计](dd-10-snapshot-audit.md)，未创建提交。
+**状态**：Final（2026-11-15）。本文 v0.2 即签署版本，Claude、Codex、Antigravity 三方通过（[意见文件](detailed-design-feedback.md) §16–§18；整套见[总览](README.md)）。T10-1～T10-8 已落地，随 PR #136 合入；实际验收范围与本地产物见 [DD-10 快照审计](dd-10-snapshot-audit.md)。
 **阶段**：五。**前置**：DD-01、DD-05、DD-07。执行与查询的契约稳定之后再动工。
 
 动工时复核（历史记录，以下待拆项现已完成）：DD-01、DD-05、DD-07 已落地。运行汇总已在 `runCore` 调用，不再从执行体调用；待拆的是执行体/敌人对不变量的引用、编译与运行期调度混置、报告对调度常量/错误类的引用。分析层实际为原 14 个加 `candidates`、`observations`、`zero-interference` 共 17 个文件。运行状态审计单独记在 [DD-10 快照审计](dd-10-snapshot-audit.md)，以其中逐项核对结果补充 §3.1。
@@ -115,6 +115,8 @@ flowchart LR
 - 新目录 `src/analysis/`，把架构附录 B 的 14 个分析文件加上本目录各文档新增的 `candidates.ts`、`observations.ts` 搬过去。
 - `src/engine/` 留下执行核心、①D 查询与诊断、② 规则与台账。
 - 搬之前的前提：这些文件对引擎的 import 只经公开入口。先在 `src/engine/index.ts`（新）列出公开入口：`prepareRun`、`runPrepared`、`query.ts` 的全部导出、类型、`ASSUMPTIONS`、`PROPOSITIONS`、`RULE_POINTS`，以及分析层确实要用的少数纯函数（`hitValue`、`battleFrameOf`、`composeStat`、`basis.ts` 的 `basisOf` 与 `usableBasis` 等，逐个列出）。分析文件改成只从 `../engine` 引入。
+  - 实现（2026-11-17 复核）：`query.ts` 的函数与结果类型除 `replayTo` 外都从 `index.ts` 导出；`replayTo` 交出的前缀 / 终态带着可变的运行体（`Sim`、`SimState` 本体），分析层要状态走 `stateAt` / `statesAt` / `terminalState` 的只读投影（`viewOf`）。`wire.ts` 的 `toWire` / `fromWire` / `WIRE_SCHEMA_VERSION` 一并导出。
+  - 分析层的文件最终是 18 个：架构附录 B 的 14 个，加 `candidates`、`observations`、`zero-interference`（DD-05 的零干扰对拍）与合入 DD-08 后的 `evidence`。
 - `tests/layering.test.ts` 的规则改成按目录判：`src/engine/` 不 import `src/analysis/`；`src/analysis/` 只 import `src/engine/index.ts` 与 `src/data/`。
 - 搬目录本身用 `git mv`，一个提交只搬不改；`src/cli/`、`web/app/`、`tests/` 的 import 路径在同一个提交里改。
 - 同时完成各分析文件从兼容外壳到 `prepareRun` + `runPrepared` 的迁移（DD-01 §3.7 留下的名单：`cards`、`optimize`、`matrix`、`sample`、`fuzz`、`scorecard` 等）。迁完后删 `simulate` 与 `prepareResolved`。

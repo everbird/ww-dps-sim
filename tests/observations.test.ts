@@ -89,6 +89,30 @@ describe('compareObservations（DD-08 §3.2）', () => {
     expect(readObservation(after, { resolved: p.resolved, log: full.log })).toMatchObject({ ok: false })
   })
 
+  test('resourceAt 碰到状态同步：同步按干预记录放回事件之间，晚到的同步不污染之前的读数（DD-09 §3.2；Codex 审查 F1）', () => {
+    // 第 2 帧 C 命中给 10 协奏；第 10 帧 X 开始；第 70 帧才同步到 62。改之前同步条目沿用第 2 帧那笔的位置，X 前后都读出 62
+    const p = prepared(['甲 C', '甲 X', 'wait 60', '同步 甲 协奏 =62'])
+    const res = runPrepared(p)
+    expect([res.log.find(e => e.type === 'actionStart' && e.action === 'X')!.f, res.interventions[0]!.f]).toEqual([10, 70])   // 前提
+    const at = { type: 'actionStart', char: '甲', action: 'X' }
+    const before = obs({ id: 'b', kind: 'resourceAt', at, when: 'before', char: '甲', resource: 'concerto', game: 10 })
+    const after = obs({ id: 'a', kind: 'resourceAt', at, when: 'after', char: '甲', resource: 'concerto', game: 10 })
+    const hit = obs({ id: 'h', kind: 'resourceAt', at: { type: 'hit', char: '甲', judgment: 'c' }, when: 'after', char: '甲', resource: 'concerto', game: 10 })
+    expect(compareObservations(p, res, [before, after, hit]).data.map(x => [x.observationId, x.status, x.sim]))
+      .toEqual([['b', 'passed', [10]], ['a', 'passed', [10]], ['h', 'passed', [10]]])
+    // 同一帧里同步排在事件之前：算"之前"；同步不是事件引出的，也不改它之前那条命中的 after
+    const q = prepared(['甲 C', 'wait 20', '同步 甲 协奏 =50', '甲 X'])
+    const r2 = runPrepared(q)
+    const x2 = r2.log.find(e => e.type === 'actionStart' && e.action === 'X')!
+    expect(x2.f).toBe(r2.interventions[0]!.f)                     // 前提：同一帧
+    expect(compareObservations(q, r2, [{ ...before, game: 50 }, { ...after, game: 50 }, hit]).data.map(x => [x.observationId, x.sim]))
+      .toEqual([['b', [50]], ['a', [50]], ['h', [10]]])
+    // 账本里有同步、却没给干预记录：取不到（不猜位置）
+    const full = runPrepared(p, { diag: { resourceLedger: true, eventMeta: true } })
+    expect(readObservation(before, { resolved: p.resolved, log: full.log, ledger: full.diag!.resourceLedger!, meta: full.diag!.eventMeta! }))
+      .toMatchObject({ ok: false, reason: expect.stringContaining('干预记录') })
+  })
+
   test('C08-4 switchType：expect intro，仿真里是普通切人 → conflicted、categorical', () => {
     const p = prepared(['甲 C', 'switch 乙'])
     const res = runPrepared(p)

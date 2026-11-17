@@ -56,14 +56,25 @@ const RHYTHM: readonly WaitCode[] = ['derive', 'priority', 'combo', 'started']
 const WAIT_LABEL: Partial<Record<WaitCode, string>> = {
   cooldown: '等冷却', resource: '等资源（大招能量、核心资源）', hook: '等角色条件（形态、层数）', concertoSettle: '等协奏出手', settled: '等前一招出手',
   switchCd: '等切人冷却', switchLock: '切人锁', globalStop: '大招动画（全局时停）', airborne: '等切出者跳起', inputLock: '输入锁',
+  entryBusy: '等切进来的人自己在后台的动作走完（地面出场技）', entry: '出场技的入场方式不对',
 }
 export const DEFAULT_DELAYS = [0, 3, 6, 10, 15] as const
 
-export function insight(sc: Scenario, data: GameData, opts: { delays?: readonly number[]; tight?: number } = {}): Insight {
+/** 两份覆盖合起来：后一份的同名项优先，rules、options、按条延迟、面板扰动逐键合并（命令行给的 --strict 之类的基础覆盖 + 各次试算自己的） */
+export function mergeOverrides(base: RunOverrides, more: RunOverrides): RunOverrides {
+  const keyed = <K extends 'rules' | 'options' | 'inputDelayAt' | 'panelDeltas'>(k: K) =>
+    base[k] || more[k] ? { [k]: { ...base[k], ...more[k] } } : {}
+  return { ...base, ...more, ...keyed('rules'), ...keyed('options'), ...keyed('inputDelayAt'), ...keyed('panelDeltas') }
+}
+
+/** overrides：每次运行都带上的基础覆盖（命令行的 --strict 经这里进 RunOverrides.strict，不写进场景：运行身份里的
+ *  strictSource 要记成 cli-override，DD-01 §3.2、DD-02 §3.1） */
+export function insight(sc: Scenario, data: GameData, opts: { delays?: readonly number[]; tight?: number; overrides?: RunOverrides } = {}): Insight {
   let runs = 0
-  const p = preparedScenario(sc, data)
+  const baseOv = opts.overrides ?? {}
+  const p = preparedScenario(sc, data, baseOv)
   const r = p.resolved
-  const run = (overrides: RunOverrides = {}): SimResult => { runs++; return runPrepared(preparedScenario(sc, data, overrides)) }
+  const run = (overrides: RunOverrides = {}): SimResult => { runs++; return runPrepared(preparedScenario(sc, data, mergeOverrides(baseOv, overrides))) }
   const base = run()
   const u0 = usableBasis(base)
   if (!u0.ok) throw new Error(`场景跑不通，先把轴修好再看结论：${u0.status}：${u0.reason}`)

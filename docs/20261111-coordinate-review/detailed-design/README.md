@@ -12,9 +12,9 @@
 - **v0.4 Final，三方审查通过。** Claude（意见文件 [§16](detailed-design-feedback.md)）、Codex（[§17](detailed-design-feedback.md)）、Antigravity（[§18](detailed-design-feedback.md#antigravity-round4-stamp)）均已签署 v0.4。
 - **DF-01～DF-25 全部 `done`**；补充提案 S-01～S-15（§6）与各文档的 Q 项按合稿后的写法确认。
 - **签署的文件版本**：本总览、DD-03、DD-08 为 v0.4；DD-01、DD-02、DD-07、DD-09 为 v0.3；DD-04、DD-05、DD-06、DD-10 为 v0.2。各文档的版本号不再统一抬高，开头都标了 Final。
-- **实施进度**：DD-01（2026-11-15，验收清单见其 §6）与 DD-03（2026-11-15，验收清单见其 §11）已实现；DD-04 先交付了 T04-1、T04-2（2026-11-16：`forteKeepOnSwitchBy` 与台账 `src/engine/propositions.ts`、`PropositionId`，即 §2 虚线的小契约），T04-3～T04-10 随后也已实现（见 DD-04 开头的状态）；DD-05（2026-11-16，验收清单见其 §9，实施记录见其 §12）、DD-06（2026-11-16，验收清单见其 §6，实施记录见其 §9）与 DD-07（2026-11-16，验收清单见其 §14，代表轴集成验收见其 §13）均已实现；DD-08 的 T08-1～T08-7、T08-9 已实现（2026-11-16，验收清单见其 §10，实施记录见其 §13），T08-8 等进游戏；DD-09 的 T09-1～T09-10 已实现（2026-11-16～17，验收清单见其 §8，实施记录见其 §11）；其余还没实现。签署的是设计与验收契约：实施时要兑现各 C 编号用例与验收清单；模型符不符合游戏，按 DD-08 的证据流程另行验证。DD-10 动工前按当时的代码再复核一次。
+- **实施进度**：DD-01（2026-11-15，验收清单见其 §6）与 DD-03（2026-11-15，验收清单见其 §11）已实现；DD-04 先交付了 T04-1、T04-2（2026-11-16：`forteKeepOnSwitchBy` 与台账 `src/engine/propositions.ts`、`PropositionId`，即 §2 虚线的小契约），T04-3～T04-10 随后也已实现（见 DD-04 开头的状态）；DD-05（2026-11-16，验收清单见其 §9，实施记录见其 §12）、DD-06（2026-11-16，验收清单见其 §6，实施记录见其 §9）与 DD-07（2026-11-16，验收清单见其 §14，代表轴集成验收见其 §13）均已实现；DD-08 的 T08-1～T08-7、T08-9 已实现（2026-11-16，验收清单见其 §10，实施记录见其 §13），T08-8 等进游戏；DD-09 的 T09-1～T09-10 已实现（2026-11-16～17，验收清单见其 §8，实施记录见其 §11）；DD-02（2026-11-16，`!@N` 按 DD02-Q3 延后，见[实现记录](dd-02-implementation.md)）与 DD-10（2026-11-16，见其开头的状态与[快照审计](dd-10-snapshot-audit.md)）也已实现。十个工作包都已落地；2026-11-17 两份合入后审查（[Antigravity](20261116-antigravity-hydragen-pr-reviews.md)、[Codex](20261116-codex-sol6.1-pr-reviews.md)）确认的问题已按本文修订记录最后一条修正。签署的是设计与验收契约：实施时要兑现各 C 编号用例与验收清单；模型符不符合游戏，按 DD-08 的证据流程另行验证。
 
-**下一步**：按 §2 的先后与依赖进入实施；DD-01、DD-03、DD-04、DD-05、DD-06、DD-07 已完成，阶段一、二代表轴集成验收的 DD-07 侧清单已勾选；DD-08 的软件部分已完成，第一条新闭环（`echo-input-priority`）的预测已登记，等进游戏（T08-8）；DD-09 已完成（录像输入与贴合度，五个录像场景按新写法重记），它的两条回填闭环里 `zhenhuanyu-window` 未验证，记录里写了训练场能区分它的实验。
+**下一步**：DD-01～DD-10 都已完成，阶段一、二代表轴集成验收的 DD-07 侧清单已勾选；剩下的是游戏侧的证据：DD-08 第一条新闭环（`echo-input-priority`）的预测已登记，等进游戏（T08-8）；DD-09 的两条回填闭环里 `zhenhuanyu-window` 未验证，记录里写了训练场能区分它的实验。`!@N`（DD-02 T02-8）按 DD02-Q3 延后。
 
 本目录定的是每个工作包改哪些文件、加哪些类型与函数、按什么顺序做、用哪些用例验收。
 
@@ -110,19 +110,23 @@ flowchart TD
 | `src/engine/propositions.ts` | 新 | ② | DD-04、DD-08 |
 | `src/engine/rule-points.ts` | 新 | ② | DD-05 |
 | `src/data/evidence.schema.ts` | 新 | 数据 | DD-08 |
-| `src/engine/compile.ts`、`src/engine/index.ts`、`src/analysis/` | 新 | ①、公开入口、④ | DD-10 |
-| `src/engine/candidates.ts` | 新 | ④ | DD-04 |
-| `src/engine/observations.ts` | 新 | ④ | DD-08、DD-09 |
+| `src/engine/compile.ts`、`src/engine/index.ts`、`src/engine/snapshot.ts`、`src/analysis/` | 新 | ①、公开入口、①D、④ | DD-10 |
+| `src/engine/wait-codes.ts`、`event-util.ts`、`filler.ts` | 新 | ① 执行组 | DD-10（等待代码、事件的小工具、补位看哪一条：执行组不能倒引编译与汇总，拆出来共用） |
+| `src/engine/resource-replay.ts` | 新 | ① 入口与汇总组 | DD-09（按日志重放资源，只套用同步） |
+| `src/analysis/candidates.ts`（原计划 `src/engine/candidates.ts`，DD-10 时随分析层迁出） | 新 | ④ | DD-04 |
+| `src/analysis/observations.ts`（原计划 `src/engine/observations.ts`，同上） | 新 | ④ | DD-08、DD-09 |
+| `src/analysis/evidence.ts`、`src/analysis/zero-interference.ts` | 新 | ④ | DD-08、DD-05 |
+| `src/data/replay.ts` | 新 | 数据 | DD-09（三种时段、填法组合、同一读数不能两用） |
 | `src/cli/run-env.ts`、`src/cli/query.ts`、`src/cli/candidates.ts`、`src/cli/evidence.ts` | 新 | 外围 | DD-01、DD-07、DD-04、DD-08 |
 | `src/engine/simulate.ts`、`scheduler.ts`、`kernel.ts`、`triggers.ts`、`resources.ts`、`switch.ts`、`buffs.ts`、`enemy.ts`、`types.ts`、`context.ts`、`summary.ts`、`invariants.ts` | 改 | ① | DD-01、02、03、05、06 |
-| `src/engine/analysis.ts`、`calibration.ts`、`fit.ts`、`sensitivity.ts`、`insight.ts`、`search.ts`、`plan.ts`、`trace.ts` | 改 | ④ | DD-03、DD-04、DD-09 |
+| `src/analysis/analysis.ts`、`calibration.ts`、`fit.ts`、`sensitivity.ts`、`insight.ts`、`search.ts`、`plan.ts`、`trace.ts` 等（基线在 `src/engine/`，DD-10 迁到 `src/analysis/`，共 18 个文件） | 改 | ④ | DD-03、DD-04、DD-09、DD-10 |
 | `src/data/scenario.schema.ts`、`calibration.schema.ts`、`gamedata.ts` | 改 | 数据 | DD-01、02、03、04 |
-| `tests/` 下的新测试文件 | 新 | — | 各文档"用例"一节。架构 §13.2 列的 12 个都在；另加 `candidates`、`propositions`、`observations`、`evidence`、`replay-input`、`snapshot` |
+| `tests/` 下的新测试文件 | 新 | — | 各文档"用例"一节。架构 §13.2 列的 12 个都在；另加 `candidates`、`propositions`、`observations`、`evidence`、`replay-input`、`snapshot`、`fit-eligibility`、`query-cli` |
 | `docs/proposition-ledger.md`、`docs/m0-strict-conclusion.md`、`docs/evidence/`、`docs/experiments/` | 新 | 文档 | DD-04、DD-08 |
 
 ## 6. 对架构文档的补充提案
 
-写详细设计时发现架构有几处要补。它们不改已有契约，都是加字段或把没写明的地方写明。**评审已通过（2026-11-15），S-01～S-15 生效**：架构附录 C 已记一条指到本表；架构各节的正文暂时不逐处改写，与本表不一致的地方以本表为准，实施相应工作包时再把对应的几条写进架构正文。
+写详细设计时发现架构有几处要补。它们不改已有契约，都是加字段或把没写明的地方写明。**评审已通过（2026-11-15），S-01～S-15 生效**：架构附录 C 已记一条指到本表。2026-11-17 十个工作包都实现之后，各条已写进架构的相应各节（架构附录 C 最后一条列出位置），以架构正文为准。
 
 | 编号 | 补什么 | 理由 | 出处 |
 |---|---|---|---|
@@ -194,3 +198,12 @@ flowchart TD
 - **实施改正（2026-11-16，DD-06 实施）**：按 §8 的做法直接改正文，DD-06 §9 逐条列出：账本条目多一个 `battleFrame`，合计可按战斗帧开窗口（`clock`）；收集器另加 `ledgerRelateIntervention`（能量满的条目带干预记录的序号）与 `ledgerLength`（边界观察点的账本上界），期初由 `resources.ts` 的 `openingLedger` 在 `simulate.ts` 的 `execute` 里记；闭合检查收结构化的 `LedgerBalances`；合计都是带符号的变化量；交叉检查 `crossCheckLedger` 放在 `diagnostics.ts`；调试表的 `gainSteps` 给了账本时列出整次被截掉的请求，按日志重放改成每步取整到 1e-9（与账本逐点相同；改之前 7 个场景各有 1 个点在 `.xx5` 边界上少 0.01）。
 - **实施改正（2026-11-16，DD-08 实施）**：按 §8 的做法直接改正文，DD-08 §13 逐条列出：选择器按事件种类限定字段、interval 的 to 从 from 之后数、`fps` 与 switchType 的 `expect` 可空；`compareValue` 的检查顺序与 `resourceAt` 的 after 口径；闭环记录多 `covered` / `reason` / `alternatives` / `manual` / `detail`，登记是第四个子命令 `register`，`--verify` 只在提交号以外的身份或预测值不同时报过期；证据条目按 setup、用途与关系并条；重跑在命题没有判定点与假设时按 `appliesToChars`；回填为卜灵加了按角色覆盖的规则 `concertoTimingBy`；当前游戏版本写在版本清单的 `gameVersion`。
 - **实施改正（2026-11-17，DD-09 实施）**：按 §8 的做法直接改正文，DD-09 §11 逐条列出：`replay` 块多 `videoOffset`（时段写视频秒）；未观测时段的填法插在闭合的 `at` 之前、条号接在 rotation 之后，组合名与 `--fill`；同步是第四个资源写入点（DD-06 把期初也算一处），`skippedTriggers` 只在实际变了时含 `resource`；观测 ID 的编号与过渡期冻结的参照 `switch#m<条号>`，跳字可写"动作/判定"；定性冲突只有切人类型与跳字分支两种；签名、score 的系数与容差、不可评估的条件；`fitVariants` 换签名，规则候选不跑策略类与改输入的；台账的 `Binding` 加 `scenario`（证据任务的候选是另一份场景）；能量满连同 `forced-energy`、干预记录的 `'fill'`、账本的 `'forced'` 在五个录像场景重记之后删了，C09-18 的第三部分与 C01-17、C02-6、C06-9 / C06-12 的合成轴改用同步。
+- **合入后审查的修正（2026-11-17，Claude）**：PR #127～#137 合入后两份审查（[Antigravity](20261116-antigravity-hydragen-pr-reviews.md)、[Codex](20261116-codex-sol6.1-pr-reviews.md)）逐条核对代码，确认的问题按 §8 的做法修正，各文档在相应位置补了说明；用例见各条括注的测试文件。设计与契约没有推翻，改的是实现没兑现的地方：
+  - **DD-02 §3.7**：信封的 `unsupported` 由 `envelope()` 按 `damageScope` 自动补两项（未含谐度破坏、`damage.disharmonyDependent`），不靠各查询自己记得（`wire-json`）。`--strict` 在 `pnpm insight` / `pnpm sensitivity` 经 `RunOverrides.strict` 传入，不再写回场景（`strictSource` 记 `cli-override`；`insight`）。
+  - **DD-03 §7.1**：失败原因先读完成状态（`engineError`、`axisFailure`），废弃的 `res.error` 只作退路——续跑后又碰到别的错误时原因是终止意图（`strict-teaching`）；截断原因列出余量数字（`truncationRemainsText`）。新增稳态专用闸门 `usableSteady`：候选报告按稳态出数，就按稳态判，不按场景目标（`candidates`）。轴卡片打死几倍血的各列各自过闸门（`scorecard`）。§7.4：轴搜索、按套路排轴、候选报告的变体改变了谐破口径时那一行标出（`scopeMismatch`，命令行与网页标 †；`search`、`candidates`），矩阵的汇总表加谐破列，网页对比页列出两边口径、致死溢出与按提供者的覆盖率。
+  - **DD-04**：报告的"不适用""未实现"是各自独立的一组，用顿号列，不用 × 连成组合；`m0-strict-conclusion.md` 在干净的提交上重新生成；台账测试改用正式的严格代表轴。
+  - **DD-05 §4.1**：判定点由 16 个增至 18 个：心的钩子读 `summonCountsAsChar`（`char.心.summonAsChar`），卜灵按角色的协奏时机（`res.concertoTiming.卜灵`，命题 `buling-concerto-timing`；角色名放在台账一层的 `CONCERTO_TIMING_POINTS`，引擎代码不写角色名）（`rule-usage`）。
+  - **DD-07**：每一次真实求值都编号，诊断关着也计，快照恢复后 evaluation 停止点接得上（`snapshot`）；消耗型的触发检查看完所有相关实例再给结论，分组标明实例（§6，`state-query`）；同一条轴的跨运行比较两侧指令取并集，空的对应表当作没给，`--cmd` 指的指令不在对应表里时对照一侧没有可比的事件（§9）；假想事件里队伍外的角色名报 `unsupported`（不再抛 TypeError）；`stateAt` 带缓存遇到越界帧不再从头重放；快照载荷损坏时 `resumeFrom` 返回查询错误。§10：`pnpm query` 的能力说明用 §10.1 的固定字符串，`run` 带 `strictReport` 与谐破口径，`diff` 加 `--cmd`、`--mapping`、`--cand-fill`，各子命令复用查询自己的那次运行（`statesAndResult`、`terminalStateOf`、`explainEvent` / `commandCheck` 的 `res`），命令行有了测试（`query-cli`）。`src/engine/index.ts` 导出 `query.ts` 除 `replayTo` 以外的全部函数与结果类型（`replayTo` 交出可变的运行体，分析层要状态走只读投影）。
+  - **DD-08 §3.2**：`resourceAt` 的同步条目按干预记录的锚点放回事件之间（`afterEventSeq` 之后、下一条之前），不再沿用上一笔账的位置——晚到的同步不再污染更早的读数（`observations`）；`ObservationSource` 多了 `interventions`。调试表的 `gainSteps` 遇到同步时锚点前移，两条路的同步说明相同（`resource-ledger`）。
+  - **DD-09 §4.2、§4.4**：歧义匹配里可配的每一个事件都与录像定性冲突时记 `conflicted`（进资格签名与最早偏差），部分冲突仍是 `ambiguous` 并写明；评分集合只能放 `score` 观测，显式子集与直接传评分定义都查（`fit-eligibility`）。网页装配场景 buff（录像场景写了 `environment`），有几个填法组合时按第一个跑并提示（`web`）；视图 F 的后台来源（`@`）按判定名、"延奏"也能配，画成空心标记。
+  - **DD-10**：`fillerTarget` 挪进执行组的 `filler.ts`（编译与调度原来各抄一份），`scheduler.ts` 去掉过渡转发，分层检查去掉不存在的 `execution`；删掉误提交的过程文件 `TODO_RESUME.md`。

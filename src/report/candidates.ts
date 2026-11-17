@@ -2,7 +2,10 @@
 import type { CandidateOutcome, CandidateRef, StrictCandidateReport } from '../analysis/candidates'
 const num = (x: number | null) => x === null ? '不可比' : x.toFixed(4)
 const pct = (x: number | null) => x === null ? '不可比' : `${(x * 100).toFixed(4)}%`
-const names = (cs: readonly CandidateRef[]) => cs.map(c => `${c.propositionId}=${c.candidateId}`).join(' × ')
+const refText = (c: CandidateRef) => `${c.propositionId}=${c.candidateId}`
+/** 一个组合（单项或两两）里的候选用 × 连；各自独立的一组候选（不适用、未实现）用顿号列，不写成组合 */
+const combo = (cs: readonly CandidateRef[]) => cs.map(refText).join(' × ')
+const list = (cs: readonly CandidateRef[]) => cs.map(refText).join('、')
 const esc = (s: string) => s.replaceAll('|', '\\|').replaceAll('\n', ' ')
 export function candidateMarkdown(r: StrictCandidateReport, command: string): string {
   const b = r.baseline, c = r.coverage
@@ -22,10 +25,12 @@ export function candidateMarkdown(r: StrictCandidateReport, command: string): st
     'DPS same 仅指数值相同（相对差 ≤ 1e-9）；窗口变化幅度不是误差条或置信区间。下表保留全部失败结果。')
   function table(title: string, rows: readonly CandidateOutcome[]) {
     out.push('', `## ${title}`, '', '| 候选 | 状态 | 窗口 | 每轮秒 | DPS | DPS变化 | 轮长 | 窗口幅度内 | 日志相同 | runId / 失败原因 |', '|---|---|---|---:|---:|---|---|---|---|---|')
-    for (const o of rows) out.push(`| ${names(o.candidates)} | ${o.status} | ${o.comparedWindow} | ${num(o.steadyLoopBattleSeconds)} | ${num(o.steadyDps)} | ${o.dps.status} ${pct(o.dps.ratio)} | ${o.loopTime} | ${o.dps.withinWindowVariation ?? '—'} | ${o.identicalLog} | ${o.runId}${o.failureDetail ? ' / ' + esc(o.failureDetail) : ''} |`)
+    for (const o of rows) out.push(`| ${combo(o.candidates)}${o.scopeMismatch ? ' †' : ''} | ${o.status} | ${o.comparedWindow} | ${num(o.steadyLoopBattleSeconds)} | ${num(o.steadyDps)} | ${o.dps.status} ${pct(o.dps.ratio)} | ${o.loopTime} | ${o.dps.withinWindowVariation ?? '—'} | ${o.identicalLog} | ${o.runId}${o.failureDetail ? ' / ' + esc(o.failureDetail) : ''} |`)
   }
   table('主表：机制与数据', r.mechanismOutcomes)
   table('操作策略试验（不计主表覆盖）', r.policyTrials)
+  if ([...r.mechanismOutcomes, ...r.policyTrials].some(o => o.scopeMismatch))
+    out.push('', '† 这个变体改变了谐度破坏口径（DD-03 §7.4），DPS 与基准不在同一口径上，差值里包含谐度破坏的伤害变化。')
   out.push('', '## 时刻对照（+6f；门槛级对照未做）', '')
   for (const [label, rows] of [['变长', r.timingSensitive], ['变快', r.timingFaster]] as const)
     for (const t of rows) out.push(`- ${label}：${t.cmd.line}.${t.cmd.item}，${t.window}，每轮 ${num(t.loopSecondsDelta)} 秒；记录到的等待原因 ${t.recordedWaits.join('、')}；gateConfirmed=false；${t.controlRunId}`)
@@ -34,7 +39,7 @@ export function candidateMarkdown(r: StrictCandidateReport, command: string): st
   out.push('', '## 记录到的等待（稳态；不是门槛级结论）', '')
   for (const w of r.observedWaits) out.push(`- 第 ${w.cmd.loop} 轮 ${w.cmd.line}.${w.cmd.item}：${w.code}，${w.battleFrames} 战斗帧，intent=${w.intent}；${w.reason}`)
   out.push('', '## 按意图的等待、提示与完成状态', '', '```json', JSON.stringify({ completion: b.completion, strictReport: b.strictReport, warnings: b.warnings }, null, 2), '```', '', '## 排除与未覆盖', '')
-  for (const x of r.excluded) out.push(`- 排除 ${names(x.candidates)}：${x.reason}`)
-  out.push(`- 不适用：${names(r.notApplicable) || '无'}`, `- 未实现：${names(r.unimplemented) || '无'}`, `- 未列全：${r.nonExhaustivePropositions.join('、')}`, `- 依赖的未证实规则：${r.unverifiedDependencies.join('、')}`)
+  for (const x of r.excluded) out.push(`- 排除 ${combo(x.candidates)}：${x.reason}`)
+  out.push(`- 不适用：${list(r.notApplicable) || '无'}`, `- 未实现：${list(r.unimplemented) || '无'}`, `- 未列全：${r.nonExhaustivePropositions.join('、')}`, `- 依赖的未证实规则：${r.unverifiedDependencies.join('、')}`)
   return out.join('\n') + '\n'
 }

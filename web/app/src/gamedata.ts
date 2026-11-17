@@ -12,6 +12,7 @@ import { parseOrThrow } from '../../../src/data/validate'
 import echoSets from '../../../data/curated/echo-sets'
 import echoes from '../../../data/curated/echoes'
 import effects from '../../../data/curated/effects'
+import envBuffs from '../../../data/curated/env-buffs'
 import weapons from '../../../data/curated/weapons'
 
 const characters = Object.values(import.meta.glob<{ default: CharacterModuleDef }>('../../../data/curated/characters/*.ts', { eager: true }))
@@ -55,6 +56,7 @@ export async function loadGameData(): Promise<GameData> {
       ...(tuneBreak ? { tuneBreak } : {}),
       ...(effectsFile ? { effects: effectsFile } : {}),
     },
-    { characters, weapons, echoes, echoSets, effects, envBuffs: [] },
+    // 场景 buff（深塔、矩阵的环境特性）同命令行一起装配：录像剖析的场景写了 environment，缺了会在装配时报"没有这个环境特性"
+    { characters, weapons, echoes, echoSets, effects, envBuffs },
   )
 }

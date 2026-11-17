@@ -13,8 +13,8 @@ import { describe } from 'vitest'
 import { RuleCounter } from '../../src/engine/diagnostics'
 import type { CompileMember } from '../../src/engine/compile'
 import type { Kernel } from '../../src/engine/kernel'
-import { createScheduler, newQueue, runLoop, ScheduleError, type SchedulerOptions } from '../../src/engine/scheduler'
-import type { CharRuntime, SimEvent, SimState } from '../../src/engine/types'
+import { createScheduler, newQueue, runLoop, type SchedulerOptions } from '../../src/engine/scheduler'
+import { ScheduleError, type CharRuntime, type SimEvent, type SimState } from '../../src/engine/types'
 
 export type Cmd =
   | { act: Slot; action: ActionId; force?: boolean; delay?: number; optional?: true; filler?: true }

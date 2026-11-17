@@ -15,11 +15,11 @@ import {
   type RunEnvironment, type RunIdentity, type RunOptions, type RunOverrides, type StatePrefix, type StrictReport,
 } from './run-types'
 import { checkStrictSource, checkStrictResolved, STRICT_CHECKS } from './strict'
-import { INTENT_WAITS, ScheduleError, type ScheduleErrorCode } from './scheduler'
+import { INTENT_WAITS } from './wait-codes'
 import { checkHit, checkTick } from './invariants'
 import { execute, type Execution, type Inspect } from './simulate'
 import { battleFrameOf, summarize, windowEnd } from './summary'
-import type { ResolvedMember, ResolvedScenario, SimEvent, SimResult, SimState, Summary } from './types'
+import { ScheduleError, type ResolvedMember, type ResolvedScenario, type ScheduleErrorCode, type SimEvent, type SimResult, type SimState, type Summary } from './types'
 
 // ---------------------------------------------------------------------------
 // §3.2 归一入口
