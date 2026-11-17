@@ -826,3 +826,10 @@ TypeScript 严格模式编译通过，33 个用例全部通过：
 - §3.2 出招检查表与 §3.5 切人检查现在有对应的纯只读检查函数：`src/engine/probe.ts` 的 `explainAct` 与 `explainSwitch`，按同一顺序输出 `ConditionCheck[]`（状态为 `met` / `unmet` / `shortCircuited` / `notApplicable` / `unmodeled`，第一个 `unmet`/`unmodeled` 之后标 `speculative: true`）；`firstBlocking` 的代码与 `WaitCode` 对应（C07-9 在三条合成轴与代表轴 `m0-video-eq-不打谐破.yaml` 上逐求值点验证一致）。
 - `SchedulerOptions` 新增可选 `afterEvaluate` 检查点回调，在每次真实 `evaluate()` 之后触发；开启 `DiagOptions.commandVerdicts` 时 `createScheduler` 记录 `head` / `interject` / `evaluate` / `execute` / `skip` 明细及指令当时的 `{ force, delay, until, readyAt, extra }`。
 - `src/engine/query.ts` 提供 `commandCheck(p, cmd, { evaluationIndex? })` 与 `rawActionCheck(p, f, slot, action)`：分别解释某条指令为何执行 / 跳过 / 失败 / 未到达（`executed` / `skipped` / `failedHere` / `notReached`），以及任意合法边界 `S[f]` 上 P1 前的原始出招条件。
+
+## 录像输入补充（2026-11-16～17，DD-09 §3）
+
+- **同步**：`同步 <角色> <资源> <值>`（`sync`）。资源写能量、协奏或核心资源名（`energy`、`concerto` 也行）；值写 `=62`（绝对值）或 `62%`（占上限的比例，不超过 100%；没有上限的核心资源不能写比例，编译期报错）。执行时把这个人的这种资源设成采用值、截在 [0, 上限]：不写日志、不发业务触发（没有 `resource`、`resourceFull`，钩子看不到），只记一条外部干预记录（`firedTriggers: false`，`skippedTriggers` 列出本来会发的触发）与一条账本条目。调度上同 `敌人 失谐`：到了队首当场执行，不占时间。假设 `forced-sync`；严格入口报 `strict.external`。
+- **录像的三种时段 `replay.segments`**（只在 `purpose: replay` 下能写）：已知空闲 `idle { from, to, basis }`、未观测 `unobserved { from, to, reason, fills }`，没列出的时段按已观测处理。时段写视频秒，`replay.videoOffset` 换成世界秒（视频秒 = 世界秒 + videoOffset）。编译期查：时段不重叠、`from < to`、要落在相邻两个 `at` 之间（中间有 `at` 就是跨过了已观测的动作）。未观测时段的填法插在闭合的 `at` 之前，填法的行编成第 N + 1 条起的指令（N 是 rotation 的条数），rotation 原有各条的条号不变；有几种填法时按组合分别运行（最多 16 个，超过要指定），命令行用 `--fill <组合名>` 选一个。已知空闲在执行上就是轴里那段的等待，不插指令。
+- **"补位 `~` 打到 `at`"** 在录像剖析的场景里不再用：那一段要么是已观测的动作（照写），要么是未观测（写填法）。调度器的补位规则不变，教学轴照旧能写。
+- **`能量满 <角色>`**（`fill-energy`，2026-10-27 起）在五个录像场景按新写法重记之后删了（DD-09 §3.3、T09-10）：写了报错，指向 `同步 <角色> 能量 100%`。`Command` 的 `fill` 与 `SchedulerOptions.fillCommand` 一起删。

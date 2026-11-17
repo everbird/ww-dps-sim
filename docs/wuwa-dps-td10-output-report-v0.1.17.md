@@ -447,7 +447,17 @@ search:
 
 ### 6.4 录像贴合度 `replayFit` / `fitVariants`（DD-03 §8）
 
-录像剖析场景（`src/engine/fit.ts`、`pnpm fit`）按五类观测计算贴合度：`coverage` 记录 `anchors`（锚点匹配的切人）、`events` / `eventsMatched`、`hp`、`concerto`、`core` 条数。当 `anchors + events + hp + concerto + core === 0`（没有任何有效观测覆盖）时，判定 **`assessable: false`、`score: null`**，不返回有误导性的 `0` 分；`fitVariants` 将所有 `assessable === false` 的变体单独归入 `FitReport.unassessable` 并在终端单独汇报，不混入 `rows` 排名。
+录像剖析场景（`src/analysis/fit.ts`、`pnpm fit`）按五类观测计算贴合度：`coverage` 记录 `anchors`（锚点匹配的切人）、`events` / `eventsMatched`、`hp`、`concerto`、`core` 条数。当 `anchors + events + hp + concerto + core === 0`（没有任何有效观测覆盖）时，判定 **`assessable: false`、`score: null`**，不返回有误导性的 `0` 分；`fitVariants` 将所有 `assessable === false` 的变体单独归入 `FitReport.unassessable` 并在终端单独汇报，不混入 `rows` 排名。
+
+**2026-11-16～17 起按 DD-09 §4 重做**（上面一段是 DD-03 时的写法，`Fit`、`FIT_WEIGHTS`、`coverage` 已删）：
+
+- **观测有固定的 ID 与通道**：切人 `switch#N`（`video.switches`；还没补的旧场景由原场景的写法冻结参照 `switch#m<条号>`，报告里标明不是录像读数）、前台动作 `action#N` 与后台来源 `summon#N`（`video.events`，`@` 标后台）、跳字 `hit#N`（`video.hits`）、血条 `hp#N`、协奏环 `concerto#N`、回路条 `core#N`。ID 只看原场景 `video` 里的位置，变体之间不变。行末 `!given`（被用作输入）、`!display`（只展示）的不进评分。
+- **匹配**：切人、前台动作、后台来源、跳字四个通道各自一对一、在整个通道的顺序里保序（带权的最长公共子序列：先配对数最多，再总时刻差最小；窗口 10 秒）；另一种配法同样好（对数相同、代价不超过 0.25 秒）的标 `ambiguous` 并列出候选。血条、协奏环、回路条取那一刻的值；运行在那之前就停了的标 `uncovered`。每条观测的结果是 matched / conflicted / ambiguous / unmatched / uncovered。**定性冲突**只有两种：切人类型不同；跳字在标明的分支上超出容差。
+- **先资格后排序**：评分集合事先定（缺省是全部评分用途的观测），连同各通道的系数、容差与窗口组成 `FitScoreDef`。资格签名 = 有没有定性冲突 + 评分集合里匹配上的 ID + 覆盖的通道 + 窗口完整；**只在签名相同的组里按 `score` 排**（Σ 通道系数 × 平均绝对残差，没有概率意义），跨组只列覆盖与冲突的差别。共有子集只在显式要求时比（`--common-subset`），并列出各自被排除的观测。不可评估（一个锚点都没对上，或评分观测只有第一个锚点那次切人）的不进任何组；引擎错误在分组之前排除，单列、保留原因。
+- **报告身份** = 各运行的 runId + 评分定义的摘要 + 观测内容的摘要（`observationSetDigest`：读数、用途、参照、锚点与对齐规则）；`video` 不进执行身份，只改一个读数或锚点时 runId 不变、报告身份变。身份不同的两份报告不能并排比（`pnpm fit --compare`）。
+- **两张表**：规则候选（台账里与当前采用值不同的机制候选，经 DD-04 的分类；策略类、没实现的、不适用的、改轴的输入的不跑，列出原因）与改轴候选（轴里读到的动作去掉 / 挪到附近 / 对调；空出来的行留成空行）各自分组排序，互不混排。
+- **最早偏差**：评分集合里按视频时刻排，第一条冲突、落单或残差超过该通道容差的观测；只是最早检测到的，不保证此前的隐藏状态都对。另报**有条件推演**：第一次外部干预（同步、敌人 失谐 / 换）之后的结果是有条件的。
+- **填法组合**（未观测时段的几种填法，TD-09 录像输入补充）：各组合分别运行、分别报告，不当上下界。
 
 ---
 
@@ -505,3 +515,4 @@ search:
 - **v0.1.17（2026-10-22）**：新增 §6.3 评价轴的多个维度：比较的目标 `goal`（稳态 / 打死几倍血 / 前 N 秒，`Summary.kill`、`Summary.goal`，`basisOf` 按目标，命令行 `--goal`、`--repeat`）与轴卡片 `pnpm scorecard`（难度、养成门槛、可信度，帕累托前沿）已实现。§7 加 `tests/goal.test.ts`、`tests/scorecard.test.ts`。
 - **v0.1.16（2026-10-22）**：§6.1 轴搜索 `--hand`：M0 按"熟练"第一名是 D1（+5.80%），心队 C6 上卜灵第二段 Q 先放另存成 C8（零帧 +3.18%、熟练 +6.20%）。
 - **v0.1.17 补记（2026-11-15，并回 DD-03）**：§1 补充 `buffUptimeBy`、`kill.{eventSeq?, overflow?}`、`goal.lethal?`；§3 并入 `usableBasis` 口径闸门、击杀溢出拆分与 `zeroDuration` 处理、`uptimeBy` 及 `DamageScope` 口径提示（`sim` / `compare` / `scorecard` / `matrix` / `sensitivity`）；新增 §6.4 录像贴合度 `assessable` / `score: null` / `unassessable`。
+- **2026-11-17（DD-09，不改版本号）**：§6.4 贴合度按 DD-09 §4 重做：观测的 ID 与通道、一对一保序匹配与歧义、定性冲突、资格签名与分组、报告身份、规则候选与改轴候选两张表、最早偏差与有条件推演、填法组合分别报告。
