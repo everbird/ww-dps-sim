@@ -206,22 +206,14 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
       return sim.hooks[slot]?.canStart?.(sim.ctxs[slot]!, def.id) ?? true
     },
     onSwitch: (st, _k, from, to, cmd) => onSwitch(sim, st, from, to, cmd),
-    // 录像指令（敌人 失谐 / 换、能量满）照旧发业务事件，另记一条外部干预记录（DD-01 §3.8）：写在业务动作之前，
+    // 录像指令（敌人 失谐 / 换）照旧发业务事件，另记一条外部干预记录（DD-01 §3.8）：写在业务动作之前，
     // 所以它排在自己引出的 resource / enemyState 事件之前
     enemyCommand: (st, c) => {
       intervene(sim, st, { kind: c.state === 'swap' ? 'enemySwap' : 'enemyDisharmony' })
       if (c.state === 'swap') swapEnemy(sim, st, c.preset)
       else forceDisharmony(sim, st)
     },
-    // 能量满 <角色>（录像剖析，假设 forced-energy）：补到大招能量上限，记一条 resource（cause forced）
-    fillCommand: (st, slot) => {
-      const before = st.chars[slot].energy, adopted = r.team[slot]!.def.energyCost
-      intervene(sim, st, { kind: 'fill', target: { slot, resource: 'energy' }, before, adopted, delta: adopted - before })
-      assume(st, 'forced-energy', `${st.chars[slot].name} 第 ${st.frame} 帧`)
-      const mark = k.diag?.ledgerMark()
-      grant(sim, st, slot, 'energy', adopted - before, 'forced')
-      if (mark !== undefined) k.diag!.ledgerRelateIntervention(mark, sim.interventions.length - 1)   // 账本：这条写入是哪条干预引起的
-    },
+    // 旧写法"能量满 <角色>"（假设 forced-energy）在五个录像场景重记之后删了（DD-09 §3.3、T09-10），改用下面的同步
     // 同步 <角色> <资源> <值>（录像剖析，DD-09 §3.2，假设 forced-sync）：静默地设成采用值，不写日志、不发业务触发；
     // 记一条干预记录（firedTriggers false，列出本来会发的触发）与一条账本条目（关联到这条干预）
     syncCommand: (st, c) => {
@@ -306,7 +298,7 @@ export function execute(r: ResolvedScenario, opts: SimOptions = {}, inspect: Ins
 }
 
 /** 记一条外部干预记录（DD-01 §3.8；架构 §4.1）：一直都有，不进日志的触发队列。afterEventSeq = 此刻日志里最后一条的下标。
- *  skipped 为 undefined：照旧发业务事件的干预（能量满、敌人 失谐 / 换）；给了是静默的同步（DD-09 §3.2），列出本来会发的触发 */
+ *  skipped 为 undefined：照旧发业务事件的干预（敌人 失谐 / 换）；给了是静默的同步（DD-09 §3.2），列出本来会发的触发 */
 function intervene(sim: Sim, s: SimState, rec: Pick<InterventionRecord, 'kind' | 'target' | 'before' | 'adopted' | 'delta'>, skipped?: readonly string[]): void {
   const list = sim.interventions
   const afterEventSeq = s.log.length - 1

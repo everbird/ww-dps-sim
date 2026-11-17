@@ -84,7 +84,6 @@ dataDescribe('心雷卜深塔 41 期中 3 的录像', () => {
     const ult = out.log.find(e => e.type === 'actionStart' && e.char === '心' && e.action === '照世·大招' && e.f >= s.f)!
     expect(Math.abs(ult.f / 60 + 11 - 108.0)).toBeLessThan(0.3)
     expect(out.summary.assumptions.map(a => a.id)).toContain('forced-sync')
-    expect(out.summary.assumptions.map(a => a.id)).not.toContain('forced-energy')
   })
 
   test('第六版（DD-09）：轴里没有补位；看不清的普攻写成未观测时段（填法照原补位）、回路条确认没打的写成已知空闲；卜灵第一、四段的声骸补上后，心镇红尘第 2、4、5 轮与录像差 0.04%', () => {

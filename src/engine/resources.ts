@@ -65,7 +65,7 @@ function add(
 /** grant 收到的 cause 归类（DD-06 §3.2）：认不出的就是资源型效果（cause 是它的定义 ID）。效果的 ID 因此不能取这几个保留字 */
 function causeKindOf(cause: string): LedgerCauseKind {
   switch (cause) {
-    case 'cast': case 'cost': case 'hook': case 'break': case 'forced': return cause
+    case 'cast': case 'cost': case 'hook': case 'break': return cause
     default: return 'effect'
   }
 }

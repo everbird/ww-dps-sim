@@ -1,7 +1,7 @@
 // src/engine/resource-replay.ts —— 按日志重放角色资源（DD-09 §3.2，DF-09）：invariants.ts 的 checkLog、summary.ts 的 loops() 与
 // resourceTimeline() 三处共用。从开局值出发：命中按 hit.gains 的实际增减累加，resource 事件取它的 value；
 // 每条事件之后，按 afterEventSeq、orderInAnchor 套用排在它后面的静默同步（外部干预记录里 kind === 'sync' 的）。
-// 只套用同步：能量满、敌人 失谐 / 换 照旧写了业务事件，再套一次就重复了。afterEventSeq = -1 的（第一条事件之前）最先套用。
+// 只套用同步：敌人 失谐 / 换 照旧写了业务事件，再套一次就重复了（原来的能量满也是，DD-09 T09-10 删了）。afterEventSeq = -1 的（第一条事件之前）最先套用。
 // 诊断关着时也成立：干预记录一直都有（架构 §4.1）。
 // 浮点：照原来三处的写法直接相加（不按 1e-9 取整），没有同步的场景结果逐位不变。
 import type { ResourceKind } from '../data/common'

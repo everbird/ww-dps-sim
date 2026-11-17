@@ -31,7 +31,7 @@ describe('DD-02 严格教学入口', () => {
     expect(eventsOfLog(c.log, 'switch')[0]?.intro).toBe(false)
     expect(run(extra, { strict: false }).completion.status).toBe('completed')
   })
-  test.each([['甲 打~','strict.filler'],['甲 打?','strict.optional'],['at 3','strict.at'],['能量满 甲','strict.external'],['敌人 失谐','strict.external']])('C02-6 %s', (line, code) => {
+  test.each([['甲 打~','strict.filler'],['甲 打?','strict.optional'],['at 3','strict.at'],['同步 甲 能量 100%','strict.external'],['敌人 失谐','strict.external']])('C02-6 %s', (line, code) => {
     const p = prepareRun(sc({ rotation: [line] }), data); expect(p).toMatchObject({ ok: false, issues: [{ code, line: 1, item: 1 }] })
   })
   test('C02-8/9/10 来源、录像与操作延迟', () => {

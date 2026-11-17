@@ -189,7 +189,7 @@ export interface InterventionRecord {
   readonly phase: string
   readonly afterEventSeq: number            // 排在哪条业务事件之后；还没有事件时是 -1
   readonly orderInAnchor: number            // 同一个 afterEventSeq 下的先后
-  readonly kind: 'sync' | 'fill' | 'enemyDisharmony' | 'enemySwap'
+  readonly kind: 'sync' | 'enemyDisharmony' | 'enemySwap'   // 旧的 'fill'（能量满）随写法一起删了（DD-09 T09-10）
   readonly target?: { readonly slot?: Slot; readonly resource?: ResourceKind }
   readonly before?: number
   readonly adopted?: number

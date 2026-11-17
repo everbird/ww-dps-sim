@@ -403,7 +403,7 @@ export interface SimResult {
   /** 完成状态（DD-01 §3.6；架构 §2.2–§2.4）：跑完、截断、轴失败还是引擎错误，停在哪，执行了几轮，目标达成没有。
    *  引擎与钩子里的异常不往外抛，记成 engineError：调用方靠 status 判断，不能靠"没抛异常" */
   completion: RunCompletion
-  /** 外部干预记录（架构 §4.1）：录像指令（能量满、敌人 失谐 / 换）各一条 */
+  /** 外部干预记录（架构 §4.1）：录像指令（同步、敌人 失谐 / 换）各一条 */
   interventions: InterventionRecord[]
   /** 严格入口的检查结果（DD-02 §3.4）：所有入口都有；DD-02 做完之前只有 entry 与空数组 */
   strictReport: StrictReport

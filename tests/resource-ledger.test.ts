@@ -214,10 +214,10 @@ describe('C06-8 运行中钩子改资源；资源型效果', () => {
 })
 
 // 含各种写入的合成轴（约 300 帧）：期初、初始化钩子、命中（全队能量、协奏、核心资源，到上限被截）、起手即得、钩子（给队友、扣到 0 以下）、
-// 破盾回能、能量满（外部干预）、大招扣费、延奏清零、资源型效果
+// 破盾回能、同步（外部干预，DD-09 §3.2；原来是能量满，T09-10 删了）、大招扣费、延奏清零、资源型效果
 const MIXED: { sc: Partial<ScenarioInput>; hooks: CharacterHooks } = {
   sc: {
-    rotation: ['甲 X', '甲 W', '能量满 甲', '甲 R', '甲 C', 'switch 乙 变奏', '乙 Y', 'wait 200'],
+    rotation: ['甲 X', '甲 W', '同步 甲 能量 100%', '甲 R', '甲 C', 'switch 乙 变奏', '乙 Y', 'wait 200'],
     initial: { energy: [50, 0, 0], concerto: [95, 0, 0], core: { 甲: { 槽一: 9 } } },
     enemy: { custom: { level: 90, whiteBar: 10 } },
   },
@@ -240,15 +240,16 @@ describe('C06-9 任意帧边界闭合', () => {
     expect(run.res.completion.status).toBe('completed')
     expect(N).toBeGreaterThanOrEqual(300)
     const kinds = new Set(run.ledger.map(e => e.causeKind))
-    expect([...kinds].sort()).toEqual(['break', 'cast', 'cost', 'effect', 'forced', 'hit', 'hook', 'initial', 'outro'])
+    expect([...kinds].sort()).toEqual(['break', 'cast', 'cost', 'effect', 'hit', 'hook', 'initial', 'outro', 'sync'])
     expect(run.ledger.some(e => e.phase === 'init' && e.causeKind === 'hook')).toBe(true)
     expect(run.ledger.some(e => e.clippedDelta > 0)).toBe(true)
     expect(run.ledger.some(e => e.clippedDelta < 0)).toBe(true)
     expect(run.ledger.some(e => e.kind === 'change' && e.actualDelta === 0)).toBe(true)
-    // 能量满关联到那条外部干预记录
-    const forced = run.ledger.find(e => e.causeKind === 'forced')!
-    expect(forced.relatedInterventionIndex).toBe(0)
-    expect(run.res.interventions[0]).toMatchObject({ kind: 'fill', target: { slot: 0, resource: 'energy' } })
+    // 同步关联到那条外部干预记录（静默：没有对应的 resource 事件）
+    const synced = run.ledger.find(e => e.causeKind === 'sync')!
+    expect(synced).toMatchObject({ kind: 'sync', relatedInterventionIndex: 0 })
+    expect(synced.relatedEventSeq).toBeUndefined()
+    expect(run.res.interventions[0]).toMatchObject({ kind: 'sync', target: { slot: 0, resource: 'energy' }, firedTriggers: false })
     expectClosed(run)
   })
 
@@ -291,7 +292,7 @@ describe('C06-9 任意帧边界闭合', () => {
         expect(a[i]!.clippedAtCap + b[i]!.clippedAtCap).toBeCloseTo(r.clippedAtCap, 9)
       })
     }
-    // 只看命中给的：甲的能量是 X 自己命中的 10 与乙 Y 命中分来的 2.5（破盾、能量满、扣费不算）；initial / final 仍是实际余额
+    // 只看命中给的：甲的能量是 X 自己命中的 10 与乙 Y 命中分来的 2.5（破盾、同步、扣费不算）；initial / final 仍是实际余额
     const hitOnly = ledgerTotals(run.ledger, { causeKinds: ['hit'] }).find(r => r.slot === 0 && r.resource === 'energy')!
     expect(hitOnly).toMatchObject({ initial: 50, gainRequested: 12.5, gainActual: 12.5, spendRequested: 0, outroReset: 0 })
     expect(hitOnly.final).toBe(rows.find(r => r.slot === 0 && r.resource === 'energy')!.final)
@@ -355,7 +356,7 @@ describe('C06-12 调试表改用账本', () => {
     const p = mixed()
     const run = ledgerRun(p, [], true)
     const res: SimResult = run.res
-    const steps = gainSteps(res.log, p.resolved, metaOf(res))
+    const steps = gainSteps(res.log, p.resolved, metaOf(res), undefined, res.interventions)   // 静默的同步只在干预记录里（DD-09 §3.2）
     const fromLog = resourceTracks(steps, p.resolved)
     const fromLedger = resourceTracks(steps, p.resolved, run.ledger)
     expect(fromLog.every(x => x.fromLog === true)).toBe(true)

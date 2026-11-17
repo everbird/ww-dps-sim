@@ -209,16 +209,17 @@ export type ScenarioInput = z.input<typeof ScenarioSchema>
 //   switch <角色> 变奏                       切人，并说明这里应是变奏：切出者协奏没满时照常普通切人，记一条警告（轴可能有问题；TD-09 §2.1、§3.5）
 //   wait <N>        或  等待 <N>             空等 N 帧（战斗帧）
 //   at <秒>         或  对时 <秒>            等到世界秒（从仿真开始算，含大招动画）：照录像记的轴用它把每段对到视频的时刻；
-//                                            前面的补位 "~" 看它——还没到时间就接着补（2026-10-25 桃渊散录像）
+//                                            前面的补位 "~" 看它——还没到时间就接着补（2026-10-25 桃渊散录像）。录像剖析的场景不再这样用：
+//                                            看不清打了什么的段写成 replay.segments 的未观测时段与填法（DD-09 §3.1、§3.3）
 //   敌人 失谐       或  enemy disharmony     让目标此刻失谐（偏谐值满、谐度破坏按钮亮）：录像剖析里多敌人的段，谐度破坏打的是仿真没建的小怪，
 //                                            照录像手写谐度破坏时先写它（2026-10-27 中 3 录像，假设 forced-disharmony）
 //   敌人 换 <预设>  或  enemy swap <预设>    此刻换成一只新的敌人（enemies.json 的 id，COST 要和场景的敌人相同）：敌人量表、异常效应、
 //                                            挂在敌人身上的 buff 都从头来；录像剖析里深塔一只 boss 打死、下一只出来时写（2026-10-27 中 4 录像，假设 enemy-swap）
-//   能量满 <角色>   或  fill-energy <角色>   这个人的大招能量此刻补满：录像剖析里大招按钮已经亮了、仿真能量还差一点（多敌人的段仿真只建一只，
-//                                            少算了打小怪的能量），照录像按钮亮的时刻写（2026-10-27 中 3 录像，假设 forced-energy）
 //   同步 <角色> <资源> <值>  或  sync <角色> <资源> <值>   状态同步（DD-09 §3.2）：把这个人的这种资源此刻设成录像里读到的值（截在 [0, 上限]）。
 //                                            资源：能量 | 协奏 | <核心资源名>（energy、concerto 也行）；值：=62 绝对值，62% 占上限的比例。
-//                                            不写日志、不发业务触发（钩子看不到，不出 resourceFull），只记一条外部干预记录与账本条目；从第一次起是有条件推演（假设 forced-sync）
+//                                            不写日志、不发业务触发（钩子看不到，不出 resourceFull），只记一条外部干预记录与账本条目；从第一次起是有条件推演（假设 forced-sync）。
+//                                            旧写法"能量满 <角色>"（fill-energy，2026-10-27 中 3，假设 forced-energy）在五个录像场景重记之后删了（DD-09 §3.3、T09-10）：
+//                                            写了报错，换成"同步 <角色> 能量 100%"
 //   空格后的 # 起是注释；全角的 ！？＋＃、全角数字和全角空格按半角处理
 
 export type RotationItem =
@@ -228,7 +229,6 @@ export type RotationItem =
   | { kind: 'at'; seconds: number }
   | { kind: 'enemy'; state: 'disharmony' }
   | { kind: 'enemy'; state: 'swap'; preset: string }
-  | { kind: 'fill'; char: string; resource: 'energy' }
   | { kind: 'sync'; char: string; resource: string; value: number; unit: 'value' | 'ratio' }
 
 /** 解析一行：返回这一行的指令（空行、纯注释 → []），或错误说明 */
@@ -259,10 +259,8 @@ export function parseRotationLine(text: string): RotationItem[] | { error: strin
       return { error: `"${s}" 格式不对：应为 敌人 失谐（enemy disharmony）或 敌人 换 <敌人预设>（enemy swap <预设>）` }
     return [{ kind: 'enemy', state: 'disharmony' }]
   }
-  if (head === '能量满' || head === 'fill-energy') {
-    if (tok.length !== 2) return { error: `"${s}" 格式不对：应为 ${head} <角色>` }
-    return [{ kind: 'fill', char: tok[1]!, resource: 'energy' }]
-  }
+  if (head === '能量满' || head === 'fill-energy')
+    return { error: `"${s}"：能量满（fill-energy）已经删了（DD-09 §3.3），改写成"同步 ${tok[1] ?? '<角色>'} 能量 100%"（不发业务触发，只记一条外部干预）` }
   if (head === '同步' || head === 'sync') {
     const bad = { error: `"${s}" 格式不对：应为 ${head} <角色> <资源> <值>，资源写能量、协奏或核心资源名，值写 =62（绝对值）或 62%（占上限的比例）` }
     if (tok.length !== 4) return bad
@@ -318,6 +316,5 @@ export type Command =
   | { kind: 'at'; line: number; item: number; frame: number }   // 等到世界帧 frame（排轴写 at <世界秒>；测试台直接给帧）
   | { kind: 'enemy'; line: number; item: number; state: 'disharmony' }   // 敌人 失谐：让目标此刻失谐（录像剖析）
   | { kind: 'enemy'; line: number; item: number; state: 'swap'; preset: string }   // 敌人 换 <预设>：此刻换成一只新敌人（录像剖析：深塔一只打死、下一只出来）
-  | { kind: 'fill'; line: number; item: number; slot: Slot; resource: 'energy' }   // 能量满 <角色>：此刻补满大招能量（录像剖析）
   // 同步 <角色> <资源> <值>（DD-09 §3.2）：unit value 是绝对值，ratio 是占上限的比例（小数）；执行时换算、截在 [0, 上限]
   | { kind: 'sync'; line: number; item: number; slot: Slot; resource: ResourceKind; value: number; unit: 'value' | 'ratio' }

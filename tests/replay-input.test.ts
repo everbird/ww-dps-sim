@@ -149,19 +149,20 @@ describe('按日志重放资源要读干预记录（DD-09 §3.2，DF-09；C09-18
     expect(checkLog(p.resolved, res)).toEqual([])
   })
 
-  test('只套用 kind sync：照旧写业务事件的干预（能量满、敌人 失谐）不重复计算', () => {
-    const p = prep({ rotation: ['甲 X', '能量满 甲', '敌人 失谐', 'wait 40'], initial: { energy: 'empty' } })
+  test('只套用 kind sync：照旧写业务事件的干预（敌人 失谐）不重复计算；旧写法"能量满"删了（T09-10），写了报错、指向同步', () => {
+    const p = prep({ rotation: ['甲 X', '同步 甲 能量 =30', '敌人 失谐', 'wait 40'], initial: { energy: 'empty' } })
     const { res, s } = inspect(p)
-    expect(res.interventions.map(i => i.kind)).toEqual(['fill', 'enemyDisharmony'])
+    expect(res.interventions.map(i => i.kind)).toEqual(['sync', 'enemyDisharmony'])
     expect(res.summary.resourceTimeline.at(-1)!.energy[0]).toBe(s.chars[0].energy)
     expect(checkLog(p.resolved, res)).toEqual([])
-    // 直接喂一条 fill 记录给重放：resource 事件已经写了值，记录本身不再套用
+    // 直接喂给重放：resource 事件已经写了值；不是 sync 的记录（即使带着资源的值）不套用，sync 的套用
     const r = p.resolved
-    const log: SimEvent[] = [{ type: 'resource', f: 3, t: 0.05, char: '甲', resource: 'energy', delta: 100, value: 100, cause: 'forced' }]
-    const fill: InterventionRecord = { index: 0, f: 3, phase: 'P2', afterEventSeq: -1, orderInAnchor: 0, kind: 'fill', target: { slot: 0, resource: 'energy' }, before: 0, adopted: 100, delta: 100, firedTriggers: true, skippedTriggers: [] }
-    const sync: InterventionRecord = { ...fill, index: 1, afterEventSeq: 0, kind: 'sync', before: 100, adopted: 30, delta: -70, firedTriggers: false, skippedTriggers: ['resource'] }
-    expect(replayResources(log, r, [fill]).energy[0]).toBe(100)
-    expect(replayResources(log, r, [fill, sync]).energy[0]).toBe(30)
+    const log: SimEvent[] = [{ type: 'resource', f: 3, t: 0.05, char: '甲', resource: 'energy', delta: 100, value: 100, cause: 'hook' }]
+    const other: InterventionRecord = { index: 0, f: 3, phase: 'P2', afterEventSeq: -1, orderInAnchor: 0, kind: 'enemyDisharmony', target: { slot: 0, resource: 'energy' }, before: 0, adopted: 100, delta: 100, firedTriggers: true, skippedTriggers: [] }
+    const sync: InterventionRecord = { ...other, index: 1, afterEventSeq: 0, kind: 'sync', before: 100, adopted: 30, delta: -70, firedTriggers: false, skippedTriggers: ['resource'] }
+    expect(replayResources(log, r, [other]).energy[0]).toBe(100)
+    expect(replayResources(log, r, [other, sync]).energy[0]).toBe(30)
+    for (const line of ['能量满 甲', 'fill-energy 甲']) expect(parseRotationLine(line)).toEqual({ error: expect.stringMatching(/已经删了.*同步 甲 能量 100%/) })
   })
 })
 

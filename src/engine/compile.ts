@@ -94,7 +94,6 @@ function compileLines(lines: string[], team: CompileMember[], firstLine = 1): { 
         return
       }
       if (it.kind === 'switch') { commands.push({ kind: 'switch', line, item, to: slot, ...(it.expectIntro ? { expectIntro: true } : {}) }); return }
-      if (it.kind === 'fill') { commands.push({ kind: 'fill', line, item, slot, resource: it.resource }); return }
       if (it.kind === 'sync') {
         const x = syncResourceKind(team[slot]!, it.resource, it.unit)
         if ('problem' in x) { issues.push({ line, item, message: x.problem }); return }
