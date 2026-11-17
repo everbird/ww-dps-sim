@@ -114,9 +114,8 @@
   // 录像剖析（purpose: replay）：DPS 只作参考，标出来
   if (M.purpose === 'replay') $('kpi').title = '录像剖析：敌人走位、出招不建模，DPS 只作参考'
   // 有条件推演（DD-09 §3.2）：从第一次外部干预（同步、敌人 失谐 / 换）起，之后的时间轴是在外部指定的状态上推演的
+  // conditionedFrom 是世界帧（时间轴按世界帧画）；提示里另按锚点换成视频时刻
   const COND = M.video && M.video.conditionedFrom !== undefined ? M.video.conditionedFrom : null
-  const condKpi = COND !== null ? `<div class="kpi" title="同步补上的是读数那一刻的值，恢复不了隐藏的历史（什么时候到的满、内置冷却的时刻、因为没满而没触发的效果）；差额不等于机制缺口"><span>有条件推演</span>第 ${COND} 帧起</div>` : ''
-  $('kpi').innerHTML = (M.purpose === 'replay' ? '<div class="kpi"><span>录像剖析</span>DPS 仅供参考</div>' : '') + condKpi + [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
   const sec = f => D.clock.secAt(f)
   const clamp = f => Math.max(0, Math.min(D.lastF, f))
   let cursor = 0, playing = false
@@ -131,23 +130,31 @@
   const t2f = t => WW.videoMap(V.anchors, V.map).t2f(t)
   const f2t = f => WW.videoMap(V.anchors, V.map).f2t(f)
   const vclock = t => { const m = Math.floor(t / 60); return `${m}:${(t - m * 60).toFixed(2).padStart(5, '0')}` }
+  const condKpi = COND !== null ? `<div class="kpi" title="同步补上的是读数那一刻的值，恢复不了隐藏的历史（什么时候到的满、内置冷却的时刻、因为没满而没触发的效果）；差额不等于机制缺口"><span>有条件推演</span>第 ${COND} 帧起${V.anchors.length ? `（视频 ${vclock(Math.max(0, f2t(COND)))}）` : ''}</div>` : ''
+  $('kpi').innerHTML = (M.purpose === 'replay' ? '<div class="kpi"><span>录像剖析</span>DPS 仅供参考</div>' : '') + condKpi + [S.steady && ['稳态 DPS', WW.fmt(S.steady.dps)], ['DPS', WW.fmt(S.dps)], ['总伤害', WW.fmt(S.total)]].filter(Boolean).filter(([, v]) => v !== 'NaN').map(([k, v]) => `<div class="kpi"><span>${k}</span>${v}</div>`).join('')
 
   // ---- 录像里看到的动作（场景 video.events）：按锚点换成世界帧，找仿真里同一个人同一个动作离得最近的（前后 5 秒内） ----
   const EVS = (M.video && M.video.events) || []
+  const OUTROS = M.log.filter(e => e.type === 'outro')
   let EVM = []
+  // 后台来源（@，DD-09 §4.1）除了召唤动作，还可以是判定名（召唤物、阵的攻击：按命中找）或"延奏"（按 outro 找）
+  const unknownSrc = e => e.action === null && !e.judgment && !e.outro
   function matchEvents() {
     EVM = EVS.map(e => {
       const fv = Math.round(t2f(e.t)), i = names.indexOf(e.char)
       let best = null
-      if (e.action) for (const a of D.actions) if (a.char === e.char && a.id === e.action && Math.abs(a.start - fv) <= 300 && (best === null || Math.abs(a.start - fv) < Math.abs(best - fv))) best = a.start
+      const near = f => Math.abs(f - fv) <= 300 && (best === null || Math.abs(f - fv) < Math.abs(best - fv))
+      if (e.action) { for (const a of D.actions) if (a.char === e.char && a.id === e.action && near(a.start)) best = a.start }
+      else if (e.judgment) { for (const h of D.hits) if (h.char === e.char && h.judgment === e.judgment && near(h.f)) best = h.f }
+      else if (e.outro) { for (const o of OUTROS) if (o.char === e.char && near(o.f)) best = o.f }
       return { ...e, i, fv, sim: best }
     })
   }
   /** 仿真比录像早 / 晚多少（世界秒，按锚点换算）；对不上的说明原因 */
-  const evNote = e => e.action === null ? '仿真里没有这个动作' : e.sim === null ? '仿真里前后 5 秒内没放' : Math.abs(e.sim - e.fv) < 6 ? '对齐' : `仿真${e.sim > e.fv ? '晚' : '早'} ${(Math.abs(e.sim - e.fv) / 60).toFixed(1)} 秒`
+  const evNote = e => unknownSrc(e) ? (e.summon ? '仿真里没有这个后台来源' : '仿真里没有这个动作') : e.sim === null ? '仿真里前后 5 秒内没有' : Math.abs(e.sim - e.fv) < 6 ? '对齐' : `仿真${e.sim > e.fv ? '晚' : '早'} ${(Math.abs(e.sim - e.fv) / 60).toFixed(1)} 秒`
   const evText = e => {
-    const n = evNote(e), cls = e.action === null || e.sim === null ? 'slow' : Math.abs(e.sim - e.fv) < 6 ? 'd' : e.sim > e.fv ? 'slow' : 'fast'
-    return `${WW.esc(e.label)} ${vclock(e.t)}<span class="${cls}">（${WW.esc(n)}）</span>`
+    const n = evNote(e), cls = unknownSrc(e) || e.sim === null ? 'slow' : Math.abs(e.sim - e.fv) < 6 ? 'd' : e.sim > e.fv ? 'slow' : 'fast'
+    return `${e.summon ? '@' : ''}${WW.esc(e.label)} ${vclock(e.t)}<span class="${cls}">（${WW.esc(n)}）</span>`
   }
 
   // ---- 分段：每次上场（切人到切人） ----
@@ -270,7 +277,8 @@
     W = Math.max(320, SV.clientWidth || SV.parentElement.clientWidth - 16)
     SV.setAttribute('viewBox', `0 0 ${W} ${H}`); SV.setAttribute('height', H)
     const out = []
-    for (const e of EVM) out.push(`<path d="M${x(e.fv) - 4} 0 h8 l-4 ${H_EV - 2} z" style="fill:var(--c${e.i})"${e.sim === null ? ' opacity="0.45"' : ''}><title>${WW.esc(`录像 ${vclock(e.t)} ${e.char} ${e.label}`)}：${WW.esc(evNote(e))}</title></path>`)
+    // 前台动作是实心三角，后台来源（@）是空心的（TD-12 §2.1：后台来源单独画）
+    for (const e of EVM) out.push(`<path d="M${x(e.fv) - 4} 0 h8 l-4 ${H_EV - 2} z" style="${e.summon ? `fill:none;stroke:var(--c${e.i})" stroke-width="1.3` : `fill:var(--c${e.i})`}"${e.sim === null ? ' opacity="0.45"' : ''}><title>${WW.esc(`录像 ${vclock(e.t)} ${e.char} ${e.summon ? '后台 ' : ''}${e.label}`)}：${WW.esc(evNote(e))}</title></path>`)
     for (const o of D.onField) out.push(`<rect x="${x(o.start)}" y="${TOP}" width="${Math.max(1, x(o.end) - x(o.start))}" height="${H_SEG}" style="fill:var(--c${o.i})" opacity="0.85"><title>${WW.esc(o.char)} ${sec(o.start).toFixed(1)}–${sec(o.end).toFixed(1)} 战斗秒</title></rect>`)
     // 录像的三种时段（DD-09 §3.1）：已知空闲灰、未观测紫（填法是推演的输入）；有条件推演（第一次外部干预之后）整片加底色
     for (const g of RSEG) {

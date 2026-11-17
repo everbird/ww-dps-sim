@@ -1,5 +1,6 @@
 <!-- 对比：两份场景比稳态 DPS，拆到角色、动作、buff 覆盖率与面板（同 pnpm compare，TD-10 §3）；另有时间轴对照（原型） -->
 <script lang="ts">
+  import { scopeReasonLabel, scopeShortLabel } from '../../../../src/engine/basis'
   import { call } from '../api'
   import { find, ofKind } from '../docs.svelte'
   import { fmt, pct, pct2, signed } from '../fmt'
@@ -26,6 +27,11 @@
     busy = false
   }
   const span = (x: { lo: number; hi: number }) => `${((x.hi - x.lo) / 60).toFixed(2)} 秒`
+  type Scope = NonNullable<typeof out>['base']['scope']
+  // 谐破口径（DD-03 §7.4）：两边都列出来，原因放在悬停里
+  const scopeTitle = (s: Scope) => (s.tuneBreak.mode === 'omitted' ? `${scopeReasonLabel(s.tuneBreak.reason)}；${s.tuneBreak.gauge === 'off' ? '偏谐量表关闭' : '偏谐量表仍累积'}` : '')
+  // 击杀口径的致死溢出（DD-03 §6）：按有效扣血封顶，溢出部分不在 DPS 里
+  const overflowText = (x: { overflow: number; rawTotal: number } | undefined) => (x ? `溢出 ${fmt(x.overflow)}（未封顶共 ${fmt(x.rawTotal)}）` : '')
   const PANEL = [['atk', '攻击', fmt], ['critRate', '暴击', pct], ['critDamage', '暴伤', pct], ['energyRegen', '共鸣效率', pct]] as const
 </script>
 
@@ -43,10 +49,16 @@
   <section class="card pad">
     {#if out.scopeMismatch}<p class="error">{out.scopeMismatch.note}</p>{/if}
     <dl class="stats">
-      <div><dt>基准 · {out.base.label} · {span(out.base)}</dt><dd>{fmt(out.base.dps)}</dd></div>
-      <div><dt>对比 · {out.other.label} · {span(out.other)}</dt><dd>{fmt(out.other.dps)}</dd></div>
+      <div><dt>基准 · {out.base.label} · {span(out.base)} · <span title={scopeTitle(out.base.scope)}>谐破 {scopeShortLabel(out.base.scope)}</span></dt><dd>{fmt(out.base.dps)}</dd></div>
+      <div><dt>对比 · {out.other.label} · {span(out.other)} · <span title={scopeTitle(out.other.scope)}>谐破 {scopeShortLabel(out.other.scope)}</span></dt><dd>{fmt(out.other.dps)}</dd></div>
       <div><dt>差</dt><dd class:up={out.delta > 0} class:down={out.delta < 0}>{signed(out.delta)} <small>（{signed(out.pct, pct2)}）</small></dd></div>
     </dl>
+    {#if out.baseOverflow || out.otherOverflow}
+      <p class="muted">击杀截断按有效扣血封顶：{[out.baseOverflow ? `基准${overflowText(out.baseOverflow)}` : '', out.otherOverflow ? `对比${overflowText(out.otherOverflow)}` : ''].filter(Boolean).join('、')}</p>
+    {/if}
+    {#if Math.max(out.base.spread, out.other.spread) > 0}
+      <p class="muted">稳态窗口挪一轮 DPS 变 ±{pct2(Math.max(out.base.spread, out.other.spread))}{#if Math.abs(out.pct) < Math.max(out.base.spread, out.other.spread)}：这次的差在误差内，不算更好或更差{/if}</p>
+    {/if}
   </section>
   <DiffTimeline tl={out.timeline} team={out.panels.base.map(p => p.name)} />
   <div class="grid">
@@ -57,7 +69,7 @@
         <tbody>{#each out.panels.base as p, i}<tr><td>{p.name}</td>{#each PANEL as [k, , f]}{@const a = p[k]}{@const b = out.panels.other[i]![k]}<td class="r" class:changed={a !== b}>{f(a)}{#if a !== b} → {f(b)}{/if}</td>{/each}</tr>{/each}</tbody>
       </table></div>
     </section>
-    {#each [['分角色（每秒伤害）', out.byChar, fmt, 0.5], ['分动作（每秒伤害，前 12）', out.byAction.slice(0, 12), fmt, 0.5], ['buff 覆盖率（差 ≥ 1 个百分点）', out.uptime.filter(d => Math.abs(d.delta) >= 0.01).slice(0, 12), pct, 0]] as const as [title, rows, f, eps]}
+    {#each [['分角色（每秒伤害）', out.byChar, fmt, 0.5], ['分动作（每秒伤害，前 12）', out.byAction.slice(0, 12), fmt, 0.5], ['buff 覆盖率（差 ≥ 1 个百分点）', out.uptime.filter(d => Math.abs(d.delta) >= 0.01).slice(0, 12), pct, 0], ['buff 覆盖率按提供者（同名 buff 几个人给的，DD-03 §5.2）', out.uptimeBy.filter(d => Math.abs(d.delta) >= 0.01).slice(0, 12), pct, 0]] as const as [title, rows, f, eps]}
       <section class="card pad">
         <h2>{title}</h2>
         {#if rows.filter(d => Math.abs(d.delta) > eps).length}

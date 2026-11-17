@@ -78,6 +78,16 @@ describe('时间轴网页', () => {
     ])
     expect(() => ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['甲 X'] } })).toThrow(/视频秒/)
   })
+  test('录像里的后台来源（@，summon 通道）：可以是召唤动作、判定名或"延奏"，分别记 action / judgment / outro，不算"仿真里没有"（TD-12 §2.1；Antigravity 审查 M5）', () => {
+    const sc5 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, events: ['10.2 甲 @X', '10.3 甲 @x', '10.4 甲 @延奏', '10.5 甲 @没有'] } })
+    const r5 = resolveScenario(sc5, data)
+    expect(timelineModel('scenarios/demo.yaml', sc5, r5, runPrepared(fixturePreparedRun(r5), { diag: { eventMeta: true } })).video!.events).toEqual([
+      { t: 10.2, char: '甲', label: 'X', action: 'X', summon: true },
+      { t: 10.3, char: '甲', label: 'x', action: null, summon: true, judgment: 'x' },
+      { t: 10.4, char: '甲', label: '延奏', action: null, summon: true, outro: true },
+      { t: 10.5, char: '甲', label: '没有', action: null, summon: true },
+    ])
+  })
   test('录像里敌人的血条（video.hp，视图 F 对照累计伤害）："<视频秒> <剩余比例>"；模型带上敌人生命', () => {
     const sc4 = ScenarioSchema.parse({ ...sc, video: { marks: { 1: 10 }, hp: ['10.5 1', '0:12 0.62'] } })
     const r4 = resolveScenario(sc4, data)

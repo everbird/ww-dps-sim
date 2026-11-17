@@ -18,7 +18,21 @@ dataDescribe('网页的 Worker', () => {
     expect(JSON.stringify(a.characters['椿']!.actions)).toBe(JSON.stringify(b.characters['椿']!.actions))
     expect(Object.keys(a.echoes).length).toBe(Object.keys(b.echoes).length)
     expect(a.echoStats).toEqual(b.echoStats)
+    // 场景 buff（深塔、矩阵的环境特性）也要装配：录像剖析的场景写了 environment（Antigravity 审查 H4）
+    expect(Object.keys(a.envBuffs).sort()).toEqual(Object.keys(b.envBuffs).sort())
+    expect(Object.keys(a.envBuffs).length).toBeGreaterThan(0)
   })
+  test('录像剖析的场景在网页里跑得起来（环境特性）；有几个填法组合时按第一个跑、提示里写明（DD-09 §3.1）', async () => {
+    const tys = await handlers.run({ scenario: src('scenarios/tys-video.yaml') })
+    expect(tys.error).toBeNull()
+    expect(tys.completionStatus).not.toBe('engineError')
+    // 没有 at 的轴：未观测时段的填法接在轴末尾；两种填法 → 两个组合
+    const text = src('scenarios/m0-team.yaml').text
+      + '\npurpose: replay\nreplay:\n  videoOffset: 0\n  segments:\n    - { kind: unobserved, from: 1, to: 2, reason: 测试, fills: [{ name: 不补, lines: [] }, { name: 等一下, lines: ["wait 1"] }] }\n'
+    const run = await handlers.run({ scenario: { name: 'combos.yaml', text } })
+    expect(run.error).toBeNull()
+    expect(run.warnings.find(w => w.includes('填法组合'))).toMatch(/combos\.yaml 有 2 个填法组合，网页按第一个（1=不补）跑；其余：1=等一下/)
+  }, 60000)
   test('运行、对比、择优；场景写错时报出位置', async () => {
     const run = await handlers.run({ scenario: src('scenarios/m0-team.yaml') })
     // 2026-10-19 大招"不响应输入"挡切人（假设 ult-no-switch）后 31,023 → 30,242；2026-10-20 散华重击爆裂先按住半秒（m0-confirm §13 P1、P5）后 → 29,735
