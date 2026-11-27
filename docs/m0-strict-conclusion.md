@@ -13,7 +13,7 @@ DD-04 §7 的历史参考（20261019 数据）为未含谐破 37,577、自动 40
 - E2/C1：烬华蔓舞的第 4 段与数据读法，关联 `data-guess` 等单候选未列全项；需要按实际动作条件登记预测与观测，不能用当前无可翻候选推断机制已证实。
 - E2/C5 与 E1/B7：大招后最早切人可检验 `ult-input-locks-switch`，但要限定角色与输入条件；本轴单项不变不代表共享规则正确。
 - 声骸起手优先级（`echo-input-priority`）：2026-11-26 做了 C8（iPad 肉眼），回填闭环 `echo-input-priority.backfill` 证实（所测条件内）声骸在 E 出伤前就能把 E 打断，不必等 E 结束；原闭环的 setup（等出手再按）与操作对不上，作废（`docs/experiments/C8-声骸起手优先级.md`"结果"）。主表里它与其他时序开关的组合效应照旧；本轴写的 `E Q` 是"等 E 出伤再按 Q"的打法，出伤后多快出这次没测。
-- 起手即得（`cast-gain-at-start`）：2026-11-27 有了开关（`rules.castGainTiming: firstHit`），主表第一次列出它。单项与两两都不改本轴的稳态 DPS 与轮长（两两里变了的两对，数和另一项单翻相同），只有日志不同（起手即得改在第一段命中时给）。能区分它的 C9 已登记预测（`docs/experiments/C9-散华E协奏起手即得.md`）。
+- 起手即得（`cast-gain-at-start`）：2026-11-27 有了开关（`rules.castGainTiming: firstHit`），主表第一次列出它。单项与两两都不改本轴的稳态 DPS 与轮长（两两里变了的两对，数和另一项单翻相同），只有日志不同（起手即得改在第一段命中时给）。C9 实验已于 2026-11-27 完成（iPad 肉眼分两组），闭环 `cast-gain-at-start.2026-11` 证实（所测条件内）起手即得（`docs/experiments/C9-散华E协奏起手即得.md`）。
 - `hitstop-in-global-stop`、`dilation-rules`、`summon-clock`、`wait-settled`、`white-bar`、`burst-release` 的实验尚未由该清单逐项覆盖，应由 DD-08 设计受控条件；已有文字依据不是独立检验。
 - 心、卜灵保留状态（E1/B1、B2）在本队不适用，不能用于升级这份 M0 结论。所有证据升级仍须明确用途、适用条件和未排除的候选。
 

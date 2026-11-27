@@ -365,6 +365,22 @@ export function relationsOf(verdicts: readonly CandidateVerdict[], obs: readonly
   })
 }
 
+function summarizeVerdict(
+  candidateId: string,
+  perObservation: readonly CandidateVerdict['perObservation'][number][],
+  runStatuses: readonly CandidateVerdict['runStatuses'][number][],
+  intentFailures: readonly string[],
+): CandidateVerdict {
+  const counted = perObservation.filter(x => x.purpose !== 'given' && x.covered)
+  const base = { candidateId, perObservation: [...perObservation], runStatuses: [...runStatuses], ...(intentFailures.length ? { intentFailures: [...intentFailures] } : {}) }
+  if (counted.some(x => x.status === 'conflicted')) return { ...base, overall: 'inconsistent' }
+  if (counted.some(x => COMPATIBLE.includes(x.status))) return { ...base, overall: 'consistent' }
+  const reason = counted.length === 0 ? (runStatuses.some(s => s === 'engineError') ? 'engineError' as const : 'noCoveredObservation' as const)
+    : counted.every(x => x.status === 'insufficientCondition' || x.status === 'unassessable') ? 'allInsufficient' as const
+    : 'noCoveredObservation' as const
+  return { ...base, overall: 'notAssessed', notAssessedReason: reason }
+}
+
 /** 候选级判断（DD-08 §4.1）：只用评分观测（purpose 不是 given）；passed、ambiguous 算相容，conflicted 算不相容，其余两边都不算；
  *  engineError 的运行作废；截断、轴失败的运行覆盖范围以外的记 covered: false */
 export function verdictsOf(record: ClosureRecord, p: Proposition, obs: readonly Observation[]): CandidateVerdict[] {
@@ -381,16 +397,9 @@ export function verdictsOf(record: ClosureRecord, p: Proposition, obs: readonly 
       const cmp = compareValue(o, usable ? pred.predicted : null, { ...(pred?.alternatives ? { alternatives: pred.alternatives } : {}), ...(pred?.reason ? { missingReason: pred.reason } : {}) })
       return { observationId: o.id, status: cmp.status, residual: cmp.residual, purpose: o.purpose, covered }
     })
-    const counted = perObservation.filter(x => x.purpose !== 'given' && x.covered)
     const runStatuses = record.setups.map(s => rc.runs.find(r => r.setupId === s.id)!.status)
     const intentFailures = rc.runs.filter(r => r.status === 'axisFailed').map(r => `${r.setupId}：${r.detail ?? '轴失败'}`)
-    const base = { candidateId: rc.candidateId, perObservation, runStatuses, ...(intentFailures.length ? { intentFailures } : {}) }
-    if (counted.some(x => x.status === 'conflicted')) return { ...base, overall: 'inconsistent' as const }
-    if (counted.some(x => COMPATIBLE.includes(x.status))) return { ...base, overall: 'consistent' as const }
-    const reason = counted.length === 0 ? (rc.runs.some(r => r.status === 'engineError') ? 'engineError' as const : 'noCoveredObservation' as const)
-      : counted.every(x => x.status === 'insufficientCondition' || x.status === 'unassessable') ? 'allInsufficient' as const
-      : 'noCoveredObservation' as const
-    return { ...base, overall: 'notAssessed' as const, notAssessedReason: reason }
+    return summarizeVerdict(rc.candidateId, perObservation, runStatuses, intentFailures)
   })
 }
 
@@ -457,6 +466,36 @@ export function judgeClosure(record: ClosureRecord, p: Proposition, all: readonl
   const obs = observationsOf(record, all)
   const verdicts = verdictsOf(record, p, obs)
   return { verdicts, conclusion: concludeFromVerdicts(verdicts, p.adopted, p.candidatesExhaustive, obs), relations: relationsOf(verdicts, obs) }
+}
+
+const obsSeverity = (x: CandidateVerdict['perObservation'][number]): number =>
+  !x.covered ? 0 : x.status === 'conflicted' ? 4 : COMPATIBLE.includes(x.status) ? 3 : x.status === 'insufficientCondition' || x.status === 'unassessable' ? 2 : 1
+
+/** 同一条命题有多条已判断闭环时（如历史回填 + 新实验），把各闭环的观测与候选级判断合并后再按决策表算命题结论（DD-08 §4.1） */
+export function concludeAcrossClosures(
+  closures: readonly { readonly verdicts: readonly CandidateVerdict[]; readonly obs: readonly Observation[] }[],
+  p: Proposition,
+): ConclusionRecord {
+  const seenObs = new Map<string, Observation>()
+  for (const c of closures) for (const o of c.obs) if (!seenObs.has(o.id)) seenObs.set(o.id, o)
+  const mergedObs = [...seenObs.values()]
+  const mergedVerdicts: CandidateVerdict[] = p.candidates.map(cand => {
+    const entries = closures.map(c => c.verdicts.find(v => v.candidateId === cand.id)).filter((v): v is CandidateVerdict => !!v)
+    if (!runnable(cand) || entries.some(v => v.notAssessedReason === 'unimplemented')) {
+      return { candidateId: cand.id, perObservation: [], overall: 'notAssessed', notAssessedReason: 'unimplemented', runStatuses: [] }
+    }
+    const perObs = new Map<string, CandidateVerdict['perObservation'][number]>()
+    for (const v of entries) {
+      for (const x of v.perObservation) {
+        const prev = perObs.get(x.observationId)
+        if (!prev || obsSeverity(x) > obsSeverity(prev)) perObs.set(x.observationId, x)
+      }
+    }
+    const runStatuses = entries.flatMap(v => v.runStatuses)
+    const intentFailures = entries.flatMap(v => v.intentFailures ?? [])
+    return summarizeVerdict(cand.id, [...perObs.values()], runStatuses, intentFailures)
+  })
+  return concludeFromVerdicts(mergedVerdicts, p.adopted, p.candidatesExhaustive, mergedObs)
 }
 
 // ---------------------------------------------------------------------------

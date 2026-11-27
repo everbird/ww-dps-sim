@@ -8,7 +8,7 @@ import { parse } from 'yaml'
 import { CalibrationFileSchema } from '../src/data/calibration.schema'
 import { DEFAULT_RULES, forteKept, PER_CHAR_RULES, type GameData, type Rules } from '../src/data/gamedata'
 import { parseClosure } from '../src/cli/evidence-file'
-import { evidenceFromClosure, evidenceViolations, judgeClosure } from '../src/analysis/evidence'
+import { concludeAcrossClosures, evidenceFromClosure, evidenceViolations, judgeClosure, observationsOf } from '../src/analysis/evidence'
 import { loadGameData } from '../src/data/load'
 import { ScenarioSchema, type ScenarioInput } from '../src/data/scenario.schema'
 import { ASSUMPTIONS } from '../src/engine/assumptions'
@@ -251,11 +251,12 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
     for (const p of ALL) expect([p.id, evidenceViolations(p)]).toEqual([p.id, []])
   })
 
-  test('台账与闭环记录一致（DD-08 §4.1、§4.3）：判过的闭环，重判得到同样的判断与结论；台账这条命题的结论、来自它的证据条目与闭环算出的相同', () => {
+  test('台账与闭环记录一致（DD-08 §4.1、§4.3）：判过的闭环，重判得到同样的判断与结论；台账这条命题的结论（多闭环合并后）、来自它的证据条目与闭环算出的相同', () => {
     const points = CalibrationFileSchema.parse(parse(readFileSync(new URL('../docs/calibration/points.yaml', import.meta.url), 'utf8'))).points
     const dir = new URL('../docs/evidence/', import.meta.url)
     const files = readdirSync(dir).filter(f => f.endsWith('.yaml')).sort()
     expect(files.length).toBeGreaterThanOrEqual(4)                                              // 三个回填 + 第一条新闭环（DD-08 §6、§5.5）
+    const byProp = new Map<Proposition, { verdicts: ReturnType<typeof judgeClosure>['verdicts']; obs: ReturnType<typeof observationsOf> }[]>()
     for (const f of files) {
       const { record } = parseClosure(readFileSync(new URL(f, dir), 'utf8'), f)
       const p = ALL.find(x => x.id === record.propositionId)
@@ -264,8 +265,11 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
       if (!record.conclusion) { expect([f, fromClosure]).toEqual([f, []]); continue }      // 还没判断的（实验等读数）不入账
       const j = judgeClosure(record, p!, points)
       expect([f, j.verdicts, j.conclusion]).toEqual([f, record.verdicts, record.conclusion])
-      expect([f, p!.conclusion]).toEqual([f, j.conclusion.proposition])
       expect([f, fromClosure]).toEqual([f, evidenceFromClosure(record, j, p!, points)])
+      byProp.set(p!, [...(byProp.get(p!) ?? []), { verdicts: j.verdicts, obs: observationsOf(record, points) }])
+    }
+    for (const [p, closures] of byProp) {
+      expect([p.id, p.conclusion]).toEqual([p.id, concludeAcrossClosures(closures, p).proposition])
     }
   })
 })

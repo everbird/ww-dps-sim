@@ -322,7 +322,7 @@ export const DEFAULT_RULES: Rules = {
   hitstopInGlobalStop: false,                       // 中 4 录像卜灵大招后切人的帧数（docs/tower-20261026.md 中 4 第 10 条）
   echoInputPriority: true,                          // xlsx 通用块 + 视频 A 守岸人一段对上（docs/jys-videos.md §6.4）
   summonCountsAsChar: true,                         // 原文没说阵算不算角色；中 4 录像的踏月归心像是不算（docs/tower-20261026.md 中 4 第 8 条）
-  castGainTiming: 'start',                          // 数据作者"进入该动作就获得"（TD-01 §3.7）；命中才给的读法待 C8 后的实验（docs/experiments/C9-散华E协奏起手即得.md）
+  castGainTiming: 'start',                          // 数据作者"进入该动作就获得"（TD-01 §3.7）；C9 实验已证实起手即得（docs/experiments/C9-散华E协奏起手即得.md）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,

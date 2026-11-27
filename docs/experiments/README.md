@@ -46,4 +46,4 @@
 | 页 | 命题 | 闭环 | 状态 |
 |---|---|---|---|
 | [C8-声骸起手优先级](C8-声骸起手优先级.md) | `echo-input-priority` | [`echo-input-priority.2026-11`](../evidence/echo-input-priority.2026-11.yaml)（作废，不判）→ 回填 [`echo-input-priority.backfill`](../evidence/echo-input-priority.backfill.yaml) | 2026-11-26 iPad 肉眼做过；setup 与操作对不上（见实验页"结果"），回填后证实（所测条件内） |
-| [C9-散华E协奏起手即得](C9-散华E协奏起手即得.md) | `cast-gain-at-start` | [`cast-gain-at-start.2026-11`](../evidence/cast-gain-at-start.2026-11.yaml) | 预测已登记，等进游戏（截图或肉眼即可） |
+| [C9-散华E协奏起手即得](C9-散华E协奏起手即得.md) | `cast-gain-at-start` | [`cast-gain-at-start.2026-11`](../evidence/cast-gain-at-start.2026-11.yaml) | 2026-11-27 肉眼分两组做过（含教学迅刀对照），证实（所测条件内），缺省不变 |
