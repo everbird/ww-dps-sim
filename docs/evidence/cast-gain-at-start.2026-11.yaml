@@ -5,6 +5,14 @@ id: cast-gain-at-start.2026-11
 propositionId: cast-gain-at-start
 question: 散华 E 的 15 点协奏（资源公式的末项，起手即得）是 E 起手那一帧就给，还是随 E 的第一段命中才给——E 在出伤前被声骸打断时就分得开
 kind: experiment
+preRegistration:
+  commit: cee3b653b24986de0c04bcedeaf9404ca957409b
+  date: 2026-11-27
+  identities:
+    - docs/evidence/runs/cast-gain-at-start.2026-11.predict.json#run-55324897243ee242
+    - docs/evidence/runs/cast-gain-at-start.2026-11.predict.json#run-0679097eae211b8c
+  observationsDigest: d4e6076dde4b370ce0c815f888ab31d5733bc62d4e2bf9ebb9f3aa0e384bb295
+  predictionsDigest: 7fff69238a10758aa4305e9511313b9e2e133f4c34bee76e5daca3219fdce504
 setups:
   - id: 散华EQ抢帧三次
     scenario: evidence/cast-gain-at-start-散华EQ抢帧三次.yaml
@@ -14,7 +22,7 @@ candidates:
     conditions: E 的 15 点协奏在 E 起手那一帧给，被声骸打断也照给（rules.castGainTiming start）；另有行进序曲 5 阶"施放共鸣技能时回复 16 点协奏，20 秒一次"，两次间隔 21 秒，每次都触发：每次 +31，凶鹭砸地后（砸地不给协奏）是 0.31、0.62、0.93
     runs:
       - setupId: 散华EQ抢帧三次
-        runId: run-da3ff45b5402f3ae
+        runId: run-55324897243ee242
         status: completed
     predictions:
       - observationId: 散华E协奏.抢帧第1次
@@ -30,7 +38,7 @@ candidates:
     conditions: 15 点随 E 的第一段命中（第 19 帧）才给，E 在出伤前被打断就没有（rules.castGainTiming firstHit）；武器的 16 点照样在施放时给：每次只 +16，凶鹭砸地后是 0.16、0.32、0.48
     runs:
       - setupId: 散华EQ抢帧三次
-        runId: run-f88c08d3654f410d
+        runId: run-0679097eae211b8c
         status: completed
     predictions:
       - observationId: 散华E协奏.抢帧第1次
