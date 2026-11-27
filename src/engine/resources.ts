@@ -6,7 +6,7 @@
 // 新增资源写入点必须同时接进账本（DD-06）：漏接的话闭合检查（checkLedgerClosure）与 pnpm fuzz --ledger 会报出来。
 // 不写日志的写入（状态同步）另记外部干预记录；按日志重放资源的地方都要读它（resource-replay.ts）。
 import { RESOURCE_KINDS, type CharName, type ResourceKind, type Slot } from '../data/common'
-import { concertoTimingOf, type ActionDef } from '../data/gamedata'
+import { concertoTimingOf, type ActionDef, type Rules } from '../data/gamedata'
 import { activeFor } from './buffs'
 import type { Sim } from './context'
 import type { LedgerCauseKind } from './diagnostics'
@@ -176,6 +176,9 @@ export function payCost(sim: Sim, s: SimState, slot: Slot, def: ActionDef): void
 export function castResources(sim: Sim, s: SimState, slot: Slot, src: EventSource): void {
   const sum: Partial<Record<ResourceKind, number>> = {}
   for (const g of src.def.castGains) if (g.atFrame === 0) sum[g.resource] = (sum[g.resource] ?? 0) + g.amount
+  // 规则使用（DD-05 §4.1）：起手即得什么时候给。挪不挪在装配时定（resolve.ts deferCastGains），这里按装配结果看换个读法会不会走另一条分支
+  const castTiming = sim.r.rules.castGainTiming
+  sim.k.rule.note('res.castGainTiming', castTiming, castTimingDecisive(src.def, castTiming))
   const name = s.chars[slot].name
   const timing = concertoTimingOf(sim.r.rules, name)
   // 规则使用（DD-05 §4.1）：有按角色命题的角色读到时记；这个动作有由时间线生成、带协奏的判定，换个时机就是另一种给法
@@ -189,6 +192,22 @@ export function castResources(sim: Sim, s: SimState, slot: Slot, src: EventSourc
   }
   for (const res of RESOURCE_KINDS) {
     const v = sum[res]
+    if (v && !coreMissing(sim, s, slot, res)) grant(sim, s, slot, res, v, 'cast', true)
+  }
+}
+
+/** 起手即得换个时机会不会不同（判定点 res.castGainTiming）：start 时这个动作有正数的起手项、时间线上也有判定；
+ *  firstHit 时装配已把它挪到某个判定上（JudgmentDef.castOnFirstHit） */
+function castTimingDecisive(def: ActionDef, timing: Rules['castGainTiming']): boolean {
+  if (timing === 'firstHit') return def.judgments.some(j => j.castOnFirstHit !== undefined)
+  return def.castGains.some(g => g.atFrame === 0 && g.amount > 0) && def.judgments.some(j => j.spawnFrame !== null)
+}
+
+/** 规则 castGainTiming 为 firstHit：装配挪到判定上的起手即得（JudgmentDef.castOnFirstHit），这个判定第一次结算时给施放者
+ *  （simulate.ts settle）。记法同 castResources：正数的能量乘共鸣效率，每种资源一条 resource（cast） */
+export function castOnFirstHit(sim: Sim, s: SimState, slot: Slot, gains: Readonly<Partial<Record<ResourceKind, number>>>): void {
+  for (const res of RESOURCE_KINDS) {
+    const v = gains[res]
     if (v && !coreMissing(sim, s, slot, res)) grant(sim, s, slot, res, v, 'cast', true)
   }
 }

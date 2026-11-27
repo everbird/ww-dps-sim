@@ -1,7 +1,7 @@
 // src/engine/resolve.ts —— 装配：Scenario → ResolvedScenario（总设计 §3.3）
 // 只做一次：校验名字、算静态面板、登记 buff、合并动作表、敌人、初始资源、编译排轴。静态能查出来的错一次报全。
 // 纯函数：只读 GameData，不读文件。
-import { STAT_TO_ZONE, type ActionId, type Chain, type Element, type Rank, type Slot, type StatKey } from '../data/common'
+import { STAT_TO_ZONE, type ActionId, type Chain, type Element, type Rank, type ResourceKind, type Slot, type StatKey } from '../data/common'
 import { forChain } from '../data/assemble-action'
 import { echoActionsFor } from '../data/assemble-echo'
 import type { BuffDef } from '../data/buff.schema'
@@ -102,6 +102,8 @@ export function resolveScenario(sc: Scenario, data: GameData): ResolvedScenario 
   if (issues.length > 0) throw new ResolveError(issues, located)
   const members = built as Built[]
   const team = members.map(b => b.member) as [ResolvedMember, ResolvedMember, ResolvedMember]
+  // 起手即得改成随第一段命中给（规则 castGainTiming，台账 cast-gain-at-start 的 at-first-hit）：在装配结果上挪，运行期不另存状态
+  if (rules.castGainTiming === 'firstHit') for (const m of team) m.actions = deferCastGains(m.actions)
 
   // 按面板属性换算的 buff（BuffDef.scale）：先算各人的静态属性（不含这些 buff 自己），再定数值（假设 stat-scaling-static）
   const raw = [...members.flatMap(b => b.buffs), ...env]
@@ -380,6 +382,30 @@ function initialCore(given: Record<string, Record<string, number>>, team: Resolv
   return out
 }
 
+/** 规则 castGainTiming 为 firstHit（台账 cast-gain-at-start 的 at-first-hit）：每个动作起手即得的正数项（castGains 里 atFrame = 0、
+ *  amount > 0）挪到时间线上最早生成的判定（spawnFrame 最小，同帧取靠前的）的 castOnFirstHit，由它第一次结算时给（simulate.ts settle）；
+ *  动作在那个判定生成之前被取消，这笔就不给。没有时间线判定的动作、负数项（扣除）、atFrame > 0 的项不动 */
+export function deferCastGains(actions: Readonly<Record<ActionId, ActionDef>>): Record<ActionId, ActionDef> {
+  const out: Record<ActionId, ActionDef> = {}
+  for (const [id, a] of Object.entries(actions)) {
+    const moved = a.castGains.filter(g => g.atFrame === 0 && g.amount > 0)
+    let first = -1
+    for (let i = 0; i < a.judgments.length; i++) {
+      const f = a.judgments[i]!.spawnFrame
+      if (f !== null && (first < 0 || f < a.judgments[first]!.spawnFrame!)) first = i
+    }
+    if (moved.length === 0 || first < 0) { out[id] = a; continue }
+    const gains: Partial<Record<ResourceKind, number>> = {}
+    for (const g of moved) gains[g.resource] = (gains[g.resource] ?? 0) + g.amount
+    out[id] = {
+      ...a,
+      castGains: a.castGains.filter(g => !moved.includes(g)),
+      judgments: a.judgments.map((j, i) => (i === first ? { ...j, castOnFirstHit: gains } : j)),
+    }
+  }
+  return out
+}
+
 /** options.rules 覆盖 DEFAULT_RULES：只认已有的键，类型要一致；对象类的键按一层合并。
  *  按角色的表 forteKeepOnSwitchBy、concertoTimingBy 另查每一项：键是数据里的角色名（原样比，不做模糊匹配），值是布尔 / onCast、onHit
  *  （DD-04 §4.1、DD-08 §6） */
@@ -401,6 +427,7 @@ function resolveRules(over: Record<string, unknown> | undefined, data: GameData,
         : x !== 'onCast' && x !== 'onHit' ? [`options.rules.concertoTimingBy.${char}：应为 onCast 或 onHit`] : [])
       if (bad.length > 0) { issues.push(...bad); continue }
     }
+    if (k === 'castGainTiming' && v !== 'start' && v !== 'firstHit') { issues.push('options.rules.castGainTiming：应为 start 或 firstHit'); continue }
     ;(out as unknown as Record<string, unknown>)[k] = typeof v === 'object' ? { ...(cur as object), ...v } : v
   }
   return out

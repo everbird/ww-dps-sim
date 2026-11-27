@@ -72,6 +72,11 @@ export const RULE_POINTS = [
     decisiveWhen: '起手时：这个动作有由时间线生成、带协奏的判定（onCast 在起手时一次给全）；结算时：判定由时间线生成、带协奏（onHit 才在这时给）',
   },
   {
+    // 起手即得什么时候给（规则 castGainTiming，2026-11-27 加；挪的动作在装配时定，resolve.ts deferCastGains）
+    id: 'res.castGainTiming', propositionId: 'cast-gain-at-start', symbol: 'resources.ts castResources（起手时）',
+    decisiveWhen: '这个动作有起手即得的正数项、时间线上也有判定（start 在起手时给；firstHit 已挪到最早生成的判定，第一次结算时给）',
+  },
+  {
     id: 'char.心.forteKeep', propositionId: 'forte-keep.心-照世相', symbol: 'data/curated/characters/心.ts onEvent（切出时）',
     decisiveWhen: '切出时有照世相、心相心生、统御众机这些状态可清',
   },

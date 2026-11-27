@@ -373,11 +373,12 @@ export const PROPOSITIONS = [
   {
     id: 'cast-gain-at-start', scope: 'data',
     proposition: '资源公式的末项（起手即得）在动作开始那一帧就给，不等命中：散华 E 的协奏 15（角色-女"协奏回收"公式的 +15）就是这一项',
-    executionConvention: 'castGains 里 atFrame = 0 的项在动作开始时由资源模块发（TD-04 §1 第 9 条、TD-06 §7）：起手后立刻切人，这笔协奏已经在切出者身上',
+    executionConvention: 'castGains 里 atFrame = 0 的项在动作开始时由资源模块发（TD-04 §1 第 9 条、TD-06 §7）：起手后立刻切人，这笔协奏已经在切出者身上。'
+      + '规则 castGainTiming 翻成 firstHit 是另一种读法（2026-11-27 加，resolve.ts deferCastGains）',
     adopted: 'at-start', candidatesExhaustive: false,       // 末项可能只对一部分格子成立（TD-01 Q7：434 格没有逐一实测），按格子分的读法没列
     candidates: [
-      { id: 'at-start', label: '动作开始那一帧给', implemented: true, changes: 'data', binding: { kind: 'curated', path: 'tools/build/parse.py parse_gain（末项 → onAction）；src/data/assemble-action.ts castGains；src/engine/resources.ts castResources' } },
-      { id: 'at-first-hit', label: '末项也随这个动作的第一段命中才给', implemented: false, changes: 'data', binding: { kind: 'unimplemented' } },
+      { id: 'at-start', label: '动作开始那一帧给', implemented: true, changes: 'data', binding: { kind: 'rule', path: 'castGainTiming', value: 'start' } },
+      { id: 'at-first-hit', label: '末项也随这个动作的第一段命中才给（挪到时间线上最早生成的判定，第一次结算时给；在它生成之前取消就不给）', implemented: true, changes: 'data', binding: { kind: 'rule', path: 'castGainTiming', value: 'firstHit' } },
     ],
     evidence: [
       { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-d14eaf8f7452f6a0', summary: '4 条观测：at-start passed ×4；at-first-hit 没实现', ref: 'docs/evidence/sanhua-e.backfill.yaml' },

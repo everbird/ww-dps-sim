@@ -142,6 +142,9 @@ export interface JudgmentDef {
   /** 这段生成本动作的哪些事件判定（spawnFrame = null）：on 'hit' 第一次结算后立即生成（备注"命中后立即生成X"），
    *  'end' 持续帧走完自然消失时生成（"持续帧结束后自行生成X"）；装配时从备注推得（flag spawnFromNote），模块可写 null 关掉自己生成 */
   spawns?: { on: 'hit' | 'end'; judgments: string[] } | null
+  /** 规则 castGainTiming 为 firstHit 时由装配挪来的起手即得（resolve.ts deferCastGains）：这个判定第一次结算时给施放者，
+   *  能量照样乘共鸣效率、记 resource（cast）。缺省（start）时没有这个字段 */
+  castOnFirstHit?: Partial<Record<ResourceKind, number>>
   flags: string[]
 }
 
@@ -276,6 +279,10 @@ export interface Rules {
   /** 阵、召唤物（JudgmentDef.summon）附加的异常效应算"队伍中的角色附加"（缺省 true，假设 summon-as-char）：触发"附加…后"的效果、
    *  心把电磁爆发转成霆心域。false：都不算（电磁爆发留在目标上，下次结算照算） */
   summonCountsAsChar: boolean
+  /** 资源公式的末项（起手即得，castGains 里 atFrame = 0 的正数项）什么时候给（台账 cast-gain-at-start）：
+   *  'start' 动作开始那一帧给（缺省，TD-04 §1 第 9 条、TD-06 §7）；'firstHit' 挪到这个动作时间线上最早生成的判定，它第一次结算时才给，
+   *  动作在它生成之前被取消就不给（装配时挪，JudgmentDef.castOnFirstHit）。没有时间线判定的动作、负数项（扣除）照旧在起手时 */
+  castGainTiming: 'start' | 'firstHit'
   highResThreshold: number
   maxWait: Frame
   maxChainDepth: number
@@ -315,6 +322,7 @@ export const DEFAULT_RULES: Rules = {
   hitstopInGlobalStop: false,                       // 中 4 录像卜灵大招后切人的帧数（docs/tower-20261026.md 中 4 第 10 条）
   echoInputPriority: true,                          // xlsx 通用块 + 视频 A 守岸人一段对上（docs/jys-videos.md §6.4）
   summonCountsAsChar: true,                         // 原文没说阵算不算角色；中 4 录像的踏月归心像是不算（docs/tower-20261026.md 中 4 第 8 条）
+  castGainTiming: 'start',                          // 数据作者"进入该动作就获得"（TD-01 §3.7）；命中才给的读法待 C8 后的实验（docs/experiments/C9-散华E协奏起手即得.md）
   highResThreshold: 0.8,                            // 总设计附录 A-5
   maxWait: 600,
   maxChainDepth: 16,
