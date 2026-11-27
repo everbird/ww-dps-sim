@@ -1,5 +1,6 @@
 # 第一条新闭环（DD-08 §5.5，用户 2026-11-14 同意）：声骸起手的优先级。进游戏实验，实验页 docs/experiments/C8-声骸起手优先级.md。
 # 预测在观测之前登记（preRegistration，DD-08 §5.2）；之后不再改候选、判据与观测的容差，要改就另开一条记录。
+# 2026-11-27 作废、不判（见 notes）：由回填闭环 echo-input-priority.backfill 接替。
 id: echo-input-priority.2026-11
 propositionId: echo-input-priority
 question: 技能（E）之后马上按声骸，声骸是按通用块的优先级 5 打断 E 的后摇（隔几十帧就出），还是按声骸表各行的优先级等 E 结束或进派生窗口
@@ -80,3 +81,6 @@ verdicts: []
 scopeTested: 游戏版本 3.7；Evariste 账号的椿 0 链 · 散华 6 链 · 维里奈 3 链（m0-video-eq.yaml 的配装），训练场木桩；E 之后马上按首位声骸，E 与声骸都不在冷却
 reruns: []
 notes: 什么时候进游戏由用户安排（DD-08 §5.5）。读数填进 docs/calibration/points.yaml 的 声骸起手.*（gameRange 与 condition），然后 pnpm evidence judge。
+  2026-11-27 作废，不判（候选、判据、观测登记时冻结，原样保留）：用户 2026-11-26 在 iPad 上照实验页做了（没录像），看到 E 一起手就按 Q 时声骸立刻起手、E 被打断（散华的冰棱不再出现，E 进了冷却），
+  维里奈、椿也一样。实验页的操作在游戏里就是抢帧（Q!），可这三个 setup 写的是缺省的 E Q（调度器等 E 的判定出手再按 Q），预测的 20 / 26 / 36 帧是"等出伤再按"这种打法的结果；
+  照原页录像去判，读数只有几帧，generic-5 会被误判成冲突。这是设计实验页时的错，不是候选的问题。由回填闭环 docs/evidence/echo-input-priority.backfill.yaml 接替（setup 改成抢帧）。

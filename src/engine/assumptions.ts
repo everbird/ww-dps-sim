@@ -169,7 +169,8 @@ export const ASSUMPTIONS = [
   {
     id: 'echo-input-priority', topic: '动作', tracked: true, impact: 'large', ref: 'TD-04 §6.1，docs/jys-videos.md §6.4',
     what: '声骸起手时按角色通用块"召唤声骸 / 变身声骸"行的优先级（5）和当前动作比，能打断重击（4）、多数技能后摇；声骸表各行写的（多为 0）当作放出来之后的。'
-      + '照样要等当前动作的判定都出手（wait-settled）',
+      + '轴里写 E Q 时缺省按"等当前动作的判定都出手再按"的打法（wait-settled）；写 Q! 抢帧时下一帧就起手、当前动作没生成的判定作废'
+      + '（2026-11-26 iPad 上看到三人都是这样，回填闭环 docs/evidence/echo-input-priority.backfill.yaml）',
     why: 'xlsx 各体型通用块有"召唤声骸""变身声骸"两行、优先级 5；机制设计 §5.3"声骸技能 Q 打断技能后摇"。视频 A（BV1uXYT6dEiQ）守岸人变奏 → 大招一段 5.59 秒，'
       + '原来的做法（演绎整段优先级 4、声骸等它结束）仿真 6.67 秒，改后 5.52 秒。只对了这一段',
     adjust: { how: '场景里 options.rules.echoInputPriority: false：按声骸表的优先级，等当前动作结束或进同级派生窗口（2026-10-25 之前的做法）', path: 'rules.echoInputPriority', values: [false] },

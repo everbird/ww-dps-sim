@@ -14,7 +14,7 @@ candidates:
     conditions: 散华 E 起手那一帧（动作局部第 0 帧，TD-04 §1 第 9 条、TD-06 §7）协奏 +15，与打没打中无关；适用于资源公式末项是常数的格子（TD-01 §3.7）
     runs:
       - setupId: m0-video-eq
-        runId: run-d14eaf8f7452f6a0
+        runId: run-f30982bf50872885
         status: completed
     predictions:
       - observationId: 散华E.散EQ变奏椿.启动轴
@@ -34,8 +34,26 @@ candidates:
         covered: true
   - candidateId: at-first-hit
     conditions: 这 15 点随 E 的第一段命中（E 的判定第 19 帧出现）才给；E 在命中之前被取消、切人不打断 E 时照样在后台命中后给
-    runs: []
-    predictions: []
+    runs:
+      - setupId: m0-video-eq
+        runId: run-3003f149cb9ed12a
+        status: completed
+    predictions:
+      - observationId: 散华E.散EQ变奏椿.启动轴
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第1轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第2轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第3轮
+        predicted: intro
+        covered: true
+      - observationId: 散华E.散华切维里奈.第2轮
+        predicted: normal
+        covered: true
 criteria: 切人类型按类别比，仿真与读数相同算相容、不同算冲突；没有读数的不算。这些观测都在 E 命中之后才切人，两种读法预测相同，只能相容、区分不了——要区分得在 E 命中之前就切人（discriminatingObservationNeeded）
 observationIds:
   - 散华E.散EQ变奏椿.启动轴
@@ -75,12 +93,37 @@ verdicts:
       - completed
     overall: consistent
   - candidateId: at-first-hit
-    perObservation: []
-    overall: notAssessed
-    notAssessedReason: unimplemented
-    runStatuses: []
+    perObservation:
+      - observationId: 散华E.散EQ变奏椿.启动轴
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第1轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第2轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散EQ变奏椿.第3轮
+        status: passed
+        residual: 0
+        purpose: selection
+        covered: true
+      - observationId: 散华E.散华切维里奈.第2轮
+        status: unassessable
+        residual: null
+        purpose: unspecified
+        covered: true
+    runStatuses:
+      - completed
+    overall: consistent
 conclusion:
-  proposition: provisional
+  proposition: ambiguous
   about: at-start
   basis:
     independent: []
@@ -89,13 +132,565 @@ conclusion:
       - 散华E.散EQ变奏椿.第1轮
       - 散华E.散EQ变奏椿.第2轮
       - 散华E.散EQ变奏椿.第3轮
-  rule: 5
+  rule: 3
 scopeTested: 游戏版本不详（视频 2026-06-18 发布）；椿 0 链 · 散华 6 链（行进序曲 5 阶）· 维里奈 3 链，m0-video-eq.yaml 的配装；只覆盖视频轴里"散EQ→椿"这几次切人
-discriminatingObservationNeeded: 训练场（Evariste 账号）：散华先把协奏攒到差一两格满（入场后打几下 A），按 E 后立刻切人（E 起手后、第 19 帧命中之前），看下一位是不是变奏入场——起手即得则变奏，随第一段命中给则普通切人。录 60 帧，读 E 起手到切人隔几帧（要少于 19 帧才算在命中之前）
+discriminatingObservationNeeded: 已登记为 C9（docs/evidence/cast-gain-at-start.2026-11.yaml、docs/experiments/C9-散华E协奏起手即得.md）：散华协奏从 0 开始，E 一起手就按声骸把 E 打断（C8 回填看到的：E 进冷却、冰棱不出现，E 的命中根本没有），隔 21 秒做三次，每次凶鹭砸地后读协奏环——起手即得 0.31 / 0.62 / 0.93，随第一段命中给 0.16 / 0.32 / 0.48。（原来写的"E 后立刻切人看下一位变不变奏"要把协奏攒到差一两格满、还要在第 19 帧前切人，难做；切人也不一定打断 E）
 decision:
   adoptedBefore: at-start
   adopted: at-start
   defaultChanged: false
-  note: 回填：沿用现在的读法（起手即得）。结论只是暂定，另一种读法没有开关、现有观测也区分不了，不改缺省。这一项由实现者按现状填写，用户可以改
-reruns: []
-notes: 回填的意义在于把"起手即得"这条读法和它现有的证据关系写清楚：现有的视频材料与它相容，但另一种读法（随第一段命中给）现在没有开关、没有评估，而且这几条观测在两种读法下本来就预测相同。
+  note: 回填：沿用现在的读法（起手即得），不改缺省。2026-11-27 另一种读法有了开关（rules.castGainTiming firstHit），重新预测后两种读法对这几条观测预测相同，结论由暂定变成分不清；要等 C9 的读数。这一项由实现者按现状填写，用户可以改
+reruns:
+  - scenario: alm-爱琳守.yaml
+    before:
+      runId: run-86e47de392093306
+      status: completed
+      dps: 69443.31533460799
+      steadyLoopBattleFrames:
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+    after:
+      runId: run-86e47de392093306
+      status: completed
+      dps: 69443.31533460799
+      steadyLoopBattleFrames:
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+        - 1569
+    changed: false
+  - scenario: alm-爱琳莫.yaml
+    before:
+      runId: run-f49575d4e38de8bb
+      status: completed
+      dps: 89704.8648799999
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+        - 1500
+        - 1500
+    after:
+      runId: run-f49575d4e38de8bb
+      status: completed
+      dps: 89704.8648799999
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+        - 1500
+        - 1500
+    changed: false
+  - scenario: jms-5r18z.yaml
+    before:
+      runId: run-81a9e9b0f156fa61
+      status: completed
+      dps: 56042.932085526314
+      steadyLoopBattleFrames:
+        - 1520
+        - 1520
+        - 1520
+        - 1520
+    after:
+      runId: run-81a9e9b0f156fa61
+      status: completed
+      dps: 56042.932085526314
+      steadyLoopBattleFrames:
+        - 1520
+        - 1520
+        - 1520
+        - 1520
+    changed: false
+  - scenario: jys-5r18z-尤诺快开大.yaml
+    before:
+      runId: run-e497a2f8b14352e9
+      status: completed
+      dps: 79645.72608695646
+      steadyLoopBattleFrames:
+        - 1503
+        - 1500
+        - 1500
+        - 1500
+    after:
+      runId: run-e497a2f8b14352e9
+      status: completed
+      dps: 79645.72608695646
+      steadyLoopBattleFrames:
+        - 1503
+        - 1500
+        - 1500
+        - 1500
+    changed: false
+  - scenario: jys-5r18z.yaml
+    before:
+      runId: run-09795b98f5763cfe
+      status: completed
+      dps: 80439.9858507462
+      steadyLoopBattleFrames:
+        - 1503
+        - 1512
+        - 1503
+        - 1512
+    after:
+      runId: run-09795b98f5763cfe
+      status: completed
+      dps: 80439.9858507462
+      steadyLoopBattleFrames:
+        - 1503
+        - 1512
+        - 1503
+        - 1512
+    changed: false
+  - scenario: jys-5r20z.yaml
+    before:
+      runId: run-c4a225e5e442ccd4
+      status: completed
+      dps: 77422.71597678911
+      steadyLoopBattleFrames:
+        - 1551
+        - 1551
+        - 1551
+        - 1551
+    after:
+      runId: run-c4a225e5e442ccd4
+      status: completed
+      dps: 77422.71597678911
+      steadyLoopBattleFrames:
+        - 1551
+        - 1551
+        - 1551
+        - 1551
+    changed: false
+  - scenario: jys-team.yaml
+    before:
+      runId: run-9898822e21a65808
+      status: completed
+      dps: 74938.43999999999
+      steadyLoopBattleFrames:
+        - 1717
+        - 1717
+        - 1717
+        - 1717
+    after:
+      runId: run-9898822e21a65808
+      status: completed
+      dps: 74938.43999999999
+      steadyLoopBattleFrames:
+        - 1717
+        - 1717
+        - 1717
+        - 1717
+    changed: false
+  - scenario: jys-轮椅.yaml
+    before:
+      runId: run-f2ea2f1d6cfe6aba
+      status: completed
+      dps: 77936.48793228535
+      steadyLoopBattleFrames:
+        - 1654
+        - 1654
+        - 1654
+        - 1654
+    after:
+      runId: run-f2ea2f1d6cfe6aba
+      status: completed
+      dps: 77936.48793228535
+      steadyLoopBattleFrames:
+        - 1654
+        - 1654
+        - 1654
+        - 1654
+    changed: false
+  - scenario: m0-team.yaml
+    before:
+      runId: run-16af72c1f16569a3
+      status: completed
+      dps: 30123.063285123964
+      steadyLoopBattleFrames:
+        - 1936
+        - 1936
+    after:
+      runId: run-16af72c1f16569a3
+      status: completed
+      dps: 30123.063285123964
+      steadyLoopBattleFrames:
+        - 1936
+        - 1936
+    changed: false
+  - scenario: m0-video-eq-不打谐破.yaml
+    before:
+      runId: run-78592addfa594d39
+      status: completed
+      dps: 37576.81903999995
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    after:
+      runId: run-78592addfa594d39
+      status: completed
+      dps: 37576.81903999995
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    changed: false
+  - scenario: m0-video-eq-维里奈Q后移.yaml
+    before:
+      runId: run-2de95db883818608
+      status: completed
+      dps: 40660.54243999995
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    after:
+      runId: run-2de95db883818608
+      status: completed
+      dps: 40660.54243999995
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    changed: false
+  - scenario: m0-video-eq.yaml
+    before:
+      runId: run-f30982bf50872885
+      status: completed
+      dps: 40472.379039999956
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    after:
+      runId: run-f30982bf50872885
+      status: completed
+      dps: 40472.379039999956
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    changed: false
+  - scenario: m0-video.yaml
+    before:
+      runId: run-512c4d93940fe877
+      status: completed
+      dps: 39365.518519999954
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    after:
+      runId: run-512c4d93940fe877
+      status: completed
+      dps: 39365.518519999954
+      steadyLoopBattleFrames:
+        - 1500
+        - 1500
+    changed: false
+  - scenario: m0-散华单人.yaml
+    before:
+      runId: run-461c75c7702a47c1
+      status: completed
+      dps: 1384.698529411765
+      steadyLoopBattleFrames: null
+    after:
+      runId: run-461c75c7702a47c1
+      status: completed
+      dps: 1384.698529411765
+      steadyLoopBattleFrames: null
+    changed: false
+  - scenario: xin-team-r5-卜灵Q先放.yaml
+    before:
+      runId: run-604166a22d5cd290
+      status: completed
+      dps: 61489.60395806032
+      steadyLoopBattleFrames:
+        - 1716
+        - 1756
+        - 1761
+        - 1749
+        - 1662
+        - 1679
+        - 1749
+        - 1662
+    after:
+      runId: run-604166a22d5cd290
+      status: completed
+      dps: 61489.60395806032
+      steadyLoopBattleFrames:
+        - 1716
+        - 1756
+        - 1761
+        - 1749
+        - 1662
+        - 1679
+        - 1749
+        - 1662
+    changed: false
+  - scenario: xin-team-r5-心共鸣效率.yaml
+    before:
+      runId: run-57eb60feb372793b
+      status: completed
+      dps: 68615.16281232281
+      steadyLoopBattleFrames:
+        - 1510
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+    after:
+      runId: run-57eb60feb372793b
+      status: completed
+      dps: 68615.16281232281
+      steadyLoopBattleFrames:
+        - 1510
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+        - 1512
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ-共鸣效率副词条.yaml
+    before:
+      runId: run-c7280680f33b4df1
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-c7280680f33b4df1
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ-卜灵Q先放.yaml
+    before:
+      runId: run-764502c0cf976e07
+      status: completed
+      dps: 69424.71901705484
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-764502c0cf976e07
+      status: completed
+      dps: 69424.71901705484
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-心补EQ.yaml
+    before:
+      runId: run-fd54dd3495abe612
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    after:
+      runId: run-fd54dd3495abe612
+      status: completed
+      dps: 69463.93304969741
+      steadyLoopBattleFrames:
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+        - 1558
+    changed: false
+  - scenario: xin-team-r5-按套路重排-雷主多一次E.yaml
+    before:
+      runId: run-05634595cde2d59b
+      status: completed
+      dps: 70386.49977468522
+      steadyLoopBattleFrames:
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+    after:
+      runId: run-05634595cde2d59b
+      status: completed
+      dps: 70386.49977468522
+      steadyLoopBattleFrames:
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+        - 1509
+    changed: false
+  - scenario: xin-team-r5-按套路重排.yaml
+    before:
+      runId: run-1b9480a3c99f69fa
+      status: completed
+      dps: 62874.65697534525
+      steadyLoopBattleFrames:
+        - 1699
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+    after:
+      runId: run-1b9480a3c99f69fa
+      status: completed
+      dps: 62874.65697534525
+      steadyLoopBattleFrames:
+        - 1699
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+        - 1684
+    changed: false
+  - scenario: xin-team-r5-绝息魄.yaml
+    before:
+      runId: run-b07f2482cbb69569
+      status: completed
+      dps: 61804.54248067617
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    after:
+      runId: run-b07f2482cbb69569
+      status: completed
+      dps: 61804.54248067617
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    changed: false
+  - scenario: xin-team-r5.yaml
+    before:
+      runId: run-c06a5516db583bf0
+      status: completed
+      dps: 61891.20284331433
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    after:
+      runId: run-c06a5516db583bf0
+      status: completed
+      dps: 61891.20284331433
+      steadyLoopBattleFrames:
+        - 1738
+        - 1778
+        - 1716
+        - 1771
+        - 1684
+        - 1701
+        - 1771
+        - 1684
+    changed: false
+  - scenario: xin-team.yaml
+    before:
+      runId: run-21db11f589fa6356
+      status: completed
+      dps: 57041.28847872493
+      steadyLoopBattleFrames:
+        - 1755
+        - 1769
+        - 1743
+        - 1709
+        - 1770
+        - 1723
+        - 1816
+        - 1769
+    after:
+      runId: run-21db11f589fa6356
+      status: completed
+      dps: 57041.28847872493
+      steadyLoopBattleFrames:
+        - 1755
+        - 1769
+        - 1743
+        - 1709
+        - 1770
+        - 1723
+        - 1816
+        - 1769
+    changed: false
+  - scenario: xin-轮椅.yaml
+    before:
+      runId: run-ca588aa9111e9ef4
+      status: completed
+      dps: 74532.35421032796
+      steadyLoopBattleFrames:
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+    after:
+      runId: run-ca588aa9111e9ef4
+      status: completed
+      dps: 74532.35421032796
+      steadyLoopBattleFrames:
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+        - 1516
+    changed: false
+notes: 回填的意义在于把"起手即得"这条读法和它现有的证据关系写清楚：现有的视频材料与它相容，但这几条观测在两种读法下本来就预测相同（都在 E 命中之后才切人）。2026-11-27 之前另一种读法（随第一段命中给）没有开关、没有评估，结论按第 5 行是暂定；有了开关（rules.castGainTiming firstHit）、在提交 a014c61 上重新预测之后是第 3 行的分不清。

@@ -231,7 +231,12 @@ export const PROPOSITIONS = [
       { id: 'generic-5', label: '按通用块的 5', implemented: true, changes: 'mechanism', binding: { kind: 'rule', path: 'echoInputPriority', value: true } },
       { id: 'echo-table', label: '按声骸表各行的优先级（多为 0）：等当前动作结束或进同级派生窗口', implemented: true, changes: 'mechanism', binding: { kind: 'rule', path: 'echoInputPriority', value: false } },
     ],
-    evidence: [legacy('echo-input-priority', 'echo-input-priority')], conclusion: 'unverified',
+    evidence: [
+      legacy('echo-input-priority', 'echo-input-priority'),
+      { id: 'echo-input-priority.backfill:散华EQ抢帧:1', supports: ['generic-5'], refutes: ['echo-table'], consistentWith: [], purpose: 'independent_validation', observation: { gameVersion: '3.7', recordedAt: '2026-11-26', condition: '声骸起手.散华EQ抢帧：iPad 触屏、肉眼看（没录像）：E 起手后、冰棱出现之前快速按 Q，无常凶鹭立刻起手，E 进了冷却（2026-11-27 确认）、冰棱不再出现（E 被打断，判定作废）。读成"E 起手后一秒以内"，比两个候选的差（96 帧对 1 帧）宽得多；肉眼读不出几帧，只取这个上界' }, simulationRunId: 'run-ab565bd8b4c75d19', summary: '1 条观测：generic-5 passed；echo-table conflicted', ref: 'docs/evidence/echo-input-priority.backfill.yaml' },
+      { id: 'echo-input-priority.backfill:维里奈EQ抢帧:1', supports: ['generic-5'], refutes: ['echo-table'], consistentWith: [], purpose: 'independent_validation', observation: { gameVersion: '3.7', recordedAt: '2026-11-26', condition: '声骸起手.维里奈EQ抢帧：iPad 触屏、肉眼看（没录像）：用户"其他两人也类似，Q 可以直接打断 E"——E 起手后很快按 Q，声骸立刻起手、E 被打断。读成"E 起手后一秒以内"（同散华那条）' }, simulationRunId: 'run-38807afa6d7106a7', summary: '1 条观测：generic-5 passed；echo-table conflicted', ref: 'docs/evidence/echo-input-priority.backfill.yaml' },
+      { id: 'echo-input-priority.backfill:椿E1Q抢帧:1', supports: ['generic-5'], refutes: ['echo-table'], consistentWith: [], purpose: 'independent_validation', observation: { gameVersion: '3.7', recordedAt: '2026-11-26', condition: '声骸起手.椿E1Q抢帧：iPad 触屏、肉眼看（没录像）：用户"其他两人也类似，Q 可以直接打断 E"——E1 起手后很快按 Q，声骸立刻起手、E1 被打断。读成"E1 起手后一秒以内"（同散华那条）' }, simulationRunId: 'run-7feb13485fd414a0', summary: '1 条观测：generic-5 passed；echo-table conflicted', ref: 'docs/evidence/echo-input-priority.backfill.yaml' },
+    ], conclusion: 'supported',
     impact: { dps: dpsOf('echo-input-priority'), ...UNKNOWN },
     // DD-08 §7：第一条新闭环 echo-input-priority.2026-11 涉及的字段
     fieldProvenance: {
@@ -381,8 +386,8 @@ export const PROPOSITIONS = [
       { id: 'at-first-hit', label: '末项也随这个动作的第一段命中才给（挪到时间线上最早生成的判定，第一次结算时给；在它生成之前取消就不给）', implemented: true, changes: 'data', binding: { kind: 'rule', path: 'castGainTiming', value: 'firstHit' } },
     ],
     evidence: [
-      { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-d14eaf8f7452f6a0', summary: '4 条观测：at-start passed ×4；at-first-hit 没实现', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
-    ], conclusion: 'provisional',
+      { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start', 'at-first-hit'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-f30982bf50872885', summary: '4 条观测：at-start passed ×4；at-first-hit passed ×4', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
+    ], conclusion: 'ambiguous',
     impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },   // 切出者协奏差一点满不满，就是变奏还是普通切人
     fieldProvenance: {
       fieldKey: '散华.E.castGains（协奏）',

@@ -7,6 +7,7 @@
 1. 写好实验页的前七栏与判据，写好 setup 小场景（`scenarios/evidence/`）与观测（`points.yaml`，读数留空）、闭环记录（`docs/evidence/<闭环 ID>.yaml`）。
 2. `pnpm evidence predict docs/evidence/<闭环 ID>.yaml`：把预测填进闭环文件，抄进实验页的"预测"一栏。
 3. 看命令打印的**区分度**：每条观测上各候选的接受区间（预测 ± 容差）两两不重叠才"可区分"；全都区分不了的实验先不做。容差不能小于读数精度。
+   **再核对一遍 setup 与操作是同一件事**（C8 的教训）：操作写"一起手就连按"时，setup 里对应的是抢帧 `!`；缺省的 `A B` 是"等 A 出手再按 B"的打法，预测的是另一件事。
 4. 提交代码与 setup 场景后 `pnpm evidence register docs/evidence/<闭环 ID>.yaml`（冻结预测运行的身份、观测定义与预测值的两个摘要），再提交闭环文件。之后不再改候选、判据与观测的容差，要改就另开一条闭环。
 5. 进游戏做实验。
 
@@ -44,4 +45,5 @@
 
 | 页 | 命题 | 闭环 | 状态 |
 |---|---|---|---|
-| [C8-声骸起手优先级](C8-声骸起手优先级.md) | `echo-input-priority` | [`echo-input-priority.2026-11`](../evidence/echo-input-priority.2026-11.yaml) | 预测已登记，等进游戏 |
+| [C8-声骸起手优先级](C8-声骸起手优先级.md) | `echo-input-priority` | [`echo-input-priority.2026-11`](../evidence/echo-input-priority.2026-11.yaml)（作废，不判）→ 回填 [`echo-input-priority.backfill`](../evidence/echo-input-priority.backfill.yaml) | 2026-11-26 iPad 肉眼做过；setup 与操作对不上（见实验页"结果"），回填后证实（所测条件内） |
+| [C9-散华E协奏起手即得](C9-散华E协奏起手即得.md) | `cast-gain-at-start` | [`cast-gain-at-start.2026-11`](../evidence/cast-gain-at-start.2026-11.yaml) | 预测已登记，等进游戏（截图或肉眼即可） |

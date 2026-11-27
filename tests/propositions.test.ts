@@ -246,8 +246,8 @@ describe('台账（DD-04 §3.1、§3.2）', () => {
     expect(evidenceViolations({ ...base, conclusion: 'supported', evidence: [sel, { ...sel, id: 'syn:ind', purpose: 'independent_validation' }] })).toEqual([])
     // 独立观测只是"相容"（consistentWith），不是 supports：仍然不能 supported
     expect(evidenceViolations({ ...base, conclusion: 'supported', evidence: [{ ...sel, purpose: 'independent_validation', supports: [], consistentWith: [base.adopted] }] })).toHaveLength(1)
-    // 三种关系不混：同一个候选不能同时在两种关系里
-    expect(evidenceViolations({ ...base, evidence: [{ ...sel, refutes: [base.adopted] }] })).toHaveLength(1)
+    // 三种关系不混：同一个候选不能同时在两种关系里（结论写成 unverified，只看这一条约束；台账里这条命题 2026-11-27 起是 supported）
+    expect(evidenceViolations({ ...base, conclusion: 'unverified', evidence: [{ ...sel, refutes: [base.adopted] }] })).toHaveLength(1)
     for (const p of ALL) expect([p.id, evidenceViolations(p)]).toEqual([p.id, []])
   })
 

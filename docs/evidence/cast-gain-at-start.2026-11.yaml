@@ -1,0 +1,51 @@
+# C9：散华 E 的协奏是起手即得还是命中才给（DD-08 §5；用户 2026-11-27 同意登记）。进游戏实验，实验页 docs/experiments/C9-散华E协奏起手即得.md。
+# 用 C8 回填看到的现象来分：声骸能在 E 出伤前把 E 打断（E 进冷却、冰棱不出现），这时 E 的那一下命中根本没有。
+# 预测在观测之前登记（preRegistration，DD-08 §5.2）；之后不再改候选、判据与观测的容差，要改就另开一条记录。
+id: cast-gain-at-start.2026-11
+propositionId: cast-gain-at-start
+question: 散华 E 的 15 点协奏（资源公式的末项，起手即得）是 E 起手那一帧就给，还是随 E 的第一段命中才给——E 在出伤前被声骸打断时就分得开
+kind: experiment
+setups:
+  - id: 散华EQ抢帧三次
+    scenario: evidence/cast-gain-at-start-散华EQ抢帧三次.yaml
+    note: 散华在场、协奏 0；E 一起手就按 Q（无常凶鹭）打断 E，隔 21 秒一次，共三次
+candidates:
+  - candidateId: at-start
+    conditions: E 的 15 点协奏在 E 起手那一帧给，被声骸打断也照给（rules.castGainTiming start）；另有行进序曲 5 阶"施放共鸣技能时回复 16 点协奏，20 秒一次"，两次间隔 21 秒，每次都触发：每次 +31，凶鹭砸地后（砸地不给协奏）是 0.31、0.62、0.93
+    runs:
+      - setupId: 散华EQ抢帧三次
+        runId: run-da3ff45b5402f3ae
+        status: completed
+    predictions:
+      - observationId: 散华E协奏.抢帧第1次
+        predicted: 0.31
+        covered: true
+      - observationId: 散华E协奏.抢帧第2次
+        predicted: 0.62
+        covered: true
+      - observationId: 散华E协奏.抢帧第3次
+        predicted: 0.93
+        covered: true
+  - candidateId: at-first-hit
+    conditions: 15 点随 E 的第一段命中（第 19 帧）才给，E 在出伤前被打断就没有（rules.castGainTiming firstHit）；武器的 16 点照样在施放时给：每次只 +16，凶鹭砸地后是 0.16、0.32、0.48
+    runs:
+      - setupId: 散华EQ抢帧三次
+        runId: run-f88c08d3654f410d
+        status: completed
+    predictions:
+      - observationId: 散华E协奏.抢帧第1次
+        predicted: 0.16
+        covered: true
+      - observationId: 散华E协奏.抢帧第2次
+        predicted: 0.32
+        covered: true
+      - observationId: 散华E协奏.抢帧第3次
+        predicted: 0.48
+        covered: true
+criteria: 每次凶鹭砸地之后读散华的协奏环占整圈的比例，三次各一条观测，读成区间（截图最好，我量弧长约 ±0.02；只能肉眼看时照实放宽区间）。容差相对 15%，在登记前定：仿真值落在 [读数下限 × 0.85, 读数上限 × 1.15] 里算相容、外面算冲突。三条都是 independent_validation。开始时环不空、某次冰棱出现了（E 出了伤）、两次之间不到 20 秒的，那一组作废重做
+observationIds:
+  - 散华E协奏.抢帧第1次
+  - 散华E协奏.抢帧第2次
+  - 散华E协奏.抢帧第3次
+scopeTested: 游戏版本 3.7；Evariste 账号的散华 6 链（行进序曲 5 阶，m0-video-eq.yaml 的配装），训练场木桩；散华协奏从 0 开始，E 与无常凶鹭都不在冷却、最近 20 秒没放过 E，E 一起手（出伤前）就按声骸
+notes: 什么时候进游戏由用户安排（DD-08 §5.5）；iPad 上肉眼看或截图都行。读数填进 docs/calibration/points.yaml 的 散华E协奏.*（gameRange 与 condition），然后 pnpm evidence judge。at-first-hit 这个读法 2026-11-27 才有开关（rules.castGainTiming firstHit，resolve.ts deferCastGains），回填闭环 sanhua-e.backfill 随之重新预测。
