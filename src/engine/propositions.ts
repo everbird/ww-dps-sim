@@ -387,7 +387,8 @@ export const PROPOSITIONS = [
     ],
     evidence: [
       { id: 'sanhua-e.backfill:m0-video-eq:1', supports: [], refutes: [], consistentWith: ['at-start', 'at-first-hit'], purpose: 'selection', observation: { gameVersion: '未知', recordedAt: '2026-06-18', condition: '散华E.散EQ变奏椿.启动轴、散华E.散EQ变奏椿.第1轮、散华E.散EQ变奏椿.第2轮、散华E.散EQ变奏椿.第3轮（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-f30982bf50872885', summary: '4 条观测：at-start passed ×4；at-first-hit passed ×4', ref: 'docs/evidence/sanhua-e.backfill.yaml' },
-    ], conclusion: 'ambiguous',
+      { id: 'cast-gain-at-start.2026-11:散华EQ抢帧三次:1', supports: ['at-start'], refutes: ['at-first-hit'], consistentWith: [], purpose: 'independent_validation', observation: { gameVersion: '3.7', recordedAt: '2026-11-27', condition: '散华E协奏.抢帧第1次、散华E协奏.抢帧第3次（各条的条件见 docs/calibration/points.yaml）' }, simulationRunId: 'run-55324897243ee242', summary: '2 条观测：at-start passed ×2；at-first-hit conflicted ×2', ref: 'docs/evidence/cast-gain-at-start.2026-11.yaml' },
+    ], conclusion: 'supported',
     impact: { dps: 'unknown', threshold: 'introOrUlt', timingFrames: 'unknown' },   // 切出者协奏差一点满不满，就是变奏还是普通切人
     fieldProvenance: {
       fieldKey: '散华.E.castGains（协奏）',

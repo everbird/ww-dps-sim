@@ -7,7 +7,7 @@ import { ScenarioSchema, type Scenario } from '../src/data/scenario.schema'
 import { closureText, parseClosure } from '../src/cli/evidence-file'
 import { canonicalJson } from '../src/engine/digest'
 import {
-  distinguishability, EvidenceError, evidenceFromClosure, evidenceViolations, judgeClosure, predictClosure, registerClosure, rerunClosure,
+  concludeAcrossClosures, distinguishability, EvidenceError, evidenceFromClosure, evidenceViolations, judgeClosure, predictClosure, registerClosure, rerunClosure,
   verifyPredictions, type EvidenceContext,
 } from '../src/analysis/evidence'
 import type { Candidate, Proposition } from '../src/engine/propositions'
@@ -363,5 +363,44 @@ describe('scenario 绑定的候选（DD-09 §5：录像里漏记的一下这类�
     expect([out.reruns, out.affected, out.problems]).toEqual([[], [], []])
     expect(out.note).toMatch(/轴的输入/)
     expect(rerunClosure(judged(true), input(), synthData(chars()), new Map([['syn.yaml', scenario]])).problems.join('\n')).toMatch(/defaultChanged 应为 false/)
+  })
+})
+
+describe('concludeAcrossClosures：同命题多条已判断闭环的结论合并', () => {
+  test('一条选模材料分不清 + 一条独立实验排除竞争候选 → 合并为 supported（rule 4）', () => {
+    const p = prop(['A', 'B'])
+    const oSel = [interval('Osel', 10, 2, 'selection')]
+    const rSel = record(oSel, { A: { Osel: 10 }, B: { Osel: 10 } }, { id: 'syn.backfill' })
+    const jSel = judge(rSel, p, oSel)
+    expect(jSel.conclusion.proposition).toBe('ambiguous')
+
+    const oExp = [interval('Oexp', 10, 2, 'independent_validation')]
+    const rExp = record(oExp, { A: { Oexp: 10 }, B: { Oexp: 30 } }, { id: 'syn.exp' })
+    const jExp = judge(rExp, p, oExp)
+    expect(jExp.conclusion.proposition).toBe('supported')
+
+    const merged = concludeAcrossClosures(
+      [{ verdicts: jSel.verdicts, obs: oSel }, { verdicts: jExp.verdicts, obs: oExp }],
+      p,
+    )
+    expect(merged).toMatchObject({ proposition: 'supported', about: 'A', rule: 4 })
+    expect(merged.basis.excludedBy).toEqual({ B: { independent: ['Oexp'], other: [] } })
+  })
+
+  test('一条观测相容 A、B + 另一条观测与采用候选 A 冲突而与 B 相容 → 合并为 refuted（rule 7，冲突不被另一条相容掩盖）', () => {
+    const p = prop(['A', 'B'])
+    const o1 = [interval('O1', 10, 2, 'independent_validation')]
+    const j1 = judge(record(o1, { A: { O1: 10 }, B: { O1: 10 } }, { id: 'syn.c1' }), p, o1)
+    expect(j1.conclusion.proposition).toBe('ambiguous')
+
+    const o2 = [interval('O2', 10, 2, 'independent_validation')]
+    const j2 = judge(record(o2, { A: { O2: 30 }, B: { O2: 10 } }, { id: 'syn.c2' }), p, o2)
+    expect(j2.conclusion.proposition).toBe('refuted')
+
+    const merged = concludeAcrossClosures(
+      [{ verdicts: j1.verdicts, obs: o1 }, { verdicts: j2.verdicts, obs: o2 }],
+      p,
+    )
+    expect(merged).toEqual({ proposition: 'refuted', about: 'A', basis: { independent: ['O2'], other: [] }, rule: 7, suggests: ['B'] })
   })
 })
