@@ -20,10 +20,11 @@ const usage = (res: SimResult, id: string) => res.ruleUsage.byProposition.find(x
 const pointTrace = (res: SimResult, point: RulePointId) => res.diag!.ruleTrace!.filter(x => x.point === point)
 
 describe('判定点登记表（DD-05 §4.1）', () => {
-  test('18 个判定点，ID 不重复，命题都在台账里', () => {
-    // DD-05 首版 16 个；心读 summonCountsAsChar、卜灵按角色的协奏时机（DD-08 §6 的 concertoTimingBy）两处后来补上（Antigravity 审查 M4）
-    expect(RULE_POINTS).toHaveLength(18)
-    expect(new Set(RULE_POINTS.map(p => p.id)).size).toBe(18)
+  test('19 个判定点，ID 不重复，命题都在台账里', () => {
+    // DD-05 首版 16 个；心读 summonCountsAsChar、卜灵按角色的协奏时机（DD-08 §6 的 concertoTimingBy）两处后来补上（Antigravity 审查 M4）；
+    // 起手即得的时机（castGainTiming，台账 cast-gain-at-start）2026-11-27 补上
+    expect(RULE_POINTS).toHaveLength(19)
+    expect(new Set(RULE_POINTS.map(p => p.id)).size).toBe(19)
     expect(RULE_POINTS.filter(p => propositionOf(p.propositionId) === undefined)).toEqual([])
   })
 })

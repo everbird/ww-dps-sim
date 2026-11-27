@@ -1,0 +1,196 @@
+{
+  "run-0679097eae211b8c": {
+    "data": {
+      "resourceVersion": "3.7.13",
+      "xlsxFileDate": "20261019",
+      "xlsxSha256": "8b8c9c077aff34b1c1f7ca855945b060482e77fe76d7afd5da7ce65ba7c528f1"
+    },
+    "execution": {
+      "continueAfterIntentUnmet": false,
+      "entryMode": "standard",
+      "gitCommit": "cee3b653b24986de0c04bcedeaf9404ca957409b",
+      "inputTiming": "earliest",
+      "options": {
+        "inputDelay": 0,
+        "maxFrames": 3000,
+        "maxWait": 600,
+        "repeat": 1,
+        "strict": false,
+        "tuneBreak": "off"
+      },
+      "outputSchemaVersion": "2",
+      "resolvedDigest": "84f008e775416814194f21902d700d366b916b07a782ad718d2baa4b1b74dc47",
+      "rules": {
+        "breakEnergy": 3,
+        "castGainTiming": "firstHit",
+        "charLevel": 90,
+        "concertoMax": 100,
+        "concertoTiming": "onHit",
+        "concertoTimingBy": {},
+        "critRateCap": 1,
+        "defFactorCap": 2,
+        "defFloor": false,
+        "dilation": {
+          "全局时停": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [],
+            "stopsBattleClock": true
+          },
+          "弹反顿帧": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [
+              "self",
+              "enemy",
+              "ally"
+            ],
+            "stopsBattleClock": false
+          },
+          "攻击顿帧": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [
+              "self",
+              "enemy",
+              "ally"
+            ],
+            "stopsBattleClock": false
+          },
+          "时停": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [],
+            "stopsBattleClock": false
+          },
+          "极限闪避顿帧": {
+            "clearSelfOnCancel": true,
+            "hitstopSides": [
+              "enemy"
+            ],
+            "stopsBattleClock": false
+          }
+        },
+        "echoInputPriority": true,
+        "effectOwner": "last",
+        "effectTickReset": false,
+        "energyShare": {
+          "dealer": 1,
+          "others": 0.5
+        },
+        "forteKeepOnSwitch": true,
+        "forteKeepOnSwitchBy": {},
+        "fps": 60,
+        "highResThreshold": 0.8,
+        "hitstopInGlobalStop": false,
+        "interferenceFrames": 480,
+        "invincibleLocksSwitch": true,
+        "maxChainDepth": 16,
+        "maxWait": 600,
+        "responseCooldown": 480,
+        "sampleInterval": 30,
+        "summonCountsAsChar": true,
+        "switchCooldown": 60,
+        "switchEndsStop": true,
+        "trackNoConsume": true,
+        "ultInputLocksSwitch": true
+      },
+      "sample": null,
+      "scenarioDigest": "2202a440ef7e9b7ba76644721029f2295df6caf13ed9adccfd1cd65dffa11003",
+      "strictSource": "default"
+    }
+  },
+  "run-55324897243ee242": {
+    "data": {
+      "resourceVersion": "3.7.13",
+      "xlsxFileDate": "20261019",
+      "xlsxSha256": "8b8c9c077aff34b1c1f7ca855945b060482e77fe76d7afd5da7ce65ba7c528f1"
+    },
+    "execution": {
+      "continueAfterIntentUnmet": false,
+      "entryMode": "standard",
+      "gitCommit": "cee3b653b24986de0c04bcedeaf9404ca957409b",
+      "inputTiming": "earliest",
+      "options": {
+        "inputDelay": 0,
+        "maxFrames": 3000,
+        "maxWait": 600,
+        "repeat": 1,
+        "strict": false,
+        "tuneBreak": "off"
+      },
+      "outputSchemaVersion": "2",
+      "resolvedDigest": "c3145ef0b2399a1cbc1e3ec9f886f18873fe7f2a44c5f0f40b3d3179d14929e2",
+      "rules": {
+        "breakEnergy": 3,
+        "castGainTiming": "start",
+        "charLevel": 90,
+        "concertoMax": 100,
+        "concertoTiming": "onHit",
+        "concertoTimingBy": {},
+        "critRateCap": 1,
+        "defFactorCap": 2,
+        "defFloor": false,
+        "dilation": {
+          "全局时停": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [],
+            "stopsBattleClock": true
+          },
+          "弹反顿帧": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [
+              "self",
+              "enemy",
+              "ally"
+            ],
+            "stopsBattleClock": false
+          },
+          "攻击顿帧": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [
+              "self",
+              "enemy",
+              "ally"
+            ],
+            "stopsBattleClock": false
+          },
+          "时停": {
+            "clearSelfOnCancel": false,
+            "hitstopSides": [],
+            "stopsBattleClock": false
+          },
+          "极限闪避顿帧": {
+            "clearSelfOnCancel": true,
+            "hitstopSides": [
+              "enemy"
+            ],
+            "stopsBattleClock": false
+          }
+        },
+        "echoInputPriority": true,
+        "effectOwner": "last",
+        "effectTickReset": false,
+        "energyShare": {
+          "dealer": 1,
+          "others": 0.5
+        },
+        "forteKeepOnSwitch": true,
+        "forteKeepOnSwitchBy": {},
+        "fps": 60,
+        "highResThreshold": 0.8,
+        "hitstopInGlobalStop": false,
+        "interferenceFrames": 480,
+        "invincibleLocksSwitch": true,
+        "maxChainDepth": 16,
+        "maxWait": 600,
+        "responseCooldown": 480,
+        "sampleInterval": 30,
+        "summonCountsAsChar": true,
+        "switchCooldown": 60,
+        "switchEndsStop": true,
+        "trackNoConsume": true,
+        "ultInputLocksSwitch": true
+      },
+      "sample": null,
+      "scenarioDigest": "8acdb4f0c71b541c90e3ea3fde3618cf78bac280182679d22483732898cdba54",
+      "strictSource": "default"
+    }
+  }
+}

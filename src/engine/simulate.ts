@@ -17,7 +17,7 @@ import {
 } from './enemy'
 import { accumulate, computeHit, computeTuneBreak, contributes, hitView, matchesFilter, tuneBase } from './formula'
 import { cooldownKey, log, spawnJudgment, startAction, type Kernel } from './kernel'
-import { canAfford, castGainAt, castResources, grant, openingLedger, payCost, settleGains, syncResource } from './resources'
+import { canAfford, castGainAt, castOnFirstHit, castResources, grant, openingLedger, payCost, settleGains, syncResource } from './resources'
 import type { BoundaryObserver } from './run-types'
 import type { InterventionRecord, StatePrefix, TickPhase } from './run-types'
 import type { HookRulePointId } from './rule-points'
@@ -457,6 +457,11 @@ function settle(sim: Sim, s: SimState, j: JudgmentRuntime, n: number): void {
   for (const f of after) {
     log(s, f)
     if (link) sim.bus.chain.set(s.log.length - 1, link)
+  }
+  if (n === 0 && d.castOnFirstHit) {                              // 起手即得随第一段命中给（规则 castGainTiming firstHit，装配时挪来的）
+    const from = s.log.length
+    castOnFirstHit(sim, s, j.owner, d.castOnFirstHit)
+    if (link) for (let i = from; i < s.log.length; i++) sim.bus.chain.set(i, link)
   }
   hitGauges(sim, s, j)                                            // 敌人量表：偏谐值、失谐、谐度破坏命中、白条（TD-06 §13）
   const e = s.enemy
